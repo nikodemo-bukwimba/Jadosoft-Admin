@@ -3,16 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'navigation.dart';
 
-/// The top app bar used by [AdaptiveNavShell].
-///
-/// Supports:
-/// - **Logo/branding** — any widget in the leading slot.
-/// - **Back button** — auto-shown when [NavState.canGoBack] is true.
-/// - **Hamburger menu** — shown in drawer mode (narrow screens).
-/// - **Custom center widget** — search bar, page title, tabs, etc.
-/// - **Action buttons** — notifications, avatar, etc. (any `List<Widget>`).
-///
-/// Resolves its height and colors from [NavRailThemeData] / M3 tokens.
 class NavCustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   const NavCustomAppBar({
     super.key,
@@ -24,31 +14,16 @@ class NavCustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.onMenuTap,
   });
 
-  /// Branding/logo widget shown in the leading area.
-  /// Hidden when a back button or hamburger is shown instead.
   final Widget? logo;
-
-  /// Widgets rendered on the right side of the bar.
   final List<Widget> actions;
-
-  /// Widget occupying the expanded center area.
-  /// Pass a search bar, page title, or any custom widget.
   final Widget? centerWidget;
-
-  /// When true, renders a back arrow whenever [NavState.canGoBack] is true.
   final bool showBackButton;
-
-  /// True on narrow screens — renders a hamburger menu to open the Drawer.
   final bool isDrawerMode;
-
-  /// Called when the hamburger icon is tapped (drawer mode only).
   final VoidCallback? onMenuTap;
 
   @override
   Size get preferredSize => const Size.fromHeight(_kAppBarHeight);
 
-  // Use a fixed default here; the actual resolved value comes from the theme
-  // but PreferredSizeWidget.preferredSize must be const.
   static const double _kAppBarHeight = 64;
 
   @override
@@ -63,24 +38,25 @@ class NavCustomAppBar extends StatelessWidget implements PreferredSizeWidget {
         final cubit = context.read<NavCubit>();
         final showBack = showBackButton && state.canGoBack;
 
+        final pageConfig = state.appBarConfig;
+        final effectiveCenter = pageConfig.centerWidget ?? centerWidget;
+        final effectiveActions = pageConfig.actions.isNotEmpty
+            ? pageConfig.actions
+            : actions;
+
         return Container(
           height: navTheme.appBarHeight,
           color: navTheme.appBarBackgroundColor,
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Row(
             children: [
-              // ── Leading slot ─────────────────────────────────────────────
-              // Drawer mode: hamburger is ALWAYS visible.
-              //   When canGoBack is also true, back button appears beside it
-              //   so users never lose access to either.
-              // Rail mode: logo is shown; back button replaces it when active.
+              // ── Leading slot ──────────────────────────────────────────────
               if (isDrawerMode) ...[
                 IconButton(
                   icon: const Icon(Icons.menu),
                   tooltip: 'Open menu',
                   onPressed: onMenuTap,
                 ),
-                // Back button slides in alongside the hamburger — no replacement
                 AnimatedSize(
                   duration: const Duration(milliseconds: 200),
                   curve: Curves.easeInOut,
@@ -93,7 +69,6 @@ class NavCustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                       : const SizedBox.shrink(),
                 ),
               ] else ...[
-                // Rail mode: logo ↔ back button (one at a time is fine here)
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
                   child: showBack
@@ -113,27 +88,127 @@ class NavCustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                 ),
               ],
 
-              // ── Center / title slot ───────────────────────────────────────
+              // ── Center slot ───────────────────────────────────────────────
+              // Priority: page-level config → shell prop → breadcrumb fallback
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: centerWidget ?? const SizedBox.shrink(),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    child: effectiveCenter != null
+                        ? KeyedSubtree(
+                            key: ValueKey(effectiveCenter.hashCode),
+                            child: effectiveCenter,
+                          )
+                        : _Breadcrumb(
+                            key: ValueKey(state.history.length),
+                            history: cubit.historyWithLabels,
+                            onTapIndex: cubit.navigateToHistoryIndex,
+                            navTheme: navTheme,
+                          ),
+                  ),
                 ),
               ),
 
-              // ── Action buttons ────────────────────────────────────────────
-              ...actions.map(
-                (action) => Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: action,
-                ),
+              // ── Actions ───────────────────────────────────────────────────
+              ...effectiveActions.map(
+                (a) =>
+                    Padding(padding: const EdgeInsets.only(left: 4), child: a),
               ),
-
               const SizedBox(width: 4),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Breadcrumb trail
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _Breadcrumb extends StatelessWidget {
+  const _Breadcrumb({
+    super.key,
+    required this.history,
+    required this.onTapIndex,
+    required this.navTheme,
+  });
+
+  final List<({String path, String label})> history;
+  final void Function(int index) onTapIndex;
+  final NavRailThemeData navTheme;
+
+  @override
+  Widget build(BuildContext context) {
+    if (history.isEmpty) return const SizedBox.shrink();
+
+    final cs = Theme.of(context).colorScheme;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (int i = 0; i < history.length; i++) ...[
+            _BreadcrumbItem(
+              label: history[i].label,
+              isLast: i == history.length - 1,
+              selectedColor: cs.primary,
+              unselectedColor: cs.onSurfaceVariant,
+              // Tapping a non-last crumb navigates back to that point.
+              onTap: i < history.length - 1 ? () => onTapIndex(i) : null,
+            ),
+            if (i < history.length - 1)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  size: 16,
+                  color: cs.onSurfaceVariant.withOpacity(0.5),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BreadcrumbItem extends StatelessWidget {
+  const _BreadcrumbItem({
+    required this.label,
+    required this.isLast,
+    required this.selectedColor,
+    required this.unselectedColor,
+    this.onTap,
+  });
+
+  final String label;
+  final bool isLast;
+  final Color selectedColor;
+  final Color unselectedColor;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isLast ? selectedColor : unselectedColor;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: color,
+            fontWeight: isLast ? FontWeight.w600 : FontWeight.w500,
+          ),
+        ),
+      ),
     );
   }
 }

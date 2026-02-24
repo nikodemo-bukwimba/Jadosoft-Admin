@@ -1,4 +1,3 @@
- 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -7,7 +6,6 @@ import 'nav_cubit.dart';
 import 'nav_item.dart';
 import 'nav_rail_body.dart';
 import 'nav_rail_theme.dart';
-
 
 /// The top-level shell widget that wraps your app's page content with an
 /// adaptive navigation rail / drawer.
@@ -31,29 +29,38 @@ import 'nav_rail_theme.dart';
 /// );
 /// ```
 ///
+/// ### Screen-level AppBar customisation
+///
+/// Wrap any page's content with [NavPageConfig] to inject a custom title or
+/// actions into the shared AppBar for the duration of that page's lifetime:
+///
+/// ```dart
+/// // Inside a page's build method:
+/// return NavPageConfig(
+///   centerWidget: const Text('My Page'),
+///   actions: [IconButton(icon: Icon(Icons.share), onPressed: _share)],
+///   child: MyPageBody(),
+/// );
+/// ```
+///
 /// ### Responsive behaviour
 ///
-/// | Screen width     | Layout         |
-/// |------------------|----------------|
+/// | Screen width     | Layout              |
+/// |------------------|---------------------|
 /// | ≥ [breakpoint]   | Side rail + content |
-/// | < [breakpoint]   | Drawer + content |
+/// | < [breakpoint]   | Drawer + content    |
 ///
 /// The breakpoint defaults to 768 but you can pass any value.
 ///
 /// ### Theming
 ///
-/// Theme the rail globally via [ThemeData.extensions]:
-///
 /// ```dart
 /// ThemeData(
-///   useMaterial3: true,
 ///   extensions: [
 ///     NavRailThemeData(railWidth: 260, flyoutElevation: 6),
 ///   ],
 /// )
 /// ```
-///
-/// Or override per-instance with the [navTheme] parameter.
 class AdaptiveNavShell extends StatefulWidget {
   const AdaptiveNavShell({
     super.key,
@@ -65,6 +72,7 @@ class AdaptiveNavShell extends StatefulWidget {
     this.appBarActions = const [],
     this.appBarCenterWidget,
     this.railHeader,
+    this.railHeaderCollapsed,
     this.railFooter,
     this.navTheme,
     this.initialDisplayMode = NavRailDisplayMode.iconsAndLabels,
@@ -74,13 +82,8 @@ class AdaptiveNavShell extends StatefulWidget {
 
   // ── Required ──────────────────────────────────────────────────────────────
 
-  /// The [GoRouter] instance powering your app's routing.
   final GoRouter router;
-
-  /// Top-level navigation items. Each item can recursively contain [NavItem.children].
   final List<NavItem> items;
-
-  /// The current page content — typically the `child` from a `ShellRoute`.
   final Widget child;
 
   // ── Layout ────────────────────────────────────────────────────────────────
@@ -91,39 +94,40 @@ class AdaptiveNavShell extends StatefulWidget {
 
   // ── AppBar customization ──────────────────────────────────────────────────
 
-  /// Branding / logo widget displayed in the AppBar's leading area.
   final Widget? logo;
 
-  /// Action widgets on the right side of the AppBar
-  /// (e.g. `[NotificationBell(), UserAvatar()]`).
+  /// Default action widgets on the right side of the AppBar.
+  /// Replaced by [NavPageConfig.actions] when non-empty.
   final List<Widget> appBarActions;
 
-  /// Widget occupying the AppBar's center area — search bar, page title, etc.
+  /// Default center widget for the AppBar.
+  /// Replaced by [NavPageConfig.centerWidget] when non-null.
   final Widget? appBarCenterWidget;
 
-  /// Set to `false` to remove the AppBar entirely.
   final bool showAppBar;
-
-  /// Whether the AppBar shows a back-arrow when [NavState.canGoBack] is true.
   final bool showBackButton;
 
   // ── Rail customization ────────────────────────────────────────────────────
 
-  /// Widget pinned above the nav items in the rail / drawer.
-  /// Great for a user profile card or app logo.
+  /// Widget pinned above the nav items in the rail / drawer when **expanded**.
+  ///
+  /// Keep it intrinsically sized — it will be clipped to the rail width
+  /// as the rail animates between expanded and collapsed states.
   final Widget? railHeader;
 
+  /// Widget shown in the header area when the rail is **collapsed to icons-only**.
+  ///
+  /// Typically a compact logo or avatar that fits within
+  /// [NavRailThemeData.railCollapsedWidth]. If null, the header area is hidden
+  /// when the rail is collapsed.
+  final Widget? railHeaderCollapsed;
+
   /// Widget pinned below the nav items in the rail / drawer.
-  /// Great for settings, help, logout, or a version label.
   final Widget? railFooter;
 
   // ── Theming ───────────────────────────────────────────────────────────────
 
-  /// Per-instance theme override.
-  /// Falls back to [NavRailThemeData] from [ThemeData.extensions], then M3 tokens.
   final NavRailThemeData? navTheme;
-
-  /// Initial display mode of the rail. Default: [NavRailDisplayMode.iconsAndLabels].
   final NavRailDisplayMode initialDisplayMode;
 
   @override
@@ -150,7 +154,6 @@ class _AdaptiveNavShellState extends State<AdaptiveNavShell> {
     super.dispose();
   }
 
-  /// Resolves the effective theme for this shell instance.
   NavRailThemeData _resolveTheme(BuildContext context) {
     final theme = Theme.of(context);
     return (widget.navTheme ??
@@ -177,6 +180,7 @@ class _AdaptiveNavShellState extends State<AdaptiveNavShell> {
                   appBarActions: widget.appBarActions,
                   appBarCenterWidget: widget.appBarCenterWidget,
                   railHeader: widget.railHeader,
+                  // Drawer is always expanded, so no collapsed header.
                   railFooter: widget.railFooter,
                   showAppBar: widget.showAppBar,
                   showBackButton: widget.showBackButton,
@@ -189,6 +193,7 @@ class _AdaptiveNavShellState extends State<AdaptiveNavShell> {
                   appBarActions: widget.appBarActions,
                   appBarCenterWidget: widget.appBarCenterWidget,
                   railHeader: widget.railHeader,
+                  railHeaderCollapsed: widget.railHeaderCollapsed,
                   railFooter: widget.railFooter,
                   showAppBar: widget.showAppBar,
                   showBackButton: widget.showBackButton,
@@ -215,6 +220,7 @@ class _RailLayout extends StatelessWidget {
     this.appBarActions = const [],
     this.appBarCenterWidget,
     this.railHeader,
+    this.railHeaderCollapsed,
     this.railFooter,
   });
 
@@ -227,6 +233,7 @@ class _RailLayout extends StatelessWidget {
   final List<Widget> appBarActions;
   final Widget? appBarCenterWidget;
   final Widget? railHeader;
+  final Widget? railHeaderCollapsed;
   final Widget? railFooter;
 
   @override
@@ -243,23 +250,14 @@ class _RailLayout extends StatelessWidget {
           : null,
       body: Row(
         children: [
-          // ── Navigation rail ───────────────────────────────────────────
           NavRailBody(
             items: items,
             navTheme: navTheme,
             isDrawerMode: false,
             header: railHeader,
+            headerCollapsed: railHeaderCollapsed,
             footer: railFooter,
           ),
-
-          // ── Divider ───────────────────────────────────────────────────
-          VerticalDivider(
-            width: 1,
-            thickness: 1,
-            color: navTheme.dividerColor,
-          ),
-
-          // ── Page content ──────────────────────────────────────────────
           Expanded(child: child),
         ],
       ),

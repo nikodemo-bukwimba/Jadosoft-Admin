@@ -8,6 +8,7 @@
 /// - Button-style CTA items with distinct visual treatment
 /// - Full Material 3 theming via [NavRailThemeData] ThemeExtension
 /// - Custom AppBar with logo, back-nav, actions, and a free center slot
+/// - Screen-level AppBar injection via [NavPageConfig] / [NavAppBarConfig]
 ///
 /// ### Quick start
 ///
@@ -15,7 +16,7 @@
 /// AdaptiveNavShell(
 ///   router: myGoRouter,
 ///   breakpoint: 768,
-///   logo: FlutterLogo(),
+///   logo: const FlutterLogo(),
 ///   appBarActions: [IconButton(icon: Icon(Icons.person), onPressed: () {})],
 ///   items: [
 ///     NavItem(id: 'home', label: 'Home', icon: Icons.home, path: '/'),
@@ -24,8 +25,8 @@
 ///       label: 'Products',
 ///       icon: Icons.inventory,
 ///       children: [
-///         NavItem(id: 'all',    label: 'All Products', path: '/products'),
-///         NavItem(id: 'new',    label: 'New Arrivals', path: '/products/new'),
+///         NavItem(id: 'all', label: 'All Products', path: '/products'),
+///         NavItem(id: 'new', label: 'New Arrivals', path: '/products/new'),
 ///       ],
 ///     ),
 ///     NavItem(
@@ -39,11 +40,24 @@
 ///   child: child, // from ShellRoute
 /// )
 /// ```
+///
+/// ### Screen-level AppBar customisation
+///
+/// ```dart
+/// // In any page's build():
+/// return NavPageConfig(
+///   centerWidget: const Text('Orders'),
+///   actions: [IconButton(icon: Icon(Icons.filter_list), onPressed: _filter)],
+///   child: const OrdersBody(),
+/// );
+/// ```
 library adaptive_nav;
 
 export 'adaptive_nav_shell.dart';
+export 'nav_appbar_config.dart';
 export 'nav_cubit.dart';
 export 'nav_item.dart';
+export 'nav_page_config.dart';
 export 'nav_rail_theme.dart';
 export 'custom_app_bar.dart';
 export 'nav_flyout.dart' show NavFlyoutController;

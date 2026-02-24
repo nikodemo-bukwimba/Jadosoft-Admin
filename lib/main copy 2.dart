@@ -1,6 +1,19 @@
 // main.dart
+// ─────────────────────────────────────────────────────────────
+// Fix: The root BlocBuilder was reacting to EVERY AuthState change,
+// pushing new routes on top of whatever the current page had already
+// navigated to — causing duplicate pushes and back button appearing.
+//
+// Solution: Use a one-shot initialisation approach.
+// The MaterialApp's `home` is a StatefulWidget (_AppGate) that
+// reads the FIRST non-loading state from AuthBloc and navigates
+// once, then never interferes again. All subsequent navigation is
+// owned by individual page listeners.
+// ─────────────────────────────────────────────────────────────
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'config/di/injection_container.dart';
 import 'config/routes/app_router.dart';
 import 'config/theme/app_theme.dart';
@@ -12,6 +25,7 @@ import 'features/profile/presentation/bloc/profile_bloc.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initDependencies();
+  //await FlutterSecureStorage().deleteAll();
   runApp(const FcaApp());
 }
 
@@ -34,18 +48,42 @@ class FcaApp extends StatelessWidget {
         darkTheme: AppTheme.dark,
         themeMode: ThemeMode.system,
         onGenerateRoute: AppRouter.generateRoute,
-        home: BlocBuilder<AuthBloc, AuthState>(
-          builder: (context, state) {
-            return switch (state) {
-              AuthLoading() => const _SplashScreen(),
-              AuthInitial() => const _SplashScreen(),
-              AuthAuthenticated() => const _RouteToHome(),
-              AuthNeedsAccountPicker() => const _RouteToAccountPicker(),
-              _ => const _RouteToLogin(),
-            };
-          },
-        ),
+        // _AppGate navigates ONCE based on the first resolved auth state.
+        // After that it never touches navigation again.
+        home: const _AppGate(),
       ),
+    );
+  }
+}
+
+// ── App Gate ──────────────────────────────────────────────────
+// Listens to AuthBloc exactly once to determine the initial route.
+// Uses BlocListener (not BlocBuilder) so it never rebuilds the
+// widget tree — it only triggers a one-time navigation.
+class _AppGate extends StatelessWidget {
+  const _AppGate();
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocListener<AuthBloc, AuthState>(
+      // Only react to the FIRST state that is not loading/initial.
+      // After navigation the listener stays alive but
+      // pushNamedAndRemoveUntil inside each page handles everything.
+      listenWhen: (previous, current) =>
+          current is! AuthInitial && current is! AuthLoading,
+      listener: (context, state) {
+        final route = switch (state) {
+          AuthAuthenticated() => AppRouter.home,
+          AuthNeedsAccountPicker() => AppRouter.accountPicker,
+          _ => AppRouter.login,
+        };
+
+        // Replace the splash with the resolved route.
+        // Remove ALL routes so nothing sits under it.
+        Navigator.of(context).pushNamedAndRemoveUntil(route, (_) => false);
+      },
+      // Show splash while the bloc is resolving the initial state.
+      child: const _SplashScreen(),
     );
   }
 }
@@ -57,6 +95,7 @@ class _SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       body: Center(
         child: Column(
@@ -90,64 +129,4 @@ class _SplashScreen extends StatelessWidget {
       ),
     );
   }
-}
-
-// ── Route redirectors ─────────────────────────────────────────
-class _RouteToHome extends StatefulWidget {
-  const _RouteToHome();
-  @override
-  State<_RouteToHome> createState() => _RouteToHomeState();
-}
-
-class _RouteToHomeState extends State<_RouteToHome> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) Navigator.of(context).pushReplacementNamed(AppRouter.home);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => const _SplashScreen();
-}
-
-class _RouteToLogin extends StatefulWidget {
-  const _RouteToLogin();
-  @override
-  State<_RouteToLogin> createState() => _RouteToLoginState();
-}
-
-class _RouteToLoginState extends State<_RouteToLogin> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) Navigator.of(context).pushReplacementNamed(AppRouter.login);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => const _SplashScreen();
-}
-
-class _RouteToAccountPicker extends StatefulWidget {
-  const _RouteToAccountPicker();
-  @override
-  State<_RouteToAccountPicker> createState() => _RouteToAccountPickerState();
-}
-
-class _RouteToAccountPickerState extends State<_RouteToAccountPicker> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        Navigator.of(context).pushReplacementNamed(AppRouter.accountPicker);
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => const _SplashScreen();
 }

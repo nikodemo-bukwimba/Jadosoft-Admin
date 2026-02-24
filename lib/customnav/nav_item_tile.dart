@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -6,12 +8,18 @@ import 'navigation.dart';
 
 /// Renders a single [NavItem] inside the navigation rail or drawer.
 ///
-/// Responsibilities:
-/// - Adapts its layout to [NavRailDisplayMode] (icons / labels / both).
-/// - On **desktop**: triggers the flyout on mouse hover for items with children.
-/// - On **touch/mobile**: triggers the flyout on tap for items with children.
-/// - Applies CTA styling for [NavItem.isButton] items.
-/// - Highlights itself (and any parent items) based on the active route.
+/// ## Hover state ownership — mirrors HalaNavigationRail
+///
+/// Hover state is NOT stored here. It lives in [NavRailBody] as
+/// `Map<String, bool> _hoverStates`, exactly like `HalaNavigationRail`
+/// stores its hover map in the parent state. The parent calls `setState`
+/// on itself when hover changes, which rebuilds all tiles consistently.
+/// [isHovered], [onHoverEnter], and [onHoverExit] are passed in as props.
+///
+/// ## Accordion (both rail and drawer)
+/// Inline expand/collapse is used in both wide and narrow modes.
+/// [_expanded] stays local because it is purely UI state that no other
+/// widget needs to observe. Flyouts are no longer used for nested items.
 class NavItemTile extends StatefulWidget {
   const NavItemTile({
     super.key,
@@ -20,23 +28,46 @@ class NavItemTile extends StatefulWidget {
     required this.flyoutController,
     required this.navTheme,
     required this.isDrawerMode,
+    // ── Hover props (owned by NavRailBody, like HalaNavigationRail) ──────
+    required this.isHovered,
+    required this.onHoverEnter,
+    required this.onHoverExit,
   });
 
   final NavItem item;
   final NavRailDisplayMode displayMode;
   final NavFlyoutController flyoutController;
   final NavRailThemeData navTheme;
-
-  /// True when rendered inside the mobile Drawer — always uses iconsAndLabels
-  /// and triggers flyout on tap instead of hover.
   final bool isDrawerMode;
+
+  /// Whether the cursor is currently over this tile.
+  final bool isHovered;
+
+  /// Called when the cursor enters this tile.
+  final VoidCallback onHoverEnter;
+
+  /// Called when the cursor exits this tile.
+  final VoidCallback onHoverExit;
 
   @override
   State<NavItemTile> createState() => _NavItemTileState();
 }
 
 class _NavItemTileState extends State<NavItemTile> {
-  bool _hovered = false;
+  bool _expanded = false; // accordion — used in both modes
+
+  // ── Ghost / children helpers ──────────────────────────────────────────────
+
+  bool get _isGhost => widget.item.label == null || widget.item.label!.isEmpty;
+
+  bool get _hasVisibleChildren =>
+      widget.item.children.any((c) => c.label != null && c.label!.isNotEmpty);
+
+  List<NavItem> get _visibleChildren => widget.item.children
+      .where((c) => c.label != null && c.label!.isNotEmpty)
+      .toList();
+
+  // ── Display mode helpers ──────────────────────────────────────────────────
 
   NavRailDisplayMode get _effectiveMode => widget.isDrawerMode
       ? NavRailDisplayMode.iconsAndLabels
@@ -50,6 +81,18 @@ class _NavItemTileState extends State<NavItemTile> {
       _effectiveMode == NavRailDisplayMode.labelsOnly ||
       _effectiveMode == NavRailDisplayMode.iconsAndLabels;
 
+  // ── Mouse handlers ────────────────────────────────────────────────────────
+
+  void _handleMouseEnter() {
+    widget.onHoverEnter();
+  }
+
+  void _handleMouseExit() {
+    widget.onHoverExit();
+  }
+
+  // ── Tap handler ───────────────────────────────────────────────────────────
+
   void _handleTap(BuildContext context, NavState state) {
     final cubit = context.read<NavCubit>();
 
@@ -58,64 +101,45 @@ class _NavItemTileState extends State<NavItemTile> {
       return;
     }
 
-    if (widget.item.hasChildren) {
-      _openFlyout(context, state);
+    if (_hasVisibleChildren) {
+      // Accordion in both wide and drawer modes.
+      setState(() => _expanded = !_expanded);
       return;
     }
 
     if (widget.item.path != null) {
       cubit.navigateTo(widget.item.path!);
-      // Close drawer on mobile after navigation
       if (widget.isDrawerMode) Navigator.of(context).maybePop();
     }
   }
 
-  void _openFlyout(BuildContext context, NavState state) {
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-
-    // Anchor the flyout to the right edge of this tile
-    final offset = box.localToGlobal(Offset(box.size.width + 4, 0));
-
-    widget.flyoutController.show(
-      context: context,
-      item: widget.item,
-      anchorOffset: offset,
-      navTheme: widget.navTheme,
-      selectedPath: state.selectedPath,
-      onNavigate: (path) {
-        context.read<NavCubit>().navigateTo(path);
-        if (widget.isDrawerMode) Navigator.of(context).maybePop();
-        setState(() {});
-      },
-    );
-
-    // The OverlayEntry now sits on top of this tile, so MouseRegion.onExit
-    // will never fire — _hovered would freeze at true indefinitely.
-    // Clear it here; the highlight is now driven by isFlyoutOpen instead.
-    setState(() => _hovered = false);
-  }
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    if (_isGhost) return const SizedBox.shrink();
+
     return BlocBuilder<NavCubit, NavState>(
       builder: (context, state) {
         final cubit = context.read<NavCubit>();
         final isActive = cubit.isItemActive(widget.item);
-        final isFlyoutOpen = widget.flyoutController.isOpenFor(widget.item.id);
         final nt = widget.navTheme;
 
-        // ── Colors ────────────────────────────────────────────────────────
+        // ── Color priority ─────────────────────────────────────────────────
+        // 1. Button palette
+        // 2. Active route / expanded accordion → selected
+        // 3. Cursor over tile → hover
+        // 4. Idle
         final Color fgColor;
         final Color bgColor;
 
         if (widget.item.isButton) {
           fgColor = nt.buttonItemColor!;
           bgColor = nt.buttonItemBackgroundColor!;
-        } else if (isActive || isFlyoutOpen) {
+        } else if (isActive || _expanded) {
           fgColor = nt.selectedItemColor!;
           bgColor = nt.selectedItemBackgroundColor!;
-        } else if (_hovered) {
+        } else if (widget.isHovered) {
           fgColor = nt.unselectedItemColor!;
           bgColor = nt.unselectedItemColor!.withOpacity(0.08);
         } else {
@@ -123,27 +147,19 @@ class _NavItemTileState extends State<NavItemTile> {
           bgColor = Colors.transparent;
         }
 
-        // ── Padding ───────────────────────────────────────────────────────
         final padding = _effectiveMode == NavRailDisplayMode.iconsOnly
             ? const EdgeInsets.all(12.0)
             : const EdgeInsets.symmetric(horizontal: 16, vertical: 12);
 
-        return Tooltip(
-          // Show tooltip only in icons-only mode where label is hidden
+        final tile = Tooltip(
           message: _effectiveMode == NavRailDisplayMode.iconsOnly
-              ? widget.item.label
+              ? (widget.item.label ?? '')
               : '',
           preferBelow: false,
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
-            onEnter: (_) {
-              setState(() => _hovered = true);
-              // Desktop: open flyout on hover
-              if (widget.item.hasChildren && !widget.isDrawerMode) {
-                _openFlyout(context, state);
-              }
-            },
-            onExit: (_) => setState(() => _hovered = false),
+            onEnter: (_) => _handleMouseEnter(),
+            onExit: (_) => _handleMouseExit(),
             child: GestureDetector(
               onTap: () => _handleTap(context, state),
               child: AnimatedContainer(
@@ -160,23 +176,19 @@ class _NavItemTileState extends State<NavItemTile> {
                       ? MainAxisSize.min
                       : MainAxisSize.max,
                   children: [
-                    // ── Icon ───────────────────────────────────────────────
                     if (_showIcon && widget.item.icon != null)
                       _ItemIcon(
                         item: widget.item,
                         isActive: isActive,
                         color: fgColor,
-                        showBadge: !_showLabel, // badge on icon in icons-only
+                        showBadge: !_showLabel,
                       ),
-
                     if (_showIcon && _showLabel && widget.item.icon != null)
                       const SizedBox(width: 14),
-
-                    // ── Label ──────────────────────────────────────────────
                     if (_showLabel) ...[
                       Expanded(
                         child: Text(
-                          widget.item.label,
+                          widget.item.label ?? '',
                           style: nt.labelStyle?.copyWith(
                             color: fgColor,
                             fontWeight: isActive || widget.item.isButton
@@ -187,18 +199,21 @@ class _NavItemTileState extends State<NavItemTile> {
                           maxLines: 1,
                         ),
                       ),
-                      // Badge visible in expanded modes
                       if (widget.item.badge != null) ...[
                         const SizedBox(width: 8),
                         widget.item.badge!,
                       ],
-                      // Chevron for items with children
-                      if (widget.item.hasChildren) ...[
+                      if (_hasVisibleChildren) ...[
                         const SizedBox(width: 4),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          size: 16,
-                          color: nt.unselectedItemColor,
+                        AnimatedRotation(
+                          // Same chevron rotation for both wide and drawer.
+                          turns: _expanded ? 0.25 : 0,
+                          duration: const Duration(milliseconds: 200),
+                          child: Icon(
+                            Icons.expand_more_rounded,
+                            size: 16,
+                            color: nt.unselectedItemColor,
+                          ),
                         ),
                       ],
                     ],
@@ -208,6 +223,40 @@ class _NavItemTileState extends State<NavItemTile> {
             ),
           ),
         );
+
+        // Accordion wrapper — used for both wide rail and drawer.
+        if (_hasVisibleChildren) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              tile,
+              AnimatedSize(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeInOutCubic,
+                child: _expanded
+                    ? Padding(
+                        padding: const EdgeInsets.only(left: 16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: _visibleChildren.map((child) {
+                            return _AccordionChildTile(
+                              item: child,
+                              displayMode: widget.displayMode,
+                              flyoutController: widget.flyoutController,
+                              navTheme: widget.navTheme,
+                            );
+                          }).toList(),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          );
+        }
+
+        return tile;
       },
     );
   }
@@ -244,6 +293,174 @@ class _ItemIcon extends StatelessWidget {
         icon,
         Positioned(top: -5, right: -5, child: item.badge!),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Accordion child tile
+//
+// Used inside NavItemTile's inline accordion in both wide and drawer modes.
+// Owns its own hover bool since it lives inside a Column (not the ListView),
+// so it's not wired into NavRailBody's central _hoverStates map.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AccordionChildTile extends StatefulWidget {
+  const _AccordionChildTile({
+    required this.item,
+    required this.displayMode,
+    required this.flyoutController,
+    required this.navTheme,
+  });
+
+  final NavItem item;
+  final NavRailDisplayMode displayMode;
+  final NavFlyoutController flyoutController;
+  final NavRailThemeData navTheme;
+
+  @override
+  State<_AccordionChildTile> createState() => _AccordionChildTileState();
+}
+
+class _AccordionChildTileState extends State<_AccordionChildTile> {
+  bool _hovered = false;
+  bool _expanded = false;
+
+  bool get _isGhost => widget.item.label == null || widget.item.label!.isEmpty;
+
+  bool get _hasVisibleChildren =>
+      widget.item.children.any((c) => c.label != null && c.label!.isNotEmpty);
+
+  List<NavItem> get _visibleChildren => widget.item.children
+      .where((c) => c.label != null && c.label!.isNotEmpty)
+      .toList();
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isGhost) return const SizedBox.shrink();
+
+    return BlocBuilder<NavCubit, NavState>(
+      builder: (context, state) {
+        final cubit = context.read<NavCubit>();
+        final isActive = cubit.isItemActive(widget.item);
+        final nt = widget.navTheme;
+
+        final Color fgColor;
+        final Color bgColor;
+
+        if (isActive || _expanded) {
+          fgColor = nt.selectedItemColor!;
+          bgColor = nt.selectedItemBackgroundColor!;
+        } else if (_hovered) {
+          fgColor = nt.unselectedItemColor!;
+          bgColor = nt.unselectedItemColor!.withOpacity(0.08);
+        } else {
+          fgColor = nt.unselectedItemColor!;
+          bgColor = Colors.transparent;
+        }
+
+        final tile = MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: GestureDetector(
+            onTap: () {
+              if (_hasVisibleChildren) {
+                setState(() => _expanded = !_expanded);
+              } else if (widget.item.path != null) {
+                cubit.navigateTo(widget.item.path!);
+                // Pop drawer if applicable (safe no-op in rail mode).
+                Navigator.of(context).maybePop();
+              }
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeInOut,
+              margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: nt.itemBorderRadius,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.max,
+                children: [
+                  if (widget.item.icon != null) ...[
+                    Icon(
+                      isActive
+                          ? (widget.item.selectedIcon ?? widget.item.icon)
+                          : widget.item.icon,
+                      color: fgColor,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 14),
+                  ],
+                  Expanded(
+                    child: Text(
+                      widget.item.label ?? '',
+                      style: nt.labelStyle?.copyWith(
+                        color: fgColor,
+                        fontWeight: isActive
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                  if (widget.item.badge != null) ...[
+                    const SizedBox(width: 8),
+                    widget.item.badge!,
+                  ],
+                  if (_hasVisibleChildren) ...[
+                    const SizedBox(width: 4),
+                    AnimatedRotation(
+                      turns: _expanded ? 0.25 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: Icon(
+                        Icons.expand_more_rounded,
+                        size: 16,
+                        color: nt.unselectedItemColor,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+
+        if (!_hasVisibleChildren) return tile;
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            tile,
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeInOutCubic,
+              child: _expanded
+                  ? Padding(
+                      padding: const EdgeInsets.only(left: 16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: _visibleChildren.map((child) {
+                          return _AccordionChildTile(
+                            item: child,
+                            displayMode: widget.displayMode,
+                            flyoutController: widget.flyoutController,
+                            navTheme: widget.navTheme,
+                          );
+                        }).toList(),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
+        );
+      },
     );
   }
 }

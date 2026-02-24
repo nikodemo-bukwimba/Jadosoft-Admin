@@ -9,18 +9,19 @@ import 'nav_rail_theme.dart';
 
 /// Manages a single [OverlayEntry]-based flyout for a nav item's children.
 ///
-/// Only one top-level flyout is open at a time. Each [_FlyoutItem] within the
-/// panel can open its own sub-flyout recursively.
-class NavFlyoutController {
+/// Extends [ChangeNotifier] so [NavItemTile]s can subscribe and call
+/// `setState` whenever the flyout opens or closes — this is the only reliable
+/// way to keep each tile's visual state (highlighted / normal) in sync,
+/// because the flyout can close from a debounce timer, a navigation event, or
+/// a tap on the dismiss barrier, none of which trigger a [BlocBuilder] rebuild.
+class NavFlyoutController extends ChangeNotifier {
   OverlayEntry? _entry;
   String? _openItemId;
 
   bool get isOpen => _entry != null;
   String? get openItemId => _openItemId;
-
   bool isOpenFor(String itemId) => _openItemId == itemId;
 
-  /// Opens a flyout for [item] anchored to [anchorOffset].
   void show({
     required BuildContext context,
     required NavItem item,
@@ -28,8 +29,10 @@ class NavFlyoutController {
     required NavRailThemeData navTheme,
     required String selectedPath,
     required void Function(String path) onNavigate,
+    VoidCallback? onHoverEnter,
+    VoidCallback? onHoverExit,
   }) {
-    close();
+    _removeEntry();
     _openItemId = item.id;
 
     _entry = OverlayEntry(
@@ -43,18 +46,32 @@ class NavFlyoutController {
           close();
         },
         onDismiss: close,
+        onHoverEnter: onHoverEnter,
+        onHoverExit: onHoverExit,
       ),
     );
 
     Overlay.of(context).insert(_entry!);
+    notifyListeners(); // tiles subscribed to this controller rebuild
   }
 
-  /// Removes the active flyout (and any sub-flyouts within it).
   void close() {
+    if (_entry == null) return; // already closed — avoid spurious notifications
+    _removeEntry();
+    notifyListeners();
+  }
+
+  void _removeEntry() {
     _entry?.remove();
     _entry?.dispose();
     _entry = null;
     _openItemId = null;
+  }
+
+  @override
+  void dispose() {
+    _removeEntry();
+    super.dispose();
   }
 }
 
@@ -70,6 +87,8 @@ class _FlyoutRoot extends StatefulWidget {
     required this.selectedPath,
     required this.onNavigate,
     required this.onDismiss,
+    this.onHoverEnter,
+    this.onHoverExit,
   });
 
   final NavItem item;
@@ -78,6 +97,8 @@ class _FlyoutRoot extends StatefulWidget {
   final String selectedPath;
   final void Function(String path) onNavigate;
   final VoidCallback onDismiss;
+  final VoidCallback? onHoverEnter;
+  final VoidCallback? onHoverExit;
 
   @override
   State<_FlyoutRoot> createState() => _FlyoutRootState();
@@ -96,14 +117,10 @@ class _FlyoutRootState extends State<_FlyoutRoot>
       vsync: this,
       duration: const Duration(milliseconds: 160),
     );
-    _scale = Tween(
-      begin: 0.93,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
-    _fade = Tween(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+    _scale = Tween(begin: 0.93, end: 1.0)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
+    _fade = Tween(begin: 0.0, end: 1.0)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
     _ctrl.forward();
   }
 
@@ -115,15 +132,14 @@ class _FlyoutRootState extends State<_FlyoutRoot>
 
   @override
   Widget build(BuildContext context) {
-    // Clamp position so the flyout doesn't overflow screen edges.
     final screen = MediaQuery.of(context).size;
-    final maxY = screen.height - 8;
-    final dx = widget.anchorOffset.dx.clamp(0, screen.width - 204).toDouble();
-    final dy = widget.anchorOffset.dy.clamp(8, maxY).toDouble();
+    final dx = widget.anchorOffset.dx.clamp(0.0, screen.width - 204.0);
+    final dy = widget.anchorOffset.dy.clamp(8.0, screen.height - 8.0);
 
     return Stack(
       children: [
-        // Barrier — tap outside to dismiss
+        // Tap-anywhere barrier — does NOT intercept mouse-hover events
+        // (no MouseRegion here), so tile MouseRegions still receive onEnter/onExit.
         Positioned.fill(
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
@@ -138,13 +154,19 @@ class _FlyoutRootState extends State<_FlyoutRoot>
             child: ScaleTransition(
               scale: _scale,
               alignment: Alignment.topLeft,
-              child: FlyoutPanel(
-                item: widget.item,
-                navTheme: widget.navTheme,
-                selectedPath: widget.selectedPath,
-                onNavigate: widget.onNavigate,
-                onDismiss: widget.onDismiss,
-                depth: 0,
+              // MouseRegion on the panel so the owning tile can cancel its
+              // close-debounce while the cursor is inside the flyout.
+              child: MouseRegion(
+                onEnter: (_) => widget.onHoverEnter?.call(),
+                onExit: (_) => widget.onHoverExit?.call(),
+                child: FlyoutPanel(
+                  item: widget.item,
+                  navTheme: widget.navTheme,
+                  selectedPath: widget.selectedPath,
+                  onNavigate: widget.onNavigate,
+                  onDismiss: widget.onDismiss,
+                  depth: 0,
+                ),
               ),
             ),
           ),
@@ -158,8 +180,8 @@ class _FlyoutRootState extends State<_FlyoutRoot>
 // Flyout panel — recursive
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// The card that contains a list of child items. Rendered recursively for
-/// sub-flyouts (unlimited depth).
+/// Ghost items (empty [NavItem.label]) are filtered out before rendering —
+/// they only exist as ancestor-highlight anchors.
 @visibleForTesting
 class FlyoutPanel extends StatelessWidget {
   const FlyoutPanel({
@@ -181,6 +203,12 @@ class FlyoutPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visibleChildren = item.children
+        .where((c) => c.label != null && c.label!.isNotEmpty)
+        .toList();
+
+    if (visibleChildren.isEmpty) return const SizedBox.shrink();
+
     final theme = Theme.of(context);
     return Material(
       elevation: navTheme.flyoutElevation!,
@@ -194,11 +222,10 @@ class FlyoutPanel extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Group header label
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
                 child: Text(
-                  item.label.toUpperCase(),
+                  (item.label ?? '').toUpperCase(),
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: navTheme.unselectedItemColor?.withOpacity(0.55),
                     letterSpacing: 1.1,
@@ -208,7 +235,7 @@ class FlyoutPanel extends StatelessWidget {
               ),
               Divider(height: 1, color: navTheme.dividerColor),
               const SizedBox(height: 4),
-              ...item.children.map(
+              ...visibleChildren.map(
                 (child) => _FlyoutItem(
                   item: child,
                   navTheme: navTheme,
@@ -228,7 +255,7 @@ class FlyoutPanel extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Individual flyout item — supports hover-based sub-flyouts recursively
+// Individual flyout item — supports hover sub-flyouts recursively
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _FlyoutItem extends StatefulWidget {
@@ -259,6 +286,9 @@ class _FlyoutItemState extends State<_FlyoutItem> {
   bool get _isActive =>
       widget.item.path == widget.selectedPath ||
       widget.item.allDescendantPaths.contains(widget.selectedPath);
+
+  bool get _hasVisibleChildren => widget.item.children
+      .any((c) => c.label != null && c.label!.isNotEmpty);
 
   void _openSubFlyout(BuildContext context) {
     _closeSubFlyout();
@@ -297,10 +327,6 @@ class _FlyoutItemState extends State<_FlyoutItem> {
       ),
     );
     Overlay.of(context).insert(_subEntry!);
-
-    // The sub-flyout OverlayEntry covers this item, so MouseRegion.onExit
-    // won't fire — clear _hovered now to prevent the color freezing.
-    setState(() => _hovered = false);
   }
 
   void _closeSubFlyout() {
@@ -319,8 +345,7 @@ class _FlyoutItemState extends State<_FlyoutItem> {
     if (widget.item.isButton) {
       widget.item.onTap?.call();
       widget.onDismiss();
-    } else if (widget.item.hasChildren) {
-      // On touch: toggle sub-flyout
+    } else if (_hasVisibleChildren) {
       if (_subEntry != null) {
         _closeSubFlyout();
       } else {
@@ -339,23 +364,26 @@ class _FlyoutItemState extends State<_FlyoutItem> {
     final fgColor = widget.item.isButton
         ? nt.buttonItemColor!
         : isActive
-        ? nt.selectedItemColor!
-        : nt.unselectedItemColor!;
+            ? nt.selectedItemColor!
+            : nt.unselectedItemColor!;
 
     final bgColor = widget.item.isButton
         ? nt.buttonItemBackgroundColor!
         : isActive
-        ? nt.selectedItemBackgroundColor!
-        : _hovered
-        ? nt.unselectedItemColor!.withOpacity(0.08)
-        : Colors.transparent;
+            ? nt.selectedItemBackgroundColor!
+            : _hovered
+                ? nt.unselectedItemColor!.withOpacity(0.08)
+                : Colors.transparent;
 
     return MouseRegion(
+      cursor: SystemMouseCursors.click,
       onEnter: (_) {
         setState(() => _hovered = true);
-        if (widget.item.hasChildren) _openSubFlyout(context);
+        if (_hasVisibleChildren) _openSubFlyout(context);
       },
-      onExit: (_) => setState(() => _hovered = false),
+      onExit: (_) {
+        setState(() => _hovered = false);
+      },
       child: GestureDetector(
         onTap: _handleTap,
         child: AnimatedContainer(
@@ -380,7 +408,7 @@ class _FlyoutItemState extends State<_FlyoutItem> {
               ],
               Expanded(
                 child: Text(
-                  widget.item.label,
+                  widget.item.label ?? '',
                   style: nt.labelStyle?.copyWith(
                     color: fgColor,
                     fontWeight: isActive || widget.item.isButton
@@ -394,7 +422,7 @@ class _FlyoutItemState extends State<_FlyoutItem> {
                 const SizedBox(width: 8),
                 widget.item.badge!,
               ],
-              if (widget.item.hasChildren) ...[
+              if (_hasVisibleChildren) ...[
                 const SizedBox(width: 4),
                 Icon(
                   Icons.chevron_right_rounded,
