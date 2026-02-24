@@ -8,10 +8,8 @@ class AppConstants {
   AppConstants._();
 
   // ── API ────────────────────────────────────────────────────
-  // Change this to your production URL before release.
-  // Android emulator  → http://10.0.2.2:8000/api
-  // iOS simulator     → http://localhost:8000/api
-  // Physical device   → http://<your-machine-ip>:8000/api
+  // local   → http://localhost:8000/api
+  // production   → http://dev.halasoftware.com/api
   static const String baseUrl = 'http://localhost:8000/api';
 
   // ── Network timeouts ───────────────────────────────────────
