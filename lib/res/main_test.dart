@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import 'customnav/navigation.dart';
+import '../customnav/navigation.dart';
+ 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Data models — used to test `extra` object passing
+// Data models
 // ─────────────────────────────────────────────────────────────────────────────
 
 class Product {
@@ -66,7 +67,7 @@ late final GoRouter _router;
 
 GoRouter _buildRouter() => GoRouter(
   initialLocation: '/dashboard',
-  observers: [_NavLogger()], // logs every hop to the debug console
+  observers: [_NavLogger()],
   routes: [
     ShellRoute(
       builder: (context, state, child) => AdaptiveNavShell(
@@ -75,16 +76,17 @@ GoRouter _buildRouter() => GoRouter(
         items: _navItems,
         logo: const _AppLogo(),
         appBarActions: const [_NotificationBell(), _UserAvatar()],
+        // Shell-level default center — pages can override this via NavPageConfig
         appBarCenterWidget: const _SearchBar(),
+        // FEATURE 3: Full header shown when rail is expanded
         railHeader: const _ProfileCard(),
+        // FEATURE 3: Compact header shown when rail collapses to icons-only
+        railHeaderCollapsed: const _CompactAvatar(),
         railFooter: const _RailFooter(),
         child: child,
       ),
       routes: [
-        // ── Dashboard ─────────────────────────────────────────────────
         GoRoute(path: '/dashboard', builder: (_, __) => const DashboardPage()),
-
-        // ── Analytics ────────────────────────────────────────────────
         GoRoute(
           path: '/analytics',
           builder: (_, __) => const _PlaceholderPage(title: 'Analytics'),
@@ -92,7 +94,6 @@ GoRouter _buildRouter() => GoRouter(
         GoRoute(
           path: '/analytics/reports',
           builder: (_, state) {
-            // Query param: /analytics/reports?period=monthly
             final period = state.uri.queryParameters['period'] ?? 'weekly';
             return _PlaceholderPage(title: 'Reports ($period)');
           },
@@ -101,8 +102,6 @@ GoRouter _buildRouter() => GoRouter(
           path: '/analytics/realtime',
           builder: (_, __) => const _PlaceholderPage(title: 'Real-time'),
         ),
-
-        // ── Products ──────────────────────────────────────────────────
         GoRoute(path: '/products', builder: (_, __) => const ProductListPage()),
         GoRoute(
           path: '/products/new',
@@ -116,55 +115,35 @@ GoRouter _buildRouter() => GoRouter(
           path: '/products/categories/featured',
           builder: (_, __) => const _PlaceholderPage(title: 'Featured'),
         ),
-
-        // PATH PARAM — /products/:id
-        // IMPORTANT: specific sub-paths (/new, /categories) must be
-        // declared BEFORE the :id wildcard so go_router matches them first.
         GoRoute(
           path: '/products/:id',
-          builder: (_, state) {
-            final id = state.pathParameters['id']!;
-            final product = state.extra as Product?;
-            return ProductDetailPage(productId: id, product: product);
-          },
+          builder: (_, state) => ProductDetailPage(
+            productId: state.pathParameters['id']!,
+            product: state.extra as Product?,
+          ),
         ),
-
-        // PATH PARAM + QUERY — /products/:id/reviews?sort=recent
         GoRoute(
           path: '/products/:id/reviews',
-          builder: (_, state) {
-            final id = state.pathParameters['id']!;
-            final sort = state.uri.queryParameters['sort'] ?? 'recent';
-            final product = state.extra as Product?;
-            return ProductReviewsPage(
-              productId: id,
-              sort: sort,
-              product: product,
-            );
-          },
+          builder: (_, state) => ProductReviewsPage(
+            productId: state.pathParameters['id']!,
+            sort: state.uri.queryParameters['sort'] ?? 'recent',
+            product: state.extra as Product?,
+          ),
         ),
-
-        // ── Settings ──────────────────────────────────────────────────
         GoRoute(path: '/settings', builder: (_, __) => const SettingsPage()),
-
-        // PATH PARAM — /settings/:section
         GoRoute(
           path: '/settings/:section',
-          builder: (_, state) {
-            final key = state.pathParameters['section']!;
-            final section = state.extra as SettingSection?;
-            return SettingsSectionPage(sectionKey: key, section: section);
-          },
+          builder: (_, state) => SettingsSectionPage(
+            sectionKey: state.pathParameters['section']!,
+            section: state.extra as SettingSection?,
+          ),
         ),
-
-        // DEEP — /settings/:section/edit  (3 levels from /settings)
         GoRoute(
           path: '/settings/:section/edit',
-          builder: (_, state) {
-            final key = state.pathParameters['section']!;
-            final section = state.extra as SettingSection?;
-            return SettingsSectionEditPage(sectionKey: key, section: section);
-          },
+          builder: (_, state) => SettingsSectionEditPage(
+            sectionKey: state.pathParameters['section']!,
+            section: state.extra as SettingSection?,
+          ),
         ),
       ],
     ),
@@ -173,8 +152,6 @@ GoRouter _buildRouter() => GoRouter(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Nav items
-// Ghost items (label: '') register deep paths for rail highlight anchoring
-// without appearing in any flyout.
 // ─────────────────────────────────────────────────────────────────────────────
 
 final _navItems = [
@@ -242,7 +219,6 @@ final _navItems = [
           ),
         ],
       ),
-      // Ghost anchors — keep Products highlighted on detail + review pages
       const NavItem(id: 'product_detail', label: '', path: '/products/:id'),
       const NavItem(
         id: 'product_reviews',
@@ -258,7 +234,6 @@ final _navItems = [
     selectedIcon: Icons.settings,
     path: '/settings',
     children: [
-      // Ghost anchors — keep Settings highlighted on section + edit pages
       const NavItem(
         id: 'settings_section',
         label: '',
@@ -313,83 +288,132 @@ class DashboardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _PageWrapper(
-      title: 'Dashboard',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionHeader('Navigate from here — depth test'),
-          const SizedBox(height: 12),
-
-          // 1. Plain path navigation
-          _NavTestCard(
-            label: '① Plain go — Settings',
-            description: "context.go('/settings')",
-            color: Colors.blue,
-            onTap: () => context.go('/settings'),
-          ),
-
-          // 2. Query parameter
-          _NavTestCard(
-            label: '② Query param — Reports (monthly)',
-            description: "context.go('/analytics/reports?period=monthly')",
-            color: Colors.teal,
-            onTap: () => context.go('/analytics/reports?period=monthly'),
-          ),
-
-          // 3. Path param + extra object
-          _NavTestCard(
-            label: '③ Path param + extra — Product detail',
-            description: "context.go('/products/p1', extra: product)",
-            color: Colors.orange,
-            onTap: () => context.go(
-              '/products/p1',
-              extra: const Product(
-                id: 'p1',
-                name: 'Wireless Headphones',
-                price: 79.99,
+    // FEATURE 4: NavPageConfig replaces the shell's default AppBar center+actions
+    // for the lifetime of this page. Dispose automatically clears it.
+    return NavPageConfig(
+      centerWidget: _PageTitle(
+        icon: Icons.dashboard,
+        label: 'Dashboard',
+        color: Theme.of(context).colorScheme.primary,
+      ),
+      actions: const [
+        _NotificationBell(),
+        _UserAvatar(),
+        _DashboardMenuButton(),
+      ],
+      child: _PageWrapper(
+        title: 'Dashboard',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Feature callout cards ──────────────────────────────────────
+            _FeatureCallout(
+              icon: Icons.mouse_outlined,
+              color: Colors.blue,
+              title: 'Fix 1 — Hover debounce (desktop)',
+              body:
+                  'On a mouse-driven device, hover over "Analytics" or "Products" '
+                  'in the side rail, then slowly move into the flyout panel. '
+                  'The panel stays open because a 200 ms debounce timer is cancelled '
+                  'the moment your cursor enters the flyout — no more accidental closes.',
+            ),
+            _FeatureCallout(
+              icon: Icons.phone_android_outlined,
+              color: Colors.green,
+              title: 'Fix 2 — Accordion in drawer (mobile)',
+              body:
+                  'Resize the window below 768 px (or use a phone). '
+                  'Tap the ☰ menu, then tap "Analytics" or "Products". '
+                  'Children expand inline as an accordion — no off-screen '
+                  'overlay, no clipping. The chevron rotates to show state.',
+            ),
+            _FeatureCallout(
+              icon: Icons.view_sidebar_outlined,
+              color: Colors.orange,
+              title: 'Fix 3 — Collapsed header (desktop)',
+              body:
+                  'Click the ⊞ toggle button at the top of the side rail '
+                  'to cycle through icons+labels → icons-only → labels-only. '
+                  'When icons-only, the profile card is replaced by a compact '
+                  'avatar that fits the narrow rail — no overflow.',
+            ),
+            _FeatureCallout(
+              icon: Icons.tune_outlined,
+              color: Colors.purple,
+              title: 'Feature 4 — Screen-level AppBar (NavPageConfig)',
+              body:
+                  'Every page in this demo wraps its content with NavPageConfig. '
+                  'Notice the AppBar title and action buttons change as you navigate. '
+                  'Dashboard shows a coloured icon title + extra menu button. '
+                  'Product List gets a filter button. Detail pages get share + bookmark. '
+                  'Settings gets a help button. All revert automatically on dispose.',
+            ),
+            const SizedBox(height: 8),
+            const _SectionHeader(
+              'Navigate — watch the AppBar update on each page',
+            ),
+            const SizedBox(height: 12),
+            _NavTestCard(
+              label: '① Settings',
+              description: "context.go('/settings')",
+              color: Colors.blue,
+              onTap: () => context.go('/settings'),
+            ),
+            _NavTestCard(
+              label: '② Reports (monthly query param)',
+              description: "context.go('/analytics/reports?period=monthly')",
+              color: Colors.teal,
+              onTap: () => context.go('/analytics/reports?period=monthly'),
+            ),
+            _NavTestCard(
+              label: '③ Product detail + extra object',
+              description: "context.go('/products/p1', extra: product)",
+              color: Colors.orange,
+              onTap: () => context.go(
+                '/products/p1',
+                extra: const Product(
+                  id: 'p1',
+                  name: 'Wireless Headphones',
+                  price: 79.99,
+                ),
               ),
             ),
-          ),
-
-          // 4. 3 levels deep
-          _NavTestCard(
-            label: '④ 3 levels deep — Product Reviews',
-            description:
-                "context.go('/products/p2/reviews?sort=rating', extra: product)",
-            color: Colors.purple,
-            onTap: () => context.go(
-              '/products/p2/reviews?sort=rating',
-              extra: const Product(
-                id: 'p2',
-                name: 'Mechanical Keyboard',
-                price: 129.00,
+            _NavTestCard(
+              label: '④ Product reviews (4 levels deep)',
+              description:
+                  "context.go('/products/p2/reviews?sort=rating', extra: product)",
+              color: Colors.purple,
+              onTap: () => context.go(
+                '/products/p2/reviews?sort=rating',
+                extra: const Product(
+                  id: 'p2',
+                  name: 'Mechanical Keyboard',
+                  price: 129.00,
+                ),
               ),
             ),
-          ),
-
-          // 5. Settings section (path param + extra)
-          _NavTestCard(
-            label: '⑤ Settings section — Security',
-            description: "context.go('/settings/security', extra: section)",
-            color: Colors.red,
-            onTap: () => context.go(
-              '/settings/security',
-              extra: const SettingSection(
-                key: 'security',
-                title: 'Security',
-                description: 'Password, 2FA, sessions',
+            _NavTestCard(
+              label: '⑤ Settings › Security section',
+              description: "context.go('/settings/security', extra: section)",
+              color: Colors.red,
+              onTap: () => context.go(
+                '/settings/security',
+                extra: const SettingSection(
+                  key: 'security',
+                  title: 'Security',
+                  description: 'Password, 2FA, sessions',
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PAGE: Product list
+// PAGE: Product list — NavPageConfig with filter action
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ProductListPage extends StatelessWidget {
@@ -397,32 +421,52 @@ class ProductListPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _PageWrapper(
-      title: 'All Products',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionHeader(
-            'Tap a product — passes the full object via extra',
-          ),
-          const SizedBox(height: 12),
-          ..._products.map(
-            (p) => _NavTestCard(
-              label: p.name,
-              description:
-                  '\$${p.price.toStringAsFixed(2)}  •  /products/${p.id}',
-              color: Colors.indigo,
-              onTap: () => context.go('/products/${p.id}', extra: p),
+    return NavPageConfig(
+      centerWidget: _PageTitle(
+        icon: Icons.inventory_2,
+        label: 'All Products',
+        color: Colors.indigo,
+      ),
+      // FEATURE 4: filter button replaces the default shell actions for this page
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.filter_list_rounded),
+          tooltip: 'Filter products',
+          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Filter tapped — injected by ProductListPage'),
             ),
           ),
-        ],
+        ),
+        const _UserAvatar(),
+      ],
+      child: _PageWrapper(
+        title: 'All Products',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _SectionHeader(
+              'Tap a product — passes the full object via extra',
+            ),
+            const SizedBox(height: 12),
+            ..._products.map(
+              (p) => _NavTestCard(
+                label: p.name,
+                description:
+                    '\$${p.price.toStringAsFixed(2)}  •  /products/${p.id}',
+                color: Colors.indigo,
+                onTap: () => context.go('/products/${p.id}', extra: p),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PAGE: Product detail — path param + extra
+// PAGE: Product detail — NavPageConfig with share + bookmark actions
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ProductDetailPage extends StatelessWidget {
@@ -435,59 +479,86 @@ class ProductDetailPage extends StatelessWidget {
     final name = product?.name ?? 'Product $productId';
     final price = product?.price ?? 0.0;
 
-    return _PageWrapper(
-      title: name,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _DataRow('Route', '/products/$productId'),
-          _DataRow(
-            'Source',
-            product != null
-                ? '✅ extra (no refetch needed)'
-                : '⚠️ URL only — would need a fetch',
-          ),
-          _DataRow('ID', productId),
-          _DataRow('Name', name),
-          _DataRow('Price', '\$${price.toStringAsFixed(2)}'),
-          const SizedBox(height: 24),
-          const _SectionHeader('Go deeper from here'),
-          const SizedBox(height: 12),
-          _NavTestCard(
-            label: 'View Reviews (sort: recent)',
-            description:
-                "context.go('/products/$productId/reviews?sort=recent', extra: product)",
-            color: Colors.green,
-            onTap: () => context.go(
-              '/products/$productId/reviews?sort=recent',
-              extra: product,
+    return NavPageConfig(
+      centerWidget: _PageTitle(
+        icon: Icons.inventory_2,
+        label: name,
+        color: Colors.orange,
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.bookmark_border_rounded),
+          tooltip: 'Bookmark',
+          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Bookmarked "$name" — action from ProductDetailPage',
+              ),
             ),
           ),
-          _NavTestCard(
-            label: 'View Reviews (sort: rating)',
-            description:
-                'Same page, different query param — notice URL updates',
-            color: Colors.green.shade800,
-            onTap: () => context.go(
-              '/products/$productId/reviews?sort=rating',
-              extra: product,
+        ),
+        IconButton(
+          icon: const Icon(Icons.share_outlined),
+          tooltip: 'Share',
+          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Share tapped — action from ProductDetailPage'),
             ),
           ),
-          _NavTestCard(
-            label: '→ Jump to Settings (cross-section)',
-            description:
-                'Back button still traces the full history across the jump',
-            color: Colors.grey,
-            onTap: () => context.go('/settings'),
-          ),
-        ],
+        ),
+        const _UserAvatar(),
+      ],
+      child: _PageWrapper(
+        title: name,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _DataRow('Route', '/products/$productId'),
+            _DataRow(
+              'Source',
+              product != null
+                  ? '✅ extra (no refetch needed)'
+                  : '⚠️ URL only — would need a fetch',
+            ),
+            _DataRow('ID', productId),
+            _DataRow('Name', name),
+            _DataRow('Price', '\$${price.toStringAsFixed(2)}'),
+            const SizedBox(height: 24),
+            const _SectionHeader('Go deeper from here'),
+            const SizedBox(height: 12),
+            _NavTestCard(
+              label: 'View Reviews (sort: recent)',
+              description: '/products/$productId/reviews?sort=recent',
+              color: Colors.green,
+              onTap: () => context.go(
+                '/products/$productId/reviews?sort=recent',
+                extra: product,
+              ),
+            ),
+            _NavTestCard(
+              label: 'View Reviews (sort: rating)',
+              description: 'Same page, different query param',
+              color: Colors.green.shade800,
+              onTap: () => context.go(
+                '/products/$productId/reviews?sort=rating',
+                extra: product,
+              ),
+            ),
+            _NavTestCard(
+              label: '→ Jump to Settings',
+              description: 'Back button traces full history across the jump',
+              color: Colors.grey,
+              onTap: () => context.go('/settings'),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PAGE: Product reviews — deepest product route (Dashboard → List → Detail → Reviews)
+// PAGE: Product reviews
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ProductReviewsPage extends StatelessWidget {
@@ -503,45 +574,64 @@ class ProductReviewsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _PageWrapper(
-      title: '${product?.name ?? productId} — Reviews',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _DataRow('Full URL', '/products/$productId/reviews?sort=$sort'),
-          _DataRow('Path param', 'id = $productId'),
-          _DataRow('Query param', 'sort = $sort'),
-          _DataRow(
-            'extra',
-            product != null ? '✅ ${product!.name}' : '⚠️ null (deep-linked)',
-          ),
-          const SizedBox(height: 16),
-          const _SectionHeader('📍 4 levels deep'),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 10),
-            child: Text(
-              'Dashboard  →  Product List  →  Product Detail  →  Reviews\n'
-              'Each press of the AppBar back button retraces one step.',
-              style: TextStyle(height: 1.6),
+    final name = product?.name ?? productId;
+
+    return NavPageConfig(
+      centerWidget: _PageTitle(
+        icon: Icons.star_rounded,
+        label: '$name — Reviews',
+        color: Colors.amber.shade700,
+      ),
+      actions: [
+        Chip(
+          avatar: const Icon(Icons.sort, size: 14),
+          label: Text('sort: $sort', style: const TextStyle(fontSize: 12)),
+          padding: EdgeInsets.zero,
+        ),
+        const SizedBox(width: 4),
+        const _UserAvatar(),
+      ],
+      child: _PageWrapper(
+        title: '$name — Reviews',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _DataRow('Full URL', '/products/$productId/reviews?sort=$sort'),
+            _DataRow('Path param', 'id = $productId'),
+            _DataRow('Query param', 'sort = $sort'),
+            _DataRow(
+              'extra',
+              product != null ? '✅ ${product!.name}' : '⚠️ null (deep-linked)',
             ),
-          ),
-          _NavTestCard(
-            label: "Switch sort → 'helpful'",
-            description: 'context.go() to same path with different query param',
-            color: Colors.teal,
-            onTap: () => context.go(
-              '/products/$productId/reviews?sort=helpful',
-              extra: product,
+            const SizedBox(height: 16),
+            const _SectionHeader('📍 4 levels deep'),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: Text(
+                'Dashboard  →  Product List  →  Product Detail  →  Reviews\n'
+                'Each press of the AppBar back button retraces one step.',
+                style: TextStyle(height: 1.6),
+              ),
             ),
-          ),
-        ],
+            _NavTestCard(
+              label: "Switch sort → 'helpful'",
+              description:
+                  'context.go() to same path with different query param',
+              color: Colors.teal,
+              onTap: () => context.go(
+                '/products/$productId/reviews?sort=helpful',
+                extra: product,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PAGE: Settings
+// PAGE: Settings — NavPageConfig with help action
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SettingsPage extends StatelessWidget {
@@ -549,31 +639,50 @@ class SettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _PageWrapper(
-      title: 'Settings',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionHeader(
-            'Each section passes a SettingSection object via extra',
-          ),
-          const SizedBox(height: 12),
-          ..._settingSections.map(
-            (s) => _NavTestCard(
-              label: s.title,
-              description: s.description,
-              color: Colors.deepPurple,
-              onTap: () => context.go('/settings/${s.key}', extra: s),
+    return NavPageConfig(
+      centerWidget: _PageTitle(
+        icon: Icons.settings,
+        label: 'Settings',
+        color: Colors.grey.shade700,
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.help_outline_rounded),
+          tooltip: 'Help',
+          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Help tapped — injected by SettingsPage'),
             ),
           ),
-        ],
+        ),
+        const _UserAvatar(),
+      ],
+      child: _PageWrapper(
+        title: 'Settings',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _SectionHeader(
+              'Each section passes a SettingSection object via extra',
+            ),
+            const SizedBox(height: 12),
+            ..._settingSections.map(
+              (s) => _NavTestCard(
+                label: s.title,
+                description: s.description,
+                color: Colors.deepPurple,
+                onTap: () => context.go('/settings/${s.key}', extra: s),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PAGE: Settings section — /settings/:section
+// PAGE: Settings section — NavPageConfig with edit action
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SettingsSectionPage extends StatelessWidget {
@@ -590,40 +699,56 @@ class SettingsSectionPage extends StatelessWidget {
     final title = section?.title ?? sectionKey;
     final desc = section?.description ?? '';
 
-    return _PageWrapper(
-      title: title,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _DataRow('Path param', sectionKey),
-          _DataRow('extra.title', title),
-          _DataRow('extra.desc', desc),
-          const SizedBox(height: 24),
-          const _SectionHeader('Go one level deeper — Edit'),
-          const SizedBox(height: 12),
-          _NavTestCard(
-            label: 'Edit $title settings',
-            description:
-                "context.go('/settings/$sectionKey/edit', extra: section)",
-            color: Colors.deepPurple.shade700,
-            onTap: () =>
-                context.go('/settings/$sectionKey/edit', extra: section),
-          ),
-          _NavTestCard(
-            label: '→ Jump to Products (cross-section)',
-            description: 'Back button still works across the jump',
-            color: Colors.grey,
-            onTap: () => context.go('/products'),
-          ),
-        ],
+    return NavPageConfig(
+      centerWidget: _PageTitle(
+        icon: Icons.tune_rounded,
+        label: title,
+        color: Colors.deepPurple,
+      ),
+      actions: [
+        FilledButton.tonalIcon(
+          onPressed: () =>
+              context.go('/settings/$sectionKey/edit', extra: section),
+          icon: const Icon(Icons.edit_outlined, size: 16),
+          label: const Text('Edit'),
+          style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+        ),
+        const SizedBox(width: 4),
+        const _UserAvatar(),
+      ],
+      child: _PageWrapper(
+        title: title,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _DataRow('Path param', sectionKey),
+            _DataRow('extra.title', title),
+            _DataRow('extra.desc', desc),
+            const SizedBox(height: 24),
+            const _SectionHeader('Go one level deeper — Edit'),
+            const SizedBox(height: 12),
+            _NavTestCard(
+              label: 'Edit $title settings',
+              description: '/settings/$sectionKey/edit',
+              color: Colors.deepPurple.shade700,
+              onTap: () =>
+                  context.go('/settings/$sectionKey/edit', extra: section),
+            ),
+            _NavTestCard(
+              label: '→ Jump to Products',
+              description: 'Back button still works across the jump',
+              color: Colors.grey,
+              onTap: () => context.go('/products'),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PAGE: Settings section edit — deepest settings route
-// Settings → Section → Edit  (3 levels)
+// PAGE: Settings section edit
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SettingsSectionEditPage extends StatelessWidget {
@@ -637,31 +762,43 @@ class SettingsSectionEditPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _PageWrapper(
-      title: 'Edit ${section?.title ?? sectionKey}',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _DataRow('Full path', '/settings/$sectionKey/edit'),
-          _DataRow('Section', sectionKey),
-          _DataRow('extra', section?.title ?? '⚠️ null (deep-linked)'),
-          const SizedBox(height: 16),
-          const _SectionHeader('📍 3 levels deep inside Settings'),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 10),
-            child: Text(
-              'Settings  →  Section  →  Edit\n'
-              'Back button retraces each hop.',
-              style: TextStyle(height: 1.6),
+    final title = section?.title ?? sectionKey;
+
+    return NavPageConfig(
+      centerWidget: _PageTitle(
+        icon: Icons.edit_rounded,
+        label: 'Edit $title',
+        color: Colors.deepPurple.shade700,
+      ),
+      actions: [
+        FilledButton.icon(
+          onPressed: () => context.go('/settings'),
+          icon: const Icon(Icons.check, size: 16),
+          label: const Text('Save'),
+          style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+        ),
+        const SizedBox(width: 4),
+        const _UserAvatar(),
+      ],
+      child: _PageWrapper(
+        title: 'Edit $title',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _DataRow('Full path', '/settings/$sectionKey/edit'),
+            _DataRow('Section', sectionKey),
+            _DataRow('extra', section?.title ?? '⚠️ null (deep-linked)'),
+            const SizedBox(height: 16),
+            const _SectionHeader('📍 3 levels deep inside Settings'),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: Text(
+                'Settings  →  Section  →  Edit\nBack button retraces each hop.',
+                style: TextStyle(height: 1.6),
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: () => context.go('/settings'),
-            icon: const Icon(Icons.check),
-            label: const Text('Save & return to Settings'),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -674,13 +811,24 @@ class SettingsSectionEditPage extends StatelessWidget {
 class _PlaceholderPage extends StatelessWidget {
   const _PlaceholderPage({required this.title});
   final String title;
+
   @override
-  Widget build(BuildContext context) => _PageWrapper(
-    title: title,
-    child: Center(
-      child: Text(title, style: Theme.of(context).textTheme.headlineMedium),
-    ),
-  );
+  Widget build(BuildContext context) {
+    return NavPageConfig(
+      centerWidget: _PageTitle(
+        icon: Icons.article_outlined,
+        label: title,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+      actions: const [_UserAvatar()],
+      child: _PageWrapper(
+        title: title,
+        child: Center(
+          child: Text(title, style: Theme.of(context).textTheme.headlineMedium),
+        ),
+      ),
+    );
+  }
 }
 
 class _PageWrapper extends StatelessWidget {
@@ -714,8 +862,108 @@ class _PageWrapper extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Feature callout card
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _FeatureCallout extends StatelessWidget {
+  const _FeatureCallout({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.body,
+  });
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 18, color: color),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  body,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    height: 1.55,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Reusable UI atoms
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// Inline page title shown in the AppBar center slot via NavPageConfig.
+class _PageTitle extends StatelessWidget {
+  const _PageTitle({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class _NavTestCard extends StatelessWidget {
   const _NavTestCard({
@@ -826,7 +1074,7 @@ class _SectionHeader extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AppBar support widgets (unchanged)
+// AppBar support widgets
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _AppLogo extends StatelessWidget {
@@ -892,6 +1140,24 @@ class _UserAvatar extends StatelessWidget {
   );
 }
 
+/// Extra menu button — only shown on the Dashboard page via NavPageConfig.
+class _DashboardMenuButton extends StatelessWidget {
+  const _DashboardMenuButton();
+  @override
+  Widget build(BuildContext context) => PopupMenuButton<String>(
+    icon: const Icon(Icons.more_vert_rounded),
+    tooltip: 'Dashboard options',
+    onSelected: (v) => ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('"$v" tapped — injected by DashboardPage')),
+    ),
+    itemBuilder: (_) => const [
+      PopupMenuItem(value: 'Export', child: Text('Export')),
+      PopupMenuItem(value: 'Refresh', child: Text('Refresh')),
+      PopupMenuItem(value: 'Fullscreen', child: Text('Fullscreen')),
+    ],
+  );
+}
+
 class _SearchBar extends StatelessWidget {
   const _SearchBar();
   @override
@@ -916,6 +1182,7 @@ class _SearchBar extends StatelessWidget {
   );
 }
 
+// FEATURE 3: Full profile card shown when rail is expanded
 class _ProfileCard extends StatelessWidget {
   const _ProfileCard();
   @override
@@ -964,6 +1231,34 @@ class _ProfileCard extends StatelessWidget {
   }
 }
 
+// FEATURE 3: Compact avatar shown when the rail collapses to icons-only mode
+class _CompactAvatar extends StatelessWidget {
+  const _CompactAvatar();
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Center(
+        child: Tooltip(
+          message: 'Alex Johnson — Admin',
+          child: CircleAvatar(
+            radius: 20,
+            backgroundColor: cs.primaryContainer,
+            child: Text(
+              'A',
+              style: TextStyle(
+                color: cs.onPrimaryContainer,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _RailFooter extends StatelessWidget {
   const _RailFooter();
   @override
@@ -980,7 +1275,7 @@ class _RailFooter extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Navigation observer — logs every route change in debug console
+// Navigation logger
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _NavLogger extends NavigatorObserver {
