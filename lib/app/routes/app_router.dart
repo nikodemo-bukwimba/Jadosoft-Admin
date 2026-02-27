@@ -74,7 +74,6 @@ class AppRouter {
         );
 
       // ── GENERATOR ROUTES — append only ─────────────────────────
-      // ── END GENERATOR ROUTES ───────────────────────────────────
 
       default:
         return MaterialPageRoute(
@@ -85,3 +84,4 @@ class AppRouter {
     }
   }
 }
+ 

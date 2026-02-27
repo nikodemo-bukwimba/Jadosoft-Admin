@@ -58,7 +58,7 @@ class _NavItemTileState extends State<NavItemTile> {
 
   // ── Ghost / children helpers ──────────────────────────────────────────────
 
-  bool get _isGhost => widget.item.label == null || widget.item.label!.isEmpty;
+  bool get _isGhost => widget.item.label.isEmpty;
 
   bool get _hasVisibleChildren =>
       widget.item.children.any((c) => c.label != null && c.label!.isNotEmpty);

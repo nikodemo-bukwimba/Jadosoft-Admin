@@ -204,7 +204,7 @@ class FlyoutPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visibleChildren = item.children
-        .where((c) => c.label != null && c.label!.isNotEmpty)
+        .where((c) => c.label.isNotEmpty)
         .toList();
 
     if (visibleChildren.isEmpty) return const SizedBox.shrink();
@@ -225,7 +225,7 @@ class FlyoutPanel extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
                 child: Text(
-                  (item.label ?? '').toUpperCase(),
+                  (item.label).toUpperCase(),
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: navTheme.unselectedItemColor?.withOpacity(0.55),
                     letterSpacing: 1.1,
@@ -288,7 +288,7 @@ class _FlyoutItemState extends State<_FlyoutItem> {
       widget.item.allDescendantPaths.contains(widget.selectedPath);
 
   bool get _hasVisibleChildren => widget.item.children
-      .any((c) => c.label != null && c.label!.isNotEmpty);
+      .any((c) => c.label.isNotEmpty);
 
   void _openSubFlyout(BuildContext context) {
     _closeSubFlyout();
@@ -408,7 +408,7 @@ class _FlyoutItemState extends State<_FlyoutItem> {
               ],
               Expanded(
                 child: Text(
-                  widget.item.label ?? '',
+                  widget.item.label,
                   style: nt.labelStyle?.copyWith(
                     color: fgColor,
                     fontWeight: isActive || widget.item.isButton

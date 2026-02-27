@@ -112,5 +112,4 @@ Future<void> initDependencies() async {
   sl.registerFactory<ProfileBloc>(() => ProfileBloc(sl<GetProfileUseCase>()));
 
   // ── GENERATOR MANAGED — append only, do not reorder ──────
-  // ── END GENERATOR MANAGED ────────────────────────────────
 }
