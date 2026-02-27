@@ -13,9 +13,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config/di/injection_container.dart';
-import '../config/routes/app_router.dart';
+import 'app/routes/app_router.dart';
 import '../config/theme/app_theme.dart';
 import '../features/auth/presentation/bloc/auth_bloc.dart';
 import '../features/auth/presentation/bloc/auth_event.dart';
