@@ -1,0 +1,38 @@
+{
+  "feature": {
+    "name": "category",
+    "label": "Category",
+    "purpose": "Manage item categories",
+    "maturity": 1,
+    "permission": "categories"
+  },
+  "storage": { "remote": true, "local": false },
+  "entities": {
+    "Category": {
+      "primary": true,
+      "fields": {
+        "id": { "type": "String", "primary": true, "readonly": true },
+        "name": {
+          "type": "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Name is required" },
+            "minLength": { "value": 2, "message": "Name too short" }
+          }
+        },
+        "isActive": { "type": "bool", "nullable": false }
+      },
+      "relationships": {},
+      "api": { "endpoint": "/categories", "paginatable": false },
+      "ui": {
+        "card": { "title": "name" },
+        "detail": { "header": ["name", "isActive"], "body": [] },
+        "form": {
+          "create": ["name", "isActive"],
+          "edit": ["name", "isActive"]
+        },
+        "list": { "emptyMessage": "No categories yet." }
+      }
+    }
+  }
+}

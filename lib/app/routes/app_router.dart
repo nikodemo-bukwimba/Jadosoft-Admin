@@ -18,6 +18,8 @@
 //
 // Generator appends new route constants and cases between the boundary markers.
 
+// ── GENERATOR FEATURE PAGE IMPORTS — append only ─────────────────────────────
+// ── END GENERATOR FEATURE PAGE IMPORTS ───────────────────────────────────────
 import 'package:flutter/material.dart';
 
 import '../../features/auth/presentation/pages/account_picker_page.dart';
@@ -29,37 +31,35 @@ import '../shell/shell_page.dart';
 // ── END GENERATOR FEATURE PAGE IMPORTS ───────────────────────────────────────
 
 class AppRouter {
-
   // ── Route path constants ──────────────────────────────────────────────────
-  static const String login         = '/login';
-  static const String register      = '/register';
-  static const String home          = '/home';
+  static const String login = '/login';
+  static const String register = '/register';
+  static const String home = '/home';
   static const String accountPicker = '/account-picker';
 
-  // ── GENERATOR ROUTE CONSTANTS — append only ───────────────────────────────
-  // ── END GENERATOR ROUTE CONSTANTS ────────────────────────────────────────
+  // ── GENERATOR ROUTE CONSTANTS — append only ───────────────────────────────────
+  // ── END GENERATOR ROUTE CONSTANTS ────────────────────────────────────────────
 
   // ── Route factory ─────────────────────────────────────────────────────────
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
-
       case login:
-        final args       = settings.arguments as Map<String, dynamic>?;
+        final args = settings.arguments as Map<String, dynamic>?;
         final addAccount = args?['addAccount'] as bool? ?? false;
         return MaterialPageRoute(
-          builder:  (_) => LoginPage(addAccount: addAccount),
+          builder: (_) => LoginPage(addAccount: addAccount),
           settings: settings,
         );
 
       case register:
         return MaterialPageRoute(
-          builder:  (_) => const RegisterPage(),
+          builder: (_) => const RegisterPage(),
           settings: settings,
         );
 
       case home:
         return MaterialPageRoute(
-          builder:  (_) => const ShellPage(),
+          builder: (_) => const ShellPage(),
           settings: settings,
         );
 
@@ -69,19 +69,17 @@ class AppRouter {
             ? AccountPickerMode.add
             : AccountPickerMode.picker;
         return MaterialPageRoute(
-          builder:  (_) => AccountPickerPage(mode: mode),
+          builder: (_) => AccountPickerPage(mode: mode),
           settings: settings,
         );
 
-      // ── GENERATOR ROUTES — append only ─────────────────────────────────
-      // ── END GENERATOR ROUTES ───────────────────────────────────────────
+      // ── GENERATOR ROUTES — append only ─────────────────────────
+      // ── END GENERATOR ROUTES ───────────────────────────────────
 
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(
-            body: Center(
-              child: Text('Route "${settings.name}" not found'),
-            ),
+            body: Center(child: Text('Route "${settings.name}" not found')),
           ),
         );
     }
