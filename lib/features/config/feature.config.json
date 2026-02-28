@@ -1,37 +1,57 @@
 {
   "feature": {
-    "name": "category",
-    "label": "Category",
-    "purpose": "Manage item categories",
+    "name": "habari",
+    "label": "habari",
+    "purpose": "Manage habari items",
     "maturity": 1,
-    "permission": "categories"
+    "permission": "habari"
   },
-  "storage": { "remote": true, "local": false },
+  "storage": {
+    "remote": true,
+    "local": false
+  },
   "entities": {
-    "Category": {
+    "habari": {
       "primary": true,
       "fields": {
-        "id": { "type": "String", "primary": true, "readonly": true },
+        "id": {
+          "type": "String",
+          "primary": true,
+          "readonly": true
+        },
         "name": {
           "type": "String",
           "nullable": false,
           "validation": {
-            "required": { "value": true, "message": "Name is required" },
+            "required": {
+              "value": true,
+              "message": "habari name is required"
+            },
             "minLength": { "value": 2, "message": "Name too short" }
           }
         },
-        "isActive": { "type": "bool", "nullable": false }
+        "createdAt": {
+          "type": "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
       },
       "relationships": {},
-      "api": { "endpoint": "/categories", "paginatable": false },
+      "api": {
+        "endpoint": "/habaris",
+        "paginatable": false,
+        "searchable": false
+      },
       "ui": {
         "card": { "title": "name" },
-        "detail": { "header": ["name", "isActive"], "body": [] },
+        "detail": { "header": ["name"], "body": ["createdAt"] },
         "form": {
-          "create": ["name", "isActive"],
-          "edit": ["name", "isActive"]
+          "create": ["name"],
+          "edit": ["name"]
         },
-        "list": { "emptyMessage": "No categories yet." }
+        "list": {
+          "emptyMessage": "No habaris yet."
+        }
       }
     }
   }

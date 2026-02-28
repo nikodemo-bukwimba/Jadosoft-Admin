@@ -1,0 +1,97 @@
+{
+  "feature": {
+    "name":       "task",
+    "label":      "Task",
+    "purpose":    "Manage project tasks",
+    "maturity":   1,
+    "permission": "tasks",
+    "icon":       "Icons.task_outlined",
+    "activeIcon": "Icons.task"
+  },
+  "storage": {
+    "remote": true,
+    "local":  false
+  },
+  "entities": {
+    "Task": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "title": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required":  { "value": true,  "message": "Task title is required" },
+            "minLength": { "value": 3,     "message": "Title must be at least 3 characters" },
+            "maxLength": { "value": 200,   "message": "Title cannot exceed 200 characters" }
+          }
+        },
+        "description": {
+          "type":     "String",
+          "nullable": true,
+          "validation": {
+            "maxLength": { "value": 2000, "message": "Description too long" }
+          }
+        },
+        "priority": {
+          "type":     "int",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Priority is required" },
+            "min":      { "value": 1,    "message": "Priority must be at least 1" },
+            "max":      { "value": 5,    "message": "Priority cannot exceed 5" }
+          }
+        },
+        "estimatedHours": {
+          "type":     "double",
+          "nullable": true
+        },
+        "isCompleted": {
+          "type":     "bool",
+          "nullable": false
+        },
+        "dueDate": {
+          "type":     "DateTime",
+          "nullable": true
+        },
+        "createdAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        },
+        "updatedAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {},
+      "api": {
+        "endpoint":    "/tasks",
+        "paginatable": false,
+        "searchable":  false
+      },
+      "ui": {
+        "card": {
+          "title":    "title",
+          "subtitle": "description"
+        },
+        "detail": {
+          "header": ["title", "priority"],
+          "body":   ["description", "estimatedHours", "isCompleted", "dueDate", "createdAt"]
+        },
+        "form": {
+          "create": ["title", "description", "priority", "estimatedHours", "isCompleted", "dueDate"],
+          "edit":   ["title", "description", "priority", "estimatedHours", "isCompleted", "dueDate"]
+        },
+        "list": {
+          "emptyMessage": "No tasks yet. Create your first task."
+        }
+      }
+    }
+  }
+}

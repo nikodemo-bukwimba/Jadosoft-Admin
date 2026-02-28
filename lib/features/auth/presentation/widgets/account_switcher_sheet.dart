@@ -78,7 +78,7 @@ class AccountSwitcherSheet extends StatelessWidget {
               child: Row(
                 children: [
                   Text('Accounts', style: textTheme.titleLarge),
-                  const Spacer(),
+                  const SizedBox(width: 24),
                   TextButton.icon(
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('Add account'),

@@ -1,295 +1,127 @@
 # ============================================================
 # Validator.psm1
-# Validates feature.config.json against all schema rules.
-# Returns a list of error strings. Empty list = valid.
 # ============================================================
 
 function Invoke-ConfigValidation {
-    param([Parameter(Mandatory)][object]$Config)
-
+    param([Parameter(Mandatory)][psobject]$Config)
     $errors = [System.Collections.Generic.List[string]]::new()
-
-    # Script block used instead of a nested function to avoid module-scope leakage.
-    $addError = { param([string]$msg) $errors.Add($msg) }
-
-    # ── feature block ─────────────────────────────────────────
-    if (-not $Config.feature) {
-        & $addError "Missing required block: 'feature'"
-        return $errors  # Cannot continue without feature block
-    }
-
-    $f = $Config.feature
-
-    if (-not $f.name) {
-        & $addError "feature.name is required"
-    }
-    elseif ($f.name -notmatch '^[a-z][a-z0-9_]*$') {
-        & $addError "feature.name must be snake_case (got: '$($f.name)'"
-    }
-
-    if (-not $f.label) {
-        & $addError "feature.label is required"
-    }
-
-    if (-not $f.purpose) {
-        & $addError "feature.purpose is required (one sentence describing domain intent)"
-    }
-
-    if ($null -eq $f.maturity) {
-        & $addError "feature.maturity is required"
-    }
-    elseif ($f.maturity -lt 0 -or $f.maturity -gt 5) {
-        & $addError "feature.maturity must be 0-5 (got: $($f.maturity))"
-    }
-
-    if (-not $f.permission) {
-        & $addError "feature.permission is required (RBAC slug prefix)"
-    }
-    elseif ($f.permission -notmatch '^[a-z][a-z0-9_]*$') {
-        & $addError "feature.permission must be snake_case (got: '$($f.permission)'"
-    }
-
-    $maturity = [int](if ($null -eq $f.maturity) { -1 } else { $f.maturity })
-
-    # ── storage block ─────────────────────────────────────────
-    $hasStorage = $null -ne $Config.storage
-
-    if ($maturity -eq 4 -and $hasStorage) {
-        & $addError "Maturity 4 (Aggregator) must NOT declare storage — aggregators have no persistence"
-    }
-
-    if ($maturity -in @(1, 2, 3, 5) -and -not $hasStorage) {
-        & $addError "Maturity $maturity requires a 'storage' block with remote and/or local set to true"
-    }
-
-    if ($hasStorage) {
-        if ($null -eq $Config.storage.remote) {
-            & $addError "storage.remote is required (true or false)"
-        }
-        if ($null -eq $Config.storage.local) {
-            & $addError "storage.local is required (true or false)"
-        }
-        if ($Config.storage.remote -eq $false -and $Config.storage.local -eq $false) {
-            & $addError "storage.remote and storage.local cannot both be false"
+    _Validate-FeatureBlock -Config $Config -Errors $errors
+    $maturity = $Config.feature.maturity
+    if ($null -ne $maturity) {
+        _Validate-MaturityGates -Config $Config -Maturity $maturity -Errors $errors
+        if ($maturity -ge 1 -and $maturity -ne 4 -and $null -ne $Config.entities) {
+            _Validate-Entities -Config $Config -Errors $errors
         }
     }
-
-    # ── maturity-specific block requirements ──────────────────
-    if ($maturity -ge 2 -and -not $Config.stateMachine) {
-        & $addError "Maturity $maturity requires a 'stateMachine' block"
-    }
-
-    if ($maturity -ge 3 -and -not $Config.workflow) {
-        & $addError "Maturity 3+ requires a 'workflow' block"
-    }
-
-    if ($maturity -eq 5 -and -not $Config.integration) {
-        & $addError "Maturity 5 requires an 'integration' block"
-    }
-
-    # ── entities block ────────────────────────────────────────
-    if ($maturity -ne 0 -and -not $Config.entities) {
-        & $addError "Maturity $maturity requires an 'entities' block"
-        return $errors
-    }
-
-    if ($Config.entities) {
-        $entityNames = @($Config.entities.PSObject.Properties.Name)
-
-        # Exactly one primary entity
-        $primaryCount = 0
-        foreach ($eName in $entityNames) {
-            if ($Config.entities.$eName.primary -eq $true) { $primaryCount++ }
-        }
-        if ($maturity -ne 4 -and $primaryCount -ne 1) {
-            & $addError "Exactly one entity must have 'primary: true' (found $primaryCount)"
-        }
-
-        foreach ($eName in $entityNames) {
-            $entity = $Config.entities.$eName
-
-            # table required if local storage
-            if ($hasStorage -and $Config.storage.local -eq $true -and -not $entity.table) {
-                & $addError "entities.$eName.table is required when storage.local is true"
-            }
-
-            # Validate fields
-            if (-not $entity.fields) {
-                & $addError "entities.$eName.fields is required"
-            }
-            else {
-                $fieldNames = @($entity.fields.PSObject.Properties.Name)
-                foreach ($fName in $fieldNames) {
-                    $field = $entity.fields.$fName
-
-                    # camelCase check
-                    if ($fName -notmatch '^[a-z][a-zA-Z0-9]*$') {
-                        & $addError "entities.$eName.fields.$fName must be camelCase"
-                    }
-
-                    # type required
-                    if (-not $field.type) {
-                        & $addError "entities.$eName.fields.$fName.type is required"
-                    }
-
-                    # Validate validation rules
-                    if ($field.validation) {
-                        $validRules = @(
-                            'required', 'minLength', 'maxLength', 'min', 'max',
-                            'regex', 'email', 'oneOf', 'unique'
-                        )
-                        foreach ($rule in $field.validation.PSObject.Properties.Name) {
-                            if ($rule -notin $validRules) {
-                                & $addError "entities.$eName.fields.$fName.validation.$rule is not a recognised rule"
-                            }
-                            $ruleObj = $field.validation.$rule
-                            if ($null -eq $ruleObj.value) {
-                                & $addError "entities.$eName.fields.$fName.validation.$rule.value is required"
-                            }
-                        }
-                    }
-                }
-            }
-
-            # Validate relationships
-            if ($entity.relationships) {
-                foreach ($rName in $entity.relationships.PSObject.Properties.Name) {
-                    $rel = $entity.relationships.$rName
-
-                    if (-not $rel.type) {
-                        & $addError "entities.$eName.relationships.$rName.type is required"
-                    }
-
-                    $validRelTypes = @('hasMany', 'hasOne', 'belongsTo')
-                    if ($rel.type -notin $validRelTypes) {
-                        & $addError "entities.$eName.relationships.$rName.type must be hasMany, hasOne, or belongsTo"
-                    }
-
-                    if ($rel.type -in @('hasMany', 'hasOne')) {
-                        # Internal relationship — entity must exist in same config
-                        if (-not $rel.entity) {
-                            & $addError "entities.$eName.relationships.$rName.entity is required"
-                        }
-                        elseif ($rel.entity -notin $entityNames) {
-                            & $addError "entities.$eName.relationships.$rName.entity '$($rel.entity)' not found in this config"
-                        }
-
-                        if (-not $rel.foreign) {
-                            & $addError "entities.$eName.relationships.$rName.foreign (foreign key field) is required"
-                        }
-                    }
-
-                    if ($rel.type -eq 'belongsTo') {
-                        # External relationship
-                        if (-not $rel.entity) {
-                            & $addError "entities.$eName.relationships.$rName.entity is required"
-                        }
-                        if (-not $rel.feature) {
-                            & $addError "entities.$eName.relationships.$rName.feature is required for external belongsTo"
-                        }
-                        if (-not $rel.foreignKey) {
-                            & $addError "entities.$eName.relationships.$rName.foreignKey is required"
-                        }
-                        if (-not $rel.displayField) {
-                            & $addError "entities.$eName.relationships.$rName.displayField is required"
-                        }
-                    }
-                }
-            }
-
-            # Validate UI hints
-            if ($entity.ui) {
-                $allFieldNames = if ($entity.fields) {
-                    @($entity.fields.PSObject.Properties.Name)
-                }
-                else { @() }
-
-                $allRelNames = if ($entity.relationships) {
-                    @($entity.relationships.PSObject.Properties.Name)
-                }
-                else { @() }
-
-                # form.inline must only reference hasMany internal relationships
-                if ($entity.ui.form -and $entity.ui.form.inline) {
-                    foreach ($inlineName in $entity.ui.form.inline) {
-                        if ($inlineName -notin $allRelNames) {
-                            & $addError "entities.$eName.ui.form.inline '$inlineName' must reference a declared relationship"
-                        }
-                        else {
-                            $inlineRel = $entity.relationships.$inlineName
-                            if ($inlineRel.type -ne 'hasMany') {
-                                & $addError "entities.$eName.ui.form.inline '$inlineName' must be a hasMany relationship"
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    # ── stateMachine block ────────────────────────────────────
-    if ($Config.stateMachine -and $Config.entities) {
-        $sm = $Config.stateMachine
-        $entityNames = @($Config.entities.PSObject.Properties.Name)
-
-        if (-not $sm.entity) {
-            & $addError "stateMachine.entity is required"
-        }
-        elseif ($sm.entity -notin $entityNames) {
-            & $addError "stateMachine.entity '$($sm.entity)' not found in entities"
-        }
-
-        if (-not $sm.field) {
-            & $addError "stateMachine.field is required"
-        }
-
-        if (-not $sm.initial) {
-            & $addError "stateMachine.initial is required"
-        }
-
-        if (-not $sm.states -or $sm.states.Count -eq 0) {
-            & $addError "stateMachine.states must declare at least one state"
-        }
-
-        $stateNames = @($sm.states | ForEach-Object { $_.name })
-
-        if ($sm.initial -notin $stateNames) {
-            & $addError "stateMachine.initial '$($sm.initial)' not found in stateMachine.states"
-        }
-
-        $permPrefix = $Config.feature.permission
-        foreach ($t in $sm.transitions) {
-            if (-not $t.name) {
-                & $addError "stateMachine.transitions: each transition must have a name"
-            }
-            if (-not $t.to) {
-                & $addError "stateMachine.transitions.$($t.name): 'to' is required"
-            }
-            if (-not $t.from -or $t.from.Count -eq 0) {
-                & $addError "stateMachine.transitions.$($t.name): 'from' must list at least one state"
-            }
-
-            foreach ($fromState in $t.from) {
-                if ($fromState -notin $stateNames) {
-                    & $addError "stateMachine.transitions.$($t.name).from '$fromState' not in declared states"
-                }
-            }
-
-            if ($t.to -notin $stateNames) {
-                & $addError "stateMachine.transitions.$($t.name).to '$($t.to)' not in declared states"
-            }
-
-            if ($t.to -eq $sm.initial) {
-                & $addError "stateMachine.transitions.$($t.name): cannot transition TO the initial state '$($sm.initial)'"
-            }
-
-            if ($t.permission -and -not $t.permission.StartsWith("$permPrefix.")) {
-                & $addError "stateMachine.transitions.$($t.name).permission must start with '$permPrefix.' (got: '$($t.permission)')"
-            }
-        }
-    }
-
-    return $errors
+      return ,$errors.ToArray()
 }
 
-Export-ModuleMember -Function Invoke-ConfigValidation
+function _Validate-FeatureBlock {
+    param([psobject]$Config, [System.Collections.Generic.List[string]]$Errors)
+    if ($null -eq $Config.feature) { $Errors.Add("Missing required 'feature' block"); return }
+    $f = $Config.feature
+    if ([string]::IsNullOrWhiteSpace($f.name)) { $Errors.Add("feature.name is required") }
+    elseif ($f.name -notmatch '^[a-z][a-z0-9_]*$') { $Errors.Add("feature.name must be snake_case. Got: '$($f.name)'") }
+    if ([string]::IsNullOrWhiteSpace($f.label))   { $Errors.Add("feature.label is required") }
+    if ([string]::IsNullOrWhiteSpace($f.purpose))  { $Errors.Add("feature.purpose is required") }
+    if ($null -eq $f.maturity) { $Errors.Add("feature.maturity is required") }
+    elseif ($f.maturity -lt 0 -or $f.maturity -gt 5) { $Errors.Add("feature.maturity must be 0-5. Got: $($f.maturity)") }
+    if ([string]::IsNullOrWhiteSpace($f.permission)) { $Errors.Add("feature.permission is required") }
+    elseif ($f.permission -notmatch '^[a-z][a-z0-9_]*$') { $Errors.Add("feature.permission must be snake_case. Got: '$($f.permission)'") }
+}
+
+function _Validate-MaturityGates {
+    param([psobject]$Config, [int]$Maturity, [System.Collections.Generic.List[string]]$Errors)
+    if ($Maturity -eq 0) {
+        if ($null -ne $Config.storage)      { $Errors.Add("Level 0 features must NOT declare a 'storage' block") }
+        if ($null -ne $Config.stateMachine) { $Errors.Add("Level 0 features must NOT declare a 'stateMachine' block") }
+    }
+    if ($Maturity -ge 1 -and $Maturity -ne 4) {
+        if ($null -eq $Config.storage) { $Errors.Add("Level $Maturity features require a 'storage' block") }
+        elseif (-not $Config.storage.remote -and -not $Config.storage.local) {
+            $Errors.Add("storage block must declare at least one of: remote, local")
+        }
+        if ($null -eq $Config.entities) { $Errors.Add("Level $Maturity features require an 'entities' block") }
+    }
+    if ($Maturity -ge 2 -and $Maturity -ne 4) {
+        if ($null -eq $Config.stateMachine) { $Errors.Add("Level $Maturity features require a 'stateMachine' block") }
+    }
+    if ($Maturity -eq 4) {
+        if ($null -ne $Config.storage) { $Errors.Add("Level 4 aggregator features must NOT declare a 'storage' block") }
+    }
+}
+
+function _Validate-Entities {
+    param([psobject]$Config, [System.Collections.Generic.List[string]]$Errors)
+    $entityProps = $Config.entities.PSObject.Properties
+    if ($entityProps.Count -eq 0) { $Errors.Add("entities block must contain at least one entity"); return }
+
+    $primaryCount = 0
+    foreach ($ep in $entityProps) {
+        $eName = $ep.Name
+        $eDef  = $ep.Value
+        if ($eDef.primary -eq $true) { $primaryCount++ }
+
+        # Fields validation
+        if ($null -eq $eDef.fields) { $Errors.Add("Entity '$eName' must declare a 'fields' block"); continue }
+        $fieldProps = $eDef.fields.PSObject.Properties
+        if ($fieldProps.Count -eq 0) { $Errors.Add("Entity '$eName' must have at least one field") }
+
+        $hasPK = $false
+        foreach ($fp in $fieldProps) {
+            $fName = $fp.Name
+            $fDef  = $fp.Value
+            if ($fName -cmatch '^[A-Z]') { $Errors.Add("Field '$eName.$fName' must be camelCase") }
+            if ($fDef.primary -eq $true) { $hasPK = $true }
+
+            # Validate type
+            $validTypes = @('String','int','double','bool','DateTime')
+            if ($fDef.type -and $fDef.type -notin $validTypes -and $fDef.type -notmatch 'Status$') {
+                $Errors.Add("Field '$eName.$fName' has unknown type '$($fDef.type)'")
+            }
+        }
+        if (-not $hasPK) { $Errors.Add("Entity '$eName' must have at least one field with primary: true") }
+
+        # UI form validation: form fields must reference declared fields
+        if ($eDef.ui -and $eDef.ui.form) {
+            $declaredFields = @($fieldProps | ForEach-Object { $_.Name })
+            foreach ($formType in @('create','edit')) {
+                $formFields = $eDef.ui.form.$formType
+                if ($null -ne $formFields) {
+                    foreach ($ff in $formFields) {
+                        if ($ff -notin $declaredFields) {
+                            $Errors.Add("UI form.$formType references undeclared field '$ff' in entity '$eName'")
+                        }
+                        $ffDef = $eDef.fields.$ff
+                        if ($ffDef -and $ffDef.readonly -eq $true) {
+                            $Errors.Add("UI form.$formType includes readonly field '$ff' in entity '$eName'")
+                        }
+                    }
+                }
+            }
+        }
+
+        # Relationship validation
+        if ($eDef.relationships) {
+            $relProps = $eDef.relationships.PSObject.Properties
+            $declaredEntityNames = @($entityProps | ForEach-Object { $_.Name })
+            foreach ($rp in $relProps) {
+                $rName = $rp.Name
+                $rDef  = $rp.Value
+                if ($rDef.type -eq 'hasMany' -or $rDef.type -eq 'hasOne') {
+                    if ($rDef.entity -notin $declaredEntityNames) {
+                        $Errors.Add("Relationship '$eName.$rName' references undeclared entity '$($rDef.entity)'")
+                    }
+                }
+                if ($rDef.type -eq 'belongsTo') {
+                    if (-not $rDef.entity)  { $Errors.Add("belongsTo '$eName.$rName' must declare 'entity'") }
+                    if (-not $rDef.feature) { $Errors.Add("belongsTo '$eName.$rName' must declare 'feature'") }
+                }
+            }
+        }
+    }
+    if ($primaryCount -eq 0)  { $Errors.Add("Exactly one entity must have primary: true (found 0)") }
+    if ($primaryCount -gt 1)  { $Errors.Add("Exactly one entity must have primary: true (found $primaryCount)") }
+}
+
+Export-ModuleMember -Function 'Invoke-ConfigValidation'

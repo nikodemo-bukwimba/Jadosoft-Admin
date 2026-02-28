@@ -505,7 +505,7 @@ class _PermissionsSection extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 24),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,

@@ -514,7 +514,7 @@ class _RbacDebugPanel extends StatelessWidget {
                     color: scheme.tertiary,
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 24),
                 Text(
                   '${auth.activeSession.permissions.length} permissions',
                   style: textTheme.labelSmall?.copyWith(

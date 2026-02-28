@@ -19,6 +19,7 @@
 
 import 'package:fca/app/routes/app_router.dart';
 import 'package:fca/core/rbac/rbac_extensions.dart';
+import 'package:fca/features/auth/presentation/bloc/auth_event.dart';
 import 'package:fca/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:fca/features/profile/presentation/bloc/profile_event.dart';
 import 'package:flutter/material.dart';
@@ -44,11 +45,9 @@ class _ShellPageState extends State<ShellPage> {
   Widget build(BuildContext context) {
     return BlocConsumer<AuthBloc, AuthState>(
       listener: (context, state) {
-        // Full logout — no remaining accounts
         if (state is AuthUnauthenticated) {
           Navigator.of(context).pushReplacementNamed(AppRouter.login);
         }
-        // Logout with remaining accounts → show account picker
         if (state is AuthNeedsAccountPicker) {
           Navigator.of(context).pushReplacementNamed(AppRouter.accountPicker);
         }
@@ -61,46 +60,70 @@ class _ShellPageState extends State<ShellPage> {
         }
 
         final tabs = ShellNavItems.buildTabs(isAdmin: state.canViewDashboard);
+
         final safeIndex = _currentIndex.clamp(0, tabs.length - 1);
 
         return Scaffold(
+          appBar: AppBar(title: Text(tabs[safeIndex].label)),
+          drawer: _buildDrawer(context, tabs, state),
           body: IndexedStack(
             index: safeIndex,
             children: tabs.map((t) => t.page).toList(),
-          ),
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: safeIndex,
-            onDestinationSelected: (index) => _onTabSelected(
-              context,
-              index: index,
-              tabs: tabs,
-              isAdmin: state.canViewDashboard,
-            ),
-            destinations: tabs
-                .map(
-                  (t) => NavigationDestination(
-                    icon: Icon(t.icon),
-                    selectedIcon: Icon(t.activeIcon),
-                    label: t.label,
-                  ),
-                )
-                .toList(),
           ),
         );
       },
     );
   }
 
+  Widget _buildDrawer(
+    BuildContext context,
+    List<ShellTabConfig> tabs,
+    AuthAuthenticated state,
+  ) {
+    return Drawer(
+      child: Column(
+        children: [
+          // Navigation items
+          Expanded(
+            child: ListView.builder(
+              itemCount: tabs.length,
+              itemBuilder: (context, index) {
+                final tab = tabs[index];
+
+                return ListTile(
+                  leading: Icon(tab.icon),
+                  title: Text(tab.label),
+                  selected: _currentIndex == index,
+                  onTap: () {
+                    Navigator.pop(context); // close drawer
+                    _onTabSelected(context, index, tabs);
+                  },
+                );
+              },
+            ),
+          ),
+
+          const Divider(),
+
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text("Logout"),
+            onTap: () {
+              context.read<AuthBloc>().add(AuthLogoutRequested());
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   void _onTabSelected(
-    BuildContext context, {
-    required int index,
-    required List<ShellTabConfig> tabs,
-    required bool isAdmin,
-  }) {
+    BuildContext context,
+    int index,
+    List<ShellTabConfig> tabs,
+  ) {
     setState(() => _currentIndex = index);
 
-    // Trigger profile load when the profile tab is tapped.
-    // The profile tab is always the last tab in the list.
     final isProfileTab = index == tabs.length - 1;
     if (isProfileTab) {
       context.read<ProfileBloc>().add(ProfileLoadRequested());

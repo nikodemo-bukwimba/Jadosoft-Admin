@@ -24,6 +24,24 @@ function Invoke-TokenReplace {
     return $result
 }
 
+# ── Shared helper: PascalCase → snake_case ────────────────────
+# Single canonical definition — all other modules import from here.
+function ConvertTo-SnakeCase {
+    param([Parameter(Mandatory)][string]$PascalCase)
+    return ($PascalCase -creplace '([A-Z])', '_$1').TrimStart('_').ToLower()
+}
+
+# ── Shared helper: camelCase/snake_case → Human Label ─────────
+function ConvertTo-HumanLabel {
+    param([Parameter(Mandatory)][string]$Name)
+    # camelCase → spaced: insert space before uppercase
+    $spaced = $Name -creplace '([A-Z])', ' $1'
+    # snake_case → spaced
+    $spaced = $spaced.Replace('_', ' ')
+    # Title-case each word
+    return (Get-Culture).TextInfo.ToTitleCase($spaced.Trim().ToLower())
+}
+
 # ── Dart type helpers ─────────────────────────────────────────
 function Get-DartType {
     param([string]$ConfigType, [bool]$Nullable = $false)
@@ -36,13 +54,11 @@ function Get-DartType {
         'bool' { 'bool' }
         'DateTime' { 'DateTime' }
         'DateTime (time)' { 'DateTime' }
-        '*Status' { $ConfigType }   # e.g. ProjectStatus
+        '*Status' { $ConfigType }
         default { $ConfigType }
     }
 
-    # FIX: was `return if (...) { } else { }` — invalid PowerShell syntax.
-    # Wrapped in $() so the if-expression is evaluated as a value before return.
-    return $(if ($Nullable) { "$baseType?" } else { $baseType })
+    if ($Nullable) { return "$baseType?" } else { return $baseType }
 }
 
 function Get-FormWidget {
@@ -50,9 +66,9 @@ function Get-FormWidget {
 
     switch -Wildcard ($ConfigType) {
         'String' { return 'TextFormField' }
-        'String (multiline)' { return 'TextFormField' }   # + maxLines: 5
-        'int' { return 'TextFormField' }   # + keyboardType: number
-        'double' { return 'TextFormField' }   # + keyboardType: decimal
+        'String (multiline)' { return 'TextFormField' }
+        'int' { return 'TextFormField' }
+        'double' { return 'TextFormField' }
         'bool' { return 'SwitchListTile' }
         'DateTime' { return 'DatePickerFormField' }
         'DateTime (time)' { return 'TimePickerFormField' }
@@ -91,9 +107,8 @@ function Get-CopyWithParams {
 
     $lines = [System.Collections.Generic.List[string]]::new()
     foreach ($fName in $Fields.PSObject.Properties.Name) {
-        $f = $Fields.$fName
-        $dartType = Get-DartType -ConfigType $f.type -Nullable $true   # always nullable in copyWith
-        $lines.Add("${Indent}$dartType $fName,")
+        # Always nullable in copyWith signature
+        $lines.Add("${Indent} $fName,")
     }
     return $lines -join "`n"
 }
@@ -110,27 +125,33 @@ function Get-CopyWithBody {
 
 # ── Validation gate generation ────────────────────────────────
 function Get-ValidationGate {
-    param([object]$Fields, [string]$ParamsVar = 'p', [string]$Indent = '    ')
+    param([object]$Fields, [string]$ParamsVar = 'params', [string]$Indent = '    ')
 
     $lines = [System.Collections.Generic.List[string]]::new()
     foreach ($fName in $Fields.PSObject.Properties.Name) {
         $f = $Fields.$fName
         if (-not $f.validation) { continue }
-        if ($f.primary -eq $true) { continue }   # server-assigned, never in params
-        # readonly fields ARE validated on create (e.g. ownerId: required but immutable after)
+        if ($f.primary -eq $true) { continue }
 
         $val = $f.validation
         $accessor = "$ParamsVar.$fName"
+        $label = ConvertTo-HumanLabel $fName
 
         if ($val.required -and $val.required.value -eq $true) {
-            $msg = if ($val.required.message) { $val.required.message } else { "$fName is required" }
-            $lines.Add("${Indent}if ($accessor == null || $accessor.toString().trim().isEmpty) {")
+            $msg = if ($val.required.message) { $val.required.message } else { "$label is required" }
+            # For String types, check null and empty
+            if ($f.type -eq 'String' -or $f.type -eq 'String (multiline)') {
+                $lines.Add("${Indent}if ($accessor.trim().isEmpty) {")
+            }
+            else {
+                $lines.Add("${Indent}if ($accessor == null) {")
+            }
             $lines.Add("${Indent}  return Left(ValidationFailure('$msg'));")
             $lines.Add("${Indent}}")
         }
 
         if ($val.minLength) {
-            $msg = if ($val.minLength.message) { $val.minLength.message } else { "$fName is too short" }
+            $msg = if ($val.minLength.message) { $val.minLength.message } else { "$label too short" }
             $len = $val.minLength.value
             $lines.Add("${Indent}if ($accessor.length < $len) {")
             $lines.Add("${Indent}  return Left(ValidationFailure('$msg'));")
@@ -138,7 +159,7 @@ function Get-ValidationGate {
         }
 
         if ($val.maxLength) {
-            $msg = if ($val.maxLength.message) { $val.maxLength.message } else { "$fName is too long" }
+            $msg = if ($val.maxLength.message) { $val.maxLength.message } else { "$label too long" }
             $len = $val.maxLength.value
             $lines.Add("${Indent}if ($accessor.length > $len) {")
             $lines.Add("${Indent}  return Left(ValidationFailure('$msg'));")
@@ -146,7 +167,7 @@ function Get-ValidationGate {
         }
 
         if ($val.min) {
-            $msg = if ($val.min.message) { $val.min.message } else { "$fName is too small" }
+            $msg = if ($val.min.message) { $val.min.message } else { "$label too small" }
             $min = $val.min.value
             $lines.Add("${Indent}if ($accessor < $min) {")
             $lines.Add("${Indent}  return Left(ValidationFailure('$msg'));")
@@ -154,7 +175,7 @@ function Get-ValidationGate {
         }
 
         if ($val.max) {
-            $msg = if ($val.max.message) { $val.max.message } else { "$fName is too large" }
+            $msg = if ($val.max.message) { $val.max.message } else { "$label too large" }
             $max = $val.max.value
             $lines.Add("${Indent}if ($accessor > $max) {")
             $lines.Add("${Indent}  return Left(ValidationFailure('$msg'));")
@@ -169,7 +190,7 @@ function Get-ValidationGate {
         }
 
         if ($val.regex) {
-            $msg = if ($val.regex.message) { $val.regex.message } else { "$fName has invalid format" }
+            $msg = if ($val.regex.message) { $val.regex.message } else { "$label has invalid format" }
             $regex = $val.regex.value
             $lines.Add("${Indent}if (!RegExp(r'$regex').hasMatch($accessor)) {")
             $lines.Add("${Indent}  return Left(ValidationFailure('$msg'));")
@@ -177,7 +198,7 @@ function Get-ValidationGate {
         }
 
         if ($val.oneOf) {
-            $msg = if ($val.oneOf.message) { $val.oneOf.message } else { "$fName has invalid value" }
+            $msg = if ($val.oneOf.message) { $val.oneOf.message } else { "$label has invalid value" }
             $options = ($val.oneOf.value | ForEach-Object { "'$_'" }) -join ', '
             $lines.Add("${Indent}const _valid${fName} = [$options];")
             $lines.Add("${Indent}if (!_valid${fName}.contains($accessor)) {")
@@ -186,17 +207,16 @@ function Get-ValidationGate {
         }
     }
 
-    # FIX: was `return if (...) { } else { }` — invalid PowerShell syntax.
-    # Wrapped in $() so the if-expression is evaluated as a value before return.
-    return $(if ($lines.Count -gt 0) {
-            $lines -join "`n"
-        }
-        else {
-            "${Indent}// No validation rules declared for this entity"
-        })
+    if ($lines.Count -gt 0) {
+        return $lines -join "`n"
+    }
+    else {
+        return "${Indent}// No validation rules declared for this entity"
+    }
 }
 
 # ── Form field widget generation ──────────────────────────────
+# FIX: Generates proper labels, proper bool state variables, proper validators
 function Get-FormFields {
     param([object]$Fields, [string[]]$FieldList, [string]$Indent = '          ')
 
@@ -205,7 +225,7 @@ function Get-FormFields {
         if (-not $Fields.PSObject.Properties[$fName]) { continue }
         $f = $Fields.$fName
         $widget = Get-FormWidget -ConfigType $f.type -FieldName $fName
-        $label = (Get-Culture).TextInfo.ToTitleCase($fName -replace '([A-Z])', ' $1')
+        $label = ConvertTo-HumanLabel $fName
 
         switch ($widget) {
             'SwitchListTile' {
@@ -216,14 +236,13 @@ function Get-FormFields {
                 $lines.Add("${Indent}),")
             }
             'DatePickerFormField' {
-                $lines.Add("${Indent}// TODO: DatePickerFormField for $fName")
                 $lines.Add("${Indent}TextFormField(")
                 $lines.Add("${Indent}  decoration: const InputDecoration(labelText: '$label'),")
                 $lines.Add("${Indent}  controller: _${fName}Controller,")
                 $lines.Add("${Indent}  readOnly: true,")
                 $lines.Add("${Indent}  onTap: () => _pick${fName}Date(context),")
                 if ($f.validation -and $f.validation.required -and $f.validation.required.value -eq $true) {
-                    $msg = if ($f.validation.required.message) { $f.validation.required.message } else { "$fName is required" }
+                    $msg = if ($f.validation.required.message) { $f.validation.required.message } else { "$label is required" }
                     $lines.Add("${Indent}  validator: (v) => (v == null || v.isEmpty) ? '$msg' : null,")
                 }
                 $lines.Add("${Indent}),")
@@ -241,18 +260,18 @@ function Get-FormFields {
 
                 $validatorLines = @()
                 if ($f.validation -and $f.validation.required -and $f.validation.required.value -eq $true) {
-                    $msg = if ($f.validation.required.message) { $f.validation.required.message } else { "$fName is required" }
+                    $msg = if ($f.validation.required.message) { $f.validation.required.message } else { "$label is required" }
                     $validatorLines += "if (v == null || v.trim().isEmpty) return '$msg';"
                 }
                 if ($f.validation -and $f.validation.minLength) {
-                    $msg = if ($f.validation.minLength.message) { $f.validation.minLength.message } else { "$fName is too short" }
+                    $msg = if ($f.validation.minLength.message) { $f.validation.minLength.message } else { "$label too short" }
                     $len = $f.validation.minLength.value
-                    $validatorLines += "if (v!.length < $len) return '$msg';"
+                    $validatorLines += "if (v != null && v.length < $len) return '$msg';"
                 }
                 if ($f.validation -and $f.validation.maxLength) {
-                    $msg = if ($f.validation.maxLength.message) { $f.validation.maxLength.message } else { "$fName is too long" }
+                    $msg = if ($f.validation.maxLength.message) { $f.validation.maxLength.message } else { "$label too long" }
                     $len = $f.validation.maxLength.value
-                    $validatorLines += "if (v!.length > $len) return '$msg';"
+                    $validatorLines += "if (v != null && v.length > $len) return '$msg';"
                 }
 
                 if ($validatorLines.Count -gt 0) {
@@ -269,6 +288,46 @@ function Get-FormFields {
         $lines.Add("${Indent}const SizedBox(height: 16),")
     }
 
+    return $lines -join "`n"
+}
+
+# ── Form controller declarations ──────────────────────────────
+# FIX: Bool fields get state variables, non-bool get TextEditingControllers
+function Get-FormControllerDeclarations {
+    param([object]$Fields, [string[]]$FieldList, [string]$Indent = '  ')
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    foreach ($fName in $FieldList) {
+        if (-not $Fields.PSObject.Properties[$fName]) { continue }
+        $f = $Fields.$fName
+        $widget = Get-FormWidget -ConfigType $f.type -FieldName $fName
+
+        if ($widget -eq 'SwitchListTile') {
+            $default = if ($f.default -eq $true) { 'true' } else { 'false' }
+            $lines.Add("${Indent}bool _${fName}Value = $default;")
+        }
+        else {
+            $lines.Add("${Indent}final _${fName}Controller = TextEditingController();")
+        }
+    }
+    return $lines -join "`n"
+}
+
+# ── Form dispose calls ───────────────────────────────────────
+# FIX: Only dispose TextEditingControllers, not bool state variables
+function Get-FormDisposeStatements {
+    param([object]$Fields, [string[]]$FieldList, [string]$Indent = '    ')
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    foreach ($fName in $FieldList) {
+        if (-not $Fields.PSObject.Properties[$fName]) { continue }
+        $f = $Fields.$fName
+        $widget = Get-FormWidget -ConfigType $f.type -FieldName $fName
+
+        if ($widget -ne 'SwitchListTile') {
+            $lines.Add("${Indent}_${fName}Controller.dispose();")
+        }
+    }
     return $lines -join "`n"
 }
 
@@ -320,18 +379,39 @@ function Get-ToJsonFields {
     foreach ($fName in $Fields.PSObject.Properties.Name) {
         $f = $Fields.$fName
         $expr = switch -Wildcard ($f.type) {
-            'DateTime' { "$fName?.toIso8601String()" }
-            'DateTime (time)' { "$fName?.toIso8601String()" }
-            '*Status' { "$fName.name" }
+            'DateTime' { "${fName}?.toIso8601String()" }
+            'DateTime (time)' { "${fName}?.toIso8601String()" }
+            '*Status' { "${fName}.name" }
             default { $fName }
         }
         $lines.Add("${Indent}'${fName}': ${expr},")
     }
     return $lines -join "`n"
 }
+function Get-NamingTokens {
+    param([Parameter(Mandatory)][psobject]$FeatureConfig)
+
+    $name = $FeatureConfig.name
+
+    return @{
+        FNAME  = $name
+        FCLASS = ConvertTo-PascalCase $name
+        FUPPER = $name.ToUpper()
+        FLABEL = $FeatureConfig.label
+    }
+}
+function ConvertTo-PascalCase {
+    param([Parameter(Mandatory)][string]$Name)
+
+    return (Get-Culture).TextInfo.ToTitleCase(
+        $Name.Replace('_', ' ')
+    ).Replace(' ', '')
+}
 
 Export-ModuleMember -Function @(
     'Invoke-TokenReplace',
+    'ConvertTo-SnakeCase',
+    'ConvertTo-HumanLabel',
     'Get-DartType',
     'Get-FormWidget',
     'Get-EntityFields',
@@ -340,6 +420,9 @@ Export-ModuleMember -Function @(
     'Get-CopyWithBody',
     'Get-ValidationGate',
     'Get-FormFields',
+    'Get-FormControllerDeclarations',
+    'Get-FormDisposeStatements',
     'Get-FromJsonFields',
-    'Get-ToJsonFields'
+    'Get-ToJsonFields',
+    'Get-NamingTokens'
 )

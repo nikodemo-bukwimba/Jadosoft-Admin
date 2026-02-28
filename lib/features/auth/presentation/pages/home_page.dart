@@ -339,7 +339,7 @@ class _InfoRow extends StatelessWidget {
           Icon(icon, size: 18, color: scheme.onSurfaceVariant),
           const SizedBox(width: 10),
           Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-          const Spacer(),
+          const SizedBox(width: 24),
           Text(value, style: TextStyle(color: scheme.onSurfaceVariant)),
         ],
       ),
