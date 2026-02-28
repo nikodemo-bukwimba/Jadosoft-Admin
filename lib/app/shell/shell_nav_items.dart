@@ -40,15 +40,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'shell_tab_config.dart';
 
 // ── GENERATOR FEATURE IMPORTS — append only ───────────────────────────────────
-import 'package:fca/features/category/presentation/pages/category_list_page.dart';
-import 'package:fca/features/category/presentation/bloc/category_bloc.dart';
-
-import 'package:fca/features/visit/presentation/pages/visit_list_page.dart';
-import 'package:fca/features/visit/presentation/bloc/visit_bloc.dart';
-
-import '../../features/hello/presentation/pages/hello_list_page.dart';
-import '../../features/hello/presentation/bloc/hello_bloc.dart';
-import '../../features/hello/presentation/bloc/hello_event.dart';
 
 // ── END GENERATOR FEATURE IMPORTS ────────────────────────────────────────────
 
