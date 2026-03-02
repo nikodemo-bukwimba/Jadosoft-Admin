@@ -19,44 +19,12 @@
 // Generator appends new route constants and cases between the boundary markers.
 
 // ── GENERATOR FEATURE PAGE IMPORTS — append only ─────────────────────────────
-import '../../features/category/presentation/pages/category_list_page.dart';
-import '../../features/category/presentation/pages/category_detail_page.dart';
-import '../../features/category/presentation/pages/category_form_page.dart';
-import '../../features/category/presentation/bloc/category_bloc.dart';
-import '../../config/di/injection_container.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../features/visit/presentation/pages/visit_list_page.dart';
-import '../../features/visit/presentation/pages/visit_detail_page.dart';
-import '../../features/visit/presentation/pages/visit_form_page.dart';
-import '../../features/visit/presentation/bloc/visit_bloc.dart';
-
 import 'package:flutter/material.dart';
 
 import '../../features/auth/presentation/pages/account_picker_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/register_page.dart';
 import '../shell/shell_page.dart';
-
-import '../../features/hello/presentation/pages/hello_list_page.dart';
-import '../../features/hello/presentation/pages/hello_detail_page.dart';
-import '../../features/hello/presentation/pages/hello_form_page.dart';
-import '../../features/hello/presentation/bloc/hello_bloc.dart';
-import '../../features/hello/presentation/bloc/hello_event.dart';
-
-import '../../features/order/presentation/pages/order_list_page.dart';
-import '../../features/order/presentation/pages/order_detail_page.dart';
-import '../../features/order/presentation/pages/order_form_page.dart';
-import '../../features/order/presentation/bloc/order_bloc.dart';
-import '../../features/order/presentation/bloc/order_event.dart';
-import '../../core/enums/form_mode.dart';
-
-import '../../features/project/presentation/pages/project_list_page.dart';
-import '../../features/project/presentation/pages/project_detail_page.dart';
-import '../../features/project/presentation/pages/project_form_page.dart';
-import '../../features/project/presentation/bloc/project_bloc.dart';
-import '../../features/project/presentation/bloc/project_event.dart';
-import '../../features/overview_dashboard/presentation/pages/overview_dashboard_dashboard_page.dart';
-import '../../features/overview_dashboard/presentation/cubit/overview_dashboard_cubit.dart';
 
 // ── END GENERATOR FEATURE PAGE IMPORTS ───────────────────────────────────────
 
@@ -99,6 +67,8 @@ class AppRouter {
   static const String overview_dashboardDashboard =
       '/overview_dashboards/dashboard';
 
+  static const String payment_gatewayPage = '/payment_gateways';
+
   // ── END GENERATOR ROUTE CONSTANTS ────────────────────────────────────────────
 
   // ── Route factory ─────────────────────────────────────────────────────────
@@ -134,221 +104,7 @@ class AppRouter {
           settings: settings,
         );
 
-      // ── Category routes (generated 2026-02-27) ──
-      case categoryList:
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider<CategoryBloc>(
-            create: (_) => sl<CategoryBloc>()..add(CategoryLoadAllRequested()),
-            child: const CategoryListPage(),
-          ),
-          settings: settings,
-        );
 
-      case categoryCreate:
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider<CategoryBloc>(
-            create: (_) => sl<CategoryBloc>(),
-            child: const CategoryFormPage(mode: cFormMode.create),
-          ),
-          settings: settings,
-        );
-
-      case categoryDetail:
-        final args = settings.arguments as Map<String, dynamic>?;
-        final id = args?['id'] as String? ?? '';
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider<CategoryBloc>(
-            create: (_) =>
-                sl<CategoryBloc>()..add(CategoryLoadOneRequested(id)),
-            child: const CategoryDetailPage(),
-          ),
-          settings: settings,
-        );
-
-      case categoryEdit:
-        final args = settings.arguments as Map<String, dynamic>?;
-        final id = args?['id'] as String? ?? '';
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider<CategoryBloc>(
-            create: (_) => sl<CategoryBloc>(),
-            child: CategoryFormPage(mode: cFormMode.edit, id: id),
-          ),
-          settings: settings,
-        );
-
-      // ── Visit routes (generated 2026-02-27) ──
-      case visitList:
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider<VisitBloc>(
-            create: (_) => sl<VisitBloc>()..add(VisitLoadAllRequested()),
-            child: const VisitListPage(),
-          ),
-          settings: settings,
-        );
-
-      case visitCreate:
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider<VisitBloc>(
-            create: (_) => sl<VisitBloc>(),
-            child: const VisitFormPage(mode: FormModee.create),
-          ),
-          settings: settings,
-        );
-
-      case visitDetail:
-        final args = settings.arguments as Map<String, dynamic>?;
-        final id = args?['id'] as String? ?? '';
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider<VisitBloc>(
-            create: (_) => sl<VisitBloc>()..add(VisitLoadOneRequested(id)),
-            child: const VisitDetailPage(),
-          ),
-          settings: settings,
-        );
-
-      case visitEdit:
-        final args = settings.arguments as Map<String, dynamic>?;
-        final id = args?['id'] as String? ?? '';
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider<VisitBloc>(
-            create: (_) => sl<VisitBloc>(),
-            child: VisitFormPage(mode: FormModee.edit, id: id),
-          ),
-          settings: settings,
-        );
-
-      // Hello routes (Level 1, generated 2026-02-27)
-      case helloList:
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<HelloBloc>()..add(HelloLoadAllRequested()),
-            child: const HelloListPage(),
-          ),
-          settings: settings,
-        );
-
-      case helloCreate:
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<HelloBloc>(),
-            child: const HelloFormPage(mode: HelloFormMode.create),
-          ),
-          settings: settings,
-        );
-
-      case helloDetail:
-        final args = settings.arguments as Map<String, dynamic>? ?? {};
-        final id = args['id'] as String? ?? '';
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<HelloBloc>()..add(HelloLoadOneRequested(id)),
-            child: const HelloDetailPage(),
-          ),
-          settings: settings,
-        );
-
-      case helloEdit:
-        final args = settings.arguments as Map<String, dynamic>? ?? {};
-        final id = args['id'] as String? ?? '';
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<HelloBloc>()..add(HelloLoadOneRequested(id)),
-            child: HelloFormPage(mode: HelloFormMode.edit, id: id),
-          ),
-          settings: settings,
-        );
-
-      // Order routes (Level 3, generated 2026-03-01)
-      case orderList:
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<OrderBloc>()..add(OrderLoadAllRequested()),
-            child: const OrderListPage(),
-          ),
-          settings: settings,
-        );
-
-      case orderCreate:
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<OrderBloc>(),
-            child: const OrderFormPage(mode: FormMode.create),
-          ),
-          settings: settings,
-        );
-
-      case orderDetail:
-        final args = settings.arguments as Map<String, dynamic>? ?? {};
-        final id = args['id'] as String? ?? '';
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<OrderBloc>()..add(OrderLoadOneRequested(id)),
-            child: const OrderDetailPage(),
-          ),
-          settings: settings,
-        );
-
-      case orderEdit:
-        final args = settings.arguments as Map<String, dynamic>? ?? {};
-        final id = args['id'] as String? ?? '';
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<OrderBloc>()..add(OrderLoadOneRequested(id)),
-            child: OrderFormPage(mode: FormMode.edit, id: id),
-          ),
-          settings: settings,
-        );
-
-      // Project routes (Level 2, generated 2026-03-01)
-      case projectList:
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<ProjectBloc>()..add(ProjectLoadAllRequested()),
-            child: const ProjectListPage(),
-          ),
-          settings: settings,
-        );
-
-      case projectCreate:
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<ProjectBloc>(),
-            child: const ProjectFormPage(mode: FormMode.create),
-          ),
-          settings: settings,
-        );
-
-      case projectDetail:
-        final args = settings.arguments as Map<String, dynamic>? ?? {};
-        final id = args['id'] as String? ?? '';
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<ProjectBloc>()..add(ProjectLoadOneRequested(id)),
-            child: const ProjectDetailPage(),
-          ),
-          settings: settings,
-        );
-
-      case projectEdit:
-        final args = settings.arguments as Map<String, dynamic>? ?? {};
-        final id = args['id'] as String? ?? '';
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<ProjectBloc>()..add(ProjectLoadOneRequested(id)),
-            child: ProjectFormPage(mode: FormMode.edit, id: id),
-          ),
-          settings: settings,
-        );
-
-      // Overview routes (Level 4 Aggregator, generated 2026-03-01)
-      case overview_dashboardDashboard:
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<OverviewDashboardCubit>()..load(),
-            child: const OverviewDashboardDashboardPage(),
-          ),
-          settings: settings,
-        );
       // ── GENERATOR ROUTES — append only ─────────────────────────
       default:
         return MaterialPageRoute(
@@ -359,3 +115,5 @@ class AppRouter {
     }
   }
 }
+
+

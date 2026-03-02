@@ -22,14 +22,6 @@
 
 import 'package:fca/app/shell/shell_page_home_tab.dart';
 import 'package:fca/config/di/injection_container.dart';
-import 'package:fca/features/about/presentation/pages/analytics_page.dart';
-import 'package:fca/features/about/presentation/pages/audit_logs_page.dart';
-import 'package:fca/features/about/presentation/pages/master_product_catalog_page.dart';
-import 'package:fca/features/about/presentation/pages/organization_dashboard_page.dart';
-import 'package:fca/features/about/presentation/pages/organization_detail_page.dart';
-import 'package:fca/features/about/presentation/pages/platform_users_page.dart';
-import 'package:fca/features/about/presentation/pages/system_health_page.dart';
-import 'package:fca/features/about/presentation/pages/system_settings_page.dart';
 import 'package:fca/features/dashboard/presentation/pages/dashboard_page.dart';
 import 'package:fca/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:fca/features/profile/presentation/bloc/profile_event.dart';
@@ -41,18 +33,6 @@ import 'shell_tab_config.dart';
 
 // ── GENERATOR FEATURE IMPORTS — append only ───────────────────────────────────
 
-import '../../features/order/presentation/pages/order_list_page.dart';
-import '../../features/order/presentation/bloc/order_bloc.dart';
-import '../../features/order/presentation/bloc/order_event.dart';
-
-import '../../features/project/presentation/pages/project_list_page.dart';
-import '../../features/project/presentation/bloc/project_bloc.dart';
-import '../../features/project/presentation/bloc/project_event.dart';
-
-import '../../features/overview_dashboard/presentation/pages/overview_dashboard_dashboard_page.dart';
-import '../../features/overview_dashboard/presentation/cubit/overview_dashboard_cubit.dart';
-import '../../config/di/injection_container.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 // ── END GENERATOR FEATURE IMPORTS ────────────────────────────────────────────
 
 abstract class ShellNavItems {
@@ -63,56 +43,6 @@ abstract class ShellNavItems {
   static List<ShellTabConfig> buildTabs({required bool isAdmin}) {
     final tabs = <ShellTabConfig>[
       // Tab 0 — Home (always first, always visible)
-
-      // About tab (Level 0 — static, generated 2026-02-27)
-      ShellTabConfig(
-        label: 'Organizations',
-        icon: Icons.domain_outlined,
-        activeIcon: Icons.domain_rounded,
-        page: const OrganizationDashboardPage(),
-      ),
-      ShellTabConfig(
-        label: 'Organizations Detail',
-        icon: Icons.domain_outlined,
-        activeIcon: Icons.domain_rounded,
-        page: const OrganizationDetailPage(),
-      ),
-      ShellTabConfig(
-        label: 'Platform Users',
-        icon: Icons.people_outline,
-        activeIcon: Icons.people,
-        page: const PlatformUsersPage(),
-      ),
-      ShellTabConfig(
-        label: 'Master Product Catalog',
-        icon: Icons.list_outlined,
-        activeIcon: Icons.list,
-        page: const MasterProductCatalogPage(),
-      ),
-      ShellTabConfig(
-        label: 'Audit Logs',
-        icon: Icons.list_outlined,
-        activeIcon: Icons.list,
-        page: const AuditLogsPage(),
-      ),
-      ShellTabConfig(
-        label: 'Analytics',
-        icon: Icons.bar_chart_outlined,
-        activeIcon: Icons.bar_chart,
-        page: const AnalyticsPage(),
-      ),
-      ShellTabConfig(
-        label: 'System Settings',
-        icon: Icons.settings_outlined,
-        activeIcon: Icons.settings,
-        page: const SystemSettingsPage(),
-      ),
-      ShellTabConfig(
-        label: 'System Health',
-        icon: Icons.health_and_safety_outlined,
-        activeIcon: Icons.health_and_safety,
-        page: const SystemHealthPage(),
-      ),
 
       /** 
       ShellTabConfig(
@@ -157,37 +87,6 @@ abstract class ShellNavItems {
         page: HomeTab(),
       ),
 
-      // Order tab (Level 3, generated 2026-03-01)
-      ShellTabConfig(
-        label: 'Order',
-        icon: Icons.receipt_long_outlined,
-        activeIcon: Icons.receipt_long,
-        page: BlocProvider(
-          create: (_) => sl<OrderBloc>()..add(OrderLoadAllRequested()),
-          child: const OrderListPage(),
-        ),
-      ),
-      // Project tab (Level 2, generated 2026-03-01)
-      ShellTabConfig(
-        label: 'Project',
-        icon: Icons.folder_outlined,
-        activeIcon: Icons.folder,
-        page: BlocProvider(
-          create: (_) => sl<ProjectBloc>()..add(ProjectLoadAllRequested()),
-          child: const ProjectListPage(),
-        ),
-      ),
-
-      // Overview tab (Level 4 Aggregator, generated 2026-03-01)
-      ShellTabConfig(
-        label:      'Overview',
-        icon:       Icons.space_dashboard_outlined,
-        activeIcon: Icons.space_dashboard,
-        page: BlocProvider(
-          create: (_) => sl<OverviewDashboardCubit>()..load(),
-          child: const OverviewDashboardDashboardPage(),
-        ),
-      ),
       // ── END GENERATOR TABS ───────────────────────────────────────────────
     ];
 
@@ -222,4 +121,6 @@ abstract class ShellNavItems {
     return tabs;
   }
 }
+
+
 
