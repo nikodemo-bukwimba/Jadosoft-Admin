@@ -1,0 +1,58 @@
+{
+  "feature": {
+    "name":       "overview_dashboard",
+    "label":      "Overview",
+    "purpose":    "Combined overview of orders and projects",
+    "maturity":   4,
+    "icon":       "Icons.space_dashboard_outlined",
+    "activeIcon": "Icons.space_dashboard"
+  },
+  "sources": {
+    "order": {
+      "feature":    "order",
+      "entity":     "Order",
+      "repository": "OrderRepository"
+    },
+    "project": {
+      "feature":    "project",
+      "entity":     "Project",
+      "repository": "ProjectRepository"
+    }
+  },
+  "projection": {
+    "metrics": [
+      {
+        "name":      "totalOrders",
+        "type":      "int",
+        "source":    "order",
+        "operation": "count",
+        "label":     "Orders",
+        "icon":      "Icons.receipt_long"
+      },
+      {
+        "name":      "totalProjects",
+        "type":      "int",
+        "source":    "project",
+        "operation": "count",
+        "label":     "Projects",
+        "icon":      "Icons.folder"
+      },
+      {
+        "name":      "revenue",
+        "type":      "double",
+        "source":    "order",
+        "operation": "sum",
+        "field":     "totalAmount",
+        "label":     "Revenue"
+      },
+      {
+        "name":      "projectsByStatus",
+        "type":      "Map<String, int>",
+        "source":    "project",
+        "operation": "groupCount",
+        "field":     "status",
+        "label":     "Projects By Status"
+      }
+    ]
+  }
+}

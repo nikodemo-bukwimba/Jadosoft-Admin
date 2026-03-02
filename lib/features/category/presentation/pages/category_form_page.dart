@@ -6,13 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/category_bloc.dart';
 
-enum FormMode { create, edit }
+enum cFormMode { create, edit }
 
 class CategoryFormPage extends StatefulWidget {
-  final FormMode mode;
+  final cFormMode mode;
   final String? id;
 
-  const CategoryFormPage({super.key, this.mode = FormMode.create, this.id});
+  const CategoryFormPage({super.key, this.mode = cFormMode.create, this.id});
 
   @override
   State<CategoryFormPage> createState() => _CategoryFormPageState();
@@ -35,7 +35,7 @@ class _CategoryFormPageState extends State<CategoryFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isCreate = widget.mode == FormMode.create;
+    final isCreate = widget.mode == cFormMode.create;
 
     return Scaffold(
       appBar: AppBar(title: Text(isCreate ? 'New Category' : 'Edit Category')),

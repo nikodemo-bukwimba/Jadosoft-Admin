@@ -41,6 +41,18 @@ import 'shell_tab_config.dart';
 
 // ── GENERATOR FEATURE IMPORTS — append only ───────────────────────────────────
 
+import '../../features/order/presentation/pages/order_list_page.dart';
+import '../../features/order/presentation/bloc/order_bloc.dart';
+import '../../features/order/presentation/bloc/order_event.dart';
+
+import '../../features/project/presentation/pages/project_list_page.dart';
+import '../../features/project/presentation/bloc/project_bloc.dart';
+import '../../features/project/presentation/bloc/project_event.dart';
+
+import '../../features/overview_dashboard/presentation/pages/overview_dashboard_dashboard_page.dart';
+import '../../features/overview_dashboard/presentation/cubit/overview_dashboard_cubit.dart';
+import '../../config/di/injection_container.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 // ── END GENERATOR FEATURE IMPORTS ────────────────────────────────────────────
 
 abstract class ShellNavItems {
@@ -145,6 +157,37 @@ abstract class ShellNavItems {
         page: HomeTab(),
       ),
 
+      // Order tab (Level 3, generated 2026-03-01)
+      ShellTabConfig(
+        label: 'Order',
+        icon: Icons.receipt_long_outlined,
+        activeIcon: Icons.receipt_long,
+        page: BlocProvider(
+          create: (_) => sl<OrderBloc>()..add(OrderLoadAllRequested()),
+          child: const OrderListPage(),
+        ),
+      ),
+      // Project tab (Level 2, generated 2026-03-01)
+      ShellTabConfig(
+        label: 'Project',
+        icon: Icons.folder_outlined,
+        activeIcon: Icons.folder,
+        page: BlocProvider(
+          create: (_) => sl<ProjectBloc>()..add(ProjectLoadAllRequested()),
+          child: const ProjectListPage(),
+        ),
+      ),
+
+      // Overview tab (Level 4 Aggregator, generated 2026-03-01)
+      ShellTabConfig(
+        label:      'Overview',
+        icon:       Icons.space_dashboard_outlined,
+        activeIcon: Icons.space_dashboard,
+        page: BlocProvider(
+          create: (_) => sl<OverviewDashboardCubit>()..load(),
+          child: const OverviewDashboardDashboardPage(),
+        ),
+      ),
       // ── END GENERATOR TABS ───────────────────────────────────────────────
     ];
 
@@ -179,3 +222,4 @@ abstract class ShellNavItems {
     return tabs;
   }
 }
+

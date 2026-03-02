@@ -105,15 +105,6 @@ class _MockData {
     return _DataPoint('${day}d', math.max(0, (base * weekdayFactor + noise)));
   }).reversed.toList();
 
-  // Daily GMV — last 30 days (TZS)
-  static List<_DataPoint> gmv30d = List.generate(30, (i) {
-    final day = 30 - i;
-    final base = 2200000.0 + (day * 45000);
-    final weekdayFactor = (day % 7 < 5) ? 1.0 : 0.35;
-    final noise = (math.sin(day * 2.1) * 400000 + math.cos(day * 1.3) * 250000);
-    return _DataPoint('${day}d', math.max(0, (base * weekdayFactor + noise)));
-  }).reversed.toList();
-
   // Top orgs
   static const List<_OrgRow> topOrgs = [
     _OrgRow(
@@ -240,14 +231,6 @@ class _AnalyticsPageState extends State<AnalyticsPage>
     _animCtrl.reset();
     _animCtrl.forward();
   }
-
-  String _fmt(double v) {
-    if (v >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
-    if (v >= 1000) return '${(v / 1000).toStringAsFixed(0)}K';
-    return v.toStringAsFixed(0);
-  }
-
-  String _fmtTzs(double v) => 'TZS ${_fmt(v)}';
 
   // ── Build ──────────────────────────────────────────────────────────────────
 
@@ -2114,10 +2097,4 @@ class _OrgTableRow extends StatelessWidget {
     'Enterprise' => Colors.amber.shade700,
     _ => Colors.teal,
   };
-}
-
-String _fmtVal(double v) {
-  if (v >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
-  if (v >= 1000) return '${(v / 1000).toStringAsFixed(0)}K';
-  return v.toStringAsFixed(0);
 }

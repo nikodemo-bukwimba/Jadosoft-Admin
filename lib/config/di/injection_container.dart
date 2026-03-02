@@ -4,6 +4,39 @@
 //   infrastructure → datasources → repositories → use cases → BLoCs
 // ─────────────────────────────────────────────────────────────
 
+import 'package:fca/features/order/data/datasources/order_remote_datasource.dart';
+import 'package:fca/features/order/data/repositories/order_repository_impl.dart';
+import 'package:fca/features/order/domain/repositories/order_repository.dart';
+import 'package:fca/features/order/domain/usecases/get_all_order_usecase.dart';
+import 'package:fca/features/order/domain/usecases/get_order_usecase.dart';
+import 'package:fca/features/order/domain/usecases/create_order_usecase.dart';
+import 'package:fca/features/order/domain/usecases/update_order_usecase.dart';
+import 'package:fca/features/order/domain/usecases/delete_order_usecase.dart';
+import 'package:fca/features/order/domain/guards/order_transition_guard.dart';
+import 'package:fca/features/order/domain/services/order_domain_service.dart';
+import 'package:fca/features/order/domain/workflow/order_workflow_executor.dart';
+import 'package:fca/features/order/presentation/bloc/order_bloc.dart';
+import 'package:fca/features/project/data/datasources/project_remote_datasource.dart';
+import 'package:fca/features/project/data/repositories/project_repository_impl.dart';
+import 'package:fca/features/project/domain/repositories/project_repository.dart';
+import 'package:fca/features/project/domain/usecases/get_all_project_usecase.dart';
+import 'package:fca/features/project/domain/usecases/get_project_usecase.dart';
+import 'package:fca/features/project/domain/usecases/create_project_usecase.dart';
+import 'package:fca/features/project/domain/usecases/update_project_usecase.dart';
+import 'package:fca/features/project/domain/usecases/delete_project_usecase.dart';
+import 'package:fca/features/project/domain/guards/project_transition_guard.dart';
+import 'package:fca/features/project/domain/services/project_domain_service.dart';
+import 'package:fca/features/project/presentation/bloc/project_bloc.dart';
+
+import 'package:fca/features/overview_dashboard/domain/usecases/get_overview_dashboard_usecase.dart';
+import 'package:fca/features/overview_dashboard/presentation/cubit/overview_dashboard_cubit.dart';
+import 'package:fca/features/overview_dashboard/domain/providers/order_data_provider.dart';
+import 'package:fca/features/overview_dashboard/data/providers/order_data_provider_impl.dart';
+import 'package:fca/features/order/domain/repositories/order_repository.dart';
+import 'package:fca/features/overview_dashboard/domain/providers/project_data_provider.dart';
+import 'package:fca/features/overview_dashboard/data/providers/project_data_provider_impl.dart';
+import 'package:fca/features/project/domain/repositories/project_repository.dart';
+// ── END GENERATOR FEATURE IMPORTS
 import 'package:dio/dio.dart';
 import 'package:fca/features/category/domain/usecases/create_isActive_usecase.dart';
 import 'package:fca/features/category/domain/usecases/delete_isActive_usecase.dart';
@@ -153,7 +186,15 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton(() => CreateVisitUseCase(sl()));
   sl.registerLazySingleton(() => UpdateVisitUseCase(sl()));
   sl.registerLazySingleton(() => DeleteVisitUseCase(sl()));
-  sl.registerFactory<VisitBloc>(() => VisitBloc(getAllUseCase: sl(), getUseCase: sl(), createUseCase: sl(), updateUseCase: sl(), deleteUseCase: sl()));
+  sl.registerFactory<VisitBloc>(
+    () => VisitBloc(
+      getAllUseCase: sl(),
+      getUseCase: sl(),
+      createUseCase: sl(),
+      updateUseCase: sl(),
+      deleteUseCase: sl(),
+    ),
+  );
 
   // ── Category (generated 2026-02-27) ─────────
 
@@ -199,13 +240,76 @@ Future<void> initDependencies() async {
     ),
   );
 
+  // ── Order (Level 3) ──────────────────────────────
+  sl.registerLazySingleton<OrderRemoteDataSource>(
+    () => OrderRemoteDataSourceImpl(dio: sl()),
+  );
+  sl.registerLazySingleton<OrderRepository>(
+    () => OrderRepositoryImpl(remoteDataSource: sl()),
+  );
+  sl.registerLazySingleton(() => GetAllOrderUseCase(sl()));
+  sl.registerLazySingleton(() => GetOrderUseCase(sl()));
+  sl.registerLazySingleton(() => CreateOrderUseCase(sl()));
+  sl.registerLazySingleton(() => UpdateOrderUseCase(sl()));
+  sl.registerLazySingleton(() => DeleteOrderUseCase(sl()));
+  sl.registerLazySingleton(() => OrderTransitionGuard());
+  sl.registerLazySingleton(
+    () => OrderDomainService(repository: sl(), guard: sl()),
+  );
+  sl.registerLazySingleton(() => OrderWorkflowExecutor());
+  sl.registerFactory<OrderBloc>(
+    () => OrderBloc(
+      getAllUseCase: sl(),
+      getUseCase: sl(),
+      createUseCase: sl(),
+      updateUseCase: sl(),
+      deleteUseCase: sl(),
+      domainService: sl(),
+    ),
+  );
 
+  // ── Project (Level 2) ──────────────────────────────
+  sl.registerLazySingleton<ProjectRemoteDataSource>(
+    () => ProjectRemoteDataSourceImpl(dio: sl()),
+  );
+  sl.registerLazySingleton<ProjectRepository>(
+    () => ProjectRepositoryImpl(remoteDataSource: sl()),
+  );
+  sl.registerLazySingleton(() => GetAllProjectUseCase(sl()));
+  sl.registerLazySingleton(() => GetProjectUseCase(sl()));
+  sl.registerLazySingleton(() => CreateProjectUseCase(sl()));
+  sl.registerLazySingleton(() => UpdateProjectUseCase(sl()));
+  sl.registerLazySingleton(() => DeleteProjectUseCase(sl()));
+  sl.registerLazySingleton(() => ProjectTransitionGuard());
+  sl.registerLazySingleton(
+    () => ProjectDomainService(repository: sl(), guard: sl()),
+  );
+  sl.registerFactory<ProjectBloc>(
+    () => ProjectBloc(
+      getAllUseCase: sl(),
+      getUseCase: sl(),
+      createUseCase: sl(),
+      updateUseCase: sl(),
+      deleteUseCase: sl(),
+      domainService: sl(),
+    ),
+  );
+
+
+  // ── OverviewDashboard (Level 4 Aggregator) ────────────────────
+  sl.registerLazySingleton<OrderDataProvider>(
+    () => OrderDataProviderImpl(repository: sl()),
+  );
+  sl.registerLazySingleton<ProjectDataProvider>(
+    () => ProjectDataProviderImpl(repository: sl()),
+  );
+  sl.registerLazySingleton(() => GetOverviewDashboardUseCase(
+    orderProvider: sl(),
+    projectProvider: sl(),
+  ));
+  sl.registerFactory<OverviewDashboardCubit>(
+    () => OverviewDashboardCubit(getProjection: sl()),
+  );
+  // ── END GENERATOR MANAGED
 }
-
-
-
-
-
-
-
 

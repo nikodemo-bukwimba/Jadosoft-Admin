@@ -1,0 +1,65 @@
+{
+  "feature": {
+    "name":       "sales_dashboard",
+    "label":      "Sales Dashboard",
+    "purpose":    "Aggregated view of order metrics and stats",
+    "maturity":   4,
+    "icon":       "Icons.dashboard_outlined",
+    "activeIcon": "Icons.dashboard"
+  },
+  "sources": {
+    "order": {
+      "feature":    "order",
+      "entity":     "Order",
+      "repository": "OrderRepository"
+    }
+  },
+  "projection": {
+    "metrics": [
+      {
+        "name":      "totalOrders",
+        "type":      "int",
+        "source":    "order",
+        "operation": "count",
+        "label":     "Total Orders",
+        "icon":      "Icons.receipt_long"
+      },
+      {
+        "name":      "totalRevenue",
+        "type":      "double",
+        "source":    "order",
+        "operation": "sum",
+        "field":     "totalAmount",
+        "label":     "Total Revenue",
+        "icon":      "Icons.attach_money"
+      },
+      {
+        "name":      "averageOrderValue",
+        "type":      "double",
+        "source":    "order",
+        "operation": "average",
+        "field":     "totalAmount",
+        "label":     "Avg Order Value",
+        "icon":      "Icons.trending_up"
+      },
+      {
+        "name":      "ordersByStatus",
+        "type":      "Map<String, int>",
+        "source":    "order",
+        "operation": "groupCount",
+        "field":     "status",
+        "label":     "By Status"
+      },
+      {
+        "name":      "recentOrders",
+        "type":      "List<OrderEntity>",
+        "source":    "order",
+        "operation": "latest",
+        "limit":     5,
+        "sortBy":    "createdAt",
+        "label":     "Recent Orders",
+        "displayField": "orderNumber"
+      }
+    ]
+  }
+}

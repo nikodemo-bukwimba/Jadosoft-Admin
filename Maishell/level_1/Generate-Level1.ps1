@@ -13,8 +13,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $ModuleRoot = Join-Path $PSScriptRoot "modules"
-$GenRoot    = Join-Path $PSScriptRoot "generators"
-
+$GenRoot = Join-Path $PSScriptRoot "generators"
+Import-Module (Join-Path $ModuleRoot "MetaHelpers.psm1") -Force
 Import-Module (Join-Path $ModuleRoot "TemplateEngine.psm1")         -Force
 Import-Module (Join-Path $ModuleRoot "Validator.psm1")              -Force
 Import-Module (Join-Path $GenRoot    "Level1EntityGenerator.psm1")  -Force
@@ -105,7 +105,8 @@ Update-ShellNavItems -Ctx $ctx
 Write-Header "Generation Complete"
 if ($DryRun) {
     Write-Host "  [DRY RUN] No files written" -ForegroundColor Yellow
-} else {
+}
+else {
     $fileCount = 0
     if (Test-Path $featureDir) { $fileCount = (Get-ChildItem $featureDir -Recurse -File).Count }
     Write-Success "$fileCount files generated in lib/features/$($tokens.FNAME)"

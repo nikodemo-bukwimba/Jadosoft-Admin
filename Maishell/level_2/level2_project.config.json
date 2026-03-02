@@ -17,11 +17,11 @@
     "states":  ["planning", "active", "onHold", "completed", "archived"],
     "initial": "planning",
     "transitions": [
-      { "name": "activate",  "from": ["planning"],           "to": "active",    "label": "Start Project",    "permission": "project.activate" },
-      { "name": "pause",     "from": ["active"],             "to": "onHold",    "label": "Put On Hold",      "permission": "project.pause" },
-      { "name": "resume",    "from": ["onHold"],             "to": "active",    "label": "Resume",           "permission": "project.activate" },
-      { "name": "complete",  "from": ["active"],             "to": "completed", "label": "Mark Complete",    "permission": "project.complete" },
-      { "name": "archive",   "from": ["completed", "onHold"],"to": "archived",  "label": "Archive",          "permission": "project.archive" }
+      { "name": "activate",  "from": ["planning"],            "to": "active",    "label": "Start Project",   "permission": "project.activate" },
+      { "name": "pause",     "from": ["active"],              "to": "onHold",    "label": "Put On Hold",     "permission": "project.pause" },
+      { "name": "resume",    "from": ["onHold"],              "to": "active",    "label": "Resume",          "permission": "project.activate" },
+      { "name": "complete",  "from": ["active"],              "to": "completed", "label": "Mark Complete",   "permission": "project.complete" },
+      { "name": "archive",   "from": ["completed", "onHold"], "to": "archived",  "label": "Archive",         "permission": "project.archive" }
     ]
   },
   "entities": {

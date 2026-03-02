@@ -1,7 +1,5 @@
 # ============================================================
 # Generate-Level2.ps1 — Level 2: CRUD + State Machine
-# Reuses Level 3 entity/data/stateMachine/bloc/pages.
-# No workflow. Separate wiring (no workflow executor DI).
 # ============================================================
 
 param(
@@ -19,18 +17,18 @@ $GenRoot    = Join-Path $PSScriptRoot "generators"
 
 Import-Module (Join-Path $ModuleRoot "TemplateEngine.psm1")              -Force
 Import-Module (Join-Path $ModuleRoot "Validator.psm1")                   -Force
-Import-Module (Join-Path $GenRoot    "Level3EntityGenerator.psm1")       -Force   # Reuse: entity with status
-Import-Module (Join-Path $GenRoot    "Level3DataGenerator.psm1")         -Force   # Reuse: model with status
-Import-Module (Join-Path $GenRoot    "Level1UseCaseGenerator.psm1")      -Force   # Reuse: CRUD use cases
-Import-Module (Join-Path $GenRoot    "Level3StateMachineGenerator.psm1") -Force   # Reuse: enum + guard + service
-Import-Module (Join-Path $GenRoot    "Level3BlocGenerator.psm1")         -Force   # Reuse: bloc with transitions
-Import-Module (Join-Path $GenRoot    "Level3PageGenerator.psm1")         -Force   # Reuse: pages with badge + buttons
-Import-Module (Join-Path $GenRoot    "Level2WiringGenerator.psm1")       -Force   # Level 2 specific: no workflow DI
+Import-Module (Join-Path $GenRoot    "Level3EntityGenerator.psm1")       -Force
+Import-Module (Join-Path $GenRoot    "Level3DataGenerator.psm1")         -Force
+Import-Module (Join-Path $GenRoot    "Level1UseCaseGenerator.psm1")      -Force
+Import-Module (Join-Path $GenRoot    "Level3StateMachineGenerator.psm1") -Force
+Import-Module (Join-Path $GenRoot    "Level3BlocGenerator.psm1")         -Force
+Import-Module (Join-Path $GenRoot    "Level3PageGenerator.psm1")         -Force
+Import-Module (Join-Path $GenRoot    "Level2WiringGenerator.psm1")       -Force
 
 function Write-Header([string]$t) { Write-Host "`n===============================================" -ForegroundColor DarkCyan; Write-Host " $t" -ForegroundColor Cyan; Write-Host "===============================================" -ForegroundColor DarkCyan }
-function Write-Step([string]$t) { Write-Host "  > $t" }
+function Write-Step([string]$t)    { Write-Host "  > $t" }
 function Write-Success([string]$t) { Write-Host "  [OK] $t" -ForegroundColor Green }
-function Write-Fail([string]$t) { Write-Host "`n  [ERROR] $t`n" -ForegroundColor Red }
+function Write-Fail([string]$t)    { Write-Host "`n  [ERROR] $t`n" -ForegroundColor Red }
 
 function New-GeneratedFile {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Content)
@@ -60,13 +58,12 @@ Write-Success "Schema valid"
 
 $maturity = [int]$config.feature.maturity
 if ($maturity -ne 2) { Write-Fail "This generator handles Level 2 only. Config declares maturity $maturity."; exit 1 }
-
 if ($null -eq $config.stateMachine) { Write-Fail "Level 2 requires a 'stateMachine' block."; exit 1 }
 if ($null -eq $config.stateMachine.states -or $config.stateMachine.states.Count -eq 0) { Write-Fail "stateMachine.states must have at least 1 state."; exit 1 }
 if ($null -eq $config.stateMachine.transitions -or $config.stateMachine.transitions.Count -eq 0) { Write-Fail "stateMachine.transitions must have at least 1 transition."; exit 1 }
 
 $tokens = Get-NamingTokens -FeatureConfig $config.feature
-Write-Step "Feature: $($tokens.FLABEL) (Level 2 — CRUD + StateMachine)"
+Write-Step "Feature: $($tokens.FLABEL) (Level 2)"
 
 $featureDir = Join-Path $ProjectRoot "lib/features/$($tokens.FNAME)"
 if ((Test-Path $featureDir) -and -not $Force) {
@@ -96,8 +93,6 @@ Invoke-GenerateUseCases -Ctx $ctx -NewFile ${function:New-GeneratedFile}
 
 Write-Step "4. State machine (enum + guard + domain service)..."
 Invoke-GenerateStateMachine -Ctx $ctx -NewFile ${function:New-GeneratedFile}
-
-# NO Step 5 workflow — that's Level 3
 
 Write-Step "5. BLoC (CRUD + transitions)..."
 Invoke-GenerateBloc -Ctx $ctx -NewFile ${function:New-GeneratedFile}

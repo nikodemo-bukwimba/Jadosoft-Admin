@@ -43,6 +43,21 @@ import '../../features/hello/presentation/pages/hello_form_page.dart';
 import '../../features/hello/presentation/bloc/hello_bloc.dart';
 import '../../features/hello/presentation/bloc/hello_event.dart';
 
+import '../../features/order/presentation/pages/order_list_page.dart';
+import '../../features/order/presentation/pages/order_detail_page.dart';
+import '../../features/order/presentation/pages/order_form_page.dart';
+import '../../features/order/presentation/bloc/order_bloc.dart';
+import '../../features/order/presentation/bloc/order_event.dart';
+import '../../core/enums/form_mode.dart';
+
+import '../../features/project/presentation/pages/project_list_page.dart';
+import '../../features/project/presentation/pages/project_detail_page.dart';
+import '../../features/project/presentation/pages/project_form_page.dart';
+import '../../features/project/presentation/bloc/project_bloc.dart';
+import '../../features/project/presentation/bloc/project_event.dart';
+import '../../features/overview_dashboard/presentation/pages/overview_dashboard_dashboard_page.dart';
+import '../../features/overview_dashboard/presentation/cubit/overview_dashboard_cubit.dart';
+
 // ── END GENERATOR FEATURE PAGE IMPORTS ───────────────────────────────────────
 
 class AppRouter {
@@ -72,6 +87,18 @@ class AppRouter {
   static const String habariCreate = '/habaris/create';
   static const String habariDetail = '/habaris/detail';
   static const String habariEdit = '/habaris/edit';
+  static const String orderList = '/orders';
+  static const String orderCreate = '/orders/create';
+  static const String orderDetail = '/orders/detail';
+  static const String orderEdit = '/orders/edit';
+
+  static const String projectList = '/projects';
+  static const String projectCreate = '/projects/create';
+  static const String projectDetail = '/projects/detail';
+  static const String projectEdit = '/projects/edit';
+  static const String overview_dashboardDashboard =
+      '/overview_dashboards/dashboard';
+
   // ── END GENERATOR ROUTE CONSTANTS ────────────────────────────────────────────
 
   // ── Route factory ─────────────────────────────────────────────────────────
@@ -121,7 +148,7 @@ class AppRouter {
         return MaterialPageRoute(
           builder: (_) => BlocProvider<CategoryBloc>(
             create: (_) => sl<CategoryBloc>(),
-            child: const CategoryFormPage(mode: FormMode.create),
+            child: const CategoryFormPage(mode: cFormMode.create),
           ),
           settings: settings,
         );
@@ -144,7 +171,7 @@ class AppRouter {
         return MaterialPageRoute(
           builder: (_) => BlocProvider<CategoryBloc>(
             create: (_) => sl<CategoryBloc>(),
-            child: CategoryFormPage(mode: FormMode.edit, id: id),
+            child: CategoryFormPage(mode: cFormMode.edit, id: id),
           ),
           settings: settings,
         );
@@ -231,6 +258,97 @@ class AppRouter {
           settings: settings,
         );
 
+      // Order routes (Level 3, generated 2026-03-01)
+      case orderList:
+        return MaterialPageRoute(
+          builder: (_) => BlocProvider(
+            create: (_) => sl<OrderBloc>()..add(OrderLoadAllRequested()),
+            child: const OrderListPage(),
+          ),
+          settings: settings,
+        );
+
+      case orderCreate:
+        return MaterialPageRoute(
+          builder: (_) => BlocProvider(
+            create: (_) => sl<OrderBloc>(),
+            child: const OrderFormPage(mode: FormMode.create),
+          ),
+          settings: settings,
+        );
+
+      case orderDetail:
+        final args = settings.arguments as Map<String, dynamic>? ?? {};
+        final id = args['id'] as String? ?? '';
+        return MaterialPageRoute(
+          builder: (_) => BlocProvider(
+            create: (_) => sl<OrderBloc>()..add(OrderLoadOneRequested(id)),
+            child: const OrderDetailPage(),
+          ),
+          settings: settings,
+        );
+
+      case orderEdit:
+        final args = settings.arguments as Map<String, dynamic>? ?? {};
+        final id = args['id'] as String? ?? '';
+        return MaterialPageRoute(
+          builder: (_) => BlocProvider(
+            create: (_) => sl<OrderBloc>()..add(OrderLoadOneRequested(id)),
+            child: OrderFormPage(mode: FormMode.edit, id: id),
+          ),
+          settings: settings,
+        );
+
+      // Project routes (Level 2, generated 2026-03-01)
+      case projectList:
+        return MaterialPageRoute(
+          builder: (_) => BlocProvider(
+            create: (_) => sl<ProjectBloc>()..add(ProjectLoadAllRequested()),
+            child: const ProjectListPage(),
+          ),
+          settings: settings,
+        );
+
+      case projectCreate:
+        return MaterialPageRoute(
+          builder: (_) => BlocProvider(
+            create: (_) => sl<ProjectBloc>(),
+            child: const ProjectFormPage(mode: FormMode.create),
+          ),
+          settings: settings,
+        );
+
+      case projectDetail:
+        final args = settings.arguments as Map<String, dynamic>? ?? {};
+        final id = args['id'] as String? ?? '';
+        return MaterialPageRoute(
+          builder: (_) => BlocProvider(
+            create: (_) => sl<ProjectBloc>()..add(ProjectLoadOneRequested(id)),
+            child: const ProjectDetailPage(),
+          ),
+          settings: settings,
+        );
+
+      case projectEdit:
+        final args = settings.arguments as Map<String, dynamic>? ?? {};
+        final id = args['id'] as String? ?? '';
+        return MaterialPageRoute(
+          builder: (_) => BlocProvider(
+            create: (_) => sl<ProjectBloc>()..add(ProjectLoadOneRequested(id)),
+            child: ProjectFormPage(mode: FormMode.edit, id: id),
+          ),
+          settings: settings,
+        );
+
+      // Overview routes (Level 4 Aggregator, generated 2026-03-01)
+      case overview_dashboardDashboard:
+        return MaterialPageRoute(
+          builder: (_) => BlocProvider(
+            create: (_) => sl<OverviewDashboardCubit>()..load(),
+            child: const OverviewDashboardDashboardPage(),
+          ),
+          settings: settings,
+        );
       // ── GENERATOR ROUTES — append only ─────────────────────────
       default:
         return MaterialPageRoute(

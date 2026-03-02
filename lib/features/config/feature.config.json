@@ -1,58 +1,58 @@
 {
   "feature": {
-    "name": "habari",
-    "label": "habari",
-    "purpose": "Manage habari items",
-    "maturity": 1,
-    "permission": "habari"
+    "name": "overview_dashboard",
+    "label": "Overview",
+    "purpose": "Combined overview of orders and projects",
+    "maturity": 4,
+    "icon": "Icons.space_dashboard_outlined",
+    "activeIcon": "Icons.space_dashboard"
   },
-  "storage": {
-    "remote": true,
-    "local": false
-  },
-  "entities": {
-    "habari": {
-      "primary": true,
-      "fields": {
-        "id": {
-          "type": "String",
-          "primary": true,
-          "readonly": true
-        },
-        "name": {
-          "type": "String",
-          "nullable": false,
-          "validation": {
-            "required": {
-              "value": true,
-              "message": "habari name is required"
-            },
-            "minLength": { "value": 2, "message": "Name too short" }
-          }
-        },
-        "createdAt": {
-          "type": "DateTime",
-          "nullable": false,
-          "readonly": true
-        }
-      },
-      "relationships": {},
-      "api": {
-        "endpoint": "/habaris",
-        "paginatable": false,
-        "searchable": false
-      },
-      "ui": {
-        "card": { "title": "name" },
-        "detail": { "header": ["name"], "body": ["createdAt"] },
-        "form": {
-          "create": ["name"],
-          "edit": ["name"]
-        },
-        "list": {
-          "emptyMessage": "No habaris yet."
-        }
-      }
+  "sources": {
+    "order": {
+      "feature": "order",
+      "entity": "Order",
+      "repository": "OrderRepository"
+    },
+    "project": {
+      "feature": "project",
+      "entity": "Project",
+      "repository": "ProjectRepository"
     }
+  },
+  "projection": {
+    "metrics": [
+      {
+        "name": "totalOrders",
+        "type": "int",
+        "source": "order",
+        "operation": "count",
+        "label": "Orders",
+        "icon": "Icons.receipt_long"
+      },
+      {
+        "name": "totalProjects",
+        "type": "int",
+        "source": "project",
+        "operation": "count",
+        "label": "Projects",
+        "icon": "Icons.folder"
+      },
+      {
+        "name": "revenue",
+        "type": "double",
+        "source": "order",
+        "operation": "sum",
+        "field": "totalAmount",
+        "label": "Revenue"
+      },
+      {
+        "name": "projectsByStatus",
+        "type": "Map<String, int>",
+        "source": "project",
+        "operation": "groupCount",
+        "field": "status",
+        "label": "Projects By Status"
+      }
+    ]
   }
 }
