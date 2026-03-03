@@ -69,7 +69,7 @@ function Invoke-GenerateEntity {
 
     $content = @"
 import 'package:equatable/equatable.dart';
-import '../value_objects/${fname}_status.dart';
+import '../../../order/domain/entities/${fname}_entity.dart';
 
 class ${eName}Entity extends Equatable {
 $fieldDecls

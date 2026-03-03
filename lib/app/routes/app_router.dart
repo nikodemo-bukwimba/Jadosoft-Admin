@@ -19,13 +19,14 @@
 // Generator appends new route constants and cases between the boundary markers.
 
 // ── GENERATOR FEATURE PAGE IMPORTS — append only ─────────────────────────────
+
+// ── END GENERATOR FEATURE PAGE IMPORTS ───────────────────────────────────────
 import 'package:flutter/material.dart';
 
 import '../../features/auth/presentation/pages/account_picker_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/register_page.dart';
 import '../shell/shell_page.dart';
-// ── END GENERATOR FEATURE PAGE IMPORTS ───────────────────────────────────────
 
 class AppRouter {
   // ── Route path constants ──────────────────────────────────────────────────
@@ -35,42 +36,7 @@ class AppRouter {
   static const String accountPicker = '/account-picker';
 
   // ── GENERATOR ROUTE CONSTANTS — append only ───────────────────────────────────
-  static const String categoryList = '/categorys';
-  static const String categoryCreate = '/categorys/create';
-  static const String categoryDetail = '/categorys/detail';
-  static const String categoryEdit = '/categorys/edit';
-  static const String visitList = '/visits';
-  static const String visitCreate = '/visits/create';
-  static const String visitDetail = '/visits/detail';
-  static const String visitEdit = '/visits/edit';
-  static const String aboutPage = '/about';
 
-  static const String helloList = '/hellos';
-  static const String helloCreate = '/hellos/create';
-  static const String helloDetail = '/hellos/detail';
-  static const String helloEdit = '/hellos/edit';
-
-  static const String habariList = '/habaris';
-  static const String habariCreate = '/habaris/create';
-  static const String habariDetail = '/habaris/detail';
-  static const String habariEdit = '/habaris/edit';
-  static const String orderList = '/orders';
-  static const String orderCreate = '/orders/create';
-  static const String orderDetail = '/orders/detail';
-  static const String orderEdit = '/orders/edit';
-
-  static const String projectList = '/projects';
-  static const String projectCreate = '/projects/create';
-  static const String projectDetail = '/projects/detail';
-  static const String projectEdit = '/projects/edit';
-
-  static const String versionPage = '/version';
-  static const String taskList = '/tasks';
-  static const String taskCreate = '/tasks/create';
-  static const String taskDetail = '/tasks/detail';
-  static const String taskEdit = '/tasks/edit';
-
-  static const String sales_dashboardDashboard = '/sales_dashboards/dashboard';
   // ── END GENERATOR ROUTE CONSTANTS ────────────────────────────────────────────
 
   // ── Route factory ─────────────────────────────────────────────────────────
@@ -105,6 +71,7 @@ class AppRouter {
           builder: (_) => AccountPickerPage(mode: mode),
           settings: settings,
         );
+
       // ── GENERATOR ROUTES — append only ─────────────────────────
       default:
         return MaterialPageRoute(

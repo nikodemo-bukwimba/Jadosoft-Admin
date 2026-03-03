@@ -48,6 +48,7 @@ abstract class ShellNavItems {
         activeIcon: Icons.home,
         page: HomeTab(),
       ),
+
       // ── END GENERATOR TABS ───────────────────────────────────────────────
     ];
 
@@ -82,6 +83,11 @@ abstract class ShellNavItems {
     return tabs;
   }
 }
+
+
+
+
+
 
 
 
