@@ -11,18 +11,18 @@
 # ============================================================
 
 function Invoke-GenerateLevel0 {
-    param(
-        [Parameter(Mandatory)][hashtable]$Ctx,
-        [Parameter(Mandatory)][scriptblock]$NewFile
-    )
+  param(
+    [Parameter(Mandatory)][hashtable]$Ctx,
+    [Parameter(Mandatory)][scriptblock]$NewFile
+  )
 
-    $fname  = $Ctx.Tokens.FNAME
-    $fclass = $Ctx.Tokens.FCLASS
-    $flabel = $Ctx.Tokens.FLABEL
-    $fDir   = $Ctx.FeatureDir
+  $fname = $Ctx.Tokens.FNAME
+  $fclass = $Ctx.Tokens.FCLASS
+  $flabel = $Ctx.Tokens.FLABEL
+  $fDir = $Ctx.FeatureDir
 
-    # ── Page ──────────────────────────────────────────────
-    $pageContent = @"
+  # ── Page ──────────────────────────────────────────────
+  $pageContent = @"
 // ${fname}_page.dart
 // Level 0 — Static Feature
 // Replace: page title, body content, widget composition.
@@ -38,7 +38,7 @@ class ${fclass}Page extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('${flabel}')),
-      body: const SafeArea(
+      body: SafeArea(
         child: SingleChildScrollView(
           padding: EdgeInsets.all(16),
           child: Center(
@@ -60,10 +60,10 @@ class ${fclass}Page extends StatelessWidget {
 }
 "@
 
-    & $NewFile (Join-Path $fDir "presentation\pages\${fname}_page.dart") $pageContent
+  & $NewFile (Join-Path $fDir "presentation\pages\${fname}_page.dart") $pageContent
 
-    # ── Widget ────────────────────────────────────────────
-    $widgetContent = @"
+  # ── Widget ────────────────────────────────────────────
+  $widgetContent = @"
 // ${fname}_widget.dart
 // Level 0 — Static Widget
 // Replace: displayed data and layout.
@@ -102,7 +102,7 @@ class ${fclass}Widget extends StatelessWidget {
 }
 "@
 
-    & $NewFile (Join-Path $fDir "presentation\widgets\${fname}_widget.dart") $widgetContent
+  & $NewFile (Join-Path $fDir "presentation\widgets\${fname}_widget.dart") $widgetContent
 }
 
 Export-ModuleMember -Function 'Invoke-GenerateLevel0'

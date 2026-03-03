@@ -1,0 +1,11 @@
+{
+  "feature": {
+    "name":       "version",
+    "label":      "Version",
+    "purpose":    "Static version page displaying app version information",
+    "maturity":   0,
+    "permission": "version",
+    "icon":       "Icons.info_outlined",
+    "activeIcon": "Icons.info"
+  }
+}

@@ -64,10 +64,12 @@ class AppRouter {
   static const String projectCreate = '/projects/create';
   static const String projectDetail = '/projects/detail';
   static const String projectEdit = '/projects/edit';
-  static const String overview_dashboardDashboard =
-      '/overview_dashboards/dashboard';
 
-  static const String payment_gatewayPage = '/payment_gateways';
+  static const String versionPage = '/version';
+  static const String taskList = '/tasks';
+  static const String taskCreate = '/tasks/create';
+  static const String taskDetail = '/tasks/detail';
+  static const String taskEdit = '/tasks/edit';
 
   // ── END GENERATOR ROUTE CONSTANTS ────────────────────────────────────────────
 
@@ -103,8 +105,6 @@ class AppRouter {
           builder: (_) => AccountPickerPage(mode: mode),
           settings: settings,
         );
-
-
       // ── GENERATOR ROUTES — append only ─────────────────────────
       default:
         return MaterialPageRoute(
@@ -115,5 +115,3 @@ class AppRouter {
     }
   }
 }
-
-

@@ -42,51 +42,12 @@ abstract class ShellNavItems {
   /// The generator appends new feature tabs in the GENERATOR TABS block below.
   static List<ShellTabConfig> buildTabs({required bool isAdmin}) {
     final tabs = <ShellTabConfig>[
-      // Tab 0 — Home (always first, always visible)
-
-      /** 
-      ShellTabConfig(
-        label: 'Dashboard',
-        icon: Icons.info_outlined,
-        activeIcon: Icons.info,
-        page: const DashboardPage(),
-      ),
-
-
- ShellTabConfig(
-        label: 'Roles & Permissions',
-        icon: Icons.security_outlined,
-        activeIcon: Icons.security,
-        page: const RolesPermissionsPage(),
-      ),
-
-
-  ShellTabConfig(
-        label: 'Territories',
-        icon: Icons.map_outlined,
-        activeIcon: Icons.map,
-        page: const TerritoriesPage(),
-      ),
-      
-        ShellTabConfig(
-        label: 'Billing',
-        icon: Icons.payment_outlined,
-        activeIcon: Icons.payment,
-        page: const BillingPage(),
-      ),
-*/
-      // ── GENERATOR TABS — append only ─────────────────────────────────────
-      // Generator inserts new feature tabs here.
-      // Wrap role-gated tabs in if(isAdmin) or if(hasPermission) as needed.
-      // Do NOT reorder — index alignment with IndexedStack is order-sensitive.
-      // Category tab (generated 2026-02-27)
       const ShellTabConfig(
         label: 'Info',
         icon: Icons.home_outlined,
         activeIcon: Icons.home,
         page: HomeTab(),
       ),
-
       // ── END GENERATOR TABS ───────────────────────────────────────────────
     ];
 
@@ -121,6 +82,5 @@ abstract class ShellNavItems {
     return tabs;
   }
 }
-
 
 

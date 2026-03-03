@@ -1,38 +1,41 @@
 # ============================================================
-# Level1PageGenerator.psm1 — Pages + Widgets
+# Level1PageGenerator.psm1 -- Pages + Widgets
+# PS7 SAFETY: All Dart method calls (.toIso8601String, .toStringAsFixed,
+# ?.toString) are built via string concat to prevent PS7 null-conditional
+# parsing: "item." + $fn + ".method()" instead of "item.$fn.method()"
 # ============================================================
 
 function Invoke-GeneratePages {
-    param([Parameter(Mandatory)][hashtable]$Ctx, [Parameter(Mandatory)][scriptblock]$NewFile)
+  param([Parameter(Mandatory)][hashtable]$Ctx, [Parameter(Mandatory)][scriptblock]$NewFile)
 
-    $fname  = $Ctx.Tokens.FNAME
-    $fclass = $Ctx.Tokens.FCLASS
-    $flabel = $Ctx.Tokens.FLABEL
-    $fDir   = $Ctx.FeatureDir
-    $meta   = Get-PrimaryEntityMeta -Config $Ctx.Config
-    $eName  = $meta.Name
-    $eSnake = $meta.Snake
+  $fname = $Ctx.Tokens.FNAME
+  $fclass = $Ctx.Tokens.FCLASS
+  $flabel = $Ctx.Tokens.FLABEL
+  $fDir = $Ctx.FeatureDir
+  $meta = Get-PrimaryEntityMeta -Config $Ctx.Config
+  $eName = $meta.Name
+  $eSnake = $meta.Snake
 
-    _Gen-ListPage   -Ctx $Ctx -NewFile $NewFile -Meta $meta
-    _Gen-DetailPage -Ctx $Ctx -NewFile $NewFile -Meta $meta
-    _Gen-FormPage   -Ctx $Ctx -NewFile $NewFile -Meta $meta
-    _Gen-CardWidget -Ctx $Ctx -NewFile $NewFile -Meta $meta
+  _Gen-ListPage   -Ctx $Ctx -NewFile $NewFile -Meta $meta
+  _Gen-DetailPage -Ctx $Ctx -NewFile $NewFile -Meta $meta
+  _Gen-FormPage   -Ctx $Ctx -NewFile $NewFile -Meta $meta
+  _Gen-CardWidget -Ctx $Ctx -NewFile $NewFile -Meta $meta
 }
 
 function _Gen-ListPage {
-    param($Ctx, $NewFile, $Meta)
-    $fname  = $Ctx.Tokens.FNAME
-    $fclass = $Ctx.Tokens.FCLASS
-    $flabel = $Ctx.Tokens.FLABEL
-    $fDir   = $Ctx.FeatureDir
-    $lowerLabel = $flabel.ToLower()
+  param($Ctx, $NewFile, $Meta)
+  $fname = $Ctx.Tokens.FNAME
+  $fclass = $Ctx.Tokens.FCLASS
+  $flabel = $Ctx.Tokens.FLABEL
+  $fDir = $Ctx.FeatureDir
+  $lowerLabel = $flabel.ToLower()
 
-    $emptyMsg = 'No items found.'
-    if ($Meta.Ui -and $Meta.Ui.list -and $Meta.Ui.list.emptyMessage) {
-        $emptyMsg = $Meta.Ui.list.emptyMessage
-    }
+  $emptyMsg = 'No items found.'
+  if ($Meta.Ui -and $Meta.Ui.list -and $Meta.Ui.list.emptyMessage) {
+    $emptyMsg = $Meta.Ui.list.emptyMessage
+  }
 
-    $content = @"
+  $content = @"
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/${fname}_bloc.dart';
@@ -144,49 +147,57 @@ class _${fclass}ListPageState extends State<${fclass}ListPage> {
   }
 }
 "@
-    & $NewFile (Join-Path $fDir "presentation\pages\${fname}_list_page.dart") $content
+  & $NewFile (Join-Path $fDir "presentation\pages\${fname}_list_page.dart") $content
 }
 
 function _Gen-DetailPage {
-    param($Ctx, $NewFile, $Meta)
-    $fname  = $Ctx.Tokens.FNAME
-    $fclass = $Ctx.Tokens.FCLASS
-    $flabel = $Ctx.Tokens.FLABEL
-    $fDir   = $Ctx.FeatureDir
-    $eName  = $Meta.Name
-    $eSnake = $Meta.Snake
+  param($Ctx, $NewFile, $Meta)
+  $fname = $Ctx.Tokens.FNAME
+  $fclass = $Ctx.Tokens.FCLASS
+  $flabel = $Ctx.Tokens.FLABEL
+  $fDir = $Ctx.FeatureDir
+  $eName = $Meta.Name
+  $eSnake = $Meta.Snake
 
-    # Build field display rows from detail.header + detail.body
-    $detailFields = [System.Collections.Generic.List[string]]::new()
-    $headerFields = @()
-    $bodyFields   = @()
-    if ($Meta.Ui -and $Meta.Ui.detail) {
-        if ($Meta.Ui.detail.header) { $headerFields = @($Meta.Ui.detail.header) }
-        if ($Meta.Ui.detail.body)   { $bodyFields   = @($Meta.Ui.detail.body) }
-    }
-    $allDetailFields = $headerFields + $bodyFields
-    if ($allDetailFields.Count -eq 0) {
-        $allDetailFields = @($Meta.Fields | ForEach-Object { $_.Name })
-    }
+  # Build field display rows from detail.header + detail.body
+  $detailFields = [System.Collections.Generic.List[string]]::new()
+  $headerFields = @()
+  $bodyFields = @()
+  if ($Meta.Ui -and $Meta.Ui.detail) {
+    if ($Meta.Ui.detail.header) { $headerFields = @($Meta.Ui.detail.header) }
+    if ($Meta.Ui.detail.body) { $bodyFields = @($Meta.Ui.detail.body) }
+  }
+  $allDetailFields = $headerFields + $bodyFields
+  if ($allDetailFields.Count -eq 0) {
+    $allDetailFields = @($Meta.Fields | ForEach-Object { $_.Name })
+  }
 
-    foreach ($fn in $allDetailFields) {
-        $f = $Meta.Fields | Where-Object { $_.Name -eq $fn } | Select-Object -First 1
-        if (-not $f) { continue }
-        $label = $f.Label
-        $accessor = switch ($f.Type) {
-            'DateTime' { "item.$fn?.toIso8601String().split('T').first ?? ''" }
-            'bool'     { "item.$fn.toString()" }
-            'int'      { "item.$fn.toString()" }
-            'double'   { "item.$fn.toStringAsFixed(2)" }
-            default    { "item.$fn" }
-        }
-        if ($f.IsNullable -and $f.Type -ne 'DateTime') {
-            $accessor = "item.$fn?.toString() ?? ''"
-        }
-        $detailFields.Add("                    _buildField(context, '$label', $accessor),")
-    }
+  foreach ($fn in $allDetailFields) {
+    $f = $Meta.Fields | Where-Object { $_.Name -eq $fn } | Select-Object -First 1
+    if (-not $f) { continue }
+    $label = $f.Label
 
-    $content = @"
+    # FIX: use string concat to protect Dart methods from PS7 null-conditional parsing
+    # PS7 eats "$fn?.method()" and "$fn.nonDotNetMethod()" inside double-quoted strings
+    if ($f.IsNullable) {
+      $accessor = switch ($f.Type) {
+        'DateTime' { "item." + $fn + "?.toIso8601String().split('T').first ?? ''" }
+        default { "item." + $fn + "?.toString() ?? ''" }
+      }
+    }
+    else {
+      $accessor = switch ($f.Type) {
+        'DateTime' { "item." + $fn + ".toIso8601String().split('T').first" }
+        'bool' { "item." + $fn + ".toString()" }
+        'int' { "item." + $fn + ".toString()" }
+        'double' { "item." + $fn + ".toStringAsFixed(2)" }
+        default { "item." + $fn }
+      }
+    }
+    $detailFields.Add("                    _buildField(context, '$label', $accessor),")
+  }
+
+  $content = @"
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/${fname}_bloc.dart';
@@ -272,56 +283,61 @@ $($detailFields -join "`n")
   }
 }
 "@
-    & $NewFile (Join-Path $fDir "presentation\pages\${fname}_detail_page.dart") $content
+  & $NewFile (Join-Path $fDir "presentation\pages\${fname}_detail_page.dart") $content
 }
 
 function _Gen-FormPage {
-    param($Ctx, $NewFile, $Meta)
-    $fname  = $Ctx.Tokens.FNAME
-    $fclass = $Ctx.Tokens.FCLASS
-    $flabel = $Ctx.Tokens.FLABEL
-    $fDir   = $Ctx.FeatureDir
+  param($Ctx, $NewFile, $Meta)
+  $fname = $Ctx.Tokens.FNAME
+  $fclass = $Ctx.Tokens.FCLASS
+  $flabel = $Ctx.Tokens.FLABEL
+  $fDir = $Ctx.FeatureDir
 
-    # Determine form fields from config
-    $createFields = @()
-    if ($Meta.Ui -and $Meta.Ui.form -and $Meta.Ui.form.create) {
-        $createFields = @($Meta.Ui.form.create)
-    } else {
-        $createFields = @($Meta.Fields | Where-Object { -not $_.IsReadonly -and -not $_.IsPrimary } | ForEach-Object { $_.Name })
+  # Determine form fields from config
+  $createFields = @()
+  if ($Meta.Ui -and $Meta.Ui.form -and $Meta.Ui.form.create) {
+    $createFields = @($Meta.Ui.form.create)
+  }
+  else {
+    $createFields = @($Meta.Fields | Where-Object { -not $_.IsReadonly -and -not $_.IsPrimary } | ForEach-Object { $_.Name })
+  }
+
+  # Controller declarations
+  $controllerDecls = [System.Collections.Generic.List[string]]::new()
+  $disposeStmts = [System.Collections.Generic.List[string]]::new()
+  $formFieldCodes = [System.Collections.Generic.List[string]]::new()
+  $paramArgs = [System.Collections.Generic.List[string]]::new()
+
+  foreach ($fn in $createFields) {
+    $f = $Meta.Fields | Where-Object { $_.Name -eq $fn } | Select-Object -First 1
+    if (-not $f) { continue }
+    $widget = Get-FormWidgetType -ConfigType $f.Type
+
+    if ($widget -eq 'SwitchListTile') {
+      $controllerDecls.Add("  bool _${fn}Value = false;")
+      $paramArgs.Add("        ${fn}: _${fn}Value,")
+    }
+    else {
+      $controllerDecls.Add("  final _${fn}Controller = TextEditingController();")
+      $disposeStmts.Add("    _${fn}Controller.dispose();")
+      if ($f.Type -eq 'int') {
+        $paramArgs.Add("        ${fn}: int.tryParse(_${fn}Controller.text) ?? 0,")
+      }
+      elseif ($f.Type -eq 'double') {
+        $paramArgs.Add("        ${fn}: double.tryParse(_${fn}Controller.text) ?? 0.0,")
+      }
+      elseif ($f.Type -eq 'DateTime') {
+        $paramArgs.Add("        ${fn}: DateTime.tryParse(_${fn}Controller.text) ?? DateTime.now(),")
+      }
+      else {
+        $paramArgs.Add("        ${fn}: _${fn}Controller.text,")
+      }
     }
 
-    # Controller declarations
-    $controllerDecls = [System.Collections.Generic.List[string]]::new()
-    $disposeStmts    = [System.Collections.Generic.List[string]]::new()
-    $formFieldCodes  = [System.Collections.Generic.List[string]]::new()
-    $paramArgs       = [System.Collections.Generic.List[string]]::new()
+    $formFieldCodes.Add((Get-FormFieldCode -FieldName $fn -FieldMeta $f))
+  }
 
-    foreach ($fn in $createFields) {
-        $f = $Meta.Fields | Where-Object { $_.Name -eq $fn } | Select-Object -First 1
-        if (-not $f) { continue }
-        $widget = Get-FormWidgetType -ConfigType $f.Type
-
-        if ($widget -eq 'SwitchListTile') {
-            $controllerDecls.Add("  bool _${fn}Value = false;")
-            $paramArgs.Add("        ${fn}: _${fn}Value,")
-        } else {
-            $controllerDecls.Add("  final _${fn}Controller = TextEditingController();")
-            $disposeStmts.Add("    _${fn}Controller.dispose();")
-            if ($f.Type -eq 'int') {
-                $paramArgs.Add("        ${fn}: int.tryParse(_${fn}Controller.text) ?? 0,")
-            } elseif ($f.Type -eq 'double') {
-                $paramArgs.Add("        ${fn}: double.tryParse(_${fn}Controller.text) ?? 0.0,")
-            } elseif ($f.Type -eq 'DateTime') {
-                $paramArgs.Add("        ${fn}: DateTime.tryParse(_${fn}Controller.text) ?? DateTime.now(),")
-            } else {
-                $paramArgs.Add("        ${fn}: _${fn}Controller.text,")
-            }
-        }
-
-        $formFieldCodes.Add((Get-FormFieldCode -FieldName $fn -FieldMeta $f))
-    }
-
-    $content = @"
+  $content = @"
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/${fname}_bloc.dart';
@@ -329,15 +345,15 @@ import '../bloc/${fname}_event.dart';
 import '../bloc/${fname}_state.dart';
 import '../../domain/usecases/create_${fname}_usecase.dart';
 
-enum FormMode { create, edit }
+enum ${fclass}FormMode { create, edit }
 
 class ${fclass}FormPage extends StatefulWidget {
-  final FormMode mode;
+  final ${fclass}FormMode mode;
   final String? id;
 
   const ${fclass}FormPage({
     super.key,
-    this.mode = FormMode.create,
+    this.mode = ${fclass}FormMode.create,
     this.id,
   });
 
@@ -360,7 +376,7 @@ $($disposeStmts -join "`n")
 
   @override
   Widget build(BuildContext context) {
-    final isCreate = widget.mode == FormMode.create;
+    final isCreate = widget.mode == ${fclass}FormMode.create;
 
     return Scaffold(
       appBar: AppBar(
@@ -422,30 +438,31 @@ $($paramArgs -join "`n")
   }
 }
 "@
-    & $NewFile (Join-Path $fDir "presentation\pages\${fname}_form_page.dart") $content
+  & $NewFile (Join-Path $fDir "presentation\pages\${fname}_form_page.dart") $content
 }
 
 function _Gen-CardWidget {
-    param($Ctx, $NewFile, $Meta)
-    $fname  = $Ctx.Tokens.FNAME
-    $fclass = $Ctx.Tokens.FCLASS
-    $fDir   = $Ctx.FeatureDir
-    $eName  = $Meta.Name
-    $eSnake = $Meta.Snake
+  param($Ctx, $NewFile, $Meta)
+  $fname = $Ctx.Tokens.FNAME
+  $fclass = $Ctx.Tokens.FCLASS
+  $fDir = $Ctx.FeatureDir
+  $eName = $Meta.Name
+  $eSnake = $Meta.Snake
 
-    $titleField    = 'id'
-    $subtitleField = $null
-    if ($Meta.Ui -and $Meta.Ui.card) {
-        if ($Meta.Ui.card.title)    { $titleField    = $Meta.Ui.card.title }
-        if ($Meta.Ui.card.subtitle) { $subtitleField = $Meta.Ui.card.subtitle }
-    }
+  $titleField = 'id'
+  $subtitleField = $null
+  if ($Meta.Ui -and $Meta.Ui.card) {
+    if ($Meta.Ui.card.title) { $titleField = $Meta.Ui.card.title }
+    if ($Meta.Ui.card.subtitle) { $subtitleField = $Meta.Ui.card.subtitle }
+  }
 
-    $subtitleLine = ''
-    if ($subtitleField) {
-        $subtitleLine = "        subtitle: Text(item.$subtitleField?.toString() ?? ''),"
-    }
+  # FIX: use string concat for Dart ?. to avoid PS7 null-conditional
+  $subtitleLine = ''
+  if ($subtitleField) {
+    $subtitleLine = "        subtitle: Text(item." + $subtitleField + "?.toString() ?? ''),"
+  }
 
-    $content = @"
+  $content = @"
 import 'package:flutter/material.dart';
 import '../../domain/entities/${eSnake}_entity.dart';
 
@@ -509,7 +526,7 @@ $subtitleLine        trailing: IconButton(
   }
 }
 "@
-    & $NewFile (Join-Path $fDir "presentation\widgets\${fname}_card.dart") $content
+  & $NewFile (Join-Path $fDir "presentation\widgets\${fname}_card.dart") $content
 }
 
 Export-ModuleMember -Function 'Invoke-GeneratePages'

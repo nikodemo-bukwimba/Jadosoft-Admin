@@ -25,7 +25,7 @@ function Invoke-ConfigValidation {
         _Validate-MaturityGates -Config $Config -Maturity $maturity -Errors $errors
     }
 
-    return $errors
+    return , $errors.ToArray()
 }
 
 function _Validate-FeatureBlock {

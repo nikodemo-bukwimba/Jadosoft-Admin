@@ -58,7 +58,7 @@ function Get-DartType {
         default { $ConfigType }
     }
 
-    if ($Nullable) { return "$baseType?" } else { return $baseType }
+    if ($Nullable) { return ($baseType + '?') } else { return $baseType }
 }
 
 function Get-FormWidget {
@@ -402,18 +402,137 @@ function Get-NamingTokens {
 }
 function ConvertTo-PascalCase {
     param([Parameter(Mandatory)][string]$Name)
-
+    $spaced = [regex]::Replace($Name, '(?<!^)([A-Z])', ' $1')
     return (Get-Culture).TextInfo.ToTitleCase(
-        $Name.Replace('_', ' ')
+        $spaced.Replace('_', ' ')
     ).Replace(' ', '')
+}
+
+# ── Form widget type resolution ──────────────────────────────
+function Get-FormWidgetType {
+    param([Parameter(Mandatory)][string]$ConfigType)
+    switch ($ConfigType) {
+        'bool'     { 'SwitchListTile' }
+        'DateTime' { 'DatePicker' }
+        default    { 'TextFormField' }
+    }
+}
+
+function Get-KeyboardType {
+    param([Parameter(Mandatory)][string]$ConfigType)
+    switch ($ConfigType) {
+        'int'    { 'TextInputType.number' }
+        'double' { 'const TextInputType.numberWithOptions(decimal: true)' }
+        default  { 'TextInputType.text' }
+    }
+}
+
+# ── Complete form field code generation ──────────────────────
+function Get-FormFieldCode {
+    param(
+        [Parameter(Mandatory)][string]$FieldName,
+        [Parameter(Mandatory)]$FieldMeta
+    )
+    $label  = if ($FieldMeta.Label) { $FieldMeta.Label } else { ($FieldName -creplace '([A-Z])', ' $1').Trim() }
+    $type   = if ($FieldMeta.Type) { $FieldMeta.Type } else { $FieldMeta.DartType -replace '\?$', '' }
+    $widget = Get-FormWidgetType -ConfigType $type
+    $validation = $FieldMeta.Validation
+
+    if ($widget -eq 'SwitchListTile') {
+        return @"
+                SwitchListTile(
+                  title: const Text('$label'),
+                  value: _${FieldName}Value,
+                  onChanged: (v) => setState(() => _${FieldName}Value = v),
+                ),
+                const SizedBox(height: 16),
+"@
+    }
+
+    if ($widget -eq 'DatePicker') {
+        return @"
+                GestureDetector(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.now(),
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      _${FieldName}Controller.text =
+                          picked.toIso8601String().split('T').first;
+                    }
+                  },
+                  child: AbsorbPointer(
+                    child: TextFormField(
+                      controller: _${FieldName}Controller,
+                      decoration: const InputDecoration(
+                        labelText: '$label',
+                        suffixIcon: Icon(Icons.calendar_today),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+"@
+    }
+
+    $keyboard = Get-KeyboardType -ConfigType $type
+    $checks = [System.Collections.Generic.List[string]]::new()
+    if ($validation) {
+        $vp = $validation.PSObject.Properties
+        $req = $vp | Where-Object { $_.Name -eq 'required' } | Select-Object -First 1
+        if ($req -and $req.Value.value -eq $true) {
+            $msg = if ($req.Value.message) { $req.Value.message } else { "$label is required" }
+            $checks.Add("                    if (v == null || v.trim().isEmpty) return '$msg';")
+        }
+        $minLen = $vp | Where-Object { $_.Name -eq 'minLength' } | Select-Object -First 1
+        if ($minLen) {
+            $msg = if ($minLen.Value.message) { $minLen.Value.message } else { "$label is too short" }
+            $checks.Add("                    if (v != null && v.trim().length < $($minLen.Value.value)) return '$msg';")
+        }
+        $maxLen = $vp | Where-Object { $_.Name -eq 'maxLength' } | Select-Object -First 1
+        if ($maxLen) {
+            $msg = if ($maxLen.Value.message) { $maxLen.Value.message } else { "$label is too long" }
+            $checks.Add("                    if (v != null && v.trim().length > $($maxLen.Value.value)) return '$msg';")
+        }
+    }
+    $validatorBlock = ''
+    if ($checks.Count -gt 0) {
+        $validatorBlock = @"
+                  validator: (v) {
+$($checks -join "`n")
+                    return null;
+                  },
+"@
+    }
+
+    return @"
+                TextFormField(
+                  controller: _${FieldName}Controller,
+                  decoration: const InputDecoration(
+                    labelText: '$label',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: $keyboard,
+$validatorBlock
+                ),
+                const SizedBox(height: 16),
+"@
 }
 
 Export-ModuleMember -Function @(
     'Invoke-TokenReplace',
     'ConvertTo-SnakeCase',
+    'ConvertTo-PascalCase',
     'ConvertTo-HumanLabel',
     'Get-DartType',
     'Get-FormWidget',
+    'Get-FormWidgetType',
+    'Get-KeyboardType',
+    'Get-FormFieldCode',
     'Get-EntityFields',
     'Get-ConstructorParams',
     'Get-CopyWithParams',
