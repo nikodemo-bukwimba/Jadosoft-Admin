@@ -25,7 +25,6 @@ import '../../features/auth/presentation/pages/account_picker_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/register_page.dart';
 import '../shell/shell_page.dart';
-
 // ── END GENERATOR FEATURE PAGE IMPORTS ───────────────────────────────────────
 
 class AppRouter {
@@ -71,6 +70,7 @@ class AppRouter {
   static const String taskDetail = '/tasks/detail';
   static const String taskEdit = '/tasks/edit';
 
+  static const String sales_dashboardDashboard = '/sales_dashboards/dashboard';
   // ── END GENERATOR ROUTE CONSTANTS ────────────────────────────────────────────
 
   // ── Route factory ─────────────────────────────────────────────────────────

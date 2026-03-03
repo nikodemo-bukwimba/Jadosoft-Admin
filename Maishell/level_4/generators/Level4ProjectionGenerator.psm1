@@ -49,6 +49,7 @@ function _Gen-ProjectionClass {
 
     $content = @"
 import 'package:equatable/equatable.dart';
+import '../value_objects/${fname}_status.dart';
 
 class ${fclass}Projection extends Equatable {
 $($fieldDecls -join "`n")
