@@ -6,19 +6,19 @@
 # ============================================================
 
 function Invoke-GenerateCubit {
-    param([Parameter(Mandatory)][hashtable]$Ctx, [Parameter(Mandatory)][scriptblock]$NewFile)
+  param([Parameter(Mandatory)][hashtable]$Ctx, [Parameter(Mandatory)][scriptblock]$NewFile)
 
-    _Gen-State -Ctx $Ctx -NewFile $NewFile
-    _Gen-Cubit -Ctx $Ctx -NewFile $NewFile
+  _Gen-State -Ctx $Ctx -NewFile $NewFile
+  _Gen-Cubit -Ctx $Ctx -NewFile $NewFile
 }
 
 function _Gen-State {
-    param($Ctx, $NewFile)
-    $fname  = $Ctx.Tokens.FNAME
-    $fclass = $Ctx.Tokens.FCLASS
-    $fDir   = $Ctx.FeatureDir
+  param($Ctx, $NewFile)
+  $fname = $Ctx.Tokens.FNAME
+  $fclass = $Ctx.Tokens.FCLASS
+  $fDir = $Ctx.FeatureDir
 
-    $content = @"
+  $content = @"
 import 'package:equatable/equatable.dart';
 import '../../domain/projections/${fname}_projection.dart';
 
@@ -48,16 +48,16 @@ class ${fclass}Error extends ${fclass}State {
   List<Object?> get props => [message];
 }
 "@
-    & $NewFile (Join-Path $fDir "presentation\cubit\${fname}_state.dart") $content
+  & $NewFile (Join-Path $fDir "presentation\cubit\${fname}_state.dart") $content
 }
 
 function _Gen-Cubit {
-    param($Ctx, $NewFile)
-    $fname  = $Ctx.Tokens.FNAME
-    $fclass = $Ctx.Tokens.FCLASS
-    $fDir   = $Ctx.FeatureDir
+  param($Ctx, $NewFile)
+  $fname = $Ctx.Tokens.FNAME
+  $fclass = $Ctx.Tokens.FCLASS
+  $fDir = $Ctx.FeatureDir
 
-    $content = @"
+  $content = @"
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../domain/usecases/get_${fname}_usecase.dart';
 import '${fname}_state.dart';
@@ -81,7 +81,7 @@ class ${fclass}Cubit extends Cubit<${fclass}State> {
   Future<void> refresh() => load();
 }
 "@
-    & $NewFile (Join-Path $fDir "presentation\cubit\${fname}_cubit.dart") $content
+  & $NewFile (Join-Path $fDir "presentation\cubit\${fname}_cubit.dart") $content
 }
 
 Export-ModuleMember -Function 'Invoke-GenerateCubit'

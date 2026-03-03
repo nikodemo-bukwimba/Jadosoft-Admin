@@ -49,7 +49,7 @@ function _Gen-ProjectionClass {
 
     $content = @"
 import 'package:equatable/equatable.dart';
-import '../value_objects/${fname}_status.dart';
+import '../../../${fDir}/domain/entities/${fDir}_entity.dart';
 
 class ${fclass}Projection extends Equatable {
 $($fieldDecls -join "`n")
@@ -147,7 +147,8 @@ function _Gen-UseCase {
         $providerFields.Add("  final ${srcClass}DataProvider $fieldName;")
         $ctorParams.Add("    required ${srcClass}DataProvider " + $srcKey + "Provider,")
         $providerImports.Add("import '../providers/${srcSnake}_data_provider.dart';")
-        $sourceImports.Add("import '../../../../features/$($src.feature)/domain/entities/${srcEntitySnake}_entity.dart';")
+        #$sourceImports.Add("import '../../../../features/$($src.feature)/domain/entities/${srcEntitySnake}_entity.dart';")
+        $sourceImports.Add("import '../../../$($src.feature)/domain/entities/${srcEntitySnake}_entity.dart';")
     }
 
     # Build load steps + metric computations
