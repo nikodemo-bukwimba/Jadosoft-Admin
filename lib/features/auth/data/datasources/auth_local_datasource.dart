@@ -12,21 +12,19 @@
 //   - On logout: token is revoked remotely FIRST, then cleared here
 // ─────────────────────────────────────────────────────────────
 
- 
-import 'package:fca/core/constants/app_constants.dart';
-
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/storage/secure_storage_service.dart';
 import '../models/account_session_model.dart';
 
 abstract class AuthLocalDataSource {
-  Future<void>                    saveSession(AccountSessionModel session);
-  Future<AccountSessionModel?>    getActiveSession();
+  Future<void> saveSession(AccountSessionModel session);
+  Future<AccountSessionModel?> getActiveSession();
   Future<List<AccountSessionModel>> getAllSessions();
-  Future<void>                    setActiveAccount(String email);
-  Future<String?>                 getActiveEmail();
-  Future<void>                    removeSession(String email);
-  Future<void>                    clearAll();
+  Future<void> setActiveAccount(String email);
+  Future<String?> getActiveEmail();
+  Future<void> removeSession(String email);
+  Future<void> clearAll();
 }
 
 class AuthLocalDataSourceImpl implements AuthLocalDataSource {
@@ -141,8 +139,7 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
 
   // ── Private helpers ───────────────────────────────────────
 
-  String _accountKey(String email) =>
-      '${AppConstants.accountPrefix}$email';
+  String _accountKey(String email) => '${AppConstants.accountPrefix}$email';
 
   Future<AccountSessionModel?> _readSession(String email) async {
     final raw = await _storage.read(_accountKey(email));

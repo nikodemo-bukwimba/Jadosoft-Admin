@@ -19,7 +19,6 @@
 // Generator appends new route constants and cases between the boundary markers.
 
 // ── GENERATOR FEATURE PAGE IMPORTS — append only ─────────────────────────────
-
 // ── END GENERATOR FEATURE PAGE IMPORTS ───────────────────────────────────────
 import 'package:flutter/material.dart';
 
@@ -71,7 +70,6 @@ class AppRouter {
           builder: (_) => AccountPickerPage(mode: mode),
           settings: settings,
         );
-
       // ── GENERATOR ROUTES — append only ─────────────────────────
       default:
         return MaterialPageRoute(
@@ -82,3 +80,8 @@ class AppRouter {
     }
   }
 }
+
+
+
+
+

@@ -9,7 +9,7 @@
 import 'package:dio/dio.dart';
 import 'package:fca/core/error/exceptions.dart';
 import 'package:fca/features/auth/data/models/user_model.dart';
- 
+import 'package:fca/core/constants/app_constants.dart';
 import '../models/profile_model.dart';
 
 abstract class ProfileRemoteDataSource {
@@ -24,10 +24,10 @@ class ProfileRemoteDataSourceImpl implements ProfileRemoteDataSource {
   Future<ProfileModel> getOwnProfile() async {
     try {
       // Both calls run with the Bearer token from AuthInterceptor
-      final userResponse  = await _dio.get('/user');
-      final rolesResponse = await _dio.get('/me/roles');
+      final userResponse = await _dio.get('${AppConstants.baseUrl}/user');
+      final rolesResponse = await _dio.get('${AppConstants.baseUrl}/me/roles');
 
-      final userData  = userResponse.data;
+      final userData = userResponse.data;
       final rolesBody = rolesResponse.data as Map<String, dynamic>?;
 
       if (userData == null) {
@@ -40,9 +40,9 @@ class ProfileRemoteDataSourceImpl implements ProfileRemoteDataSource {
       final user = UserModel.fromJson(userData as Map<String, dynamic>);
 
       // Shape: { success: true, data: { roles: [], permissions: [] } }
-      final rolesData   = rolesBody['data'] as Map<String, dynamic>? ?? {};
-      final rawRoles    = rolesData['roles']       as List<dynamic>? ?? [];
-      final rawPerms    = rolesData['permissions'] as List<dynamic>? ?? [];
+      final rolesData = rolesBody['data'] as Map<String, dynamic>? ?? {};
+      final rawRoles = rolesData['roles'] as List<dynamic>? ?? [];
+      final rawPerms = rolesData['permissions'] as List<dynamic>? ?? [];
 
       final roles = rawRoles
           .map((r) => RoleModel.fromJson(r as Map<String, dynamic>))
@@ -52,10 +52,10 @@ class ProfileRemoteDataSourceImpl implements ProfileRemoteDataSource {
           .toList();
 
       return ProfileModel(
-        user:        user,
-        roles:       roles,
+        user: user,
+        roles: roles,
         permissions: permissions,
-        fetchedAt:   DateTime.now(),
+        fetchedAt: DateTime.now(),
       );
     } on DioException catch (e) {
       final statusCode = e.response?.statusCode;
