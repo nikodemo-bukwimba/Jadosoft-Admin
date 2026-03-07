@@ -8,8 +8,8 @@ class AppConstants {
   AppConstants._();
 
   // ── API ────────────────────────────────────────────────────
-  // local   → http://localhost:8000/api
-  // production   → http://dev.halasoftware.com/api
+  // local        → http://localhost:8000/api
+  // production   → https://dev.halasoftware.com/api
   static const String baseUrl = 'https://dev.halasoftware.com/api';
 
   // ── Network timeouts ───────────────────────────────────────
@@ -26,4 +26,17 @@ class AppConstants {
   // ── Session policy ─────────────────────────────────────────
   // Minutes before background session requires re-auth (R4).
   static const int sessionTimeoutMinutes = 10;
+
+  // ── Local cache TTL (Drift database) ──────────────────────
+  // How many minutes a cached response is considered fresh.
+  // After this, the repository fetches from the API and updates
+  // the cache. Stale cache is still returned on network failure.
+
+  /// Profile snapshot TTL — 5 minutes.
+  /// Covers normal in-app navigation without unnecessary API calls.
+  static const int profileCacheTtlMinutes = 5;
+
+  /// Dashboard stats TTL — 2 minutes.
+  /// Short because admin data (user counts, revenue) changes frequently.
+  static const int dashboardCacheTtlMinutes = 2;
 }

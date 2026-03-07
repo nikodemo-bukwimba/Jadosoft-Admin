@@ -1,32 +1,49 @@
 // injection_container.dart
 // ─────────────────────────────────────────────────────────────
-// Full GetIt registrations — bottom-up order:
-//   infrastructure → datasources → repositories → use cases → BLoCs
+// Dependency injection setup using get_it.
+//
+// TOKEN REFRESH CONFIGURATION:
+//   By default TokenRefreshConfig.disabled() is used — safe for backends
+//   where tokens never expire (e.g. Laravel Sanctum with default settings).
+//   Swap to TokenRefreshConfig.enabled(...) on line marked [REFRESH CONFIG].
+//
+// CACHE:
+//   AppDatabase is a singleton — one SQLite file, shared by all DAOs.
+//   Profile and Dashboard repositories are now cache-first: they read
+//   from Drift first and only hit the API when the TTL has expired.
 // ─────────────────────────────────────────────────────────────
 
-// ── END GENERATOR FEATURE IMPORTS
 import 'package:dio/dio.dart';
-import 'package:fca/features/profile/data/datasources/profile_remote_datasource.dart';
-import 'package:fca/features/profile/data/repositories/profile_repository_impl.dart';
-import 'package:fca/features/profile/domain/repositories/profile_repository.dart';
-import 'package:fca/features/profile/domain/usecases/get_profile_usecase.dart';
-import 'package:fca/features/profile/presentation/bloc/profile_bloc.dart';
-import 'package:fca/core/network/auth_interceptor.dart';
-import 'package:fca/core/network/dio_client.dart';
-import 'package:fca/core/storage/secure_storage_service.dart';
-import 'package:fca/features/auth/data/datasources/auth_local_datasource.dart';
-import 'package:fca/features/auth/data/datasources/auth_remote_datasource.dart';
-import 'package:fca/features/auth/data/repositories/auth_repository_impl.dart';
-import 'package:fca/features/auth/domain/repositories/auth_repository.dart';
-import 'package:fca/features/auth/domain/usecases/auth_usecases.dart';
-import 'package:fca/features/auth/domain/usecases/login_usecase.dart';
-import 'package:fca/features/auth/domain/usecases/logout_usecase.dart';
-import 'package:fca/features/auth/domain/usecases/register_usecase.dart';
-import 'package:fca/features/auth/domain/usecases/switch_account_usecase.dart';
-import 'package:fca/features/auth/presentation/bloc/auth_bloc.dart';
-
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get_it/get_it.dart';
+
+import '../../core/database/app_database.dart';
+import '../../core/database/dashboard_cache_dao.dart';
+import '../../core/database/profile_cache_dao.dart';
+import '../../core/network/auth_interceptor.dart';
+import '../../core/network/dio_client.dart';
+import '../../core/network/token_refresh_config.dart';
+import '../../core/storage/secure_storage_service.dart';
+import '../../features/auth/data/datasources/auth_local_datasource.dart';
+import '../../features/auth/data/datasources/auth_remote_datasource.dart';
+import '../../features/auth/data/repositories/auth_repository_impl.dart';
+import '../../features/auth/domain/repositories/auth_repository.dart';
+import '../../features/auth/domain/usecases/auth_usecases.dart';
+import '../../features/auth/domain/usecases/login_usecase.dart';
+import '../../features/auth/domain/usecases/logout_usecase.dart';
+import '../../features/auth/domain/usecases/register_usecase.dart';
+import '../../features/auth/domain/usecases/switch_account_usecase.dart';
+import '../../features/auth/presentation/bloc/auth_bloc.dart';
+import '../../features/dashboard/data/repositories/dashboard_repository_impl.dart';
+import '../../features/dashboard/presentation/bloc/dashboard_bloc.dart';
+import '../../features/profile/data/datasources/profile_remote_datasource.dart';
+import '../../features/profile/data/repositories/profile_repository_impl.dart';
+import '../../features/profile/domain/repositories/profile_repository.dart';
+import '../../features/profile/domain/usecases/get_profile_usecase.dart';
+import '../../features/profile/presentation/bloc/profile_bloc.dart';
+
+// ── GENERATOR IMPORTS — append only ──────────────────────────
+// ── END GENERATOR IMPORTS ─────────────────────────────────────
 
 final sl = GetIt.instance;
 
@@ -43,16 +60,40 @@ Future<void> initDependencies() async {
     () => SecureStorageService(sl<FlutterSecureStorage>()),
   );
 
-  sl.registerLazySingleton<AuthInterceptor>(
-    () => AuthInterceptor(sl<SecureStorageService>()),
+  // ── [REFRESH CONFIG] ──────────────────────────────────────
+  // Swap to TokenRefreshConfig.enabled(...) when your backend
+  // expires tokens. See token_refresh_config.dart for examples.
+  sl.registerLazySingleton<TokenRefreshConfig>(
+    () => const TokenRefreshConfig.disabled(),
   );
 
-  // Single Dio instance shared by ALL features
+  sl.registerLazySingleton<AuthInterceptor>(
+    () => AuthInterceptor(
+      sl<SecureStorageService>(),
+      refreshConfig: sl<TokenRefreshConfig>(),
+    ),
+  );
+
+  // Single Dio instance shared by ALL features.
+  // buildSecureDioClient calls authInterceptor.setDio() internally.
   sl.registerLazySingleton<Dio>(
     () => buildSecureDioClient(authInterceptor: sl<AuthInterceptor>()),
   );
 
-  // ── 2. Auth datasources ───────────────────────────────────
+  // ── 2. Local cache (Drift) ────────────────────────────────
+
+  // Single database instance — one SQLite file for the whole app.
+  sl.registerLazySingleton<AppDatabase>(() => AppDatabase());
+
+  // DAOs are lightweight accessors on the same database instance.
+  sl.registerLazySingleton<ProfileCacheDao>(
+    () => sl<AppDatabase>().profileCacheDao,
+  );
+  sl.registerLazySingleton<DashboardCacheDao>(
+    () => sl<AppDatabase>().dashboardCacheDao,
+  );
+
+  // ── 3. Auth datasources ───────────────────────────────────
 
   sl.registerLazySingleton<AuthLocalDataSource>(
     () => AuthLocalDataSourceImpl(sl<SecureStorageService>()),
@@ -62,7 +103,7 @@ Future<void> initDependencies() async {
     () => AuthRemoteDataSourceImpl(sl<Dio>()),
   );
 
-  // ── 3. Auth repository ────────────────────────────────────
+  // ── 4. Auth repository ────────────────────────────────────
 
   sl.registerLazySingleton<AuthRepository>(
     () => AuthRepositoryImpl(
@@ -71,7 +112,7 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // ── 4. Auth use cases ─────────────────────────────────────
+  // ── 5. Auth use cases ─────────────────────────────────────
 
   sl.registerLazySingleton(() => LoginUseCase(sl<AuthRepository>()));
   sl.registerLazySingleton(() => RegisterUseCase(sl<AuthRepository>()));
@@ -82,7 +123,7 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton(() => GetSavedAccountsUseCase(sl<AuthRepository>()));
   sl.registerLazySingleton(() => RefreshSessionUseCase(sl<AuthRepository>()));
 
-  // ── 5. Auth BLoC (factory — fresh per widget tree) ────────
+  // ── 6. Auth BLoC (factory — fresh per widget tree) ────────
 
   sl.registerFactory<AuthBloc>(
     () => AuthBloc(
@@ -97,23 +138,49 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // ── 6. Profile datasource + repository + use case ─────────
+  // ── 7. Profile datasource + repository + use case ─────────
 
   sl.registerLazySingleton<ProfileRemoteDataSource>(
     () => ProfileRemoteDataSourceImpl(sl<Dio>()),
   );
 
   sl.registerLazySingleton<ProfileRepository>(
-    () => ProfileRepositoryImpl(sl<ProfileRemoteDataSource>()),
+    () => ProfileRepositoryImpl(
+      remote: sl<ProfileRemoteDataSource>(),
+      cacheDao: sl<ProfileCacheDao>(),
+      storage: sl<SecureStorageService>(),
+    ),
   );
 
   sl.registerLazySingleton(() => GetProfileUseCase(sl<ProfileRepository>()));
 
-  // ── 7. Profile BLoC (factory) ─────────────────────────────
+  // ── 8. Profile BLoC (factory) ─────────────────────────────
 
   sl.registerFactory<ProfileBloc>(() => ProfileBloc(sl<GetProfileUseCase>()));
 
-  // ── GENERATOR MANAGED
+  // ── 9. Dashboard datasource + repository + use case ───────
 
-  // ── END GENERATOR MANAGED
+  sl.registerLazySingleton<DashboardRemoteDataSource>(
+    () => DashboardRemoteDataSourceImpl(sl<Dio>()),
+  );
+
+  sl.registerLazySingleton<DashboardRepository>(
+    () => DashboardRepositoryImpl(
+      remote: sl<DashboardRemoteDataSource>(),
+      cacheDao: sl<DashboardCacheDao>(),
+    ),
+  );
+
+  sl.registerLazySingleton(
+    () => GetDashboardStatsUseCase(sl<DashboardRepository>()),
+  );
+
+  // ── 10. Dashboard BLoC (factory) ──────────────────────────
+
+  sl.registerFactory<DashboardBloc>(
+    () => DashboardBloc(getDashboardStats: sl<GetDashboardStatsUseCase>()),
+  );
+
+  // ── GENERATOR MANAGED ─────────────────────────────────────
+  // ── END GENERATOR MANAGED ─────────────────────────────────
 }
