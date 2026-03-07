@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -61,11 +59,10 @@ class _NavItemTileState extends State<NavItemTile> {
   bool get _isGhost => widget.item.label.isEmpty;
 
   bool get _hasVisibleChildren =>
-      widget.item.children.any((c) => c.label != null && c.label!.isNotEmpty);
+      widget.item.children.any((c) => c.label.isNotEmpty);
 
-  List<NavItem> get _visibleChildren => widget.item.children
-      .where((c) => c.label != null && c.label!.isNotEmpty)
-      .toList();
+  List<NavItem> get _visibleChildren =>
+      widget.item.children.where((c) => c.label.isNotEmpty).toList();
 
   // ── Display mode helpers ──────────────────────────────────────────────────
 
@@ -153,7 +150,7 @@ class _NavItemTileState extends State<NavItemTile> {
 
         final tile = Tooltip(
           message: _effectiveMode == NavRailDisplayMode.iconsOnly
-              ? (widget.item.label ?? '')
+              ? (widget.item.label)
               : '',
           preferBelow: false,
           child: MouseRegion(
@@ -188,7 +185,7 @@ class _NavItemTileState extends State<NavItemTile> {
                     if (_showLabel) ...[
                       Expanded(
                         child: Text(
-                          widget.item.label ?? '',
+                          widget.item.label,
                           style: nt.labelStyle?.copyWith(
                             color: fgColor,
                             fontWeight: isActive || widget.item.isButton
@@ -326,14 +323,13 @@ class _AccordionChildTileState extends State<_AccordionChildTile> {
   bool _hovered = false;
   bool _expanded = false;
 
-  bool get _isGhost => widget.item.label == null || widget.item.label!.isEmpty;
+  bool get _isGhost => widget.item.label.isEmpty;
 
   bool get _hasVisibleChildren =>
-      widget.item.children.any((c) => c.label != null && c.label!.isNotEmpty);
+      widget.item.children.any((c) => c.label.isNotEmpty);
 
-  List<NavItem> get _visibleChildren => widget.item.children
-      .where((c) => c.label != null && c.label!.isNotEmpty)
-      .toList();
+  List<NavItem> get _visibleChildren =>
+      widget.item.children.where((c) => c.label.isNotEmpty).toList();
 
   @override
   Widget build(BuildContext context) {
@@ -397,7 +393,7 @@ class _AccordionChildTileState extends State<_AccordionChildTile> {
                   ],
                   Expanded(
                     child: Text(
-                      widget.item.label ?? '',
+                      widget.item.label,
                       style: nt.labelStyle?.copyWith(
                         color: fgColor,
                         fontWeight: isActive
