@@ -42,7 +42,6 @@ import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/register_page.dart';
 import '../../features/dashboard/presentation/pages/dashboard_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
-import '../shell/shell_nav_items.dart';
 import '../shell/shell_page.dart';
 import '../shell/shell_page_home_tab.dart';
 
