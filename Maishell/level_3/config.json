@@ -1,34 +1,64 @@
 {
   "feature": {
-    "name":       "order",
-    "label":      "Order",
-    "purpose":    "Manage customer orders with approval workflow",
-    "maturity":   3,
+    "name": "order",
+    "label": "Order",
+    "purpose": "Manage customer orders with approval workflow",
+    "maturity": 3,
     "permission": "orders",
-    "icon":       "Icons.receipt_long_outlined",
+    "icon": "Icons.receipt_long_outlined",
     "activeIcon": "Icons.receipt_long"
   },
   "storage": {
     "remote": true,
-    "local":  false
+    "local": false
   },
   "stateMachine": {
-    "field":   "status",
-    "states":  ["draft", "submitted", "approved", "rejected", "fulfilled"],
+    "field": "status",
+    "states": ["draft", "submitted", "approved", "rejected", "fulfilled"],
     "initial": "draft",
     "transitions": [
-      { "name": "submit",  "from": ["draft"],              "to": "submitted", "label": "Submit Order",    "permission": "order.submit" },
-      { "name": "approve", "from": ["submitted"],          "to": "approved",  "label": "Approve",         "permission": "order.approve" },
-      { "name": "reject",  "from": ["submitted"],          "to": "rejected",  "label": "Reject",          "permission": "order.reject" },
-      { "name": "fulfill", "from": ["approved"],           "to": "fulfilled", "label": "Mark Fulfilled",  "permission": "order.fulfill" },
-      { "name": "revise",  "from": ["rejected"],           "to": "draft",     "label": "Revise",          "permission": "order.submit" }
+      {
+        "name": "submit",
+        "from": ["draft"],
+        "to": "submitted",
+        "label": "Submit Order",
+        "permission": "order.submit"
+      },
+      {
+        "name": "approve",
+        "from": ["submitted"],
+        "to": "approved",
+        "label": "Approve",
+        "permission": "order.approve"
+      },
+      {
+        "name": "reject",
+        "from": ["submitted"],
+        "to": "rejected",
+        "label": "Reject",
+        "permission": "order.reject"
+      },
+      {
+        "name": "fulfill",
+        "from": ["approved"],
+        "to": "fulfilled",
+        "label": "Mark Fulfilled",
+        "permission": "order.fulfill"
+      },
+      {
+        "name": "revise",
+        "from": ["rejected"],
+        "to": "draft",
+        "label": "Revise",
+        "permission": "order.submit"
+      }
     ]
   },
   "workflow": {
     "steps": [
       { "name": "validateInventory", "label": "Validate Inventory" },
-      { "name": "processPayment",    "label": "Process Payment" },
-      { "name": "sendConfirmation",  "label": "Send Confirmation Email" }
+      { "name": "processPayment", "label": "Process Payment" },
+      { "name": "sendConfirmation", "label": "Send Confirmation Email" }
     ]
   },
   "entities": {
@@ -36,48 +66,51 @@
       "primary": true,
       "fields": {
         "id": {
-          "type":     "String",
-          "primary":  true,
+          "type": "String",
+          "primary": true,
           "readonly": true
         },
         "orderNumber": {
-          "type":     "String",
+          "type": "String",
           "nullable": false,
           "validation": {
             "required": { "value": true, "message": "Order number is required" }
           }
         },
         "customerName": {
-          "type":     "String",
+          "type": "String",
           "nullable": false,
           "validation": {
-            "required":  { "value": true, "message": "Customer name is required" },
-            "minLength": { "value": 2,    "message": "Customer name too short" }
+            "required": {
+              "value": true,
+              "message": "Customer name is required"
+            },
+            "minLength": { "value": 2, "message": "Customer name too short" }
           }
         },
         "totalAmount": {
-          "type":     "double",
+          "type": "double",
           "nullable": false,
           "validation": {
             "required": { "value": true },
-            "min":      { "value": 0.01, "message": "Total must be positive" }
+            "min": { "value": 0.01, "message": "Total must be positive" }
           }
         },
         "notes": {
-          "type":     "String",
+          "type": "String",
           "nullable": true
         },
         "isUrgent": {
-          "type":     "bool",
+          "type": "bool",
           "nullable": false
         },
         "createdAt": {
-          "type":     "DateTime",
+          "type": "DateTime",
           "nullable": false,
           "readonly": true
         },
         "updatedAt": {
-          "type":     "DateTime",
+          "type": "DateTime",
           "nullable": false,
           "readonly": true
         }
@@ -88,16 +121,22 @@
       },
       "ui": {
         "card": {
-          "title":    "orderNumber",
+          "title": "orderNumber",
           "subtitle": "customerName"
         },
         "detail": {
           "header": ["orderNumber", "customerName"],
-          "body":   ["totalAmount", "notes", "isUrgent", "createdAt"]
+          "body": ["totalAmount", "notes", "isUrgent", "createdAt"]
         },
         "form": {
-          "create": ["orderNumber", "customerName", "totalAmount", "notes", "isUrgent"],
-          "edit":   ["customerName", "totalAmount", "notes", "isUrgent"]
+          "create": [
+            "orderNumber",
+            "customerName",
+            "totalAmount",
+            "notes",
+            "isUrgent"
+          ],
+          "edit": ["customerName", "totalAmount", "notes", "isUrgent"]
         },
         "list": {
           "emptyMessage": "No orders yet."

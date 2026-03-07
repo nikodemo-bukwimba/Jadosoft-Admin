@@ -1,85 +1,68 @@
 // shell_nav_items.dart
-// Defines which navigation tabs appear and in what order.
+// ─────────────────────────────────────────────────────────────
+// Produces the ordered List<NavItem> consumed by AdaptiveNavShell.
 //
-// This file owns the full tab roster. ShellPage calls
-// ShellNavItems.buildTabs(isAdmin) and renders whatever comes back.
+// MIGRATION: Replaced List<ShellTabConfig> (IndexedStack approach)
+// with List<NavItem> (go_router path-based approach).
+// Each NavItem.path must match a GoRoute inside AppRouter's ShellRoute.
 //
-// Why extracted from ShellPage:
-//   - ShellPage should only know HOW to render tabs, not WHICH tabs exist.
-//   - The generator appends new feature tabs here without touching ShellPage.
-//   - Adding a tab manually: add a ShellTabConfig entry in _buildTabs below
-//     AND add the corresponding route constant in AppRouter.
+// Rules:
+//   - Home  is always [0]  (first)
+//   - Profile is always last
+//   - Admin-gated items use if(auth.canViewDashboard) / if(auth.can(...))
+//   - Never duplicate permission logic here — use rbac_extensions.dart
+//   - Generator appends between GENERATOR TABS markers only
 //
-// Role-aware tabs:
-//   Tabs gated by role are wrapped in an if(isAdmin) / if(hasPermission) check.
-//   The AuthState RBAC extensions (rbac_extensions.dart) are the source of
-//   truth for those checks. Never duplicate permission logic here.
-//
-// Tab order matters:
-//   [0] is the first visible tab. IndexedStack uses the list index directly.
-//   Reordering breaks the active tab index. Append new feature tabs between
-//   the GENERATOR TABS markers — never above Home, never below Profile.
+// Adding a tab manually:
+//   1. Add a NavItem entry below between the generator markers.
+//   2. Add the matching GoRoute in app_router.dart.
+//   3. Add the page import above.
+// ─────────────────────────────────────────────────────────────
 
-import 'package:fca/app/shell/shell_page_home_tab.dart';
-import 'package:fca/config/di/injection_container.dart';
-import 'package:fca/features/dashboard/presentation/pages/dashboard_page.dart';
-import 'package:fca/features/profile/presentation/bloc/profile_bloc.dart';
-import 'package:fca/features/profile/presentation/bloc/profile_event.dart';
-import 'package:fca/features/profile/presentation/pages/profile_page.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 
-import 'shell_tab_config.dart';
+import '../../core/rbac/rbac_extensions.dart';
+import '../../customnav/nav_item.dart';
+import '../../features/auth/presentation/bloc/auth_state.dart';
+import '../routes/app_router.dart';
 
-// ── GENERATOR FEATURE IMPORTS — append only ───────────────────────────────────
-
-// ── END GENERATOR FEATURE IMPORTS ────────────────────────────────────────────
+// ── GENERATOR FEATURE IMPORTS — append only ──────────────────
+// ── END GENERATOR FEATURE IMPORTS ────────────────────────────
 
 abstract class ShellNavItems {
-  /// Returns the ordered list of visible tabs for the current session.
+  /// Returns the ordered [NavItem] list for the current session.
   ///
-  /// [isAdmin] comes from state.canViewDashboard (rbac_extensions.dart).
-  /// The generator appends new feature tabs in the GENERATOR TABS block below.
-  static List<ShellTabConfig> buildTabs({required bool isAdmin}) {
-    final tabs = <ShellTabConfig>[
-      const ShellTabConfig(
-        label: 'Info',
+  /// [auth] is the resolved [AuthAuthenticated] state.
+  /// Items gated by role/permission are excluded when the check fails.
+  static List<NavItem> buildNavItems({required AuthAuthenticated auth}) {
+    return [
+      // ── Always visible — Home ─────────────────────────────
+      NavItem(
+        id: 'home',
+        label: 'Home',
         icon: Icons.home_outlined,
-        activeIcon: Icons.home,
-        page: HomeTab(),
+        path: AppRouter.home,
       ),
 
-      // ── END GENERATOR TABS ───────────────────────────────────────────────
-    ];
+      // ── GENERATOR TABS — append only ──────────────────────
+      // ── END GENERATOR TABS ────────────────────────────────
 
-    // Dashboard — visible to admins only
-    if (isAdmin) {
-      tabs.add(
-        ShellTabConfig(
+      // ── Admin only — Dashboard ────────────────────────────
+      if (auth.canViewDashboard)
+        NavItem(
+          id: 'dashboard',
           label: 'Dashboard',
           icon: Icons.dashboard_outlined,
-          activeIcon: Icons.dashboard,
-          page: BlocProvider(
-            create: (_) => sl<ProfileBloc>(),
-            child: const DashboardPage(),
-          ),
+          path: AppRouter.dashboard,
         ),
-      );
-    }
 
-    // Profile — always last, always visible
-    tabs.add(
-      ShellTabConfig(
+      // ── Always visible — Profile (always last) ────────────
+      NavItem(
+        id: 'profile',
         label: 'Profile',
-        icon: Icons.person_outline,
-        activeIcon: Icons.person,
-        page: BlocProvider(
-          create: (_) => sl<ProfileBloc>()..add(ProfileLoadRequested()),
-          child: const ProfilePage(),
-        ),
+        icon: Icons.person_outline_rounded,
+        path: AppRouter.profile,
       ),
-    );
-
-    return tabs;
+    ];
   }
 }
