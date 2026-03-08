@@ -36,7 +36,7 @@ class TokenRefreshConfig {
   final String? refreshEndpoint;
 
   /// Extracts the new access token from the refresh response body.
-  /// Defaults to reading `response['token']`.
+  /// Defaults to reading `response['token']` then `response['access_token']`.
   final String? Function(Map<String, dynamic> responseBody)? tokenExtractor;
 
   /// How many times a single original request is retried after a
@@ -58,24 +58,20 @@ class TokenRefreshConfig {
   ///
   /// [refreshEndpoint] — path relative to base URL, e.g. '/auth/refresh'.
   /// [tokenExtractor]  — how to pull the new token from the JSON body.
-  ///                     Defaults to `body['token']`.
+  ///                     Defaults to `body['token']` then `body['access_token']`.
   /// [maxRetries]      — retry attempts per request after refresh. Default: 1.
   const TokenRefreshConfig.enabled({
-    required String refreshEndpoint,
-    String? Function(Map<String, dynamic>)? tokenExtractor,
-    int maxRetries = 1,
-  }) : enabled = true,
-       refreshEndpoint = refreshEndpoint,
-       tokenExtractor = tokenExtractor,
-       maxRetries = maxRetries;
+    required this.refreshEndpoint,
+    this.tokenExtractor,
+    this.maxRetries = 1,
+  }) : enabled = true;
 
   // ── Token extractor helper ────────────────────────────────
 
-  /// Runs [tokenExtractor] against [body], falling back to the common
-  /// `token` and `access_token` keys if no extractor is provided.
+  /// Runs [tokenExtractor] against [body], falling back to the two most
+  /// common key names if no custom extractor is provided.
   String? extractToken(Map<String, dynamic> body) {
     if (tokenExtractor != null) return tokenExtractor!(body);
-    // Fallback: try the two most common key names
     return (body['token'] as String?) ?? (body['access_token'] as String?);
   }
 }

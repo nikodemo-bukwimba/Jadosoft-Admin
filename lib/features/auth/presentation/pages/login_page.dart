@@ -1,13 +1,19 @@
 // login_page.dart
 // ─────────────────────────────────────────────────────────────
-// Fix: after successful login (both normal and addAccount mode),
-// use pushNamedAndRemoveUntil to wipe the entire navigation stack
-// and replace it with /home. This prevents the back button from
-// appearing on the home screen after going through the picker flow.
+// Navigation handled by GoRouter redirect — this page never
+// calls context.go() on success. The AuthRouterNotifier in
+// app_router.dart watches AuthBloc and redirects automatically:
+//   AuthAuthenticated → /home  (redirect fires, stack cleared)
+//
+// The only manual navigation here is:
+//   "Create one" link  → context.go(AppRouter.register)
+//   "Add account" back → context.pop()
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
 import '../bloc/auth_bloc.dart';
 import '../bloc/auth_event.dart';
 import '../bloc/auth_state.dart';
@@ -52,16 +58,10 @@ class _LoginPageState extends State<LoginPage> {
     final textTheme = Theme.of(context).textTheme;
     final isAdding = widget.addAccount;
 
-    return BlocConsumer<AuthBloc, AuthState>(
+    return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
-        if (state is AuthAuthenticated) {
-          // Clear the ENTIRE stack (picker + login) and start fresh at /home.
-          // (ModalRoute.withName('/') removes everything below /home too.)
-          Navigator.of(context).pushNamedAndRemoveUntil(
-            '/home',
-            (_) => false, // remove all previous routes
-          );
-        }
+        // GoRouter redirect handles navigation on AuthAuthenticated.
+        // Only show error snackbars here.
         if (state is AuthFailureState) {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
@@ -77,55 +77,59 @@ class _LoginPageState extends State<LoginPage> {
             );
         }
       },
-      builder: (context, state) {
-        final isLoading = state is AuthLoading;
+      child: BlocBuilder<AuthBloc, AuthState>(
+        builder: (context, state) {
+          final isLoading = state is AuthLoading;
 
-        return Scaffold(
-          appBar: isAdding
-              ? AppBar(
-                  title: const Text('Add account'),
-                  leading: const BackButton(),
-                )
-              : null,
-          body: SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: _formMaxWidth(context)),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _Header(
-                        isAdding: isAdding,
-                        scheme: scheme,
-                        textTheme: textTheme,
-                      ),
-                      const SizedBox(height: 40),
-                      _LoginForm(
-                        formKey: _formKey,
-                        emailCtrl: _emailCtrl,
-                        passCtrl: _passCtrl,
-                        submitted: _submitted,
-                        isLoading: isLoading,
-                        onSubmit: _submit,
-                      ),
-                      const SizedBox(height: 12),
-                      _ForgotPassword(scheme: scheme),
-                      const SizedBox(height: 32),
-                      _SubmitButton(isLoading: isLoading, onSubmit: _submit),
-                      if (!isAdding) ...[
-                        const SizedBox(height: 24),
-                        _RegisterLink(scheme: scheme),
+          return Scaffold(
+            appBar: isAdding
+                ? AppBar(
+                    title: const Text('Add account'),
+                    leading: const BackButton(),
+                  )
+                : null,
+            body: SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: _formMaxWidth(context),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _Header(
+                          isAdding: isAdding,
+                          scheme: scheme,
+                          textTheme: textTheme,
+                        ),
+                        const SizedBox(height: 40),
+                        _LoginForm(
+                          formKey: _formKey,
+                          emailCtrl: _emailCtrl,
+                          passCtrl: _passCtrl,
+                          submitted: _submitted,
+                          isLoading: isLoading,
+                          onSubmit: _submit,
+                        ),
+                        const SizedBox(height: 12),
+                        _ForgotPassword(scheme: scheme),
+                        const SizedBox(height: 32),
+                        _SubmitButton(isLoading: isLoading, onSubmit: _submit),
+                        if (!isAdding) ...[
+                          const SizedBox(height: 24),
+                          _RegisterLink(scheme: scheme),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -136,6 +140,8 @@ class _LoginPageState extends State<LoginPage> {
     return double.infinity;
   }
 }
+
+// ── Header ────────────────────────────────────────────────────
 
 class _Header extends StatelessWidget {
   final bool isAdding;
@@ -184,6 +190,8 @@ class _Header extends StatelessWidget {
     );
   }
 }
+
+// ── Form ──────────────────────────────────────────────────────
 
 class _LoginForm extends StatelessWidget {
   final GlobalKey<FormState> formKey;
@@ -244,6 +252,8 @@ class _LoginForm extends StatelessWidget {
   }
 }
 
+// ── Forgot password ───────────────────────────────────────────
+
 class _ForgotPassword extends StatelessWidget {
   final ColorScheme scheme;
   const _ForgotPassword({required this.scheme});
@@ -259,6 +269,8 @@ class _ForgotPassword extends StatelessWidget {
     );
   }
 }
+
+// ── Submit button ─────────────────────────────────────────────
 
 class _SubmitButton extends StatelessWidget {
   final bool isLoading;
@@ -281,6 +293,8 @@ class _SubmitButton extends StatelessWidget {
   }
 }
 
+// ── Register link ─────────────────────────────────────────────
+
 class _RegisterLink extends StatelessWidget {
   final ColorScheme scheme;
   const _RegisterLink({required this.scheme});
@@ -295,8 +309,8 @@ class _RegisterLink extends StatelessWidget {
           style: TextStyle(color: scheme.onSurfaceVariant),
         ),
         TextButton(
-          onPressed: () =>
-              Navigator.of(context).pushReplacementNamed('/register'),
+          // GoRouter: replace current location so back doesn't return to login
+          onPressed: () => context.go(AppRouter.register),
           child: const Text('Create one'),
         ),
       ],

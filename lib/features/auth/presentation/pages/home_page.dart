@@ -1,16 +1,20 @@
 // home_page.dart
 // ─────────────────────────────────────────────────────────────
-// Placeholder home/dashboard page shown after login.
-// Demonstrates:
-//   - Reading active session from AuthBloc state
-//   - Account switcher via AppBar action
-//   - Role-based UI (admin badge)
-//   - Logout
-// Replace body content with your actual dashboard.
+// Placeholder home page shown after login.
+// Replace body content with your actual home feature widget,
+// or generate a Level 4 feature and swap HomeTab() in
+// shell_nav_items.dart.
+//
+// Navigation:
+//   Logout / unauthenticated → GoRouter redirect handles it
+//   "Add another account"    → context.push(AppRouter.login)
+//                              (addAccount handled by LoginPage itself)
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
 import '../bloc/auth_bloc.dart';
 import '../bloc/auth_event.dart';
 import '../bloc/auth_state.dart';
@@ -21,14 +25,10 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocConsumer<AuthBloc, AuthState>(
-      listener: (context, state) {
-        if (state is AuthUnauthenticated) {
-          Navigator.of(context).pushReplacementNamed('/login');
-        }
-      },
+    return BlocBuilder<AuthBloc, AuthState>(
       builder: (context, state) {
-        // Guard: only render when authenticated
+        // Guard: GoRouter redirect handles unauthenticated navigation.
+        // Only render when authenticated.
         if (state is! AuthAuthenticated) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
@@ -69,7 +69,6 @@ class HomePage extends StatelessWidget {
                           ),
                         ),
                       ),
-                      // Badge if multiple accounts
                       if (accounts.length > 1)
                         Positioned(
                           right: 0,
@@ -122,8 +121,8 @@ class HomePage extends StatelessWidget {
                             children: [
                               CircleAvatar(
                                 radius: 28,
-                                backgroundColor: scheme.primary.withOpacity(
-                                  0.15,
+                                backgroundColor: scheme.primary.withValues(
+                                  alpha: 0.15,
                                 ),
                                 child: Text(
                                   _initials(user.displayName),
@@ -150,7 +149,7 @@ class HomePage extends StatelessWidget {
                                       user.email,
                                       style: textTheme.bodySmall?.copyWith(
                                         color: scheme.onPrimaryContainer
-                                            .withOpacity(0.8),
+                                            .withValues(alpha: 0.8),
                                       ),
                                     ),
                                     if (user.primaryRole != null) ...[
@@ -170,7 +169,7 @@ class HomePage extends StatelessWidget {
 
                       const SizedBox(height: 24),
 
-                      // ── Account status ───────────────────
+                      // ── Session info ─────────────────────
                       Text('Session Info', style: textTheme.titleSmall),
                       const SizedBox(height: 12),
                       _InfoRow(
@@ -250,9 +249,7 @@ class HomePage extends StatelessWidget {
                       OutlinedButton.icon(
                         icon: const Icon(Icons.person_add_outlined, size: 18),
                         label: const Text('Add another account'),
-                        onPressed: () => Navigator.of(
-                          context,
-                        ).pushNamed('/login', arguments: {'addAccount': true}),
+                        onPressed: () => context.push(AppRouter.login),
                       ),
 
                       const SizedBox(height: 12),
@@ -264,7 +261,7 @@ class HomePage extends StatelessWidget {
                         style: OutlinedButton.styleFrom(
                           foregroundColor: scheme.error,
                           side: BorderSide(
-                            color: scheme.error.withOpacity(0.5),
+                            color: scheme.error.withValues(alpha: 0.5),
                           ),
                         ),
                         onPressed: () =>
@@ -302,7 +299,7 @@ class _RoleBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: scheme.primary.withOpacity(0.15),
+        color: scheme.primary.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(

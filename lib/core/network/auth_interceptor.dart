@@ -90,44 +90,42 @@ class AuthInterceptor extends Interceptor {
   // ─────────────────────────────────────────────────────────
   @override
   Future<void> onError(
-    DioException error,
+    DioException err,
     ErrorInterceptorHandler handler,
   ) async {
     // Only intercept 401 Unauthorized responses.
-    if (error.response?.statusCode != 401) {
-      handler.next(error);
+    if (err.response?.statusCode != 401) {
+      handler.next(err);
       return;
     }
 
     // ── a) Refresh disabled — clear token, pass error ──────
     if (!_refreshConfig.enabled) {
       await _clearActiveAccountToken();
-      handler.next(error);
+      handler.next(err);
       return;
     }
 
     // ── b) Refresh enabled ─────────────────────────────────
 
     // Guard: the refresh request itself returned 401 → full logout.
-    final isRefreshRequest = error.requestOptions.extra[_kSkipRefresh] == true;
+    final isRefreshRequest = err.requestOptions.extra[_kSkipRefresh] == true;
     if (isRefreshRequest) {
       await _clearActiveAccountToken();
-      _resolveQueue(null); // reject all waiting requests
-      handler.next(error);
+      _resolveQueue(null);
+      handler.next(err);
       return;
     }
 
     // Guard: retried request still gets 401 → clear + forward.
-    final retryCount = (error.requestOptions.extra['_retryCount'] as int?) ?? 0;
+    final retryCount = (err.requestOptions.extra['_retryCount'] as int?) ?? 0;
     if (retryCount >= _refreshConfig.maxRetries) {
       await _clearActiveAccountToken();
-      handler.next(error);
+      handler.next(err);
       return;
     }
 
     // ── Queue this request ─────────────────────────────────
-    // If a refresh is already in flight, park this request until it
-    // resolves, then retry with whatever token comes back.
     if (_isRefreshing) {
       final completer = Completer<String?>();
       _queue.add(completer);
@@ -135,17 +133,17 @@ class AuthInterceptor extends Interceptor {
       try {
         final newToken = await completer.future;
         if (newToken == null) {
-          handler.next(error);
+          handler.next(err);
           return;
         }
         final response = await _retryRequest(
-          error.requestOptions,
+          err.requestOptions,
           newToken,
           retryCount + 1,
         );
         handler.resolve(response);
-      } catch (e) {
-        handler.next(error);
+      } catch (_) {
+        handler.next(err);
       }
       return;
     }
@@ -157,30 +155,25 @@ class AuthInterceptor extends Interceptor {
       final newToken = await _doRefresh();
 
       if (newToken == null) {
-        // Refresh failed — clear token, reject everyone
         await _clearActiveAccountToken();
         _resolveQueue(null);
-        handler.next(error);
+        handler.next(err);
         return;
       }
 
-      // Persist new token to storage
       await _persistNewToken(newToken);
-
-      // Unblock all queued requests with the new token
       _resolveQueue(newToken);
 
-      // Retry the original request
       final response = await _retryRequest(
-        error.requestOptions,
+        err.requestOptions,
         newToken,
         retryCount + 1,
       );
       handler.resolve(response);
-    } catch (e) {
+    } catch (_) {
       await _clearActiveAccountToken();
       _resolveQueue(null);
-      handler.next(error);
+      handler.next(err);
     } finally {
       _isRefreshing = false;
     }
@@ -190,8 +183,6 @@ class AuthInterceptor extends Interceptor {
   // Refresh logic
   // ─────────────────────────────────────────────────────────
 
-  /// Calls the refresh endpoint with the current token.
-  /// Returns the new access token string, or null on any failure.
   Future<String?> _doRefresh() async {
     assert(
       _refreshConfig.refreshEndpoint != null,
@@ -211,7 +202,7 @@ class AuthInterceptor extends Interceptor {
         _refreshConfig.refreshEndpoint!,
         options: Options(
           headers: {'Authorization': 'Bearer $currentToken'},
-          extra: {_kSkipRefresh: true}, // prevent recursive 401 handling
+          extra: {_kSkipRefresh: true},
         ),
       );
 
@@ -230,7 +221,6 @@ class AuthInterceptor extends Interceptor {
     }
   }
 
-  /// Retries [original] with [newToken] in the Authorization header.
   Future<Response<dynamic>> _retryRequest(
     RequestOptions original,
     String newToken,
@@ -246,8 +236,6 @@ class AuthInterceptor extends Interceptor {
     return _dio!.fetch(options);
   }
 
-  /// Resolves all queued completers with [token].
-  /// Passing null signals all waiters that refresh failed.
   void _resolveQueue(String? token) {
     for (final c in _queue) {
       if (!c.isCompleted) c.complete(token);
@@ -256,7 +244,7 @@ class AuthInterceptor extends Interceptor {
   }
 
   // ─────────────────────────────────────────────────────────
-  // Storage helpers (unchanged from original)
+  // Storage helpers
   // ─────────────────────────────────────────────────────────
 
   Future<String?> _getActiveToken() async {
@@ -276,8 +264,6 @@ class AuthInterceptor extends Interceptor {
     }
   }
 
-  /// Replaces only the 'token' field in the stored session JSON.
-  /// All other session fields (user, permissions, savedAt) are preserved.
   Future<void> _persistNewToken(String newToken) async {
     final activeEmail = await _storage.read(AppConstants.activeAccountKey);
     if (activeEmail == null) return;
@@ -293,8 +279,6 @@ class AuthInterceptor extends Interceptor {
     } catch (_) {}
   }
 
-  /// Removes the 'token' field from the active session.
-  /// Triggers AuthBloc → Unauthenticated on the next request.
   Future<void> _clearActiveAccountToken() async {
     final activeEmail = await _storage.read(AppConstants.activeAccountKey);
     if (activeEmail == null) return;
