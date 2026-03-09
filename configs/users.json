@@ -1,0 +1,103 @@
+{
+  "feature": {
+    "name": "users",
+    "label": "Users",
+    "purpose": "Platform admin user management \u2014 view, create, and manage user accounts, role assignments, and org memberships",
+    "maturity": 1,
+    "permission": "admin_users",
+    "icon": "Icons.person_outlined",
+    "activeIcon": "Icons.person"
+  },
+  "storage": {
+    "remote": true,
+    "local": false
+  },
+  "entities": {
+    "User": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type": "String",
+          "primary": true,
+          "readonly": true
+        },
+        "name": {
+          "type": "String",
+          "nullable": false,
+          "validation": {
+            "required": {
+              "value": true,
+              "message": "Name is required"
+            },
+            "minLength": {
+              "value": 2,
+              "message": "Name must be at least 2 characters"
+            }
+          }
+        },
+        "email": {
+          "type": "String",
+          "nullable": false,
+          "validation": {
+            "required": {
+              "value": true,
+              "message": "Email is required"
+            }
+          }
+        },
+        "emailVerifiedAt": {
+          "type": "DateTime",
+          "nullable": true,
+          "readonly": true
+        },
+        "createdAt": {
+          "type": "DateTime",
+          "nullable": false,
+          "readonly": true
+        },
+        "updatedAt": {
+          "type": "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {},
+      "api": {
+        "endpoint": "/admin/users",
+        "paginatable": true,
+        "searchable": true
+      },
+      "ui": {
+        "card": {
+          "title": "name",
+          "subtitle": "email"
+        },
+        "detail": {
+          "header": [
+            "name",
+            "email"
+          ],
+          "body": [
+            "emailVerifiedAt",
+            "createdAt",
+            "updatedAt"
+          ]
+        },
+        "form": {
+          "create": [
+            "name",
+            "email"
+          ],
+          "edit": [
+            "name",
+            "email"
+          ]
+        },
+        "list": {
+          "emptyMessage": "No users found.",
+          "searchBy": "name"
+        }
+      }
+    }
+  }
+}

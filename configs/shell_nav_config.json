@@ -1,0 +1,78 @@
+{
+  "_comment": "HMSCP Platform Admin — Shell Navigation Config",
+  "_usage": "Reference this when wiring shell_nav_items.dart after generation",
+
+  "app_title": "HMSCP Admin",
+
+  "navigation": {
+    "tabs": [
+      {
+        "feature": "admin_dashboard",
+        "label": "Dashboard",
+        "icon": "Icons.dashboard_outlined",
+        "activeIcon": "Icons.dashboard",
+        "position": 0
+      },
+      {
+        "feature": "actors",
+        "label": "Actors",
+        "icon": "Icons.people_outlined",
+        "activeIcon": "Icons.people",
+        "position": 1
+      },
+      {
+        "feature": "organizations",
+        "label": "Organizations",
+        "icon": "Icons.business_outlined",
+        "activeIcon": "Icons.business",
+        "position": 2
+      },
+      {
+        "feature": "users",
+        "label": "Users",
+        "icon": "Icons.person_outlined",
+        "activeIcon": "Icons.person",
+        "position": 3
+      },
+      {
+        "feature": "actor_types",
+        "label": "Actor Types",
+        "icon": "Icons.category_outlined",
+        "activeIcon": "Icons.category",
+        "position": 4,
+        "group": "admin"
+      },
+      {
+        "feature": "platform_roles",
+        "label": "Roles",
+        "icon": "Icons.admin_panel_settings_outlined",
+        "activeIcon": "Icons.admin_panel_settings",
+        "position": 5,
+        "group": "admin"
+      },
+      {
+        "feature": "platform_permissions",
+        "label": "Permissions",
+        "icon": "Icons.key_outlined",
+        "activeIcon": "Icons.key",
+        "position": 6,
+        "group": "admin"
+      }
+    ],
+
+    "groups": {
+      "admin": {
+        "label": "Platform Config",
+        "icon": "Icons.settings",
+        "expanded": false
+      }
+    }
+  },
+
+  "api": {
+    "baseUrl": "http://localhost:8000/api/v1",
+    "authPrefix": "/auth",
+    "adminPrefix": "/admin",
+    "note": "Update app_constants.dart with production URL before release"
+  }
+}

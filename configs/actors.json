@@ -1,0 +1,101 @@
+{
+  "feature": {
+    "name": "actors",
+    "label": "Actors",
+    "purpose": "Manage all platform actors (manufacturers, distributors, retailers, customers, etc.) \u2014 the universal participant model",
+    "maturity": 1,
+    "permission": "admin_actors",
+    "icon": "Icons.people_outlined",
+    "activeIcon": "Icons.people"
+  },
+  "storage": {
+    "remote": true,
+    "local": false
+  },
+  "entities": {
+    "Actor": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type": "String",
+          "primary": true,
+          "readonly": true
+        },
+        "displayName": {
+          "type": "String",
+          "nullable": false,
+          "validation": {
+            "required": {
+              "value": true,
+              "message": "Display name is required"
+            },
+            "minLength": {
+              "value": 2,
+              "message": "Name must be at least 2 characters"
+            }
+          }
+        },
+        "status": {
+          "type": "String",
+          "nullable": false
+        },
+        "metadata": {
+          "type": "String",
+          "nullable": true
+        },
+        "createdAt": {
+          "type": "DateTime",
+          "nullable": false,
+          "readonly": true
+        },
+        "updatedAt": {
+          "type": "DateTime",
+          "nullable": false,
+          "readonly": true
+        },
+        "deletedAt": {
+          "type": "DateTime",
+          "nullable": true,
+          "readonly": true
+        }
+      },
+      "relationships": {},
+      "api": {
+        "endpoint": "/actors",
+        "paginatable": true,
+        "searchable": true
+      },
+      "ui": {
+        "card": {
+          "title": "displayName",
+          "subtitle": "status"
+        },
+        "detail": {
+          "header": [
+            "displayName",
+            "status"
+          ],
+          "body": [
+            "createdAt",
+            "updatedAt"
+          ]
+        },
+        "form": {
+          "create": [
+            "displayName",
+            "status"
+          ],
+          "edit": [
+            "displayName",
+            "status"
+          ]
+        },
+        "list": {
+          "emptyMessage": "No actors found. Create the first actor.",
+          "searchBy": "displayName",
+          "filterBy": "status"
+        }
+      }
+    }
+  }
+}

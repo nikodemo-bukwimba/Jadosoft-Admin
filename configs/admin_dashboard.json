@@ -1,0 +1,122 @@
+{
+  "feature": {
+    "name": "admin_dashboard",
+    "label": "Dashboard",
+    "purpose": "Platform admin dashboard aggregating key metrics across actors, organizations, orders, inventory, and finance",
+    "maturity": 4,
+    "permission": "admin.dashboard",
+    "icon": "Icons.dashboard_outlined",
+    "activeIcon": "Icons.dashboard"
+  },
+  "sources": {
+    "actor": {
+      "feature": "actors",
+      "entity": "Actor"
+    },
+    "organization": {
+      "feature": "organizations",
+      "entity": "Organization"
+    },
+    "order": {
+      "feature": "orders",
+      "entity": "Order"
+    },
+    "inventoryBatch": {
+      "feature": "inventory",
+      "entity": "InventoryBatch"
+    },
+    "invoice": {
+      "feature": "invoices",
+      "entity": "Invoice"
+    },
+    "user": {
+      "feature": "users",
+      "entity": "User"
+    }
+  },
+  "projection": {
+    "metrics": [
+      {
+        "name": "totalActors",
+        "type": "int",
+        "source": "actor",
+        "operation": "count"
+      },
+      {
+        "name": "totalOrganizations",
+        "type": "int",
+        "source": "organization",
+        "operation": "count"
+      },
+      {
+        "name": "totalUsers",
+        "type": "int",
+        "source": "user",
+        "operation": "count"
+      },
+      {
+        "name": "totalOrders",
+        "type": "int",
+        "source": "order",
+        "operation": "count"
+      },
+      {
+        "name": "totalRevenue",
+        "type": "double",
+        "source": "order",
+        "operation": "sum",
+        "field": "totalAmount"
+      },
+      {
+        "name": "averageOrderValue",
+        "type": "double",
+        "source": "order",
+        "operation": "average",
+        "field": "totalAmount"
+      },
+      {
+        "name": "ordersByStatus",
+        "type": "Map<String, int>",
+        "source": "order",
+        "operation": "groupCount",
+        "field": "status"
+      },
+      {
+        "name": "totalInventoryBatches",
+        "type": "int",
+        "source": "inventoryBatch",
+        "operation": "count"
+      },
+      {
+        "name": "totalInvoiceValue",
+        "type": "double",
+        "source": "invoice",
+        "operation": "sum",
+        "field": "totalAmount"
+      },
+      {
+        "name": "invoicesByStatus",
+        "type": "Map<String, int>",
+        "source": "invoice",
+        "operation": "groupCount",
+        "field": "status"
+      },
+      {
+        "name": "recentOrders",
+        "type": "List<OrderEntity>",
+        "source": "order",
+        "operation": "latest",
+        "sortBy": "createdAt",
+        "limit": 5
+      },
+      {
+        "name": "recentActors",
+        "type": "List<ActorEntity>",
+        "source": "actor",
+        "operation": "latest",
+        "sortBy": "createdAt",
+        "limit": 5
+      }
+    ]
+  }
+}

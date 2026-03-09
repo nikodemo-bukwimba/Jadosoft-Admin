@@ -1,7 +1,8 @@
 // user_model.dart
 // ─────────────────────────────────────────────────────────────
-// Extends domain entities with JSON deserialization.
-// fromJson shapes match Laravel's toApiArray() exactly.
+// CHANGE: UserModel.id is now String (Laravel uses ULIDs).
+// RoleModel / PermissionModel keep int ids (standard auto-increment)
+// but use safe parsing so they never hard-cast.
 // ─────────────────────────────────────────────────────────────
 
 import '../../domain/entities/user_entity.dart';
@@ -14,10 +15,11 @@ class RoleModel extends RoleEntity {
   });
 
   factory RoleModel.fromJson(Map<String, dynamic> json) => RoleModel(
-        id:   json['id']   as int,
-        name: json['name'] as String,
-        slug: json['slug'] as String,
-      );
+    // Safe parse — handles both int and numeric-string ids
+    id: int.parse(json['id'].toString()),
+    name: json['name'] as String,
+    slug: json['slug'] as String,
+  );
 
   Map<String, dynamic> toJson() => {'id': id, 'name': name, 'slug': slug};
 }
@@ -29,8 +31,9 @@ class PermissionModel extends PermissionEntity {
     required super.slug,
   });
 
-  factory PermissionModel.fromJson(Map<String, dynamic> json) => PermissionModel(
-        id:   json['id']   as int,
+  factory PermissionModel.fromJson(Map<String, dynamic> json) =>
+      PermissionModel(
+        id: int.parse(json['id'].toString()),
         name: json['name'] as String,
         slug: json['slug'] as String,
       );
@@ -40,7 +43,7 @@ class PermissionModel extends PermissionEntity {
 
 class UserModel extends UserEntity {
   const UserModel({
-    required super.id,
+    required super.id, // String — Laravel ULID
     required super.name,
     required super.email,
     super.phone,
@@ -53,15 +56,12 @@ class UserModel extends UserEntity {
     super.createdAt,
   });
 
-  /// Parses the shape returned by Laravel's toApiArray() / GET /user.
   factory UserModel.fromJson(Map<String, dynamic> json) {
-    // roles list
     final rawRoles = json['roles'] as List<dynamic>? ?? [];
     final roles = rawRoles
         .map((r) => RoleModel.fromJson(r as Map<String, dynamic>))
         .toList();
 
-    // primary_role (nullable)
     RoleModel? primaryRole;
     if (json['primary_role'] != null) {
       primaryRole = RoleModel.fromJson(
@@ -70,43 +70,53 @@ class UserModel extends UserEntity {
     }
 
     return UserModel(
-      id:                   json['id'] as int,
-      name:                 json['name'] as String? ?? '',
-      email:                json['email'] as String,
-      phone:                json['phone'] as String?,
-      isActive:             json['is_active'] as bool? ?? false,
-      emailVerifiedAt:      json['email_verified_at'] != null
+      // ULID — always a String, never cast to int
+      id: json['id'].toString(),
+
+      name: json['name'] as String? ?? '',
+      email: json['email'] as String,
+      phone: json['phone'] as String?,
+
+      // Laravel may return 0/1 or true/false for booleans
+      isActive: json['is_active'] == true || json['is_active'] == 1,
+      hasActiveSubscription:
+          json['has_active_subscription'] == true ||
+          json['has_active_subscription'] == 1,
+
+      emailVerifiedAt: json['email_verified_at'] != null
           ? DateTime.tryParse(json['email_verified_at'].toString())
           : null,
-      primaryRole:          primaryRole,
-      roles:                roles,
-      hasActiveSubscription: json['has_active_subscription'] as bool? ?? false,
-      subscriptionStatus:   json['subscription_status'] as String? ?? 'none',
-      createdAt:            json['created_at'] != null
+
+      primaryRole: primaryRole,
+      roles: roles,
+
+      subscriptionStatus: json['subscription_status'] as String? ?? 'none',
+
+      createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString())
           : null,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'id':                      id,
-        'name':                    name,
-        'email':                   email,
-        'phone':                   phone,
-        'is_active':               isActive,
-        'email_verified_at':       emailVerifiedAt?.toIso8601String(),
-        'primary_role':            primaryRole == null
-            ? null
-            : RoleModel(
-                id: primaryRole!.id,
-                name: primaryRole!.name,
-                slug: primaryRole!.slug,
-              ).toJson(),
-        'roles': roles
-            .map((r) => RoleModel(id: r.id, name: r.name, slug: r.slug).toJson())
-            .toList(),
-        'has_active_subscription': hasActiveSubscription,
-        'subscription_status':     subscriptionStatus,
-        'created_at':              createdAt?.toIso8601String(),
-      };
+    'id': id,
+    'name': name,
+    'email': email,
+    'phone': phone,
+    'is_active': isActive,
+    'email_verified_at': emailVerifiedAt?.toIso8601String(),
+    'primary_role': primaryRole == null
+        ? null
+        : RoleModel(
+            id: primaryRole!.id,
+            name: primaryRole!.name,
+            slug: primaryRole!.slug,
+          ).toJson(),
+    'roles': roles
+        .map((r) => RoleModel(id: r.id, name: r.name, slug: r.slug).toJson())
+        .toList(),
+    'has_active_subscription': hasActiveSubscription,
+    'subscription_status': subscriptionStatus,
+    'created_at': createdAt?.toIso8601String(),
+  };
 }

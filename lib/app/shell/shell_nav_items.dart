@@ -27,6 +27,7 @@ import '../../features/auth/presentation/bloc/auth_state.dart';
 import '../routes/app_router.dart';
 
 // ── GENERATOR FEATURE IMPORTS — append only ──────────────────
+
 // ── END GENERATOR FEATURE IMPORTS ────────────────────────────
 
 abstract class ShellNavItems {
@@ -45,6 +46,7 @@ abstract class ShellNavItems {
       ),
 
       // ── GENERATOR TABS — append only ──────────────────────
+
       // ── END GENERATOR TABS ────────────────────────────────
 
       // ── Admin only — Dashboard ────────────────────────────
@@ -66,3 +68,10 @@ abstract class ShellNavItems {
     ];
   }
 }
+
+
+
+
+
+
+

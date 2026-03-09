@@ -1,0 +1,1637 @@
+================================================================================
+  MAISHELL CODE GENERATOR - EXPORT
+  Generated : 2026-03-09 11:30:33
+  Root Path : D:\projects\Software\Kits\Flutter\Flutter Clean Architecture\flutter_clean_architecture
+================================================================================
+
+SECTION 1 — FOLDER STRUCTURE (Maishell)
+================================================================================
+📁 Maishell/
+├── 📁 level_0/
+│   ├── 📄 config.json
+│   ├── 📄 Generate-Level0.ps1
+│   ├── 📁 generators/
+│   │   ├── 📄 Level0Generator.psm1
+│   │   └── 📄 Level0WiringGenerator.psm1
+│   └── 📁 modules/
+│       ├── 📄 TemplateEngine.psm1
+│       └── 📄 Validator.psm1
+├── 📁 level_1/
+│   ├── 📄 config.json
+│   ├── 📄 Generate-Level1.ps1
+│   ├── 📁 generators/
+│   │   ├── 📄 Level1BlocGenerator.psm1
+│   │   ├── 📄 Level1DataGenerator.psm1
+│   │   ├── 📄 Level1EntityGenerator.psm1
+│   │   ├── 📄 Level1PageGenerator.psm1
+│   │   ├── 📄 Level1UseCaseGenerator.psm1
+│   │   └── 📄 Level1WiringGenerator.psm1
+│   └── 📁 modules/
+│       ├── 📄 MetaHelpers.psm1
+│       ├── 📄 TemplateEngine.psm1
+│       └── 📄 Validator.psm1
+├── 📁 level_2/
+│   ├── 📄 config.json
+│   ├── 📄 Generate-Level2.ps1
+│   ├── 📁 generators/
+│   │   ├── 📄 Level1UseCaseGenerator.psm1
+│   │   ├── 📄 Level2WiringGenerator.psm1
+│   │   ├── 📄 Level3BlocGenerator.psm1
+│   │   ├── 📄 Level3DataGenerator.psm1
+│   │   ├── 📄 Level3EntityGenerator.psm1
+│   │   ├── 📄 Level3PageGenerator.psm1
+│   │   ├── 📄 Level3StateMachineGenerator.psm1
+│   │   ├── 📄 Level3WiringGenerator.psm1
+│   │   └── 📄 Level3WorkflowGenerator.psm1
+│   └── 📁 modules/
+│       ├── 📄 MetaHelpers.psm1
+│       ├── 📄 TemplateEngine.psm1
+│       └── 📄 Validator.psm1
+├── 📁 level_3/
+│   ├── 📄 config.json
+│   ├── 📄 Generate-Level3.ps1
+│   ├── 📁 generators/
+│   │   ├── 📄 Level1UseCaseGenerator.psm1
+│   │   ├── 📄 level3_order.config.json
+│   │   ├── 📄 Level3BlocGenerator.psm1
+│   │   ├── 📄 Level3DataGenerator.psm1
+│   │   ├── 📄 Level3EntityGenerator.psm1
+│   │   ├── 📄 Level3PageGenerator.psm1
+│   │   ├── 📄 Level3StateMachineGenerator.psm1
+│   │   ├── 📄 Level3WiringGenerator.psm1
+│   │   └── 📄 Level3WorkflowGenerator.psm1
+│   └── 📁 modules/
+│       ├── 📄 MetaHelpers.psm1
+│       ├── 📄 TemplateEngine.psm1
+│       └── 📄 Validator.psm1
+├── 📁 level_4/
+│   ├── 📄 config.json
+│   ├── 📄 Generate-Level4.ps1
+│   ├── 📁 generators/
+│   │   ├── 📄 Level4CubitGenerator.psm1
+│   │   ├── 📄 Level4PageGenerator.psm1
+│   │   ├── 📄 Level4ProjectionGenerator.psm1
+│   │   └── 📄 Level4WiringGenerator.psm1
+│   ├── 📄 level4_overview_dashboard.config.json
+│   └── 📁 modules/
+│       ├── 📄 MetaHelpers.psm1
+│       ├── 📄 TemplateEngine.psm1
+│       └── 📄 Validator.psm1
+└── 📁 level_5/
+    ├── 📄 config.json
+    ├── 📄 Generate-Level5.ps1
+    ├── 📁 generators/
+    │   ├── 📄 Level5ClientGenerator.psm1
+    │   ├── 📄 Level5CubitGenerator.psm1
+    │   ├── 📄 Level5PageGenerator.psm1
+    │   └── 📄 Level5WiringGenerator.psm1
+    └── 📁 modules/
+        ├── 📄 MetaHelpers.psm1
+        ├── 📄 TemplateEngine.psm1
+        └── 📄 Validator.psm1
+
+SECTION 2 — FILE CONTENTS (.ps1 / .json)
+================================================================================
+
+--------------------------------------------------------------------------------
+FILE [1 / 14] : Maishell\level_0\config.json
+--------------------------------------------------------------------------------
+{
+  "feature": {
+    "name":       "version",
+    "label":      "Version",
+    "purpose":    "Static version page displaying app version information",
+    "maturity":   0,
+    "permission": "version",
+    "icon":       "Icons.info_outlined",
+    "activeIcon": "Icons.info"
+  }
+}
+
+
+--------------------------------------------------------------------------------
+FILE [2 / 14] : Maishell\level_0\Generate-Level0.ps1
+--------------------------------------------------------------------------------
+# ============================================================
+# Generate-Level0.ps1
+# Entry point for Level 0 (Static Feature) generation.
+#
+# Usage:
+#   .\Generate-Level0.ps1 -ConfigPath .\feature.config.json
+#   .\Generate-Level0.ps1 -ConfigPath .\feature.config.json -DryRun
+#   .\Generate-Level0.ps1 -ConfigPath .\feature.config.json -Force
+# ============================================================
+
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$ConfigPath,
+
+    [string]$ProjectRoot = (Get-Location).Path,
+
+    [switch]$DryRun,
+
+    [switch]$Force
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+# ── Module imports ─────────────────────────────────────────
+$ModuleRoot = Join-Path $PSScriptRoot "modules"
+$GenRoot    = Join-Path $PSScriptRoot "generators"
+
+Import-Module (Join-Path $ModuleRoot "TemplateEngine.psm1") -Force
+Import-Module (Join-Path $ModuleRoot "Validator.psm1")      -Force
+Import-Module (Join-Path $GenRoot    "Level0Generator.psm1") -Force
+Import-Module (Join-Path $GenRoot    "Level0WiringGenerator.psm1") -Force
+
+# ── Console helpers ────────────────────────────────────────
+function Write-Header([string]$Text) {
+    Write-Host ""
+    Write-Host "===============================================" -ForegroundColor DarkCyan
+    Write-Host " $Text" -ForegroundColor Cyan
+    Write-Host "===============================================" -ForegroundColor DarkCyan
+}
+
+function Write-Step([string]$Text) {
+    Write-Host "  > $Text"
+}
+
+function Write-Success([string]$Text) {
+    Write-Host "  [OK] $Text" -ForegroundColor Green
+}
+
+function Write-Fail([string]$Text) {
+    Write-Host ""
+    Write-Host "  [ERROR] $Text" -ForegroundColor Red
+    Write-Host ""
+}
+
+function New-GeneratedFile {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Content
+    )
+
+    if ($DryRun) {
+        Write-Host "    [DRY RUN] $Path" -ForegroundColor DarkGray
+        return
+    }
+
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    Set-Content -Path $Path -Value $Content -Encoding UTF8
+    Write-Success (Split-Path $Path -Leaf)
+}
+
+# ── Entry ──────────────────────────────────────────────────
+Write-Header "HALA FCA - Level 0 Static Feature Generator"
+
+# Resolve config path
+$ConfigPath = Resolve-Path $ConfigPath
+if (-not (Test-Path $ConfigPath)) {
+    Write-Fail "Config not found: $ConfigPath"
+    exit 1
+}
+
+Write-Step "Loading config: $ConfigPath"
+$config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+
+# ── Phase A: Validation ────────────────────────────────────
+Write-Header "Phase A - Validation"
+
+$errors = Invoke-ConfigValidation -Config $config
+if ($errors.Count -gt 0) {
+    Write-Fail "Schema validation failed with $($errors.Count) error(s):"
+    foreach ($e in $errors) {
+        Write-Host "    - $e" -ForegroundColor Red
+    }
+    exit 1
+}
+Write-Success "Schema valid"
+
+# Maturity gate — this script only handles Level 0
+$maturity = [int]$config.feature.maturity
+if ($maturity -ne 0) {
+    Write-Fail "This generator handles Level 0 only. Config declares maturity $maturity."
+    exit 1
+}
+
+# Derive naming tokens
+$tokens = Get-NamingTokens -FeatureConfig $config.feature
+Write-Step "Feature: $($tokens.FLABEL) (Level 0 — Static)"
+
+# Feature directory
+$featureDir = Join-Path $ProjectRoot "lib/features/$($tokens.FNAME)"
+
+if ((Test-Path $featureDir) -and -not $Force) {
+    Write-Fail "Feature '$($tokens.FNAME)' already exists at: $featureDir"
+    Write-Host "    Use -Force to overwrite (development only)." -ForegroundColor Yellow
+    exit 1
+}
+
+# ── Phase B: Generation ───────────────────────────────────
+Write-Header "Phase B - Generation"
+
+$ctx = @{
+    Config      = $config
+    Tokens      = $tokens
+    FeatureDir  = $featureDir
+    ProjectRoot = $ProjectRoot
+    DryRun      = $DryRun.IsPresent
+    Maturity    = 0
+}
+
+Write-Step "Generating presentation layer..."
+Invoke-GenerateLevel0 -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "Wiring route..."
+Update-AppRouter -Ctx $ctx
+
+Write-Step "Wiring shell navigation..."
+Update-ShellNavItems -Ctx $ctx
+
+# ── Summary ────────────────────────────────────────────────
+Write-Header "Generation Complete"
+
+if ($DryRun) {
+    Write-Host "  [DRY RUN] No files written" -ForegroundColor Yellow
+}
+else {
+    $fileCount = 0
+    if (Test-Path $featureDir) {
+        $fileCount = (Get-ChildItem $featureDir -Recurse -File).Count
+    }
+    Write-Success "$fileCount files generated in lib/features/$($tokens.FNAME)"
+    Write-Success "Route wired in app_router.dart"
+    Write-Success "Shell tab wired in shell_nav_items.dart"
+}
+
+Write-Host ""
+
+
+--------------------------------------------------------------------------------
+FILE [3 / 14] : Maishell\level_1\config.json
+--------------------------------------------------------------------------------
+{
+  "feature": {
+    "name": "category",
+    "label": "Category",
+    "purpose": "Manage item categories",
+    "maturity": 1,
+    "permission": "categories"
+  },
+  "storage": {
+    "remote": true,
+    "local": false
+  },
+  "entities": {
+    "Category": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type": "String",
+          "primary": true,
+          "readonly": true
+        },
+        "name": {
+          "type": "String",
+          "nullable": false,
+          "validation": {
+            "required": {
+              "value": true,
+              "message": "Category name is required"
+            },
+            "minLength": { "value": 2, "message": "Name too short" }
+          }
+        },
+        "createdAt": {
+          "type": "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {},
+      "api": {
+        "endpoint": "/categories",
+        "paginatable": false,
+        "searchable": false
+      },
+      "ui": {
+        "card": { "title": "name" },
+        "detail": { "header": ["name"], "body": ["createdAt"] },
+        "form": {
+          "create": ["name"],
+          "edit": ["name"]
+        },
+        "list": {
+          "emptyMessage": "No categories yet."
+        }
+      }
+    }
+  }
+}
+
+
+--------------------------------------------------------------------------------
+FILE [4 / 14] : Maishell\level_1\Generate-Level1.ps1
+--------------------------------------------------------------------------------
+# ============================================================
+# Generate-Level1.ps1 — Level 1 CRUD Feature Generator
+# ============================================================
+
+param(
+    [Parameter(Mandatory)][string]$ConfigPath,
+    [string]$ProjectRoot = (Get-Location).Path,
+    [switch]$DryRun,
+    [switch]$Force
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$ModuleRoot = Join-Path $PSScriptRoot "modules"
+$GenRoot = Join-Path $PSScriptRoot "generators"
+Import-Module (Join-Path $ModuleRoot "MetaHelpers.psm1") -Force
+Import-Module (Join-Path $ModuleRoot "TemplateEngine.psm1")         -Force
+Import-Module (Join-Path $ModuleRoot "Validator.psm1")              -Force
+Import-Module (Join-Path $GenRoot    "Level1EntityGenerator.psm1")  -Force
+Import-Module (Join-Path $GenRoot    "Level1DataGenerator.psm1")    -Force
+Import-Module (Join-Path $GenRoot    "Level1UseCaseGenerator.psm1") -Force
+Import-Module (Join-Path $GenRoot    "Level1BlocGenerator.psm1")    -Force
+Import-Module (Join-Path $GenRoot    "Level1PageGenerator.psm1")    -Force
+Import-Module (Join-Path $GenRoot    "Level1WiringGenerator.psm1")  -Force
+
+function Write-Header([string]$t) { Write-Host "`n===============================================" -ForegroundColor DarkCyan; Write-Host " $t" -ForegroundColor Cyan; Write-Host "===============================================" -ForegroundColor DarkCyan }
+function Write-Step([string]$t) { Write-Host "  > $t" }
+function Write-Success([string]$t) { Write-Host "  [OK] $t" -ForegroundColor Green }
+function Write-Fail([string]$t) { Write-Host "`n  [ERROR] $t`n" -ForegroundColor Red }
+
+function New-GeneratedFile {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Content)
+    if ($DryRun) { Write-Host "    [DRY RUN] $Path" -ForegroundColor DarkGray; return }
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    Set-Content -Path $Path -Value $Content -Encoding UTF8
+    Write-Success (Split-Path $Path -Leaf)
+}
+
+Write-Header "HALA FCA - Level 1 CRUD Feature Generator"
+
+$ConfigPath = Resolve-Path $ConfigPath
+if (-not (Test-Path $ConfigPath)) { Write-Fail "Config not found: $ConfigPath"; exit 1 }
+
+Write-Step "Loading config: $ConfigPath"
+$config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+
+Write-Header "Phase A - Validation"
+$errors = Invoke-ConfigValidation -Config $config
+if ($errors.Count -gt 0) {
+    Write-Fail "Validation failed with $($errors.Count) error(s):"
+    foreach ($e in $errors) { Write-Host "    - $e" -ForegroundColor Red }
+    exit 1
+}
+Write-Success "Schema valid"
+
+$maturity = [int]$config.feature.maturity
+if ($maturity -ne 1) { Write-Fail "This generator handles Level 1 only. Config declares maturity $maturity."; exit 1 }
+
+$tokens = Get-NamingTokens -FeatureConfig $config.feature
+Write-Step "Feature: $($tokens.FLABEL) (Level 1 — CRUD)"
+
+$featureDir = Join-Path $ProjectRoot "lib/features/$($tokens.FNAME)"
+if ((Test-Path $featureDir) -and -not $Force) {
+    Write-Fail "Feature '$($tokens.FNAME)' already exists at: $featureDir"
+    exit 1
+}
+
+Write-Header "Phase B - Generation"
+
+$ctx = @{
+    Config      = $config
+    Tokens      = $tokens
+    FeatureDir  = $featureDir
+    ProjectRoot = $ProjectRoot
+    DryRun      = $DryRun.IsPresent
+    Maturity    = 1
+}
+
+Write-Step "Generating entity..."
+Invoke-GenerateEntity -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "Generating data layer (repo + model + datasource)..."
+Invoke-GenerateData -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "Generating use cases..."
+Invoke-GenerateUseCases -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "Generating BLoC..."
+Invoke-GenerateBloc -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "Generating pages + widgets..."
+Invoke-GeneratePages -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "Wiring DI..."
+Update-InjectionContainer -Ctx $ctx
+
+Write-Step "Wiring routes..."
+Update-AppRouter -Ctx $ctx
+
+Write-Step "Wiring shell navigation..."
+Update-ShellNavItems -Ctx $ctx
+
+Write-Header "Generation Complete"
+if ($DryRun) {
+    Write-Host "  [DRY RUN] No files written" -ForegroundColor Yellow
+}
+else {
+    $fileCount = 0
+    if (Test-Path $featureDir) { $fileCount = (Get-ChildItem $featureDir -Recurse -File).Count }
+    Write-Success "$fileCount files generated in lib/features/$($tokens.FNAME)"
+}
+Write-Host ""
+
+
+--------------------------------------------------------------------------------
+FILE [5 / 14] : Maishell\level_2\config.json
+--------------------------------------------------------------------------------
+{
+  "feature": {
+    "name": "project",
+    "label": "Project",
+    "purpose": "Manage projects with lifecycle status tracking",
+    "maturity": 2,
+    "permission": "projects",
+    "icon": "Icons.folder_outlined",
+    "activeIcon": "Icons.folder"
+  },
+  "storage": {
+    "remote": true,
+    "local": false
+  },
+  "stateMachine": {
+    "field": "status",
+    "states": ["planning", "active", "onHold", "completed", "archived"],
+    "initial": "planning",
+    "transitions": [
+      {
+        "name": "activate",
+        "from": ["planning"],
+        "to": "active",
+        "label": "Start Project",
+        "permission": "project.activate"
+      },
+      {
+        "name": "pause",
+        "from": ["active"],
+        "to": "onHold",
+        "label": "Put On Hold",
+        "permission": "project.pause"
+      },
+      {
+        "name": "resume",
+        "from": ["onHold"],
+        "to": "active",
+        "label": "Resume",
+        "permission": "project.activate"
+      },
+      {
+        "name": "complete",
+        "from": ["active"],
+        "to": "completed",
+        "label": "Mark Complete",
+        "permission": "project.complete"
+      },
+      {
+        "name": "archive",
+        "from": ["completed", "onHold"],
+        "to": "archived",
+        "label": "Archive",
+        "permission": "project.archive"
+      }
+    ]
+  },
+  "entities": {
+    "Project": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type": "String",
+          "primary": true,
+          "readonly": true
+        },
+        "name": {
+          "type": "String",
+          "nullable": false,
+          "validation": {
+            "required": {
+              "value": true,
+              "message": "Project name is required"
+            },
+            "minLength": {
+              "value": 3,
+              "message": "Name must be at least 3 characters"
+            }
+          }
+        },
+        "description": {
+          "type": "String",
+          "nullable": true
+        },
+        "budget": {
+          "type": "double",
+          "nullable": true
+        },
+        "isPublic": {
+          "type": "bool",
+          "nullable": false
+        },
+        "startDate": {
+          "type": "DateTime",
+          "nullable": true
+        },
+        "createdAt": {
+          "type": "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {},
+      "api": {
+        "endpoint": "/projects"
+      },
+      "ui": {
+        "card": {
+          "title": "name",
+          "subtitle": "description"
+        },
+        "detail": {
+          "header": ["name"],
+          "body": [
+            "description",
+            "budget",
+            "isPublic",
+            "startDate",
+            "createdAt"
+          ]
+        },
+        "form": {
+          "create": ["name", "description", "budget", "isPublic", "startDate"],
+          "edit": ["name", "description", "budget", "isPublic", "startDate"]
+        },
+        "list": {
+          "emptyMessage": "No projects yet. Create your first project."
+        }
+      }
+    }
+  }
+}
+
+
+--------------------------------------------------------------------------------
+FILE [6 / 14] : Maishell\level_2\Generate-Level2.ps1
+--------------------------------------------------------------------------------
+# ============================================================
+# Generate-Level2.ps1 — Level 2: CRUD + State Machine
+# ============================================================
+
+param(
+    [Parameter(Mandatory)][string]$ConfigPath,
+    [string]$ProjectRoot = (Get-Location).Path,
+    [switch]$DryRun,
+    [switch]$Force
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$ModuleRoot = Join-Path $PSScriptRoot "modules"
+$GenRoot    = Join-Path $PSScriptRoot "generators"
+
+Import-Module (Join-Path $ModuleRoot "TemplateEngine.psm1")              -Force
+Import-Module (Join-Path $ModuleRoot "Validator.psm1")                   -Force
+Import-Module (Join-Path $GenRoot    "Level3EntityGenerator.psm1")       -Force
+Import-Module (Join-Path $GenRoot    "Level3DataGenerator.psm1")         -Force
+Import-Module (Join-Path $GenRoot    "Level1UseCaseGenerator.psm1")      -Force
+Import-Module (Join-Path $GenRoot    "Level3StateMachineGenerator.psm1") -Force
+Import-Module (Join-Path $GenRoot    "Level3BlocGenerator.psm1")         -Force
+Import-Module (Join-Path $GenRoot    "Level3PageGenerator.psm1")         -Force
+Import-Module (Join-Path $GenRoot    "Level2WiringGenerator.psm1")       -Force
+
+function Write-Header([string]$t) { Write-Host "`n===============================================" -ForegroundColor DarkCyan; Write-Host " $t" -ForegroundColor Cyan; Write-Host "===============================================" -ForegroundColor DarkCyan }
+function Write-Step([string]$t)    { Write-Host "  > $t" }
+function Write-Success([string]$t) { Write-Host "  [OK] $t" -ForegroundColor Green }
+function Write-Fail([string]$t)    { Write-Host "`n  [ERROR] $t`n" -ForegroundColor Red }
+
+function New-GeneratedFile {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Content)
+    if ($DryRun) { Write-Host "    [DRY RUN] $Path" -ForegroundColor DarkGray; return }
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    Set-Content -Path $Path -Value $Content -Encoding UTF8
+    Write-Success (Split-Path $Path -Leaf)
+}
+
+Write-Header "HALA FCA - Level 2 Feature Generator (CRUD + StateMachine)"
+
+$ConfigPath = Resolve-Path $ConfigPath
+if (-not (Test-Path $ConfigPath)) { Write-Fail "Config not found: $ConfigPath"; exit 1 }
+
+Write-Step "Loading config: $ConfigPath"
+$config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+
+Write-Header "Phase A - Validation"
+$errors = Invoke-ConfigValidation -Config $config
+if ($errors.Count -gt 0) {
+    Write-Fail "Validation failed with $($errors.Count) error(s):"
+    foreach ($e in $errors) { Write-Host "    - $e" -ForegroundColor Red }
+    exit 1
+}
+Write-Success "Schema valid"
+
+$maturity = [int]$config.feature.maturity
+if ($maturity -ne 2) { Write-Fail "This generator handles Level 2 only. Config declares maturity $maturity."; exit 1 }
+if ($null -eq $config.stateMachine) { Write-Fail "Level 2 requires a 'stateMachine' block."; exit 1 }
+if ($null -eq $config.stateMachine.states -or $config.stateMachine.states.Count -eq 0) { Write-Fail "stateMachine.states must have at least 1 state."; exit 1 }
+if ($null -eq $config.stateMachine.transitions -or $config.stateMachine.transitions.Count -eq 0) { Write-Fail "stateMachine.transitions must have at least 1 transition."; exit 1 }
+
+$tokens = Get-NamingTokens -FeatureConfig $config.feature
+Write-Step "Feature: $($tokens.FLABEL) (Level 2)"
+
+$featureDir = Join-Path $ProjectRoot "lib/features/$($tokens.FNAME)"
+if ((Test-Path $featureDir) -and -not $Force) {
+    Write-Fail "Feature '$($tokens.FNAME)' already exists at: $featureDir"
+    exit 1
+}
+
+Write-Header "Phase B - Generation"
+
+$ctx = @{
+    Config      = $config
+    Tokens      = $tokens
+    FeatureDir  = $featureDir
+    ProjectRoot = $ProjectRoot
+    DryRun      = $DryRun.IsPresent
+    Maturity    = 2
+}
+
+Write-Step "1. Entity (with status field)..."
+Invoke-GenerateEntity -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "2. Data layer (model + datasource + repo)..."
+Invoke-GenerateData -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "3. Use cases (CRUD)..."
+Invoke-GenerateUseCases -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "4. State machine (enum + guard + domain service)..."
+Invoke-GenerateStateMachine -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "5. BLoC (CRUD + transitions)..."
+Invoke-GenerateBloc -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "6. Pages + widgets (with status badge + transitions)..."
+Invoke-GeneratePages -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "7. Wiring DI..."
+Update-InjectionContainer -Ctx $ctx
+
+Write-Step "8. Wiring routes..."
+Update-AppRouter -Ctx $ctx
+
+Write-Step "9. Wiring shell navigation..."
+Update-ShellNavItems -Ctx $ctx
+
+Write-Header "Generation Complete"
+if ($DryRun) {
+    Write-Host "  [DRY RUN] No files written" -ForegroundColor Yellow
+} else {
+    $fileCount = 0
+    if (Test-Path $featureDir) { $fileCount = (Get-ChildItem $featureDir -Recurse -File).Count }
+    Write-Success "$fileCount files generated in lib/features/$($tokens.FNAME)"
+}
+Write-Host ""
+
+
+--------------------------------------------------------------------------------
+FILE [7 / 14] : Maishell\level_3\config.json
+--------------------------------------------------------------------------------
+{
+  "feature": {
+    "name": "order",
+    "label": "Order",
+    "purpose": "Manage customer orders with approval workflow",
+    "maturity": 3,
+    "permission": "orders",
+    "icon": "Icons.receipt_long_outlined",
+    "activeIcon": "Icons.receipt_long"
+  },
+  "storage": {
+    "remote": true,
+    "local": false
+  },
+  "stateMachine": {
+    "field": "status",
+    "states": ["draft", "submitted", "approved", "rejected", "fulfilled"],
+    "initial": "draft",
+    "transitions": [
+      {
+        "name": "submit",
+        "from": ["draft"],
+        "to": "submitted",
+        "label": "Submit Order",
+        "permission": "order.submit"
+      },
+      {
+        "name": "approve",
+        "from": ["submitted"],
+        "to": "approved",
+        "label": "Approve",
+        "permission": "order.approve"
+      },
+      {
+        "name": "reject",
+        "from": ["submitted"],
+        "to": "rejected",
+        "label": "Reject",
+        "permission": "order.reject"
+      },
+      {
+        "name": "fulfill",
+        "from": ["approved"],
+        "to": "fulfilled",
+        "label": "Mark Fulfilled",
+        "permission": "order.fulfill"
+      },
+      {
+        "name": "revise",
+        "from": ["rejected"],
+        "to": "draft",
+        "label": "Revise",
+        "permission": "order.submit"
+      }
+    ]
+  },
+  "workflow": {
+    "steps": [
+      { "name": "validateInventory", "label": "Validate Inventory" },
+      { "name": "processPayment", "label": "Process Payment" },
+      { "name": "sendConfirmation", "label": "Send Confirmation Email" }
+    ]
+  },
+  "entities": {
+    "Order": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type": "String",
+          "primary": true,
+          "readonly": true
+        },
+        "orderNumber": {
+          "type": "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Order number is required" }
+          }
+        },
+        "customerName": {
+          "type": "String",
+          "nullable": false,
+          "validation": {
+            "required": {
+              "value": true,
+              "message": "Customer name is required"
+            },
+            "minLength": { "value": 2, "message": "Customer name too short" }
+          }
+        },
+        "totalAmount": {
+          "type": "double",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true },
+            "min": { "value": 0.01, "message": "Total must be positive" }
+          }
+        },
+        "notes": {
+          "type": "String",
+          "nullable": true
+        },
+        "isUrgent": {
+          "type": "bool",
+          "nullable": false
+        },
+        "createdAt": {
+          "type": "DateTime",
+          "nullable": false,
+          "readonly": true
+        },
+        "updatedAt": {
+          "type": "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {},
+      "api": {
+        "endpoint": "/orders"
+      },
+      "ui": {
+        "card": {
+          "title": "orderNumber",
+          "subtitle": "customerName"
+        },
+        "detail": {
+          "header": ["orderNumber", "customerName"],
+          "body": ["totalAmount", "notes", "isUrgent", "createdAt"]
+        },
+        "form": {
+          "create": [
+            "orderNumber",
+            "customerName",
+            "totalAmount",
+            "notes",
+            "isUrgent"
+          ],
+          "edit": ["customerName", "totalAmount", "notes", "isUrgent"]
+        },
+        "list": {
+          "emptyMessage": "No orders yet."
+        }
+      }
+    }
+  }
+}
+
+
+--------------------------------------------------------------------------------
+FILE [8 / 14] : Maishell\level_3\Generate-Level3.ps1
+--------------------------------------------------------------------------------
+# ============================================================
+# Generate-Level3.ps1 — Level 3: CRUD + State Machine + Workflow
+# ============================================================
+
+param(
+    [Parameter(Mandatory)][string]$ConfigPath,
+    [string]$ProjectRoot = (Get-Location).Path,
+    [switch]$DryRun,
+    [switch]$Force
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$ModuleRoot = Join-Path $PSScriptRoot "modules"
+$GenRoot    = Join-Path $PSScriptRoot "generators"
+
+Import-Module (Join-Path $ModuleRoot "TemplateEngine.psm1")              -Force
+Import-Module (Join-Path $ModuleRoot "Validator.psm1")                   -Force
+Import-Module (Join-Path $GenRoot    "Level3EntityGenerator.psm1")       -Force
+Import-Module (Join-Path $GenRoot    "Level3DataGenerator.psm1")         -Force
+Import-Module (Join-Path $GenRoot    "Level1UseCaseGenerator.psm1")      -Force   # Reused from Level 1
+Import-Module (Join-Path $GenRoot    "Level3StateMachineGenerator.psm1") -Force
+Import-Module (Join-Path $GenRoot    "Level3WorkflowGenerator.psm1")     -Force
+Import-Module (Join-Path $GenRoot    "Level3BlocGenerator.psm1")         -Force
+Import-Module (Join-Path $GenRoot    "Level3PageGenerator.psm1")         -Force
+Import-Module (Join-Path $GenRoot    "Level3WiringGenerator.psm1")       -Force
+
+function Write-Header([string]$t) { Write-Host "`n===============================================" -ForegroundColor DarkCyan; Write-Host " $t" -ForegroundColor Cyan; Write-Host "===============================================" -ForegroundColor DarkCyan }
+function Write-Step([string]$t) { Write-Host "  > $t" }
+function Write-Success([string]$t) { Write-Host "  [OK] $t" -ForegroundColor Green }
+function Write-Fail([string]$t) { Write-Host "`n  [ERROR] $t`n" -ForegroundColor Red }
+
+function New-GeneratedFile {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Content)
+    if ($DryRun) { Write-Host "    [DRY RUN] $Path" -ForegroundColor DarkGray; return }
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    Set-Content -Path $Path -Value $Content -Encoding UTF8
+    Write-Success (Split-Path $Path -Leaf)
+}
+
+Write-Header "HALA FCA - Level 3 Feature Generator (CRUD + StateMachine + Workflow)"
+
+$ConfigPath = Resolve-Path $ConfigPath
+if (-not (Test-Path $ConfigPath)) { Write-Fail "Config not found: $ConfigPath"; exit 1 }
+
+Write-Step "Loading config: $ConfigPath"
+$config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+
+Write-Header "Phase A - Validation"
+$errors = Invoke-ConfigValidation -Config $config
+if ($errors.Count -gt 0) {
+    Write-Fail "Validation failed with $($errors.Count) error(s):"
+    foreach ($e in $errors) { Write-Host "    - $e" -ForegroundColor Red }
+    exit 1
+}
+Write-Success "Schema valid"
+
+$maturity = [int]$config.feature.maturity
+if ($maturity -ne 3) { Write-Fail "This generator handles Level 3 only. Config declares maturity $maturity."; exit 1 }
+
+# Extra Level 3 validation
+if ($null -eq $config.stateMachine) { Write-Fail "Level 3 requires a 'stateMachine' block."; exit 1 }
+if ($null -eq $config.stateMachine.states -or $config.stateMachine.states.Count -eq 0) { Write-Fail "stateMachine.states must have at least 1 state."; exit 1 }
+if ($null -eq $config.stateMachine.transitions -or $config.stateMachine.transitions.Count -eq 0) { Write-Fail "stateMachine.transitions must have at least 1 transition."; exit 1 }
+
+$tokens = Get-NamingTokens -FeatureConfig $config.feature
+Write-Step "Feature: $($tokens.FLABEL) (Level 3 — CRUD + StateMachine + Workflow)"
+
+$featureDir = Join-Path $ProjectRoot "lib/features/$($tokens.FNAME)"
+if ((Test-Path $featureDir) -and -not $Force) {
+    Write-Fail "Feature '$($tokens.FNAME)' already exists at: $featureDir"
+    exit 1
+}
+
+Write-Header "Phase B - Generation"
+
+$ctx = @{
+    Config      = $config
+    Tokens      = $tokens
+    FeatureDir  = $featureDir
+    ProjectRoot = $ProjectRoot
+    DryRun      = $DryRun.IsPresent
+    Maturity    = 3
+}
+
+Write-Step "1. Entity (with status field)..."
+Invoke-GenerateEntity -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "2. Data layer (model + datasource + repo)..."
+Invoke-GenerateData -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "3. Use cases (CRUD)..."
+Invoke-GenerateUseCases -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "4. State machine (enum + guard + domain service)..."
+Invoke-GenerateStateMachine -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "5. Workflow (events + executor)..."
+if ($config.workflow) {
+    Invoke-GenerateWorkflow -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+} else {
+    Write-Host "    [SKIP] No workflow block in config" -ForegroundColor DarkGray
+}
+
+Write-Step "6. BLoC (CRUD + transitions)..."
+Invoke-GenerateBloc -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "7. Pages + widgets (with status badge + transitions)..."
+Invoke-GeneratePages -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "8. Wiring DI..."
+Update-InjectionContainer -Ctx $ctx
+
+Write-Step "9. Wiring routes..."
+Update-AppRouter -Ctx $ctx
+
+Write-Step "10. Wiring shell navigation..."
+Update-ShellNavItems -Ctx $ctx
+
+Write-Header "Generation Complete"
+if ($DryRun) {
+    Write-Host "  [DRY RUN] No files written" -ForegroundColor Yellow
+} else {
+    $fileCount = 0
+    if (Test-Path $featureDir) { $fileCount = (Get-ChildItem $featureDir -Recurse -File).Count }
+    Write-Success "$fileCount files generated in lib/features/$($tokens.FNAME)"
+}
+Write-Host ""
+
+
+--------------------------------------------------------------------------------
+FILE [9 / 14] : Maishell\level_3\generators\level3_order.config.json
+--------------------------------------------------------------------------------
+{
+  "feature": {
+    "name":       "order",
+    "label":      "Order",
+    "purpose":    "Manage customer orders with approval workflow",
+    "maturity":   3,
+    "permission": "orders",
+    "icon":       "Icons.receipt_long_outlined",
+    "activeIcon": "Icons.receipt_long"
+  },
+  "storage": {
+    "remote": true,
+    "local":  false
+  },
+  "stateMachine": {
+    "field":   "status",
+    "states":  ["draft", "submitted", "approved", "rejected", "fulfilled"],
+    "initial": "draft",
+    "transitions": [
+      { "name": "submit",  "from": ["draft"],              "to": "submitted", "label": "Submit Order",    "permission": "order.submit" },
+      { "name": "approve", "from": ["submitted"],          "to": "approved",  "label": "Approve",         "permission": "order.approve" },
+      { "name": "reject",  "from": ["submitted"],          "to": "rejected",  "label": "Reject",          "permission": "order.reject" },
+      { "name": "fulfill", "from": ["approved"],           "to": "fulfilled", "label": "Mark Fulfilled",  "permission": "order.fulfill" },
+      { "name": "revise",  "from": ["rejected"],           "to": "draft",     "label": "Revise",          "permission": "order.submit" }
+    ]
+  },
+  "workflow": {
+    "steps": [
+      { "name": "validateInventory", "label": "Validate Inventory" },
+      { "name": "processPayment",    "label": "Process Payment" },
+      { "name": "sendConfirmation",  "label": "Send Confirmation Email" }
+    ]
+  },
+  "entities": {
+    "Order": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "orderNumber": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Order number is required" }
+          }
+        },
+        "customerName": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required":  { "value": true, "message": "Customer name is required" },
+            "minLength": { "value": 2,    "message": "Customer name too short" }
+          }
+        },
+        "totalAmount": {
+          "type":     "double",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true },
+            "min":      { "value": 0.01, "message": "Total must be positive" }
+          }
+        },
+        "notes": {
+          "type":     "String",
+          "nullable": true
+        },
+        "isUrgent": {
+          "type":     "bool",
+          "nullable": false
+        },
+        "createdAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        },
+        "updatedAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {},
+      "api": {
+        "endpoint": "/orders"
+      },
+      "ui": {
+        "card": {
+          "title":    "orderNumber",
+          "subtitle": "customerName"
+        },
+        "detail": {
+          "header": ["orderNumber", "customerName"],
+          "body":   ["totalAmount", "notes", "isUrgent", "createdAt"]
+        },
+        "form": {
+          "create": ["orderNumber", "customerName", "totalAmount", "notes", "isUrgent"],
+          "edit":   ["customerName", "totalAmount", "notes", "isUrgent"]
+        },
+        "list": {
+          "emptyMessage": "No orders yet."
+        }
+      }
+    }
+  }
+}
+
+
+--------------------------------------------------------------------------------
+FILE [10 / 14] : Maishell\level_4\config.json
+--------------------------------------------------------------------------------
+{
+  "feature": {
+    "name":       "sales_dashboard",
+    "label":      "Sales Dashboard",
+    "purpose":    "Aggregated view of order metrics and stats",
+    "maturity":   4,
+    "icon":       "Icons.dashboard_outlined",
+    "activeIcon": "Icons.dashboard"
+  },
+  "sources": {
+    "order": {
+      "feature":    "order",
+      "entity":     "Order",
+      "repository": "OrderRepository"
+    }
+  },
+  "projection": {
+    "metrics": [
+      {
+        "name":      "totalOrders",
+        "type":      "int",
+        "source":    "order",
+        "operation": "count",
+        "label":     "Total Orders",
+        "icon":      "Icons.receipt_long"
+      },
+      {
+        "name":      "totalRevenue",
+        "type":      "double",
+        "source":    "order",
+        "operation": "sum",
+        "field":     "totalAmount",
+        "label":     "Total Revenue",
+        "icon":      "Icons.attach_money"
+      },
+      {
+        "name":      "averageOrderValue",
+        "type":      "double",
+        "source":    "order",
+        "operation": "average",
+        "field":     "totalAmount",
+        "label":     "Avg Order Value",
+        "icon":      "Icons.trending_up"
+      },
+      {
+        "name":      "ordersByStatus",
+        "type":      "Map<String, int>",
+        "source":    "order",
+        "operation": "groupCount",
+        "field":     "status",
+        "label":     "By Status"
+      },
+      {
+        "name":      "recentOrders",
+        "type":      "List<OrderEntity>",
+        "source":    "order",
+        "operation": "latest",
+        "limit":     5,
+        "sortBy":    "createdAt",
+        "label":     "Recent Orders",
+        "displayField": "orderNumber"
+      }
+    ]
+  }
+}
+
+
+--------------------------------------------------------------------------------
+FILE [11 / 14] : Maishell\level_4\Generate-Level4.ps1
+--------------------------------------------------------------------------------
+# ============================================================
+# Generate-Level4.ps1 — Level 4: Aggregator / Dashboard
+# ============================================================
+
+param(
+    [Parameter(Mandatory)][string]$ConfigPath,
+    [string]$ProjectRoot = (Get-Location).Path,
+    [switch]$DryRun,
+    [switch]$Force
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$ModuleRoot = Join-Path $PSScriptRoot "modules"
+$GenRoot    = Join-Path $PSScriptRoot "generators"
+
+Import-Module (Join-Path $ModuleRoot "TemplateEngine.psm1")              -Force
+Import-Module (Join-Path $ModuleRoot "Validator.psm1")                   -Force
+Import-Module (Join-Path $GenRoot    "Level4ProjectionGenerator.psm1")   -Force
+Import-Module (Join-Path $GenRoot    "Level4CubitGenerator.psm1")        -Force
+Import-Module (Join-Path $GenRoot    "Level4PageGenerator.psm1")         -Force
+Import-Module (Join-Path $GenRoot    "Level4WiringGenerator.psm1")       -Force
+
+function Write-Header([string]$t) { Write-Host "`n===============================================" -ForegroundColor DarkCyan; Write-Host " $t" -ForegroundColor Cyan; Write-Host "===============================================" -ForegroundColor DarkCyan }
+function Write-Step([string]$t)    { Write-Host "  > $t" }
+function Write-Success([string]$t) { Write-Host "  [OK] $t" -ForegroundColor Green }
+function Write-Fail([string]$t)    { Write-Host "`n  [ERROR] $t`n" -ForegroundColor Red }
+
+function New-GeneratedFile {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Content)
+    if ($DryRun) { Write-Host "    [DRY RUN] $Path" -ForegroundColor DarkGray; return }
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    Set-Content -Path $Path -Value $Content -Encoding UTF8
+    Write-Success (Split-Path $Path -Leaf)
+}
+
+Write-Header "HALA FCA - Level 4 Feature Generator (Aggregator / Dashboard)"
+
+$ConfigPath = Resolve-Path $ConfigPath
+if (-not (Test-Path $ConfigPath)) { Write-Fail "Config not found: $ConfigPath"; exit 1 }
+
+Write-Step "Loading config: $ConfigPath"
+$config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+
+# ── Validation ──
+$maturity = [int]$config.feature.maturity
+if ($maturity -ne 4) { Write-Fail "This generator handles Level 4 only. Config declares maturity $maturity."; exit 1 }
+if ($null -eq $config.sources -or ($config.sources.PSObject.Properties | Measure-Object).Count -eq 0) {
+    Write-Fail "Level 4 requires a 'sources' block with at least 1 source."; exit 1
+}
+if ($null -eq $config.projection -or $null -eq $config.projection.metrics -or $config.projection.metrics.Count -eq 0) {
+    Write-Fail "Level 4 requires 'projection.metrics' with at least 1 metric."; exit 1
+}
+
+# Validate each metric
+foreach ($m in $config.projection.metrics) {
+    if (-not $m.name) { Write-Fail "Each metric must have a 'name'."; exit 1 }
+    if (-not $m.type) { Write-Fail "Metric '$($m.name)' must have a 'type'."; exit 1 }
+    if (-not $m.source) { Write-Fail "Metric '$($m.name)' must have a 'source'."; exit 1 }
+    if (-not $m.operation) { Write-Fail "Metric '$($m.name)' must have an 'operation'."; exit 1 }
+    $validOps = @('count', 'sum', 'sumNonNull', 'average', 'groupCount', 'latest')
+    if ($m.operation -notin $validOps) { Write-Fail "Metric '$($m.name)' operation '$($m.operation)' not in: $($validOps -join ', ')"; exit 1 }
+    # Verify source exists
+    $srcNames = @($config.sources.PSObject.Properties | ForEach-Object { $_.Name })
+    if ($m.source -notin $srcNames) { Write-Fail "Metric '$($m.name)' references source '$($m.source)' not in sources: $($srcNames -join ', ')"; exit 1 }
+}
+
+$tokens = Get-NamingTokens -FeatureConfig $config.feature
+Write-Step "Feature: $($tokens.FLABEL) (Level 4 Aggregator)"
+
+$featureDir = Join-Path $ProjectRoot "lib/features/$($tokens.FNAME)"
+if ((Test-Path $featureDir) -and -not $Force) {
+    Write-Fail "Feature '$($tokens.FNAME)' already exists at: $featureDir"
+    exit 1
+}
+
+Write-Header "Phase B - Generation"
+
+$ctx = @{
+    Config      = $config
+    Tokens      = $tokens
+    FeatureDir  = $featureDir
+    ProjectRoot = $ProjectRoot
+    DryRun      = $DryRun.IsPresent
+    Maturity    = 4
+}
+
+Write-Step "1. Projection + providers + use case..."
+Invoke-GenerateProjection -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "2. Cubit (state management)..."
+Invoke-GenerateCubit -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "3. Dashboard page + widgets..."
+Invoke-GenerateDashboardPages -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "4. Wiring DI..."
+Update-InjectionContainer -Ctx $ctx
+
+Write-Step "5. Wiring routes..."
+Update-AppRouter -Ctx $ctx
+
+Write-Step "6. Wiring shell navigation..."
+Update-ShellNavItems -Ctx $ctx
+
+Write-Header "Generation Complete"
+if ($DryRun) {
+    Write-Host "  [DRY RUN] No files written" -ForegroundColor Yellow
+} else {
+    $fileCount = 0
+    if (Test-Path $featureDir) { $fileCount = (Get-ChildItem $featureDir -Recurse -File).Count }
+    Write-Success "$fileCount files generated in lib/features/$($tokens.FNAME)"
+}
+Write-Host ""
+
+
+--------------------------------------------------------------------------------
+FILE [12 / 14] : Maishell\level_4\level4_overview_dashboard.config.json
+--------------------------------------------------------------------------------
+{
+  "feature": {
+    "name":       "overview_dashboard",
+    "label":      "Overview",
+    "purpose":    "Combined overview of orders and projects",
+    "maturity":   4,
+    "icon":       "Icons.space_dashboard_outlined",
+    "activeIcon": "Icons.space_dashboard"
+  },
+  "sources": {
+    "order": {
+      "feature":    "order",
+      "entity":     "Order",
+      "repository": "OrderRepository"
+    },
+    "project": {
+      "feature":    "project",
+      "entity":     "Project",
+      "repository": "ProjectRepository"
+    }
+  },
+  "projection": {
+    "metrics": [
+      {
+        "name":      "totalOrders",
+        "type":      "int",
+        "source":    "order",
+        "operation": "count",
+        "label":     "Orders",
+        "icon":      "Icons.receipt_long"
+      },
+      {
+        "name":      "totalProjects",
+        "type":      "int",
+        "source":    "project",
+        "operation": "count",
+        "label":     "Projects",
+        "icon":      "Icons.folder"
+      },
+      {
+        "name":      "revenue",
+        "type":      "double",
+        "source":    "order",
+        "operation": "sum",
+        "field":     "totalAmount",
+        "label":     "Revenue"
+      },
+      {
+        "name":      "projectsByStatus",
+        "type":      "Map<String, int>",
+        "source":    "project",
+        "operation": "groupCount",
+        "field":     "status",
+        "label":     "Projects By Status"
+      }
+    ]
+  }
+}
+
+
+--------------------------------------------------------------------------------
+FILE [13 / 14] : Maishell\level_5\config.json
+--------------------------------------------------------------------------------
+{
+  "feature": {
+    "name":       "payment_gateway",
+    "label":      "Payments",
+    "purpose":    "External payment processor integration with retry and webhooks",
+    "maturity":   5,
+    "icon":       "Icons.payment_outlined",
+    "activeIcon": "Icons.payment"
+  },
+  "integration": {
+    "baseUrl":  "https://api.paymentprovider.com/v1",
+    "auth":     "bearer",
+    "timeout":  30,
+    "retryPolicy": {
+      "maxAttempts": 3,
+      "backoffMs":   1000
+    },
+    "operations": [
+      {
+        "name":        "createCharge",
+        "method":      "POST",
+        "path":        "/charges",
+        "label":       "Create Charge",
+        "description": "Create a new payment charge",
+        "icon":        "Icons.add_card",
+        "requestFields": [
+          { "name": "amount",      "type": "double" },
+          { "name": "currency",    "type": "String" },
+          { "name": "description", "type": "String", "nullable": true },
+          { "name": "customerId",  "type": "String" }
+        ],
+        "responseFields": [
+          { "name": "id",        "type": "String" },
+          { "name": "status",    "type": "String" },
+          { "name": "amount",    "type": "double" },
+          { "name": "currency",  "type": "String" },
+          { "name": "createdAt", "type": "DateTime" }
+        ]
+      },
+      {
+        "name":        "getCharge",
+        "method":      "GET",
+        "path":        "/charges/{chargeId}",
+        "label":       "Get Charge",
+        "description": "Retrieve a charge by ID",
+        "icon":        "Icons.receipt",
+        "responseFields": [
+          { "name": "id",        "type": "String" },
+          { "name": "status",    "type": "String" },
+          { "name": "amount",    "type": "double" },
+          { "name": "currency",  "type": "String" },
+          { "name": "createdAt", "type": "DateTime" }
+        ]
+      },
+      {
+        "name":        "listCharges",
+        "method":      "GET",
+        "path":        "/charges",
+        "label":       "List Charges",
+        "description": "List all charges",
+        "icon":        "Icons.list_alt",
+        "responseFields": [
+          { "name": "data",       "type": "List<dynamic>" },
+          { "name": "totalCount", "type": "int" },
+          { "name": "hasMore",    "type": "bool" }
+        ]
+      },
+      {
+        "name":        "refundCharge",
+        "method":      "POST",
+        "path":        "/refunds",
+        "label":       "Refund Charge",
+        "description": "Create a refund for a charge",
+        "icon":        "Icons.undo",
+        "requestFields": [
+          { "name": "chargeId", "type": "String" },
+          { "name": "amount",   "type": "double", "nullable": true },
+          { "name": "reason",   "type": "String", "nullable": true }
+        ],
+        "responseFields": [
+          { "name": "id",       "type": "String" },
+          { "name": "status",   "type": "String" },
+          { "name": "amount",   "type": "double" },
+          { "name": "chargeId", "type": "String" }
+        ]
+      },
+      {
+        "name":        "deleteCharge",
+        "method":      "DELETE",
+        "path":        "/charges/{chargeId}",
+        "label":       "Cancel Charge",
+        "description": "Cancel a pending charge"
+      }
+    ],
+    "webhooks": [
+      {
+        "name":  "chargeCompleted",
+        "event": "charge.completed",
+        "label": "Charge Completed",
+        "fields": [
+          { "name": "chargeId", "type": "String" },
+          { "name": "amount",   "type": "double" },
+          { "name": "paidAt",   "type": "DateTime" }
+        ]
+      },
+      {
+        "name":  "chargeFailed",
+        "event": "charge.failed",
+        "label": "Charge Failed",
+        "fields": [
+          { "name": "chargeId",    "type": "String" },
+          { "name": "errorCode",   "type": "String" },
+          { "name": "errorMessage", "type": "String" }
+        ]
+      },
+      {
+        "name":  "refundProcessed",
+        "event": "refund.processed",
+        "label": "Refund Processed",
+        "fields": [
+          { "name": "refundId",  "type": "String" },
+          { "name": "chargeId",  "type": "String" },
+          { "name": "amount",    "type": "double" }
+        ]
+      }
+    ]
+  }
+}
+
+
+--------------------------------------------------------------------------------
+FILE [14 / 14] : Maishell\level_5\Generate-Level5.ps1
+--------------------------------------------------------------------------------
+# ============================================================
+# Generate-Level5.ps1 — Level 5: External Integration
+# ============================================================
+
+param(
+    [Parameter(Mandatory)][string]$ConfigPath,
+    [string]$ProjectRoot = (Get-Location).Path,
+    [switch]$DryRun,
+    [switch]$Force
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$ModuleRoot = Join-Path $PSScriptRoot "modules"
+$GenRoot    = Join-Path $PSScriptRoot "generators"
+
+Import-Module (Join-Path $ModuleRoot "TemplateEngine.psm1")            -Force
+Import-Module (Join-Path $ModuleRoot "Validator.psm1")                 -Force
+Import-Module (Join-Path $GenRoot    "Level5ClientGenerator.psm1")     -Force
+Import-Module (Join-Path $GenRoot    "Level5CubitGenerator.psm1")      -Force
+Import-Module (Join-Path $GenRoot    "Level5PageGenerator.psm1")       -Force
+Import-Module (Join-Path $GenRoot    "Level5WiringGenerator.psm1")     -Force
+
+function Write-Header([string]$t) { Write-Host "`n===============================================" -ForegroundColor DarkCyan; Write-Host " $t" -ForegroundColor Cyan; Write-Host "===============================================" -ForegroundColor DarkCyan }
+function Write-Step([string]$t)    { Write-Host "  > $t" }
+function Write-Success([string]$t) { Write-Host "  [OK] $t" -ForegroundColor Green }
+function Write-Fail([string]$t)    { Write-Host "`n  [ERROR] $t`n" -ForegroundColor Red }
+
+function New-GeneratedFile {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Content)
+    if ($DryRun) { Write-Host "    [DRY RUN] $Path" -ForegroundColor DarkGray; return }
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    Set-Content -Path $Path -Value $Content -Encoding UTF8
+    Write-Success (Split-Path $Path -Leaf)
+}
+
+Write-Header "HALA FCA - Level 5 Feature Generator (External Integration)"
+
+$ConfigPath = Resolve-Path $ConfigPath
+if (-not (Test-Path $ConfigPath)) { Write-Fail "Config not found: $ConfigPath"; exit 1 }
+
+Write-Step "Loading config: $ConfigPath"
+$config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+
+# ── Validation ──
+$maturity = [int]$config.feature.maturity
+if ($maturity -ne 5) { Write-Fail "This generator handles Level 5 only. Config declares maturity $maturity."; exit 1 }
+if ($null -eq $config.integration) { Write-Fail "Level 5 requires an 'integration' block."; exit 1 }
+if ($null -eq $config.integration.baseUrl -or $config.integration.baseUrl -eq '') { Write-Fail "integration.baseUrl is required."; exit 1 }
+if ($null -eq $config.integration.operations -or $config.integration.operations.Count -eq 0) { Write-Fail "integration.operations must have at least 1 operation."; exit 1 }
+
+foreach ($op in $config.integration.operations) {
+    if (-not $op.name) { Write-Fail "Each operation must have a 'name'."; exit 1 }
+    if (-not $op.method) { Write-Fail "Operation '$($op.name)' must have a 'method'."; exit 1 }
+    if (-not $op.path) { Write-Fail "Operation '$($op.name)' must have a 'path'."; exit 1 }
+    $validMethods = @('GET', 'POST', 'PUT', 'PATCH', 'DELETE')
+    if ($op.method.ToUpper() -notin $validMethods) { Write-Fail "Operation '$($op.name)' method '$($op.method)' not in: $($validMethods -join ', ')"; exit 1 }
+    # POST/PUT/PATCH should have requestFields
+    if ($op.method.ToUpper() -in @('POST', 'PUT', 'PATCH') -and (-not $op.requestFields -or $op.requestFields.Count -eq 0)) {
+        Write-Warning "Operation '$($op.name)' ($($op.method)) has no requestFields — request DTO will be skipped."
+    }
+    # Non-DELETE should have responseFields
+    if ($op.method.ToUpper() -ne 'DELETE' -and (-not $op.responseFields -or $op.responseFields.Count -eq 0)) {
+        Write-Warning "Operation '$($op.name)' ($($op.method)) has no responseFields — response DTO will be empty."
+    }
+}
+
+# Validate webhooks if present
+if ($config.integration.webhooks) {
+    foreach ($wh in $config.integration.webhooks) {
+        if (-not $wh.name) { Write-Fail "Each webhook must have a 'name'."; exit 1 }
+        if (-not $wh.event) { Write-Fail "Webhook '$($wh.name)' must have an 'event'."; exit 1 }
+    }
+}
+
+$tokens = Get-NamingTokens -FeatureConfig $config.feature
+Write-Step "Feature: $($tokens.FLABEL) (Level 5 Integration)"
+
+$featureDir = Join-Path $ProjectRoot "lib/features/$($tokens.FNAME)"
+if ((Test-Path $featureDir) -and -not $Force) {
+    Write-Fail "Feature '$($tokens.FNAME)' already exists at: $featureDir"
+    exit 1
+}
+
+Write-Header "Phase B - Generation"
+
+$ctx = @{
+    Config      = $config
+    Tokens      = $tokens
+    FeatureDir  = $featureDir
+    ProjectRoot = $ProjectRoot
+    DryRun      = $DryRun.IsPresent
+    Maturity    = 5
+}
+
+Write-Step "1. Client + DTOs + service (+ webhooks)..."
+Invoke-GenerateIntegrationClient -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "2. Cubit (sync status)..."
+Invoke-GenerateIntegrationCubit -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "3. Pages + widgets..."
+Invoke-GenerateIntegrationPages -Ctx $ctx -NewFile ${function:New-GeneratedFile}
+
+Write-Step "4. Wiring DI..."
+Update-InjectionContainer -Ctx $ctx
+
+Write-Step "5. Wiring routes..."
+Update-AppRouter -Ctx $ctx
+
+Write-Step "6. Wiring shell navigation..."
+Update-ShellNavItems -Ctx $ctx
+
+Write-Header "Generation Complete"
+if ($DryRun) {
+    Write-Host "  [DRY RUN] No files written" -ForegroundColor Yellow
+} else {
+    $fileCount = 0
+    if (Test-Path $featureDir) { $fileCount = (Get-ChildItem $featureDir -Recurse -File).Count }
+    Write-Success "$fileCount files generated in lib/features/$($tokens.FNAME)"
+}
+Write-Host ""
+
+
+================================================================================
+  END OF EXPORT  |  Total files captured: 14
+================================================================================

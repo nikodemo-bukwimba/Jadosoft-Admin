@@ -1,15 +1,18 @@
 // profile_remote_datasource.dart
 // ─────────────────────────────────────────────────────────────
 // Fetches own profile data from two endpoints:
-//   GET /user        → user object
-//   GET /me/roles    → { data: { roles, permissions } }
-// Token is already in storage from auth — interceptor attaches it.
+//   GET /auth/me  → user object
+//   GET /me/roles → { data: { roles, permissions } }
+// Token is attached by AuthInterceptor — no manual headers needed.
+//
+// Uses relative paths (no AppConstants.baseUrl prefix) so Dio's
+// configured baseUrl is the single source of truth, consistent
+// with all other datasources in the app.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:dio/dio.dart';
 import 'package:fca/core/error/exceptions.dart';
 import 'package:fca/features/auth/data/models/user_model.dart';
-import 'package:fca/core/constants/app_constants.dart';
 import '../models/profile_model.dart';
 
 abstract class ProfileRemoteDataSource {
@@ -23,15 +26,14 @@ class ProfileRemoteDataSourceImpl implements ProfileRemoteDataSource {
   @override
   Future<ProfileModel> getOwnProfile() async {
     try {
-      // Both calls run with the Bearer token from AuthInterceptor
-      final userResponse = await _dio.get('${AppConstants.baseUrl}/user');
-      final rolesResponse = await _dio.get('${AppConstants.baseUrl}/me/roles');
+      final userResponse = await _dio.get('/auth/me');
+      final rolesResponse = await _dio.get('/me/roles');
 
       final userData = userResponse.data;
       final rolesBody = rolesResponse.data as Map<String, dynamic>?;
 
       if (userData == null) {
-        throw const ServerException('Empty response from /user');
+        throw const ServerException('Empty response from /auth/me');
       }
       if (rolesBody == null) {
         throw const ServerException('Empty response from /me/roles');
@@ -70,9 +72,7 @@ class ProfileRemoteDataSourceImpl implements ProfileRemoteDataSource {
 
   String? _extractMessage(DioException e) {
     final data = e.response?.data;
-    if (data is Map<String, dynamic>) {
-      return data['message'] as String?;
-    }
+    if (data is Map<String, dynamic>) return data['message'] as String?;
     return null;
   }
 }

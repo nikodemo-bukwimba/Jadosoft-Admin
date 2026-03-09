@@ -10,7 +10,7 @@ class AppConstants {
   // ── API ────────────────────────────────────────────────────
   // local        → http://localhost:8000/api
   // production   → https://dev.halasoftware.com/api
-  static const String baseUrl = 'http://localhost:8000/api';
+  static const String baseUrl = 'http://localhost:8000/api/v1';
 
   // ── Network timeouts ───────────────────────────────────────
   static const int connectTimeoutSeconds = 15;

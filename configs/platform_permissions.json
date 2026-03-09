@@ -1,0 +1,95 @@
+{
+  "feature": {
+    "name": "platform_permissions",
+    "label": "Permissions",
+    "purpose": "View and manage platform-level permissions (43 seeded across all modules). Primarily a reference list used when assigning permissions to roles.",
+    "maturity": 1,
+    "permission": "admin_platform_permissions",
+    "icon": "Icons.key_outlined",
+    "activeIcon": "Icons.key"
+  },
+  "storage": {
+    "remote": true,
+    "local": false
+  },
+  "entities": {
+    "PlatformPermission": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type": "int",
+          "primary": true,
+          "readonly": true
+        },
+        "name": {
+          "type": "String",
+          "nullable": false,
+          "validation": {
+            "required": {
+              "value": true,
+              "message": "Permission name is required"
+            }
+          }
+        },
+        "module": {
+          "type": "String",
+          "nullable": false,
+          "validation": {
+            "required": {
+              "value": true,
+              "message": "Module is required"
+            }
+          }
+        },
+        "description": {
+          "type": "String",
+          "nullable": true
+        },
+        "createdAt": {
+          "type": "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {},
+      "api": {
+        "endpoint": "/admin/platform-permissions",
+        "paginatable": false,
+        "searchable": false
+      },
+      "ui": {
+        "card": {
+          "title": "name",
+          "subtitle": "module"
+        },
+        "detail": {
+          "header": [
+            "name",
+            "module"
+          ],
+          "body": [
+            "description",
+            "createdAt"
+          ]
+        },
+        "form": {
+          "create": [
+            "name",
+            "module",
+            "description"
+          ],
+          "edit": [
+            "name",
+            "module",
+            "description"
+          ]
+        },
+        "list": {
+          "emptyMessage": "No permissions found.",
+          "searchBy": "name",
+          "filterBy": "module"
+        }
+      }
+    }
+  }
+}

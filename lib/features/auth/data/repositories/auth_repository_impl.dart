@@ -5,9 +5,8 @@
 // Previous order:  login → fetch roles → save session   ❌
 // Correct order:   login → save token → fetch roles → update session ✅
 //
-// The AuthInterceptor reads the active token from storage on every
-// request. If storage is empty when /me/roles fires, it sends no
-// Bearer header → 401.
+// FIX 2: UserModel.id is now String (ULID). _placeholderUser
+// uses id: '' instead of id: 0.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:dartz/dartz.dart';
@@ -22,13 +21,13 @@ import '../models/user_model.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDataSource _remote;
-  final AuthLocalDataSource  _local;
+  final AuthLocalDataSource _local;
 
   AuthRepositoryImpl({
     required AuthRemoteDataSource remote,
-    required AuthLocalDataSource  local,
-  })  : _remote = remote,
-        _local  = local;
+    required AuthLocalDataSource local,
+  }) : _remote = remote,
+       _local = local;
 
   // ── login ─────────────────────────────────────────────────
   @override
@@ -50,13 +49,12 @@ class AuthRepositoryImpl implements AuthRepository {
         user = UserModel.fromJson(loginData['user'] as Map<String, dynamic>);
       } else {
         // Sanctum setups that return only token — need separate /user call.
-        // We must save a temporary session first so the interceptor has a
-        // token to attach. We'll update it after /user responds.
+        // Save a temporary session first so the interceptor has a token.
         final tempSession = AccountSessionModel(
-          token:       token,
-          user:        _placeholderUser(email),
+          token: token,
+          user: _placeholderUser(email),
           permissions: const [],
-          savedAt:     DateTime.now(),
+          savedAt: DateTime.now(),
         );
         await _local.saveSession(tempSession);
         await _local.setActiveAccount(email);
@@ -64,36 +62,34 @@ class AuthRepositoryImpl implements AuthRepository {
       }
 
       // ── Step 3: Persist token FIRST so interceptor can use it ──
-      // Save a preliminary session (no permissions yet) so that the
-      // upcoming authenticated GET /me/roles has a Bearer token.
       final prelimSession = AccountSessionModel(
-        token:       token,
-        user:        user,
+        token: token,
+        user: user,
         permissions: const [],
-        savedAt:     DateTime.now(),
+        savedAt: DateTime.now(),
       );
       await _local.saveSession(prelimSession);
       await _local.setActiveAccount(user.email);
 
-      // ── Step 4: NOW fetch roles + permissions (token is in storage) ──
+      // ── Step 4: Fetch roles + permissions ─────────────────
       List<PermissionModel> permissions = [];
       try {
         final rolesData = await _remote.getRolesAndPermissions();
-        final rawPerms  = rolesData['permissions'] as List<dynamic>? ?? [];
+        final rawPerms = rolesData['permissions'] as List<dynamic>? ?? [];
         permissions = rawPerms
             .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
             .toList();
-      } catch (e) {
-        // Roles fetch failed — still allow login with empty permissions.
-        // App can refresh session later via AuthSessionRefreshRequested.
+      } catch (_) {
+        // Roles fetch failed — allow login with empty permissions.
+        // Refresh later via AuthSessionRefreshRequested.
       }
 
       // ── Step 5: Save final session with permissions ───────
       final finalSession = AccountSessionModel(
-        token:       token,
-        user:        user,
+        token: token,
+        user: user,
         permissions: permissions,
-        savedAt:     DateTime.now(),
+        savedAt: DateTime.now(),
       );
       await _local.saveSession(finalSession);
 
@@ -123,16 +119,18 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       // ── Step 1: Register ──────────────────────────────────
       final registerData = await _remote.register(
-        name:                 name,
-        email:                email,
-        password:             password,
+        name: name,
+        email: email,
+        password: password,
         passwordConfirmation: passwordConfirmation,
-        phone:                phone,
+        phone: phone,
       );
 
       final token = AuthRemoteDataSourceImpl.extractToken(registerData);
       if (token == null) {
-        return const Left(ServerFailure('No token received after registration'));
+        return const Left(
+          ServerFailure('No token received after registration'),
+        );
       }
 
       // ── Step 2: Parse user ────────────────────────────────
@@ -140,12 +138,11 @@ class AuthRepositoryImpl implements AuthRepository {
       if (registerData.containsKey('user') && registerData['user'] != null) {
         user = UserModel.fromJson(registerData['user'] as Map<String, dynamic>);
       } else {
-        // Save temp session so interceptor has a token for /user call
         final tempSession = AccountSessionModel(
-          token:       token,
-          user:        _placeholderUser(email),
+          token: token,
+          user: _placeholderUser(email),
           permissions: const [],
-          savedAt:     DateTime.now(),
+          savedAt: DateTime.now(),
         );
         await _local.saveSession(tempSession);
         await _local.setActiveAccount(email);
@@ -154,32 +151,32 @@ class AuthRepositoryImpl implements AuthRepository {
 
       // ── Step 3: Persist token BEFORE /me/roles ────────────
       final prelimSession = AccountSessionModel(
-        token:       token,
-        user:        user,
+        token: token,
+        user: user,
         permissions: const [],
-        savedAt:     DateTime.now(),
+        savedAt: DateTime.now(),
       );
       await _local.saveSession(prelimSession);
       await _local.setActiveAccount(user.email);
 
-      // ── Step 4: Fetch roles (new users may have none) ─────
+      // ── Step 4: Fetch roles ───────────────────────────────
       List<PermissionModel> permissions = [];
       try {
         final rolesData = await _remote.getRolesAndPermissions();
-        final rawPerms  = rolesData['permissions'] as List<dynamic>? ?? [];
+        final rawPerms = rolesData['permissions'] as List<dynamic>? ?? [];
         permissions = rawPerms
             .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
             .toList();
       } catch (_) {
-        // No roles yet — continue
+        // New users may have no roles yet — continue
       }
 
       // ── Step 5: Final session ─────────────────────────────
       final finalSession = AccountSessionModel(
-        token:       token,
-        user:        user,
+        token: token,
+        user: user,
         permissions: permissions,
-        savedAt:     DateTime.now(),
+        savedAt: DateTime.now(),
       );
       await _local.saveSession(finalSession);
 
@@ -200,18 +197,12 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<Either<Failure, void>> logout() async {
     try {
       final activeEmail = await _local.getActiveEmail();
-
-      // Revoke server-side first (token still in storage = interceptor attaches it)
       try {
         await _remote.logout();
-      } catch (_) {
-        // Server revocation failed — still clear locally
-      }
-
+      } catch (_) {}
       if (activeEmail != null) {
         await _local.removeSession(activeEmail);
       }
-
       return const Right(null);
     } on CacheException catch (e) {
       return Left(CacheFailure(e.message));
@@ -271,11 +262,9 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       final sessions = await _local.getAllSessions();
       final target = sessions.where((s) => s.user.email == email).firstOrNull;
-
       if (target == null) {
         return Left(AuthFailure('No saved session found for $email'));
       }
-
       await _local.setActiveAccount(email);
       return Right(target);
     } on CacheException catch (e) {
@@ -294,21 +283,19 @@ class AuthRepositoryImpl implements AuthRepository {
         return const Left(AuthFailure('No active session to refresh'));
       }
 
-      // Token is already in storage — interceptor will attach it
-      final user      = await _remote.getUser();
+      final user = await _remote.getUser();
       final rolesData = await _remote.getRolesAndPermissions();
-      final rawPerms  = rolesData['permissions'] as List<dynamic>? ?? [];
+      final rawPerms = rolesData['permissions'] as List<dynamic>? ?? [];
       final permissions = rawPerms
           .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
           .toList();
 
       final updated = AccountSessionModel(
-        token:       current.token,
-        user:        user,
+        token: current.token,
+        user: user,
         permissions: permissions,
-        savedAt:     DateTime.now(),
+        savedAt: DateTime.now(),
       );
-
       await _local.saveSession(updated);
       return Right(updated);
     } on AuthException catch (e) {
@@ -325,14 +312,14 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   // ── Placeholder user ──────────────────────────────────────
-  // Used as a temporary stand-in when the API returns only a token
-  // and we need storage populated before calling /user or /me/roles.
+  // Temporary stand-in when the API returns only a token and we need
+  // storage populated before calling /user or /me/roles.
   UserModel _placeholderUser(String email) => UserModel(
-        id:                   0,
-        name:                 '',
-        email:                email,
-        isActive:             false,
-        hasActiveSubscription: false,
-        subscriptionStatus:   'none',
-      );
+    id: '', // String — ULID, filled after /user call
+    name: '',
+    email: email,
+    isActive: false,
+    hasActiveSubscription: false,
+    subscriptionStatus: 'none',
+  );
 }

@@ -2,22 +2,21 @@
 // ─────────────────────────────────────────────────────────────
 // Pure Dart — zero Flutter or Drift imports.
 // Shape mirrors the Laravel API /user and toApiArray() response.
+//
+// CHANGE: UserEntity.id is String — Laravel uses ULIDs.
+// RoleEntity / PermissionEntity keep int ids (standard auto-increment).
 // ─────────────────────────────────────────────────────────────
 
 class RoleEntity {
-  final int    id;
+  final int id;
   final String name;
   final String slug;
 
-  const RoleEntity({
-    required this.id,
-    required this.name,
-    required this.slug,
-  });
+  const RoleEntity({required this.id, required this.name, required this.slug});
 }
 
 class PermissionEntity {
-  final int    id;
+  final int id;
   final String name;
   final String slug;
 
@@ -29,17 +28,17 @@ class PermissionEntity {
 }
 
 class UserEntity {
-  final int         id;
-  final String      name;
-  final String      email;
-  final String?     phone;
-  final bool        isActive;           // email_verified_at != null
-  final DateTime?   emailVerifiedAt;
+  final String id; // ULID — always a String
+  final String name;
+  final String email;
+  final String? phone;
+  final bool isActive;
+  final DateTime? emailVerifiedAt;
   final RoleEntity? primaryRole;
   final List<RoleEntity> roles;
-  final bool        hasActiveSubscription;
-  final String      subscriptionStatus; // 'active' | 'expired' | 'none'
-  final DateTime?   createdAt;
+  final bool hasActiveSubscription;
+  final String subscriptionStatus; // 'active' | 'expired' | 'none'
+  final DateTime? createdAt;
 
   const UserEntity({
     required this.id,
@@ -62,5 +61,5 @@ class UserEntity {
   bool hasRole(String slug) => roles.any((r) => r.slug == slug);
 
   bool get isSuperAdmin => hasRole('super-admin');
-  bool get isAdmin      => hasRole('admin') || isSuperAdmin;
+  bool get isAdmin => hasRole('admin') || isSuperAdmin;
 }

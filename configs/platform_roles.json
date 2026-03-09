@@ -1,0 +1,97 @@
+{
+  "feature": {
+    "name": "platform_roles",
+    "label": "Platform Roles",
+    "purpose": "Manage platform-level roles (super_admin, support_agent, auditor, platform_ops) and their permission assignments",
+    "maturity": 1,
+    "permission": "admin_platform_roles",
+    "icon": "Icons.admin_panel_settings_outlined",
+    "activeIcon": "Icons.admin_panel_settings"
+  },
+  "storage": {
+    "remote": true,
+    "local": false
+  },
+  "entities": {
+    "PlatformRole": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type": "int",
+          "primary": true,
+          "readonly": true
+        },
+        "name": {
+          "type": "String",
+          "nullable": false,
+          "validation": {
+            "required": {
+              "value": true,
+              "message": "Role name is required"
+            },
+            "minLength": {
+              "value": 2,
+              "message": "Name must be at least 2 characters"
+            }
+          }
+        },
+        "description": {
+          "type": "String",
+          "nullable": true
+        },
+        "isSystemRole": {
+          "type": "bool",
+          "nullable": false,
+          "readonly": true
+        },
+        "createdAt": {
+          "type": "DateTime",
+          "nullable": false,
+          "readonly": true
+        },
+        "updatedAt": {
+          "type": "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {},
+      "api": {
+        "endpoint": "/admin/platform-roles",
+        "paginatable": false,
+        "searchable": false
+      },
+      "ui": {
+        "card": {
+          "title": "name",
+          "subtitle": "description"
+        },
+        "detail": {
+          "header": [
+            "name",
+            "isSystemRole"
+          ],
+          "body": [
+            "description",
+            "createdAt",
+            "updatedAt"
+          ]
+        },
+        "form": {
+          "create": [
+            "name",
+            "description"
+          ],
+          "edit": [
+            "name",
+            "description"
+          ]
+        },
+        "list": {
+          "emptyMessage": "No platform roles defined.",
+          "searchBy": "name"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "feature": {
+    "name": "organizations",
+    "label": "Organizations",
+    "purpose": "Manage platform organizations \u2014 legal entities with registration, tax, territory, and member management",
+    "maturity": 1,
+    "permission": "admin_organizations",
+    "icon": "Icons.business_outlined",
+    "activeIcon": "Icons.business"
+  },
+  "storage": {
+    "remote": true,
+    "local": false
+  },
+  "entities": {
+    "Organization": {
+      "primary": true,
+      "fields": {
+        "actorId": {
+          "type": "String",
+          "primary": true,
+          "readonly": true
+        },
+        "legalName": {
+          "type": "String",
+          "nullable": false,
+          "validation": {
+            "required": {
+              "value": true,
+              "message": "Legal name is required"
+            },
+            "minLength": {
+              "value": 2,
+              "message": "Name must be at least 2 characters"
+            }
+          }
+        },
+        "slug": {
+          "type": "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "registrationNumber": {
+          "type": "String",
+          "nullable": true
+        },
+        "taxId": {
+          "type": "String",
+          "nullable": true
+        },
+        "address": {
+          "type": "String",
+          "nullable": true
+        },
+        "lat": {
+          "type": "double",
+          "nullable": true
+        },
+        "lng": {
+          "type": "double",
+          "nullable": true
+        },
+        "territoryId": {
+          "type": "int",
+          "nullable": true
+        },
+        "settings": {
+          "type": "String",
+          "nullable": true
+        },
+        "createdAt": {
+          "type": "DateTime",
+          "nullable": false,
+          "readonly": true
+        },
+        "updatedAt": {
+          "type": "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {},
+      "api": {
+        "endpoint": "/organizations",
+        "paginatable": true,
+        "searchable": true
+      },
+      "ui": {
+        "card": {
+          "title": "legalName",
+          "subtitle": "slug"
+        },
+        "detail": {
+          "header": [
+            "legalName",
+            "slug"
+          ],
+          "body": [
+            "registrationNumber",
+            "taxId",
+            "address",
+            "territoryId",
+            "createdAt",
+            "updatedAt"
+          ]
+        },
+        "form": {
+          "create": [
+            "legalName",
+            "registrationNumber",
+            "taxId",
+            "address",
+            "lat",
+            "lng",
+            "territoryId"
+          ],
+          "edit": [
+            "legalName",
+            "registrationNumber",
+            "taxId",
+            "address",
+            "lat",
+            "lng",
+            "territoryId"
+          ]
+        },
+        "list": {
+          "emptyMessage": "No organizations registered yet.",
+          "searchBy": "legalName"
+        }
+      }
+    }
+  }
+}

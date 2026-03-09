@@ -1,15 +1,4 @@
 // login_page.dart
-// ─────────────────────────────────────────────────────────────
-// Navigation handled by GoRouter redirect — this page never
-// calls context.go() on success. The AuthRouterNotifier in
-// app_router.dart watches AuthBloc and redirects automatically:
-//   AuthAuthenticated → /home  (redirect fires, stack cleared)
-//
-// The only manual navigation here is:
-//   "Create one" link  → context.go(AppRouter.register)
-//   "Add account" back → context.pop()
-// ─────────────────────────────────────────────────────────────
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -60,8 +49,16 @@ class _LoginPageState extends State<LoginPage> {
 
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
-        // GoRouter redirect handles navigation on AuthAuthenticated.
-        // Only show error snackbars here.
+        if (state is AuthAuthenticated) {
+          // ✅ FIX: The global redirect in app_router.dart no longer redirects
+          // /login → /home when already authenticated, because that would kill
+          // the add-account push before the page builds.
+          // Instead, the page itself navigates to /home on success.
+          // context.go clears the entire stack (login, and any back-stack to
+          // account-picker) so the user lands cleanly on the shell.
+          context.go(AppRouter.home);
+          return;
+        }
         if (state is AuthFailureState) {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
@@ -117,10 +114,8 @@ class _LoginPageState extends State<LoginPage> {
                         _ForgotPassword(scheme: scheme),
                         const SizedBox(height: 32),
                         _SubmitButton(isLoading: isLoading, onSubmit: _submit),
-                        if (!isAdding) ...[
-                          const SizedBox(height: 24),
-                          _RegisterLink(scheme: scheme),
-                        ],
+                        const SizedBox(height: 24),
+                        _RegisterLink(scheme: scheme, isAdding: isAdding),
                       ],
                     ),
                   ),
@@ -141,13 +136,10 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-// ── Header ────────────────────────────────────────────────────
-
 class _Header extends StatelessWidget {
   final bool isAdding;
   final ColorScheme scheme;
   final TextTheme textTheme;
-
   const _Header({
     required this.isAdding,
     required this.scheme,
@@ -191,14 +183,10 @@ class _Header extends StatelessWidget {
   }
 }
 
-// ── Form ──────────────────────────────────────────────────────
-
 class _LoginForm extends StatelessWidget {
   final GlobalKey<FormState> formKey;
-  final TextEditingController emailCtrl;
-  final TextEditingController passCtrl;
-  final bool submitted;
-  final bool isLoading;
+  final TextEditingController emailCtrl, passCtrl;
+  final bool submitted, isLoading;
   final VoidCallback onSubmit;
 
   const _LoginForm({
@@ -252,8 +240,6 @@ class _LoginForm extends StatelessWidget {
   }
 }
 
-// ── Forgot password ───────────────────────────────────────────
-
 class _ForgotPassword extends StatelessWidget {
   final ColorScheme scheme;
   const _ForgotPassword({required this.scheme});
@@ -270,12 +256,9 @@ class _ForgotPassword extends StatelessWidget {
   }
 }
 
-// ── Submit button ─────────────────────────────────────────────
-
 class _SubmitButton extends StatelessWidget {
   final bool isLoading;
   final VoidCallback onSubmit;
-
   const _SubmitButton({required this.isLoading, required this.onSubmit});
 
   @override
@@ -293,11 +276,10 @@ class _SubmitButton extends StatelessWidget {
   }
 }
 
-// ── Register link ─────────────────────────────────────────────
-
 class _RegisterLink extends StatelessWidget {
   final ColorScheme scheme;
-  const _RegisterLink({required this.scheme});
+  final bool isAdding;
+  const _RegisterLink({required this.scheme, required this.isAdding});
 
   @override
   Widget build(BuildContext context) {
@@ -309,8 +291,15 @@ class _RegisterLink extends StatelessWidget {
           style: TextStyle(color: scheme.onSurfaceVariant),
         ),
         TextButton(
-          // GoRouter: replace current location so back doesn't return to login
-          onPressed: () => context.go(AppRouter.register),
+          onPressed: () {
+            if (isAdding) {
+              // Push so the user can still cancel back to account-picker.
+              context.push(AppRouter.register, extra: {'addAccount': true});
+            } else {
+              // Replace so back doesn't loop login ↔ register.
+              context.go(AppRouter.register);
+            }
+          },
           child: const Text('Create one'),
         ),
       ],

@@ -1,13 +1,4 @@
 // register_page.dart
-// ─────────────────────────────────────────────────────────────
-// Responsive registration page. Material 3. No custom colors.
-// UI gate validation only — UseCase is the security gate.
-//
-// Navigation:
-//   Success        → GoRouter redirect handles it (AuthAuthenticated → /home)
-//   "Sign in" link → context.go(AppRouter.login)
-// ─────────────────────────────────────────────────────────────
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -18,20 +9,21 @@ import '../bloc/auth_state.dart';
 import '../widgets/auth_form_field.dart';
 
 class RegisterPage extends StatefulWidget {
-  const RegisterPage({super.key});
+  final bool addAccount;
+  const RegisterPage({super.key, this.addAccount = false});
 
   @override
   State<RegisterPage> createState() => _RegisterPageState();
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final _formKey     = GlobalKey<FormState>();
-  final _nameCtrl    = TextEditingController();
-  final _emailCtrl   = TextEditingController();
-  final _phoneCtrl   = TextEditingController();
-  final _passCtrl    = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final _nameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
-  bool _submitted    = false;
+  bool _submitted = false;
 
   @override
   void dispose() {
@@ -47,12 +39,11 @@ class _RegisterPageState extends State<RegisterPage> {
     setState(() => _submitted = true);
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
-
     context.read<AuthBloc>().add(
       AuthRegisterRequested(
-        name:                 _nameCtrl.text.trim(),
-        email:                _emailCtrl.text.trim(),
-        password:             _passCtrl.text,
+        name: _nameCtrl.text.trim(),
+        email: _emailCtrl.text.trim(),
+        password: _passCtrl.text,
         passwordConfirmation: _confirmCtrl.text,
         phone: _phoneCtrl.text.trim().isNotEmpty
             ? _phoneCtrl.text.trim()
@@ -63,20 +54,26 @@ class _RegisterPageState extends State<RegisterPage> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme    = Theme.of(context).colorScheme;
+    final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final isAdding = widget.addAccount;
 
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
-        // GoRouter redirect handles navigation on AuthAuthenticated.
+        if (state is AuthAuthenticated) {
+          // ✅ FIX: Same as LoginPage — the global redirect no longer handles
+          // /register → /home for authenticated users. The page navigates itself.
+          context.go(AppRouter.home);
+          return;
+        }
         if (state is AuthFailureState) {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
             ..showSnackBar(
               SnackBar(
-                content:         Text(state.message),
+                content: Text(state.message),
                 backgroundColor: scheme.error,
-                behavior:        SnackBarBehavior.floating,
+                behavior: SnackBarBehavior.floating,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -89,6 +86,12 @@ class _RegisterPageState extends State<RegisterPage> {
           final isLoading = state is AuthLoading;
 
           return Scaffold(
+            appBar: isAdding
+                ? AppBar(
+                    title: const Text('Create account'),
+                    leading: const BackButton(),
+                  )
+                : null,
             body: SafeArea(
               child: Center(
                 child: SingleChildScrollView(
@@ -105,15 +108,15 @@ class _RegisterPageState extends State<RegisterPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Container(
-                              width:  56,
+                              width: 56,
                               height: 56,
                               decoration: BoxDecoration(
-                                color:        scheme.secondaryContainer,
+                                color: scheme.secondaryContainer,
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: Icon(
                                 Icons.person_outline_rounded,
-                                size:  28,
+                                size: 28,
                                 color: scheme.onSecondaryContainer,
                               ),
                             ),
@@ -145,54 +148,51 @@ class _RegisterPageState extends State<RegisterPage> {
                           child: Column(
                             children: [
                               AuthFormField(
-                                label:      'Full name',
+                                label: 'Full name',
                                 prefixIcon: Icons.badge_outlined,
                                 controller: _nameCtrl,
-                                enabled:    !isLoading,
-                                validator:  (v) {
-                                  if (v == null || v.trim().isEmpty) {
+                                enabled: !isLoading,
+                                validator: (v) {
+                                  if (v == null || v.trim().isEmpty)
                                     return 'Name is required';
-                                  }
-                                  if (v.trim().length < 2) {
+                                  if (v.trim().length < 2)
                                     return 'Name is too short';
-                                  }
                                   return null;
                                 },
                               ),
                               const SizedBox(height: 16),
                               AuthFormField(
-                                label:        'Email',
-                                prefixIcon:   Icons.email_outlined,
-                                controller:   _emailCtrl,
+                                label: 'Email',
+                                prefixIcon: Icons.email_outlined,
+                                controller: _emailCtrl,
                                 keyboardType: TextInputType.emailAddress,
-                                enabled:      !isLoading,
-                                validator:    (v) {
-                                  if (v == null || v.trim().isEmpty) {
+                                enabled: !isLoading,
+                                validator: (v) {
+                                  if (v == null || v.trim().isEmpty)
                                     return 'Email is required';
-                                  }
-                                  if (!v.contains('@')) {
+                                  if (!v.contains('@'))
                                     return 'Enter a valid email';
-                                  }
                                   return null;
                                 },
                               ),
                               const SizedBox(height: 16),
                               AuthFormField(
-                                label:        'Phone',
-                                prefixIcon:   Icons.phone_outlined,
-                                controller:   _phoneCtrl,
+                                label: 'Phone',
+                                prefixIcon: Icons.phone_outlined,
+                                controller: _phoneCtrl,
                                 keyboardType: TextInputType.phone,
-                                isOptional:   true,
-                                enabled:      !isLoading,
-                                validator:    (v) {
-                                  if (v == null || v.trim().isEmpty) {
-                                    return null; // optional
-                                  }
+                                isOptional: true,
+                                enabled: !isLoading,
+                                validator: (v) {
+                                  if (v == null || v.trim().isEmpty)
+                                    return null;
                                   final digits = v.replaceAll(
                                     RegExp(r'[\s\-()]'),
                                     '',
                                   );
-                                  if (!RegExp(r'^\+?\d{7,15}$').hasMatch(digits)) {
+                                  if (!RegExp(
+                                    r'^\+?\d{7,15}$',
+                                  ).hasMatch(digits)) {
                                     return 'Enter a valid phone number';
                                   }
                                   return null;
@@ -200,37 +200,33 @@ class _RegisterPageState extends State<RegisterPage> {
                               ),
                               const SizedBox(height: 16),
                               AuthFormField(
-                                label:      'Password',
+                                label: 'Password',
                                 prefixIcon: Icons.lock_outline,
                                 controller: _passCtrl,
                                 isPassword: true,
-                                enabled:    !isLoading,
-                                validator:  (v) {
-                                  if (v == null || v.isEmpty) {
+                                enabled: !isLoading,
+                                validator: (v) {
+                                  if (v == null || v.isEmpty)
                                     return 'Password is required';
-                                  }
-                                  if (v.length < 8) {
+                                  if (v.length < 8)
                                     return 'At least 8 characters';
-                                  }
                                   return null;
                                 },
                               ),
                               const SizedBox(height: 16),
                               AuthFormField(
-                                label:           'Confirm password',
-                                prefixIcon:      Icons.lock_outline,
-                                controller:      _confirmCtrl,
-                                isPassword:      true,
-                                enabled:         !isLoading,
+                                label: 'Confirm password',
+                                prefixIcon: Icons.lock_outline,
+                                controller: _confirmCtrl,
+                                isPassword: true,
+                                enabled: !isLoading,
                                 textInputAction: TextInputAction.done,
                                 onEditingComplete: _submit,
                                 validator: (v) {
-                                  if (v == null || v.isEmpty) {
+                                  if (v == null || v.isEmpty)
                                     return 'Please confirm your password';
-                                  }
-                                  if (v != _passCtrl.text) {
+                                  if (v != _passCtrl.text)
                                     return 'Passwords do not match';
-                                  }
                                   return null;
                                 },
                               ),
@@ -240,12 +236,12 @@ class _RegisterPageState extends State<RegisterPage> {
 
                         const SizedBox(height: 32),
 
-                        // ── Submit ────────────────────────────
                         FilledButton(
                           onPressed: isLoading ? null : _submit,
                           child: isLoading
                               ? const SizedBox(
-                                  width: 22, height: 22,
+                                  width: 22,
+                                  height: 22,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2.5,
                                   ),
@@ -255,7 +251,6 @@ class _RegisterPageState extends State<RegisterPage> {
 
                         const SizedBox(height: 24),
 
-                        // ── Login link ────────────────────────
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -264,7 +259,14 @@ class _RegisterPageState extends State<RegisterPage> {
                               style: TextStyle(color: scheme.onSurfaceVariant),
                             ),
                             TextButton(
-                              onPressed: () => context.go(AppRouter.login),
+                              onPressed: () {
+                                if (isAdding) {
+                                  // Pop back to LoginPage (was pushed before register).
+                                  context.pop();
+                                } else {
+                                  context.go(AppRouter.login);
+                                }
+                              },
                               child: const Text('Sign in'),
                             ),
                           ],
@@ -284,7 +286,7 @@ class _RegisterPageState extends State<RegisterPage> {
   double _formMaxWidth(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
     if (w >= 1024) return 440;
-    if (w >= 600)  return 480;
+    if (w >= 600) return 480;
     return double.infinity;
   }
 }

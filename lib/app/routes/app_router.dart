@@ -1,35 +1,4 @@
 // app_router.dart
-// ─────────────────────────────────────────────────────────────
-// Single source of truth for all app navigation.
-//
-// MIGRATION: Replaced plain Navigator + onGenerateRoute with GoRouter.
-// Reason: AdaptiveNavShell (customnav/) requires GoRouter — having two
-// navigation systems in one app caused split state and back-stack bugs.
-//
-// Architecture:
-//   ┌─────────────────────────────────────────────────────────┐
-//   │  / (splash)      — shown while AuthBloc resolves        │
-//   │  /login          ─┐                                     │
-//   │  /register        ├─ Auth routes  (outside shell)       │
-//   │  /account-picker ─┘                                     │
-//   │  ShellRoute ──────────────────────────────────────────  │
-//   │    /home          ─┐                                     │
-//   │    /dashboard      ├─ Authenticated routes (inside shell)│
-//   │    /profile       ─┘                                     │
-//   └─────────────────────────────────────────────────────────┘
-//
-// Redirect is driven by AuthBloc state — no BlocListener needed
-// inside individual pages for session changes.
-//
-// Adding a new feature route:
-//   1. Add a static const String path constant below.
-//   2. Add a GoRoute inside the ShellRoute routes list.
-//   3. Add a NavItem in shell_nav_items.dart.
-//   4. Add a feature import above.
-//
-// Generator appends between the boundary markers automatically.
-// ─────────────────────────────────────────────────────────────
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -49,7 +18,6 @@ import '../shell/shell_page_home_tab.dart';
 // ── END GENERATOR FEATURE PAGE IMPORTS ───────────────────────────────────────
 
 class AppRouter {
-  // ── Route path constants ──────────────────────────────────
   static const String splash = '/';
   static const String login = '/login';
   static const String register = '/register';
@@ -61,9 +29,6 @@ class AppRouter {
   // ── GENERATOR ROUTE CONSTANTS — append only ──────────────
   // ── END GENERATOR ROUTE CONSTANTS ────────────────────────
 
-  // ── Router factory ────────────────────────────────────────
-  /// Creates and returns the [GoRouter] instance.
-  /// Call once from [FcaApp] and store it — do not recreate on rebuild.
   static GoRouter createRouter(AuthBloc authBloc) {
     final notifier = AuthRouterNotifier(authBloc);
 
@@ -73,10 +38,8 @@ class AppRouter {
       redirect: (context, state) =>
           _redirect(authBloc.state, state.matchedLocation),
       routes: [
-        // ── Splash ──────────────────────────────────────────
         GoRoute(path: splash, builder: (_, __) => const _SplashScreen()),
 
-        // ── Auth routes (no shell) ───────────────────────────
         GoRoute(
           path: login,
           builder: (_, routeState) {
@@ -85,7 +48,15 @@ class AppRouter {
           },
         ),
 
-        GoRoute(path: register, builder: (_, __) => const RegisterPage()),
+        GoRoute(
+          path: register,
+          builder: (_, routeState) {
+            final args = routeState.extra as Map<String, dynamic>?;
+            return RegisterPage(
+              addAccount: args?['addAccount'] as bool? ?? false,
+            );
+          },
+        ),
 
         GoRoute(
           path: accountPicker,
@@ -98,31 +69,23 @@ class AppRouter {
           },
         ),
 
-        // ── Authenticated shell (AdaptiveNavShell) ───────────
         ShellRoute(
           builder: (context, state, child) => ShellPage(child: child),
           routes: [
             GoRoute(path: home, builder: (_, __) => const HomeTab()),
-
             GoRoute(path: dashboard, builder: (_, __) => const DashboardPage()),
-
             GoRoute(path: profile, builder: (_, __) => const ProfilePage()),
-
             // ── GENERATOR ROUTES — append only ───────────────
             // ── END GENERATOR ROUTES ─────────────────────────
           ],
         ),
       ],
 
-      // ── 404 fallback ──────────────────────────────────────
       errorBuilder: (context, state) =>
           Scaffold(body: Center(child: Text('Route "${state.uri}" not found'))),
     );
   }
 
-  // ── Redirect logic ────────────────────────────────────────
-  // Pure function — easy to test independently.
-  // Returns a path to redirect to, or null to allow the navigation.
   static String? _redirect(AuthState authState, String location) {
     final isAuthRoute = const {
       login,
@@ -134,24 +97,53 @@ class AppRouter {
         location == home ||
         location == dashboard ||
         location == profile ||
-        // Catch any generator-added shell routes
         (!isAuthRoute && location != splash);
 
     return switch (authState) {
       // Still resolving — hold on splash
       AuthInitial() => location == splash ? null : splash,
-      AuthLoading() => location == splash ? null : splash,
 
-      // Authenticated — push away from auth / splash to shell
-      AuthAuthenticated() => isAuthRoute || location == splash ? home : null,
+      // Loading: stay on auth/splash; push shell routes back
+      AuthLoading() => isShellRoute ? splash : null,
+
+      // ── Authenticated ──────────────────────────────────────────────────────
+      // Only boot off splash and /account-picker → /home.
+      //
+      // CRITICAL: /login and /register are intentionally NOT redirected here.
+      // An already-authenticated user must be able to push to /login or
+      // /register for the add-account flow. If we redirected them away,
+      // context.push(AppRouter.login) would immediately bounce back to /home
+      // before the page builds.
+      //
+      // On successful add-account login/register, LoginPage and RegisterPage
+      // each call context.go(AppRouter.home) from their own BlocListener when
+      // they see AuthAuthenticated. That is the correct place for that
+      // navigation — not here in the global redirect.
+      AuthAuthenticated() =>
+        (location == splash || location == accountPicker) ? home : null,
 
       // Needs picker — redirect anywhere except the picker itself
       AuthNeedsAccountPicker() =>
         location == accountPicker ? null : accountPicker,
 
-      // Unauthenticated — redirect shell routes to login
+      // Unauthenticated — redirect shell/splash to login
       AuthUnauthenticated() =>
         isShellRoute || location == splash ? login : null,
+
+      // Switching — stay wherever we are
+      AuthSwitching() => null,
+
+      // Failure — stay on auth routes; push shell to login
+      AuthFailureState() =>
+        isShellRoute
+            ? login
+            : isAuthRoute
+            ? null
+            : login,
+
+      // Accounts updated — treat same as authenticated
+      AuthAccountsUpdated() =>
+        (location == splash || location == accountPicker) ? home : null,
 
       // Catch-all
       _ => isShellRoute ? login : null,
@@ -160,8 +152,6 @@ class AppRouter {
 }
 
 // ── AuthRouterNotifier ────────────────────────────────────────
-// Wraps AuthBloc's stream as a ChangeNotifier so GoRouter's
-// refreshListenable re-evaluates redirect on every auth change.
 class AuthRouterNotifier extends ChangeNotifier {
   AuthRouterNotifier(AuthBloc authBloc) {
     _subscription = authBloc.stream.listen((_) => notifyListeners());
@@ -177,21 +167,17 @@ class AuthRouterNotifier extends ChangeNotifier {
 }
 
 // ── Splash screen ─────────────────────────────────────────────
-// Shown while AuthBloc resolves the initial session from storage.
-// GoRouter redirect replaces it automatically once auth state resolves.
 class _SplashScreen extends StatelessWidget {
   const _SplashScreen();
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-
     return Scaffold(
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // ── Brand mark ────────────────────────────────
             Container(
               width: 72,
               height: 72,
@@ -206,8 +192,6 @@ class _SplashScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-
-            // ── App name ──────────────────────────────────
             Text(
               'FCA',
               style: Theme.of(context).textTheme.headlineLarge?.copyWith(
@@ -216,8 +200,6 @@ class _SplashScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 32),
-
-            // ── Spinner ───────────────────────────────────
             CircularProgressIndicator(color: scheme.primary, strokeWidth: 2.5),
           ],
         ),

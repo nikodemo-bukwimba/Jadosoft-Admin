@@ -7,8 +7,7 @@
 //
 // Navigation:
 //   Logout / unauthenticated → GoRouter redirect handles it
-//   "Add another account"    → context.push(AppRouter.login)
-//                              (addAccount handled by LoginPage itself)
+//   "Add another account"    → context.push(AppRouter.login, extra: {'addAccount': true})
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
@@ -27,8 +26,6 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<AuthBloc, AuthState>(
       builder: (context, state) {
-        // Guard: GoRouter redirect handles unauthenticated navigation.
-        // Only render when authenticated.
         if (state is! AuthAuthenticated) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
@@ -45,7 +42,6 @@ class HomePage extends StatelessWidget {
           appBar: AppBar(
             title: const Text('Home'),
             actions: [
-              // ── Account avatar / switcher ───────────────
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: GestureDetector(
@@ -112,7 +108,6 @@ class HomePage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ── Welcome card ─────────────────────
                       Card(
                         color: scheme.primaryContainer,
                         child: Padding(
@@ -169,7 +164,6 @@ class HomePage extends StatelessWidget {
 
                       const SizedBox(height: 24),
 
-                      // ── Session info ─────────────────────
                       Text('Session Info', style: textTheme.titleSmall),
                       const SizedBox(height: 12),
                       _InfoRow(
@@ -193,7 +187,6 @@ class HomePage extends StatelessWidget {
 
                       const SizedBox(height: 24),
 
-                      // ── Saved accounts summary ────────────
                       if (accounts.length > 1) ...[
                         Text('Signed-in accounts', style: textTheme.titleSmall),
                         const SizedBox(height: 12),
@@ -245,16 +238,20 @@ class HomePage extends StatelessWidget {
 
                       const SizedBox(height: 16),
 
-                      // ── Add account ───────────────────────
                       OutlinedButton.icon(
                         icon: const Icon(Icons.person_add_outlined, size: 18),
                         label: const Text('Add another account'),
-                        onPressed: () => context.push(AppRouter.login),
+                        // ✅ FIX: was context.push(AppRouter.login) with no extra.
+                        // LoginPage received addAccount:false → no AppBar, no back
+                        // button, wrong header text.
+                        onPressed: () => context.push(
+                          AppRouter.login,
+                          extra: {'addAccount': true},
+                        ),
                       ),
 
                       const SizedBox(height: 12),
 
-                      // ── Logout ────────────────────────────
                       OutlinedButton.icon(
                         icon: const Icon(Icons.logout, size: 18),
                         label: const Text('Sign out'),
@@ -286,8 +283,6 @@ class HomePage extends StatelessWidget {
     return name.isNotEmpty ? name[0].toUpperCase() : '?';
   }
 }
-
-// ── Small widgets ─────────────────────────────────────────────
 
 class _RoleBadge extends StatelessWidget {
   final String label;
