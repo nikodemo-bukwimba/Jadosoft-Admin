@@ -1,17 +1,36 @@
-// auth_remote_datasource.dart  [R3 — Secure Network]
+// auth_remote_datasource.dart
 // ─────────────────────────────────────────────────────────────
 // All calls go through the shared Dio instance.
-// LOGIN RESPONSE NOTE:
-//   Laravel Sanctum typically returns: { token: "...", user: {...} }
-//   OR just: { access_token: "...", user: {...} }
-//   OR: { data: { token: "...", user: {...} } }
-//   _extractToken() handles all common shapes.
+//
+// ENDPOINTS:
+//   POST /auth/login    → { user: {...}, token: "..." }
+//   POST /auth/register → { user: {...}, token: "..." }
+//   POST /auth/logout   → 204
+//   GET  /auth/me       → { data: { user + roles + permissions } }
+//
+// REMOVED: GET /me/roles — this endpoint never existed in the
+// HMSCP API. Roles and permissions are now returned inline by
+// GET /auth/me as part of the user resource.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/user_model.dart';
+
+/// Raw data returned from GET /auth/me — contains user, roles,
+/// and permissions all in one response.
+class AuthMeResponse {
+  final UserModel user;
+  final List<RoleModel> roles;
+  final List<PermissionModel> permissions;
+
+  const AuthMeResponse({
+    required this.user,
+    required this.roles,
+    required this.permissions,
+  });
+}
 
 abstract class AuthRemoteDataSource {
   Future<Map<String, dynamic>> login(String email, String password);
@@ -23,15 +42,17 @@ abstract class AuthRemoteDataSource {
     String? phone,
   });
   Future<void> logout();
-  Future<UserModel> getUser();
-  Future<Map<String, dynamic>> getRolesAndPermissions();
+
+  /// Fetches the full authenticated user profile including roles
+  /// and permissions from GET /auth/me.
+  Future<AuthMeResponse> getAuthMe();
 }
 
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   final Dio _dio;
   AuthRemoteDataSourceImpl(this._dio);
 
-  // ── POST /login ───────────────────────────────────────────
+  // ── POST /auth/login ──────────────────────────────────────
   @override
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
@@ -41,10 +62,8 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       );
       final body = _parseBody(response);
 
-      // Debug: log the response shape in dev so we can verify token key
       if (kDebugMode) {
         debugPrint('[AUTH] Login response keys: ${body.keys.toList()}');
-        // Log token presence without logging the actual value (R9)
         final token = _extractToken(body);
         debugPrint(
           '[AUTH] Token extracted: ${token != null ? "YES (${token.length} chars)" : "NO — check response shape"}',
@@ -57,7 +76,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     }
   }
 
-  // ── POST /register ────────────────────────────────────────
+  // ── POST /auth/register ───────────────────────────────────
   @override
   Future<Map<String, dynamic>> register({
     required String name,
@@ -93,7 +112,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     }
   }
 
-  // ── POST /logout ──────────────────────────────────────────
+  // ── POST /auth/logout ─────────────────────────────────────
   @override
   Future<void> logout() async {
     try {
@@ -104,47 +123,68 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     }
   }
 
-  // ── GET /user ─────────────────────────────────────────────
+  // ── GET /auth/me ──────────────────────────────────────────
+  // Returns user + roles + permissions in one call.
+  //
+  // Expected response shape:
+  //   { "data": { ...user fields, "roles": [...], "permissions": [...] } }
+  // OR flat (no wrapper):
+  //   { ...user fields, "roles": [...], "permissions": [...] }
   @override
-  Future<UserModel> getUser() async {
+  Future<AuthMeResponse> getAuthMe() async {
     try {
       final response = await _dio.get('/auth/me');
-      final data = response.data;
-      if (data == null)
-        throw const ServerException('Empty response from /auth/me');
-      return UserModel.fromJson(data as Map<String, dynamic>);
-    } on DioException catch (e) {
-      throw _handleDioError(e);
-    }
-  }
+      final raw = response.data;
 
-  // ── GET /me/roles ─────────────────────────────────────────
-  @override
-  Future<Map<String, dynamic>> getRolesAndPermissions() async {
-    try {
-      final response = await _dio.get('/me/roles');
-      final body = response.data as Map<String, dynamic>?;
-      if (body == null)
-        throw const ServerException('Empty response from /me/roles');
-      // Shape: { success: true, data: { roles: [], permissions: [] } }
-      return body['data'] as Map<String, dynamic>? ?? {};
+      if (raw == null) {
+        throw const ServerException('Empty response from /auth/me');
+      }
+
+      // Unwrap: may be nested under 'data' or flat
+      final Map<String, dynamic> body;
+      if (raw is Map<String, dynamic>) {
+        body = raw.containsKey('data') && raw['data'] is Map<String, dynamic>
+            ? raw['data'] as Map<String, dynamic>
+            : raw;
+      } else {
+        throw const ServerException('Unexpected response format from /auth/me');
+      }
+
+      // Parse user (roles embedded in user JSON too)
+      final user = UserModel.fromJson(body);
+
+      // Parse permissions — may be at top level of the response
+      final rawPerms = body['permissions'] as List<dynamic>? ?? [];
+      final permissions = rawPerms
+          .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
+          .toList();
+
+      // Roles are already parsed inside UserModel.fromJson,
+      // but we also extract them here for the auth flow.
+      final rawRoles = body['roles'] as List<dynamic>? ?? [];
+      final roles = rawRoles
+          .map((r) => RoleModel.fromJson(r as Map<String, dynamic>))
+          .toList();
+
+      if (kDebugMode) {
+        debugPrint(
+          '[AUTH] /auth/me: user=${user.email}, '
+          'roles=${roles.length}, permissions=${permissions.length}',
+        );
+      }
+
+      return AuthMeResponse(user: user, roles: roles, permissions: permissions);
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
   }
 
   // ── Token extraction ──────────────────────────────────────
-  // Handles the most common Sanctum response shapes:
-  //   { "token": "..." }
-  //   { "access_token": "..." }
-  //   { "data": { "token": "..." } }
   static String? extractToken(Map<String, dynamic> body) => _extractToken(body);
 
   static String? _extractToken(Map<String, dynamic> body) {
-    // Direct key
     if (body['token'] is String) return body['token'] as String;
     if (body['access_token'] is String) return body['access_token'] as String;
-    // Nested under 'data'
     final data = body['data'];
     if (data is Map<String, dynamic>) {
       if (data['token'] is String) return data['token'] as String;
@@ -158,8 +198,9 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   Map<String, dynamic> _parseBody(Response response) {
     final data = response.data;
     if (data == null) throw const ServerException('Empty response body');
-    if (data is! Map<String, dynamic>)
+    if (data is! Map<String, dynamic>) {
       throw const ServerException('Unexpected response format');
+    }
     return data;
   }
 

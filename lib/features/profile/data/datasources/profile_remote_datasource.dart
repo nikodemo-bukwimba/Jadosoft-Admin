@@ -1,13 +1,14 @@
 // profile_remote_datasource.dart
 // ─────────────────────────────────────────────────────────────
-// Fetches own profile data from two endpoints:
-//   GET /auth/me  → user object
-//   GET /me/roles → { data: { roles, permissions } }
-// Token is attached by AuthInterceptor — no manual headers needed.
+// Fetches own profile data from a single endpoint:
+//   GET /auth/me → { data: { user + roles + permissions } }
 //
-// Uses relative paths (no AppConstants.baseUrl prefix) so Dio's
-// configured baseUrl is the single source of truth, consistent
-// with all other datasources in the app.
+// REMOVED: GET /me/roles — this endpoint never existed in the
+// HMSCP API. The /auth/me response now includes roles and
+// permissions inline.
+//
+// Token is attached by AuthInterceptor — no manual headers needed.
+// Uses relative paths so Dio's baseUrl is the single source of truth.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:dio/dio.dart';
@@ -26,29 +27,34 @@ class ProfileRemoteDataSourceImpl implements ProfileRemoteDataSource {
   @override
   Future<ProfileModel> getOwnProfile() async {
     try {
-      final userResponse = await _dio.get('/auth/me');
-      final rolesResponse = await _dio.get('/me/roles');
+      final response = await _dio.get('/auth/me');
+      final raw = response.data;
 
-      final userData = userResponse.data;
-      final rolesBody = rolesResponse.data as Map<String, dynamic>?;
-
-      if (userData == null) {
+      if (raw == null) {
         throw const ServerException('Empty response from /auth/me');
       }
-      if (rolesBody == null) {
-        throw const ServerException('Empty response from /me/roles');
+
+      // Unwrap: may be nested under 'data' or flat
+      final Map<String, dynamic> body;
+      if (raw is Map<String, dynamic>) {
+        body = raw.containsKey('data') && raw['data'] is Map<String, dynamic>
+            ? raw['data'] as Map<String, dynamic>
+            : raw;
+      } else {
+        throw const ServerException('Unexpected response format from /auth/me');
       }
 
-      final user = UserModel.fromJson(userData as Map<String, dynamic>);
+      // Parse user (includes roles inline)
+      final user = UserModel.fromJson(body);
 
-      // Shape: { success: true, data: { roles: [], permissions: [] } }
-      final rolesData = rolesBody['data'] as Map<String, dynamic>? ?? {};
-      final rawRoles = rolesData['roles'] as List<dynamic>? ?? [];
-      final rawPerms = rolesData['permissions'] as List<dynamic>? ?? [];
-
+      // Parse roles from the same response
+      final rawRoles = body['roles'] as List<dynamic>? ?? [];
       final roles = rawRoles
           .map((r) => RoleModel.fromJson(r as Map<String, dynamic>))
           .toList();
+
+      // Parse permissions from the same response
+      final rawPerms = body['permissions'] as List<dynamic>? ?? [];
       final permissions = rawPerms
           .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
           .toList();

@@ -3,6 +3,10 @@
 // CHANGE: UserModel.id is now String (Laravel uses ULIDs).
 // RoleModel / PermissionModel keep int ids (standard auto-increment)
 // but use safe parsing so they never hard-cast.
+//
+// FIX: RoleModel.slug falls back to name when the API doesn't
+// return a 'slug' field (platform_roles table has no slug column).
+// Same for PermissionModel — slug falls back to name.
 // ─────────────────────────────────────────────────────────────
 
 import '../../domain/entities/user_entity.dart';
@@ -15,10 +19,10 @@ class RoleModel extends RoleEntity {
   });
 
   factory RoleModel.fromJson(Map<String, dynamic> json) => RoleModel(
-    // Safe parse — handles both int and numeric-string ids
     id: int.parse(json['id'].toString()),
-    name: json['name'] as String,
-    slug: json['slug'] as String,
+    name: json['name'] as String? ?? '',
+    // platform_roles has no slug column — fall back to name
+    slug: json['slug'] as String? ?? json['name'] as String? ?? '',
   );
 
   Map<String, dynamic> toJson() => {'id': id, 'name': name, 'slug': slug};
@@ -34,8 +38,9 @@ class PermissionModel extends PermissionEntity {
   factory PermissionModel.fromJson(Map<String, dynamic> json) =>
       PermissionModel(
         id: int.parse(json['id'].toString()),
-        name: json['name'] as String,
-        slug: json['slug'] as String,
+        name: json['name'] as String? ?? '',
+        // platform_permissions has a slug column, but defend anyway
+        slug: json['slug'] as String? ?? json['name'] as String? ?? '',
       );
 
   Map<String, dynamic> toJson() => {'id': id, 'name': name, 'slug': slug};
@@ -67,6 +72,9 @@ class UserModel extends UserEntity {
       primaryRole = RoleModel.fromJson(
         json['primary_role'] as Map<String, dynamic>,
       );
+    } else if (roles.isNotEmpty) {
+      // If no explicit primary_role, use first role
+      primaryRole = roles.first;
     }
 
     return UserModel(
@@ -77,8 +85,12 @@ class UserModel extends UserEntity {
       email: json['email'] as String,
       phone: json['phone'] as String?,
 
-      // Laravel may return 0/1 or true/false for booleans
-      isActive: json['is_active'] == true || json['is_active'] == 1,
+      // Laravel may return 0/1, true/false, or 'active' status string
+      isActive:
+          json['is_active'] == true ||
+          json['is_active'] == 1 ||
+          json['status'] == 'active',
+
       hasActiveSubscription:
           json['has_active_subscription'] == true ||
           json['has_active_subscription'] == 1,
