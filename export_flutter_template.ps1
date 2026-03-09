@@ -4,7 +4,7 @@
 # Output: flutter_template_export.txt (in the same directory)
 # ============================================================
 
-$OutputFile = "flutter_template_export.txt"
+$OutputFile = "flutter_template.txt"
 $RootPath   = Get-Location
 $LibPath    = Join-Path $RootPath "lib"
 
