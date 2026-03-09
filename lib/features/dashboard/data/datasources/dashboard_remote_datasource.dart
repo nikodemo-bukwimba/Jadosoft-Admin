@@ -6,13 +6,8 @@
 // Auth:     Bearer token attached automatically by AuthInterceptor.
 // Access:   Admin / super-admin only (enforced server-side).
 //
-// Changing the endpoint:
-//   Update AppConstants or pass the path as a constructor arg.
-//   The datasource itself should own no URL strings — use constants.
-// ─────────────────────────────────────────────────────────────
 
 import 'package:dio/dio.dart';
-import 'package:fca/core/constants/app_constants.dart';
 import 'package:fca/core/error/exceptions.dart';
 
 import '../models/dashboard_stats_model.dart';
@@ -30,9 +25,7 @@ class DashboardRemoteDataSourceImpl implements DashboardRemoteDataSource {
   @override
   Future<DashboardStatsModel> getDashboardStats() async {
     try {
-      final response = await _dio.get(
-        '${AppConstants.baseUrl}/admin/dashboard',
-      );
+      final response = await _dio.get('/admin/dashboard');
 
       final body = response.data;
 

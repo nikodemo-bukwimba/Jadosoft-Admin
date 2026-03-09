@@ -128,8 +128,10 @@ class AppRouter {
     );
   }
 
+  static const _authRoutes = {login, register, accountPicker};
   static String? _redirect(AuthState authState, String location) {
-    final isShellRoute = const {home, dashboard, profile}.contains(location);
+    final isAuthRoute = _authRoutes.contains(location);
+    final isShellRoute = !isAuthRoute && location != splash;
 
     return switch (authState) {
       // ── Resolving ────────────────────────────────────────────────────────────

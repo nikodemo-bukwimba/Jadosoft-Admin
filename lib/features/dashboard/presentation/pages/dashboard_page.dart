@@ -1,131 +1,210 @@
 // dashboard_page.dart
 // ─────────────────────────────────────────────────────────────
-// Generic dashboard template — replace the stat cards and
-// content sections with your actual domain widgets.
+// Admin dashboard — shows real stats from GET /admin/dashboard.
 //
-// Access: admin + super-admin only (customRole:admin,super-admin
-// on the Laravel side). The shell hides the tab entirely for
-// non-admins, but this page also self-guards as a second layer.
+// Data pipeline:
+//   DashboardRemoteDataSource → DashboardRepository (cache-first)
+//   → GetDashboardStatsUseCase → DashboardBloc → this page.
 //
-// Demonstrates:
-//   - AdminGuard widget wrapping sensitive content
-//   - PermissionGuard wrapping individual action buttons
-//   - Reading active session roles/permissions
+// Access:
+//   Shell hides the tab via canViewDashboard (permission-gated).
+//   This page self-guards as a second layer.
+//
+// States handled:
+//   DashboardLoading  → full-screen spinner (first load)
+//   DashboardLoaded   → stat cards + data (isRefreshing: overlay)
+//   DashboardError    → error view OR stale data + error banner
+//   DashboardInitial  → triggers load automatically
 // ─────────────────────────────────────────────────────────────
 
-import 'package:fca/features/auth/presentation/bloc/auth_bloc.dart';
-import 'package:fca/features/auth/presentation/bloc/auth_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../../core/rbac/permission_guard.dart';
-import '../../../../core/rbac/rbac_extensions.dart';
 
-class DashboardPage extends StatelessWidget {
+import '../../../../config/di/injection_container.dart';
+import '../../../../core/extensions/string_extensions.dart';
+import '../../../../core/rbac/rbac_extensions.dart';
+import '../../../auth/presentation/bloc/auth_bloc.dart';
+import '../../../auth/presentation/bloc/auth_state.dart';
+import '../../domain/entities/dashboard_stats.dart';
+import '../bloc/dashboard_bloc.dart';
+import '../bloc/dashboard_event.dart';
+import '../bloc/dashboard_state.dart';
+
+class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
+
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends State<DashboardPage> {
+  late final DashboardBloc _bloc;
+
+  @override
+  void initState() {
+    super.initState();
+    _bloc = sl<DashboardBloc>()..add(DashboardLoadRequested());
+  }
+
+  @override
+  void dispose() {
+    _bloc.close();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<AuthBloc, AuthState>(
-      builder: (context, state) {
-        // Second-layer guard — page renders nothing if not admin.
-        // The shell tab is already hidden for non-admins.
-        if (state is! AuthAuthenticated || !state.canViewDashboard) {
+      builder: (context, authState) {
+        // Second-layer guard — page renders nothing if not permitted.
+        if (authState is! AuthAuthenticated || !authState.canViewDashboard) {
           return const SizedBox.shrink();
         }
 
-        final scheme = Theme.of(context).colorScheme;
-        final textTheme = Theme.of(context).textTheme;
-
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('Dashboard'),
-            actions: [
-              // Only super-admins see the settings action
-              SuperAdminGuard(
-                child: IconButton(
-                  icon: const Icon(Icons.settings_outlined),
-                  tooltip: 'Admin settings',
-                  onPressed: () {
-                    // TODO: navigate to admin settings
-                  },
-                ),
-              ),
-            ],
-          ),
-          body: RefreshIndicator(
-            onRefresh: () async {
-              // TODO: trigger your dashboard data reload here
-            },
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 960),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // ── Welcome row ──────────────────────
-                      _WelcomeRow(
-                        auth: state,
-                        scheme: scheme,
-                        textTheme: textTheme,
-                      ),
-                      const SizedBox(height: 24),
-
-                      // ── Role badge ────────────────────────
-                      _RoleBanner(
-                        auth: state,
-                        scheme: scheme,
-                        textTheme: textTheme,
-                      ),
-                      const SizedBox(height: 24),
-
-                      // ── Stat cards (template placeholders) ─
-                      Text(
-                        'Overview',
-                        style: textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _StatCardGrid(scheme: scheme, textTheme: textTheme),
-                      const SizedBox(height: 24),
-
-                      // ── Permission-gated action buttons ───
-                      Text(
-                        'Quick Actions',
-                        style: textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _QuickActions(scheme: scheme),
-                      const SizedBox(height: 24),
-
-                      // ── RBAC debug panel ──────────────────
-                      // Shows in debug mode to test access control.
-                      // Remove or gate behind kDebugMode in production.
-                      _RbacDebugPanel(
-                        auth: state,
-                        scheme: scheme,
-                        textTheme: textTheme,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
+        return BlocProvider.value(
+          value: _bloc,
+          child: _DashboardScaffold(auth: authState),
         );
       },
     );
   }
 }
 
-// ── Welcome row ───────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Scaffold — owns the AppBar, RefreshIndicator, and state routing
+// ─────────────────────────────────────────────────────────────
+class _DashboardScaffold extends StatelessWidget {
+  final AuthAuthenticated auth;
+  const _DashboardScaffold({required this.auth});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Dashboard')),
+      body: BlocConsumer<DashboardBloc, DashboardState>(
+        listener: (context, state) {
+          // Show error snackbar on refresh failure (stale data still visible)
+          if (state is DashboardError && state.previousStats != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: scheme.error,
+                action: SnackBarAction(
+                  label: 'Retry',
+                  textColor: scheme.onError,
+                  onPressed: () => context.read<DashboardBloc>().add(
+                    DashboardRefreshRequested(),
+                  ),
+                ),
+              ),
+            );
+          }
+        },
+        builder: (context, state) {
+          // ── First load ──────────────────────────────────
+          if (state is DashboardLoading || state is DashboardInitial) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          // ── Error with no previous data ─────────────────
+          if (state is DashboardError && state.previousStats == null) {
+            return _ErrorView(
+              message: state.message,
+              onRetry: () =>
+                  context.read<DashboardBloc>().add(DashboardLoadRequested()),
+            );
+          }
+
+          // ── Data available (loaded or error-with-stale) ─
+          final stats = switch (state) {
+            DashboardLoaded s => s.stats,
+            DashboardError s => s.previousStats!,
+            _ => null,
+          };
+
+          if (stats == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final isRefreshing = state is DashboardLoaded && state.isRefreshing;
+
+          return RefreshIndicator(
+            onRefresh: () async =>
+                context.read<DashboardBloc>().add(DashboardRefreshRequested()),
+            child: Stack(
+              children: [
+                SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 960),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _WelcomeRow(
+                            auth: auth,
+                            scheme: scheme,
+                            textTheme: textTheme,
+                          ),
+                          const SizedBox(height: 24),
+                          _RoleBanner(
+                            auth: auth,
+                            scheme: scheme,
+                            textTheme: textTheme,
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            'Overview',
+                            style: textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _StatCardGrid(
+                            stats: stats,
+                            scheme: scheme,
+                            textTheme: textTheme,
+                          ),
+                          const SizedBox(height: 16),
+                          _FetchedAtLabel(
+                            fetchedAt: stats.fetchedAt,
+                            scheme: scheme,
+                            textTheme: textTheme,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // ── Refresh overlay ─────────────────────────
+                if (isRefreshing)
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: LinearProgressIndicator(
+                      color: scheme.primary,
+                      backgroundColor: scheme.surfaceContainerHighest,
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Welcome row
+// ─────────────────────────────────────────────────────────────
 class _WelcomeRow extends StatelessWidget {
   final AuthAuthenticated auth;
   final ColorScheme scheme;
@@ -145,7 +224,7 @@ class _WelcomeRow extends StatelessWidget {
           radius: 22,
           backgroundColor: scheme.primaryContainer,
           child: Text(
-            _initials(auth.displayName),
+            auth.displayName.initials,
             style: TextStyle(
               fontWeight: FontWeight.w700,
               color: scheme.onPrimaryContainer,
@@ -175,16 +254,11 @@ class _WelcomeRow extends StatelessWidget {
       ],
     );
   }
-
-  String _initials(String name) {
-    final parts = name.trim().split(' ');
-    if (parts.length >= 2)
-      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
-    return name.isNotEmpty ? name[0].toUpperCase() : '?';
-  }
 }
 
-// ── Role banner ───────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Role banner (display-only — uses isSuperAdmin for badge color)
+// ─────────────────────────────────────────────────────────────
 class _RoleBanner extends StatelessWidget {
   final AuthAuthenticated auth;
   final ColorScheme scheme;
@@ -198,19 +272,17 @@ class _RoleBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color bgColor;
-    Color fgColor;
-    IconData roleIcon;
-
-    if (auth.isSuperAdmin) {
-      bgColor = scheme.errorContainer;
-      fgColor = scheme.onErrorContainer;
-      roleIcon = Icons.security;
-    } else {
-      bgColor = scheme.secondaryContainer;
-      fgColor = scheme.onSecondaryContainer;
-      roleIcon = Icons.admin_panel_settings_outlined;
-    }
+    final isSA = auth.isSuperAdmin;
+    final bgColor = isSA ? scheme.errorContainer : scheme.secondaryContainer;
+    final fgColor = isSA
+        ? scheme.onErrorContainer
+        : scheme.onSecondaryContainer;
+    final roleIcon = isSA
+        ? Icons.security
+        : Icons.admin_panel_settings_outlined;
+    final roleText = isSA
+        ? 'Super Admin — full system access'
+        : auth.primaryRoleName;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -224,9 +296,7 @@ class _RoleBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              auth.isSuperAdmin
-                  ? 'Super Admin — full system access'
-                  : 'Admin — management access',
+              roleText,
               style: textTheme.bodyMedium?.copyWith(
                 color: fgColor,
                 fontWeight: FontWeight.w600,
@@ -239,39 +309,76 @@ class _RoleBanner extends StatelessWidget {
   }
 }
 
-// ── Stat card grid (template) ─────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Stat card grid — real data from DashboardStats
+// ─────────────────────────────────────────────────────────────
 class _StatCardGrid extends StatelessWidget {
+  final DashboardStats stats;
   final ColorScheme scheme;
   final TextTheme textTheme;
 
-  const _StatCardGrid({required this.scheme, required this.textTheme});
-
-  // Replace these with real data from your dashboard BLoC/use case
-  static const _cards = [
-    (label: 'Total Users', value: '—', icon: Icons.people_outline),
-    (label: 'Revenue', value: '—', icon: Icons.attach_money),
-    (label: 'Subscriptions', value: '—', icon: Icons.card_membership_outlined),
-    (label: 'Payments', value: '—', icon: Icons.payment_outlined),
-  ];
+  const _StatCardGrid({
+    required this.stats,
+    required this.scheme,
+    required this.textTheme,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final cards = [
+      (
+        label: 'Total Users',
+        value: _fmtInt(stats.totalUsers),
+        icon: Icons.people_outline,
+      ),
+      (
+        label: 'New This Month',
+        value: _fmtInt(stats.newUsersThisMonth),
+        icon: Icons.person_add_outlined,
+      ),
+      (
+        label: 'Subscriptions',
+        value: _fmtInt(stats.activeSubscriptions),
+        icon: Icons.card_membership_outlined,
+      ),
+      (
+        label: 'Pending Payments',
+        value: _fmtInt(stats.pendingPayments),
+        icon: Icons.payment_outlined,
+      ),
+      (
+        label: 'Revenue (Month)',
+        value: _fmtCurrency(stats.revenueThisMonth),
+        icon: Icons.trending_up,
+      ),
+      (
+        label: 'Total Revenue',
+        value: _fmtCurrency(stats.totalRevenue),
+        icon: Icons.attach_money,
+      ),
+    ];
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final crossCount = constraints.maxWidth > 500 ? 4 : 2;
+        final crossCount = constraints.maxWidth > 600
+            ? 3
+            : constraints.maxWidth > 400
+            ? 2
+            : 1;
+
         return GridView.count(
           crossAxisCount: crossCount,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
-          childAspectRatio: 1.4,
-          children: _cards
+          childAspectRatio: 1.6,
+          children: cards
               .map(
-                (card) => _StatCard(
-                  label: card.label,
-                  value: card.value,
-                  icon: card.icon,
+                (c) => _StatCard(
+                  label: c.label,
+                  value: c.value,
+                  icon: c.icon,
                   scheme: scheme,
                   textTheme: textTheme,
                 ),
@@ -280,6 +387,20 @@ class _StatCardGrid extends StatelessWidget {
         );
       },
     );
+  }
+
+  String _fmtInt(int? value) => value?.toString() ?? '—';
+
+  String _fmtCurrency(double? value) {
+    if (value == null) return '—';
+    // Simple formatting — replace with intl NumberFormat if needed
+    if (value >= 1000000) {
+      return '\$${(value / 1000000).toStringAsFixed(1)}M';
+    }
+    if (value >= 1000) {
+      return '\$${(value / 1000).toStringAsFixed(1)}K';
+    }
+    return '\$${value.toStringAsFixed(2)}';
   }
 }
 
@@ -332,270 +453,79 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-// ── Quick actions (permission-gated) ──────────────────────────
-class _QuickActions extends StatelessWidget {
+// ─────────────────────────────────────────────────────────────
+// Fetched-at label
+// ─────────────────────────────────────────────────────────────
+class _FetchedAtLabel extends StatelessWidget {
+  final DateTime fetchedAt;
   final ColorScheme scheme;
-  const _QuickActions({required this.scheme});
+  final TextTheme textTheme;
+
+  const _FetchedAtLabel({
+    required this.fetchedAt,
+    required this.scheme,
+    required this.textTheme,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
+    final h = fetchedAt.hour.toString().padLeft(2, '0');
+    final m = fetchedAt.minute.toString().padLeft(2, '0');
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        // Visible to anyone with users.view
-        PermissionGuard(
-          permission: 'users.view',
-          child: _ActionChip(
-            icon: Icons.people_outline,
-            label: 'View Users',
-            onTap: () {
-              /* TODO */
-            },
-          ),
-        ),
-
-        // Visible to anyone with users.create
-        PermissionGuard(
-          permission: 'users.create',
-          child: _ActionChip(
-            icon: Icons.person_add_outlined,
-            label: 'Create User',
-            onTap: () {
-              /* TODO */
-            },
-          ),
-        ),
-
-        // Visible to anyone with subscriptions.view
-        PermissionGuard(
-          permission: 'subscriptions.view',
-          child: _ActionChip(
-            icon: Icons.card_membership_outlined,
-            label: 'Subscriptions',
-            onTap: () {
-              /* TODO */
-            },
-          ),
-        ),
-
-        // Visible to anyone with payments.view
-        PermissionGuard(
-          permission: 'payments.view',
-          child: _ActionChip(
-            icon: Icons.payment_outlined,
-            label: 'Payments',
-            onTap: () {
-              /* TODO */
-            },
-          ),
-        ),
-
-        // Super-admin only
-        SuperAdminGuard(
-          child: _ActionChip(
-            icon: Icons.shield_outlined,
-            label: 'Manage Roles',
-            onTap: () {
-              /* TODO */
-            },
-          ),
-        ),
-
-        // Analytics permission
-        PermissionGuard(
-          permission: 'analytics.view',
-          child: _ActionChip(
-            icon: Icons.bar_chart_outlined,
-            label: 'Analytics',
-            onTap: () {
-              /* TODO */
-            },
-          ),
+        Icon(Icons.access_time, size: 12, color: scheme.onSurfaceVariant),
+        const SizedBox(width: 4),
+        Text(
+          'Last updated $h:$m',
+          style: textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
         ),
       ],
     );
   }
 }
 
-class _ActionChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
+// ─────────────────────────────────────────────────────────────
+// Error view (first-load failure, no stale data)
+// ─────────────────────────────────────────────────────────────
+class _ErrorView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
 
-  const _ActionChip({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
+  const _ErrorView({required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: scheme.outlineVariant, width: 1),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: scheme.primary),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+    final textTheme = Theme.of(context).textTheme;
 
-// ── RBAC debug panel ──────────────────────────────────────────
-// Shows current user's roles and a sample permission check.
-// Useful during development to verify access control is working.
-class _RbacDebugPanel extends StatelessWidget {
-  final AuthAuthenticated auth;
-  final ColorScheme scheme;
-  final TextTheme textTheme;
-
-  const _RbacDebugPanel({
-    required this.auth,
-    required this.scheme,
-    required this.textTheme,
-  });
-
-  // Permissions to test — a representative sample
-  static const _testPerms = [
-    'users.view',
-    'users.create',
-    'users.edit',
-    'users.delete',
-    'roles.manage',
-    'subscriptions.view',
-    'subscriptions.manage',
-    'payments.view',
-    'payments.manage',
-    'analytics.view',
-    'settings.manage',
-    'feedback.manage',
-    'help.manage',
-    'financial.view',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: scheme.surfaceContainerLow,
+    return Center(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(32),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.bug_report_outlined,
-                  size: 18,
-                  color: scheme.tertiary,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'RBAC Debug Panel',
-                  style: textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: scheme.tertiary,
-                  ),
-                ),
-                const SizedBox(width: 24),
-                Text(
-                  '${auth.activeSession.permissions.length} permissions',
-                  style: textTheme.labelSmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
+            Icon(Icons.error_outline, size: 56, color: scheme.error),
+            const SizedBox(height: 16),
             Text(
-              'Remove this panel before production.',
-              style: textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Divider(height: 1),
-            const SizedBox(height: 12),
-
-            // Roles
-            Text(
-              'Roles:',
-              style: textTheme.labelMedium?.copyWith(
+              'Failed to load dashboard',
+              style: textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: auth.activeSession.user.roles
-                  .map(
-                    (r) => Chip(
-                      label: Text(r.slug),
-                      backgroundColor: scheme.primaryContainer,
-                      labelStyle: TextStyle(
-                        fontSize: 11,
-                        color: scheme.onPrimaryContainer,
-                      ),
-                      visualDensity: VisualDensity.compact,
-                      side: BorderSide.none,
-                    ),
-                  )
-                  .toList(),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Permission check table
+            const SizedBox(height: 8),
             Text(
-              'Permission checks:',
-              style: textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: scheme.onSurfaceVariant),
             ),
-            const SizedBox(height: 6),
-            ..._testPerms.map((slug) {
-              final has = auth.can(slug);
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  children: [
-                    Icon(
-                      has ? Icons.check_circle : Icons.cancel_outlined,
-                      size: 14,
-                      color: has ? scheme.primary : scheme.outlineVariant,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      slug,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: has
-                            ? scheme.onSurface
-                            : scheme.onSurfaceVariant.withOpacity(0.5),
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+              onPressed: onRetry,
+            ),
           ],
         ),
       ),

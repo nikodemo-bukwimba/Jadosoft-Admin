@@ -12,6 +12,9 @@
 //   Profile and Dashboard repositories are now cache-first: they read
 //   from Drift first and only hit the API when the TTL has expired.
 // ─────────────────────────────────────────────────────────────
+// ── GENERATOR FEATURE IMPORTS — append only ──────────────────
+
+// ── END GENERATOR FEATURE IMPORTS
 
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -24,7 +27,6 @@ import '../../core/network/auth_interceptor.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/network/token_refresh_config.dart';
 import '../../core/storage/secure_storage_service.dart';
-// ── END GENERATOR FEATURE IMPORTS
 import '../../features/auth/data/datasources/auth_local_datasource.dart';
 import '../../features/auth/data/datasources/auth_remote_datasource.dart';
 import '../../features/auth/data/repositories/auth_repository_impl.dart';
@@ -188,6 +190,6 @@ Future<void> initDependencies() async {
   );
 
   // ── GENERATOR MANAGED ─────────────────────────────────────
- 
+
   // ── END GENERATOR MANAGED ─────────────────────────────────
 }

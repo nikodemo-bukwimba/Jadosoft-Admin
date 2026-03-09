@@ -1,28 +1,38 @@
 // permission_guard.dart
 // ─────────────────────────────────────────────────────────────
 // Wraps any widget and renders NOTHING if the current user
-// does not satisfy the given role/permission requirement.
+// does not satisfy the given permission requirement.
 //
-// Usage examples:
+// DESIGN: Gates on PERMISSIONS, not roles. Roles are display-only.
+// Permission slugs match the backend's PlatformPermissionSeeder.
 //
-//   // Hide unless user has 'users.view' permission
+// Usage:
+//
+//   // Hide unless user has 'actors.view' permission
 //   PermissionGuard(
-//     permission: 'users.view',
-//     child: AdminUserListButton(),
+//     permission: 'actors.view',
+//     child: ActorListButton(),
 //   )
 //
-//   // Hide unless user has 'admin' or 'super-admin' role
+//   // Hide unless user has ANY of these permissions
 //   PermissionGuard(
-//     roles: ['admin', 'super-admin'],
-//     child: DashboardNavItem(),
+//     permissions: ['orders.view', 'orders.create'],
+//     child: OrderSection(),
 //   )
 //
-//   // Hide unless user has ALL listed permissions
+//   // Hide unless user has ALL of these permissions
 //   PermissionGuard(
-//     permissions: ['users.view', 'users.edit'],
+//     permissions: ['orders.view', 'orders.approve'],
 //     requireAll: true,
-//     child: EditUserButton(),
+//     child: ApproveOrderButton(),
 //   )
+//
+// Generator integration:
+//   Generated features use the config's "permission" key:
+//     PermissionGuard(
+//       permission: 'actor_types.view',  // from feature.config.json
+//       child: ...,
+//     )
 // ─────────────────────────────────────────────────────────────
 
 import 'package:fca/features/auth/presentation/bloc/auth_bloc.dart';
@@ -33,42 +43,32 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'rbac_extensions.dart';
 
 class PermissionGuard extends StatelessWidget {
-  /// Single permission slug required (OR logic with [permissions]).
+  /// Single permission slug required.
   final String? permission;
 
   /// Multiple permission slugs. Combined with [requireAll].
   final List<String>? permissions;
 
-  /// Single role slug required (OR logic with [roles]).
-  final String? role;
-
-  /// Multiple role slugs. Combined with [requireAllRoles].
-  final List<String>? roles;
-
   /// If true, user must have ALL [permissions]. Default: any one is enough.
   final bool requireAll;
 
-  /// If true, user must have ALL [roles]. Default: any one is enough.
-  final bool requireAllRoles;
-
   /// Widget to show if check passes.
   final Widget child;
+
+  /// Optional widget to show if check fails (instead of hiding entirely).
+  /// Useful for showing a "no access" message in place.
+  final Widget? fallback;
 
   const PermissionGuard({
     super.key,
     required this.child,
     this.permission,
     this.permissions,
-    this.role,
-    this.roles,
     this.requireAll = false,
-    this.requireAllRoles = false,
+    this.fallback,
   }) : assert(
-         permission != null ||
-             permissions != null ||
-             role != null ||
-             roles != null,
-         'PermissionGuard requires at least one of: permission, permissions, role, roles',
+         permission != null || permissions != null,
+         'PermissionGuard requires at least one of: permission, permissions',
        );
 
   @override
@@ -80,15 +80,16 @@ class PermissionGuard extends StatelessWidget {
               prev is AuthAuthenticated &&
               curr.activeSession.user.email != prev.activeSession.user.email),
       builder: (context, state) {
-        if (state is! AuthAuthenticated) return const SizedBox.shrink();
+        if (state is! AuthAuthenticated) {
+          return fallback ?? const SizedBox.shrink();
+        }
         if (_passes(state)) return child;
-        return const SizedBox.shrink(); // hidden entirely
+        return fallback ?? const SizedBox.shrink();
       },
     );
   }
 
   bool _passes(AuthAuthenticated auth) {
-    // ── Permission checks ────────────────────────────────
     if (permission != null) {
       if (!auth.can(permission!)) return false;
     }
@@ -100,40 +101,18 @@ class PermissionGuard extends StatelessWidget {
       if (!passes) return false;
     }
 
-    // ── Role checks ──────────────────────────────────────
-    if (role != null) {
-      if (!auth.hasRole(role!)) return false;
-    }
-
-    if (roles != null && roles!.isNotEmpty) {
-      final passes = requireAllRoles
-          ? auth.hasAllRoles(roles!)
-          : auth.hasAnyRole(roles!);
-      if (!passes) return false;
-    }
-
     return true;
   }
 }
 
-// ── Convenience subclasses ────────────────────────────────────
+// ── Convenience: Dashboard guard ─────────────────────────────
+// Uses the 'dashboard.view' permission slug.
 
-/// Hides child if user is NOT an admin or super-admin.
-class AdminGuard extends StatelessWidget {
+class DashboardGuard extends StatelessWidget {
   final Widget child;
-  const AdminGuard({super.key, required this.child});
+  const DashboardGuard({super.key, required this.child});
 
   @override
   Widget build(BuildContext context) =>
-      PermissionGuard(roles: ['admin', 'super-admin'], child: child);
-}
-
-/// Hides child if user is NOT a super-admin.
-class SuperAdminGuard extends StatelessWidget {
-  final Widget child;
-  const SuperAdminGuard({super.key, required this.child});
-
-  @override
-  Widget build(BuildContext context) =>
-      PermissionGuard(role: 'super-admin', child: child);
+      PermissionGuard(permission: 'dashboard.view', child: child);
 }

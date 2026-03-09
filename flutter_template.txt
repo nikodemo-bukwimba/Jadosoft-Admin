@@ -1,7 +1,7 @@
 ================================================================================
   FLUTTER CLEAN ARCHITECTURE TEMPLATE - lib/ EXPORT
-  Generated : 2026-03-09 15:24:47
-  Root Path : D:\projects\Software\Kits\Flutter\Flutter Clean Architecture\flutter_clean_architecture
+  Generated : 2026-03-09 15:56:42
+  Root Path : D:\projects\hmscp-pd\hmscp-pd
 ================================================================================
 
 SECTION 1 — FOLDER STRUCTURE (lib/)
@@ -163,13 +163,7 @@ SECTION 1 — FOLDER STRUCTURE (lib/)
 │           │   └── 📄 profile_state.dart
 │           └── 📁 pages/
 │               └── 📄 profile_page.dart
-├── 📄 main.dart
-└── 📁 shared/
-    ├── 📁 data/
-    │   └── 📁 models/
-    └── 📁 domain/
-        ├── 📁 entities/
-        └── 📁 value_objects/
+└── 📄 main.dart
 
 SECTION 2 — FILE CONTENTS (lib/)
 ================================================================================
@@ -4419,9 +4413,9 @@ FILE [29 / 89] : lib\core\rbac\permission_guard.dart
 //     child: AdminUserListButton(),
 //   )
 //
-//   // Hide unless user has 'admin' or 'super-admin' role
+//   // Hide unless user has 'admin' or 'super_admin' role
 //   PermissionGuard(
-//     roles: ['admin', 'super-admin'],
+//     roles: ['admin', 'super_admin'],
 //     child: DashboardNavItem(),
 //   )
 //
@@ -4526,24 +4520,24 @@ class PermissionGuard extends StatelessWidget {
 
 // ── Convenience subclasses ────────────────────────────────────
 
-/// Hides child if user is NOT an admin or super-admin.
+/// Hides child if user is NOT an admin or super_admin.
 class AdminGuard extends StatelessWidget {
   final Widget child;
   const AdminGuard({super.key, required this.child});
 
   @override
   Widget build(BuildContext context) =>
-      PermissionGuard(roles: ['admin', 'super-admin'], child: child);
+      PermissionGuard(roles: ['admin', 'super_admin'], child: child);
 }
 
-/// Hides child if user is NOT a super-admin.
+/// Hides child if user is NOT a super_admin.
 class SuperAdminGuard extends StatelessWidget {
   final Widget child;
   const SuperAdminGuard({super.key, required this.child});
 
   @override
   Widget build(BuildContext context) =>
-      PermissionGuard(role: 'super-admin', child: child);
+      PermissionGuard(role: 'super_admin', child: child);
 }
 
 
@@ -4591,7 +4585,7 @@ extension RbacExtensions on AuthAuthenticated {
 
   // ── Convenience shortcuts ─────────────────────────────────
 
-  bool get isSuperAdmin => hasRole('super-admin');
+  bool get isSuperAdmin => hasRole('super_admin');
   bool get isAdmin => hasRole('admin') || isSuperAdmin;
   bool get isManager => hasRole('manager') || isAdmin;
   bool get isSupport => hasRole('support') || isManager;
@@ -8932,7 +8926,7 @@ class UserEntity {
   /// Whether this user has a specific role by slug.
   bool hasRole(String slug) => roles.any((r) => r.slug == slug);
 
-  bool get isSuperAdmin => hasRole('super-admin');
+  bool get isSuperAdmin => hasRole('super_admin');
   bool get isAdmin => hasRole('admin') || isSuperAdmin;
 }
 
@@ -11545,7 +11539,7 @@ FILE [69 / 89] : lib\features\dashboard\data\datasources\dashboard_remote_dataso
 //
 // Endpoint: GET /admin/dashboard
 // Auth:     Bearer token attached automatically by AuthInterceptor.
-// Access:   Admin / super-admin only (enforced server-side).
+// Access:   Admin / super_admin only (enforced server-side).
 //
 // Changing the endpoint:
 //   Update AppConstants or pass the path as a constructor arg.
@@ -12095,7 +12089,7 @@ FILE [78 / 89] : lib\features\dashboard\presentation\pages\dashboard_page.dart
 // Generic dashboard template — replace the stat cards and
 // content sections with your actual domain widgets.
 //
-// Access: admin + super-admin only (customRole:admin,super-admin
+// Access: admin + super_admin only (customRole:admin,super_admin
 // on the Laravel side). The shell hides the tab entirely for
 // non-admins, but this page also self-guards as a second layer.
 //
@@ -12132,7 +12126,7 @@ class DashboardPage extends StatelessWidget {
           appBar: AppBar(
             title: const Text('Dashboard'),
             actions: [
-              // Only super-admins see the settings action
+              // Only super_admins see the settings action
               SuperAdminGuard(
                 child: IconButton(
                   icon: const Icon(Icons.settings_outlined),
@@ -12483,7 +12477,7 @@ class _QuickActions extends StatelessWidget {
           ),
         ),
 
-        // Super-admin only
+        // super_admin only
         SuperAdminGuard(
           child: _ActionChip(
             icon: Icons.shield_outlined,
@@ -13167,11 +13161,9 @@ class ProfileError extends ProfileState {
 FILE [88 / 89] : lib\features\profile\presentation\pages\profile_page.dart
 --------------------------------------------------------------------------------
 // profile_page.dart
-// Updates: BlocListener handles AuthNeedsAccountPicker state.
-//          "Add another account" now navigates to /account-picker.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../app/routes/app_router.dart';
 import '../../../auth/domain/entities/user_entity.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
@@ -13181,7 +13173,6 @@ import '../bloc/profile_bloc.dart';
 import '../bloc/profile_event.dart';
 import '../bloc/profile_state.dart';
 import '../../domain/entities/profile_entity.dart';
-import 'package:go_router/go_router.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -13202,14 +13193,15 @@ class _ProfilePageState extends State<ProfilePage> {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    // Listen for auth state changes at the page level
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
+        // Use context.go so GoRouter owns the navigation stack.
+        // Navigator.pushReplacementNamed bypasses GoRouter entirely
+        // and breaks the redirect / deep-link system.
         if (state is AuthUnauthenticated) {
-          Navigator.of(context).pushReplacementNamed(AppRouter.login);
-        }
-        if (state is AuthNeedsAccountPicker) {
-          Navigator.of(context).pushReplacementNamed(AppRouter.accountPicker);
+          context.go(AppRouter.login);
+        } else if (state is AuthNeedsAccountPicker) {
+          context.go(AppRouter.accountPicker);
         }
       },
       child: Scaffold(
@@ -13253,6 +13245,7 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 // ── Main content ──────────────────────────────────────────────
+
 class _ProfileContent extends StatelessWidget {
   final ProfileEntity profile;
   const _ProfileContent({required this.profile});
@@ -13356,7 +13349,6 @@ class _ProfileContent extends StatelessWidget {
                   title: 'Account',
                   icon: Icons.manage_accounts_outlined,
                   children: [
-                    // Add / switch accounts → goes to picker page
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(
@@ -13365,6 +13357,7 @@ class _ProfileContent extends StatelessWidget {
                       ),
                       title: const Text('Add or switch account'),
                       trailing: const Icon(Icons.chevron_right),
+                      // context.push so the user can navigate back to profile.
                       onTap: () => context.push(
                         AppRouter.accountPicker,
                         extra: {'mode': 'add'},
@@ -13395,6 +13388,7 @@ class _ProfileContent extends StatelessWidget {
   }
 
   Future<void> _confirmLogout(BuildContext context, ColorScheme scheme) async {
+    // Navigator.pop is correct here — it closes the dialog, not the page.
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -13453,7 +13447,7 @@ class _ProfileContent extends StatelessWidget {
   ];
 }
 
-// ── Reusable sub-widgets (unchanged from previous version) ─────
+// ── Reusable sub-widgets ──────────────────────────────────────
 
 class _HeroCard extends StatelessWidget {
   final UserEntity user;
@@ -13528,8 +13522,9 @@ class _HeroCard extends StatelessWidget {
 
   String _initials(String name) {
     final parts = name.trim().split(' ');
-    if (parts.length >= 2)
+    if (parts.length >= 2) {
       return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    }
     return name.isNotEmpty ? name[0].toUpperCase() : '?';
   }
 }

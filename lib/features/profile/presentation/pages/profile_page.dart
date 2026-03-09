@@ -1,9 +1,7 @@
 // profile_page.dart
-// Updates: BlocListener handles AuthNeedsAccountPicker state.
-//          "Add another account" now navigates to /account-picker.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../app/routes/app_router.dart';
 import '../../../auth/domain/entities/user_entity.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
@@ -13,7 +11,6 @@ import '../bloc/profile_bloc.dart';
 import '../bloc/profile_event.dart';
 import '../bloc/profile_state.dart';
 import '../../domain/entities/profile_entity.dart';
-import 'package:go_router/go_router.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -34,14 +31,15 @@ class _ProfilePageState extends State<ProfilePage> {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    // Listen for auth state changes at the page level
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
+        // Use context.go so GoRouter owns the navigation stack.
+        // Navigator.pushReplacementNamed bypasses GoRouter entirely
+        // and breaks the redirect / deep-link system.
         if (state is AuthUnauthenticated) {
-          Navigator.of(context).pushReplacementNamed(AppRouter.login);
-        }
-        if (state is AuthNeedsAccountPicker) {
-          Navigator.of(context).pushReplacementNamed(AppRouter.accountPicker);
+          context.go(AppRouter.login);
+        } else if (state is AuthNeedsAccountPicker) {
+          context.go(AppRouter.accountPicker);
         }
       },
       child: Scaffold(
@@ -85,6 +83,7 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 // ── Main content ──────────────────────────────────────────────
+
 class _ProfileContent extends StatelessWidget {
   final ProfileEntity profile;
   const _ProfileContent({required this.profile});
@@ -188,7 +187,6 @@ class _ProfileContent extends StatelessWidget {
                   title: 'Account',
                   icon: Icons.manage_accounts_outlined,
                   children: [
-                    // Add / switch accounts → goes to picker page
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(
@@ -197,6 +195,7 @@ class _ProfileContent extends StatelessWidget {
                       ),
                       title: const Text('Add or switch account'),
                       trailing: const Icon(Icons.chevron_right),
+                      // context.push so the user can navigate back to profile.
                       onTap: () => context.push(
                         AppRouter.accountPicker,
                         extra: {'mode': 'add'},
@@ -227,6 +226,7 @@ class _ProfileContent extends StatelessWidget {
   }
 
   Future<void> _confirmLogout(BuildContext context, ColorScheme scheme) async {
+    // Navigator.pop is correct here — it closes the dialog, not the page.
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -285,7 +285,7 @@ class _ProfileContent extends StatelessWidget {
   ];
 }
 
-// ── Reusable sub-widgets (unchanged from previous version) ─────
+// ── Reusable sub-widgets ──────────────────────────────────────
 
 class _HeroCard extends StatelessWidget {
   final UserEntity user;
@@ -360,8 +360,9 @@ class _HeroCard extends StatelessWidget {
 
   String _initials(String name) {
     final parts = name.trim().split(' ');
-    if (parts.length >= 2)
+    if (parts.length >= 2) {
       return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    }
     return name.isNotEmpty ? name[0].toUpperCase() : '?';
   }
 }

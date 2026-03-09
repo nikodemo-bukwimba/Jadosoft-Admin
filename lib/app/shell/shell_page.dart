@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/extensions/string_extensions.dart';
 import '../../customnav/navigation.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/bloc/auth_event.dart';
@@ -133,7 +134,7 @@ class _AccountAvatarButton extends StatelessWidget {
             radius: 18,
             backgroundColor: scheme.primaryContainer,
             child: Text(
-              _initials(user.displayName),
+              user.displayName.initials,
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
@@ -160,14 +161,6 @@ class _AccountAvatarButton extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  String _initials(String name) {
-    final parts = name.trim().split(' ');
-    if (parts.length >= 2) {
-      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
-    }
-    return name.isNotEmpty ? name[0].toUpperCase() : '?';
   }
 }
 
@@ -202,7 +195,7 @@ class _RailFooter extends StatelessWidget {
                 radius: 16,
                 backgroundColor: scheme.primaryContainer,
                 child: Text(
-                  _initials(user.displayName),
+                  user.displayName.initials,
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -258,13 +251,5 @@ class _RailFooter extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  String _initials(String name) {
-    final parts = name.trim().split(' ');
-    if (parts.length >= 2) {
-      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
-    }
-    return name.isNotEmpty ? name[0].toUpperCase() : '?';
   }
 }

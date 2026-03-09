@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/extensions/string_extensions.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/bloc/auth_event.dart';
 import '../../features/auth/presentation/bloc/auth_state.dart';
@@ -33,7 +34,7 @@ class HomeTab extends StatelessWidget {
                     radius: 48,
                     backgroundColor: scheme.primaryContainer,
                     child: Text(
-                      _initials(user.displayName),
+                      user.displayName.initials,
                       style: textTheme.headlineMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                         color: scheme.onPrimaryContainer,
@@ -95,13 +96,5 @@ class HomeTab extends StatelessWidget {
         );
       },
     );
-  }
-
-  String _initials(String name) {
-    final parts = name.trim().split(' ');
-    if (parts.length >= 2) {
-      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
-    }
-    return name.isNotEmpty ? name[0].toUpperCase() : '?';
   }
 }

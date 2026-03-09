@@ -5,6 +5,10 @@
 //
 // CHANGE: UserEntity.id is String — Laravel uses ULIDs.
 // RoleEntity / PermissionEntity keep int ids (standard auto-increment).
+//
+// DESIGN: Roles on the entity are for DISPLAY only (badge, label).
+// UI gating uses permission checks via RbacExtensions.can().
+// No hardcoded role names anywhere in this file.
 // ─────────────────────────────────────────────────────────────
 
 class RoleEntity {
@@ -57,9 +61,8 @@ class UserEntity {
   /// Display name falls back to email if name is empty.
   String get displayName => name.isNotEmpty ? name : email;
 
-  /// Whether this user has a specific role by slug.
-  bool hasRole(String slug) => roles.any((r) => r.slug == slug);
-
-  bool get isSuperAdmin => hasRole('super-admin');
-  bool get isAdmin => hasRole('admin') || isSuperAdmin;
+  /// Whether this user has a specific role by name.
+  /// USE FOR DISPLAY ONLY (badge, label, greeting).
+  /// For UI gating, use RbacExtensions.can('permission.slug').
+  bool hasRole(String roleName) => roles.any((r) => r.name == roleName);
 }
