@@ -1,17 +1,4 @@
 // account_picker_page.dart
-// ─────────────────────────────────────────────────────────────
-// Shown in two scenarios:
-//   1. After logging out when other saved accounts still exist
-//      (AuthNeedsAccountPicker → GoRouter redirect → /account-picker)
-//   2. When user taps "Add account" from profile or home
-//      (context.push(AppRouter.accountPicker, extra: {'mode': 'add'}))
-//
-// Navigation:
-//   Switch account success  → BlocListener sees AuthAuthenticated → go /home
-//   "Sign in to another"    → context.push(AppRouter.login, extra: addAccount:true)
-//   "Create account"        → context.push(AppRouter.register, extra: addAccount:true)
-// ─────────────────────────────────────────────────────────────
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -25,8 +12,15 @@ enum AccountPickerMode { picker, add }
 
 class AccountPickerPage extends StatelessWidget {
   final AccountPickerMode mode;
+  final List<AccountSession> initialAccounts;
+  final String? initialActiveEmail;
 
-  const AccountPickerPage({super.key, this.mode = AccountPickerMode.picker});
+  const AccountPickerPage({
+    super.key,
+    this.mode = AccountPickerMode.picker,
+    this.initialAccounts = const [],
+    this.initialActiveEmail,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -34,48 +28,43 @@ class AccountPickerPage extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return BlocConsumer<AuthBloc, AuthState>(
-      // ── Navigate away when a switch completes ─────────────────────────────
-      // The global redirect (app_router.dart) no longer bounces authenticated
-      // users away from /account-picker, so the PAGE is responsible for
-      // navigating to /home after a successful account switch.
+      // Only react to meaningful transitions, not same-type re-emissions.
+      // Without this, opening the picker while AuthAuthenticated (add mode)
+      // triggers context.go(home) on the very next AuthAuthenticated emission.
       listenWhen: (previous, current) =>
-          // Only react to a meaningful state change — ignore initial build.
-          previous != current,
+          previous.runtimeType != current.runtimeType,
       listener: (context, state) {
-        switch (state) {
-          case AuthAuthenticated():
-            // Switch succeeded (or add-account login succeeded if user ended
-            // up here). Go home and clear the navigation stack.
-            context.go(AppRouter.home);
-          case AuthUnauthenticated():
-            // Every account was removed — go to login.
-            context.go(AppRouter.login);
-          default:
-            break;
+        if (state is AuthAuthenticated) {
+          context.go(AppRouter.home);
+        } else if (state is AuthUnauthenticated) {
+          context.go(AppRouter.login);
         }
       },
       builder: (context, state) {
-        // ── Derive live data from the current BLoC state ─────────────────────
-        // This is the critical fix: read savedAccounts directly from the
-        // current state so the list is never stale.
-        final savedAccounts = switch (state) {
-          AuthAuthenticated s => s.savedAccounts,
-          AuthAccountsUpdated s => s.savedAccounts,
-          AuthNeedsAccountPicker s => s.savedAccounts,
-          _ => <AccountSession>[],
-        };
+        // Derive live accounts from current BLoC state.
+        // Fall back to initialAccounts (read from authBloc.state at route
+        // build time) when the BLoC is in a transient state like
+        // AuthLoading or AuthSwitching — so the list never disappears
+        // during a switch operation.
+        List<AccountSession> savedAccounts = initialAccounts;
+        String? activeEmail = initialActiveEmail;
 
-        // The currently active account (null when unauthenticated / needs-picker).
-        final activeEmail = switch (state) {
-          AuthAuthenticated s => s.activeSession.user.email,
-          _ => null,
-        };
+        if (state is AuthAuthenticated) {
+          savedAccounts = state.savedAccounts;
+          activeEmail = state.activeSession.user.email;
+        } else if (state is AuthNeedsAccountPicker) {
+          savedAccounts = state.savedAccounts;
+          activeEmail = null;
+        } else if (state is AuthAccountsUpdated) {
+          savedAccounts = state.savedAccounts;
+          activeEmail = state.activeSession.user.email;
+        }
+        // AuthLoading / AuthSwitching / AuthFailureState:
+        //   keep showing the last known list (initialAccounts / previous state)
 
         final isLoading = state is AuthLoading || state is AuthSwitching;
 
         return Scaffold(
-          // Show a back button only when the user deliberately pushed here
-          // (add-account mode) — not when redirected here after logout.
           appBar: mode == AccountPickerMode.add
               ? AppBar(leading: const BackButton())
               : null,
@@ -91,11 +80,10 @@ class AccountPickerPage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // ── Header ─────────────────────────────────
                       _Header(mode: mode, scheme: scheme, textTheme: textTheme),
                       const SizedBox(height: 32),
 
-                      // ── Saved accounts list ────────────────────
+                      // ── Account list ──────────────────────────
                       if (savedAccounts.isNotEmpty) ...[
                         Text(
                           'Saved accounts',
@@ -138,13 +126,11 @@ class AccountPickerPage extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 24),
-                        _Divider(scheme: scheme, textTheme: textTheme),
+                        _OrDivider(scheme: scheme, textTheme: textTheme),
                         const SizedBox(height: 24),
                       ],
 
-                      // ── Add / login new account ────────────────
-                      // Always pass addAccount:true so LoginPage / RegisterPage
-                      // show the correct AppBar and navigate back properly.
+                      // ── Add / sign in ─────────────────────────
                       FilledButton.icon(
                         icon: const Icon(Icons.login, size: 18),
                         label: const Text('Sign in to another account'),
@@ -167,7 +153,6 @@ class AccountPickerPage extends StatelessWidget {
                               ),
                       ),
 
-                      // ── Loading indicator ──────────────────────
                       if (isLoading) ...[
                         const SizedBox(height: 24),
                         const Center(
@@ -270,13 +255,12 @@ class _Header extends StatelessWidget {
   }
 }
 
-// ── Divider ───────────────────────────────────────────────────
+// ── "or" divider ──────────────────────────────────────────────
 
-class _Divider extends StatelessWidget {
+class _OrDivider extends StatelessWidget {
   final ColorScheme scheme;
   final TextTheme textTheme;
-
-  const _Divider({required this.scheme, required this.textTheme});
+  const _OrDivider({required this.scheme, required this.textTheme});
 
   @override
   Widget build(BuildContext context) {
@@ -373,7 +357,7 @@ class _AccountCard extends StatelessWidget {
           children: [
             if (isActive)
               Icon(Icons.check_circle_rounded, color: scheme.primary, size: 20),
-            if (!isActive && onTap != null)
+            if (!isActive)
               SizedBox(
                 height: 32,
                 child: FilledButton.tonal(
@@ -383,7 +367,13 @@ class _AccountCard extends StatelessWidget {
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  child: const Text('Switch'),
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Switch'),
                 ),
               ),
             const SizedBox(width: 4),

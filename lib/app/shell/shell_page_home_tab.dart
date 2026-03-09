@@ -65,14 +65,6 @@ class HomeTab extends StatelessWidget {
                   OutlinedButton.icon(
                     icon: const Icon(Icons.person_add_outlined, size: 18),
                     label: const Text('Add another account'),
-                    // ✅ FIX: was context.push(AppRouter.accountPicker, extra: {'mode': 'add'})
-                    //
-                    // /account-picker redirects to /home whenever AuthAuthenticated,
-                    // so pushing there while already authenticated bounced straight back.
-                    //
-                    // Push directly to /login with addAccount:true instead.
-                    // The redirect in app_router.dart deliberately does NOT redirect
-                    // authenticated users away from /login so this flow works.
                     onPressed: () => context.push(
                       AppRouter.login,
                       extra: {'addAccount': true},

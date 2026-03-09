@@ -2,10 +2,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/bloc/auth_state.dart';
+import '../../features/auth/domain/entities/account_session.dart';
 import '../../features/auth/presentation/pages/account_picker_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/register_page.dart';
@@ -44,7 +46,12 @@ class AppRouter {
           path: login,
           builder: (_, routeState) {
             final args = routeState.extra as Map<String, dynamic>?;
-            return LoginPage(addAccount: args?['addAccount'] as bool? ?? false);
+            return BlocProvider.value(
+              value: authBloc,
+              child: LoginPage(
+                addAccount: args?['addAccount'] as bool? ?? false,
+              ),
+            );
           },
         ),
 
@@ -52,8 +59,11 @@ class AppRouter {
           path: register,
           builder: (_, routeState) {
             final args = routeState.extra as Map<String, dynamic>?;
-            return RegisterPage(
-              addAccount: args?['addAccount'] as bool? ?? false,
+            return BlocProvider.value(
+              value: authBloc,
+              child: RegisterPage(
+                addAccount: args?['addAccount'] as bool? ?? false,
+              ),
             );
           },
         ),
@@ -65,7 +75,39 @@ class AppRouter {
             final mode = args?['mode'] == 'add'
                 ? AccountPickerMode.add
                 : AccountPickerMode.picker;
-            return AccountPickerPage(mode: mode);
+
+            // Read the CURRENT state of the BLoC synchronously at route
+            // build time. This is the same authBloc instance that drives
+            // the redirect, so it's guaranteed to reflect the state that
+            // caused the navigation to this route.
+            final authState = authBloc.state;
+            List<AccountSession> initialAccounts = [];
+            String? initialActiveEmail;
+
+            if (authState is AuthAuthenticated) {
+              initialAccounts = authState.savedAccounts;
+              initialActiveEmail = authState.activeSession.user.email;
+            } else if (authState is AuthNeedsAccountPicker) {
+              initialAccounts = authState.savedAccounts;
+              // No active email — user was just logged out
+            } else if (authState is AuthAccountsUpdated) {
+              initialAccounts = authState.savedAccounts;
+              initialActiveEmail = authState.activeSession.user.email;
+            }
+
+            // Wrap with BlocProvider.value so the page sees the SAME BLoC
+            // instance that the rest of the app uses. GoRouter's route
+            // builders receive a context that may not inherit InheritedWidgets
+            // from ancestors above the MaterialApp — explicit provision is
+            // the safe pattern (same as AccountSwitcherSheet.show).
+            return BlocProvider.value(
+              value: authBloc,
+              child: AccountPickerPage(
+                mode: mode,
+                initialAccounts: initialAccounts,
+                initialActiveEmail: initialActiveEmail,
+              ),
+            );
           },
         ),
 
@@ -88,31 +130,17 @@ class AppRouter {
 
   static String? _redirect(AuthState authState, String location) {
     final isShellRoute = const {home, dashboard, profile}.contains(location);
-    final isAuthRoute = const {
-      login,
-      register,
-      accountPicker,
-    }.contains(location);
 
     return switch (authState) {
-      // ── Still resolving ──────────────────────────────────────────────────────
+      // ── Resolving ────────────────────────────────────────────────────────────
       AuthInitial() => location == splash ? null : splash,
-
-      // ── Loading ──────────────────────────────────────────────────────────────
       AuthLoading() => isShellRoute ? splash : null,
 
       // ── Authenticated ────────────────────────────────────────────────────────
-      // Only boot off the initial splash screen → home.
-      //
-      // /login and /register: intentionally NOT redirected so authenticated
-      //   users can reach them for the add-account flow.
-      //
-      // /account-picker: intentionally NOT redirected so authenticated users
-      //   can browse saved accounts and switch. The page's own BlocListener
-      //   handles navigation to /home after a successful switch.
-      //
-      // After login / register success the page calls context.go(home) itself.
+      // Only splash → home. /login, /register, /account-picker are intentionally
+      // NOT redirected so add-account and manual navigation work.
       AuthAuthenticated() => location == splash ? home : null,
+      AuthAccountsUpdated() => location == splash ? home : null,
 
       // ── Needs picker ─────────────────────────────────────────────────────────
       AuthNeedsAccountPicker() =>
@@ -122,15 +150,9 @@ class AppRouter {
       AuthUnauthenticated() =>
         isShellRoute || location == splash ? login : null,
 
-      // ── Switching ────────────────────────────────────────────────────────────
+      // ── Switching / failure ──────────────────────────────────────────────────
       AuthSwitching() => null,
-
-      // ── Failure ──────────────────────────────────────────────────────────────
       AuthFailureState() => isShellRoute ? login : null,
-
-      // ── Accounts updated ─────────────────────────────────────────────────────
-      // Treat same as authenticated — page handles its own navigation.
-      AuthAccountsUpdated() => location == splash ? home : null,
 
       // ── Catch-all ────────────────────────────────────────────────────────────
       _ => isShellRoute ? login : null,

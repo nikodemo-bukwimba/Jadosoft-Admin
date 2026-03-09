@@ -50,13 +50,13 @@ class _LoginPageState extends State<LoginPage> {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
         if (state is AuthAuthenticated) {
-          // ✅ FIX: The global redirect in app_router.dart no longer redirects
-          // /login → /home when already authenticated, because that would kill
-          // the add-account push before the page builds.
-          // Instead, the page itself navigates to /home on success.
-          // context.go clears the entire stack (login, and any back-stack to
-          // account-picker) so the user lands cleanly on the shell.
-          context.go(AppRouter.home);
+          if (widget.addAccount) {
+            context.go(
+              AppRouter.accountPicker,
+            ); // return to picker with updated list
+          } else {
+            context.go(AppRouter.home);
+          }
           return;
         }
         if (state is AuthFailureState) {

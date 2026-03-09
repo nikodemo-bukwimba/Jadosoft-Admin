@@ -61,9 +61,11 @@ class _RegisterPageState extends State<RegisterPage> {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
         if (state is AuthAuthenticated) {
-          // ✅ FIX: Same as LoginPage — the global redirect no longer handles
-          // /register → /home for authenticated users. The page navigates itself.
-          context.go(AppRouter.home);
+          if (widget.addAccount) {
+            context.go(AppRouter.accountPicker);
+          } else {
+            context.go(AppRouter.home);
+          }
           return;
         }
         if (state is AuthFailureState) {

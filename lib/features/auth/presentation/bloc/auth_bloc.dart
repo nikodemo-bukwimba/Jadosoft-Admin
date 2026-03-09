@@ -1,7 +1,12 @@
 // auth_bloc.dart
 // ─────────────────────────────────────────────────────────────
-// Key change: logout now emits AuthNeedsAccountPicker when other
-// saved accounts exist, instead of going straight to login.
+// Key changes:
+//   1. logout emits AuthNeedsAccountPicker when other saved
+//      accounts exist, instead of going straight to login.
+//   2. _ensureActiveIncluded() guarantees the active session is
+//      always present in savedAccounts, regardless of whether
+//      getSavedAccounts() includes it. This fixes the empty list
+//      on the AccountPickerPage when adding a second account.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -53,6 +58,20 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthSessionRefreshRequested>(_onSessionRefreshRequested);
   }
 
+  // ── Helper ────────────────────────────────────────────────
+  // Guarantees [active] is always present in the returned list.
+  // getSavedAccounts() on some backends only returns non-active
+  // sessions, which caused an empty list on AccountPickerPage.
+  List<AccountSession> _ensureActiveIncluded(
+    AccountSession active,
+    List<AccountSession> accounts,
+  ) {
+    if (accounts.any((a) => a.user.email == active.user.email)) {
+      return accounts;
+    }
+    return [active, ...accounts];
+  }
+
   // ── Startup check ─────────────────────────────────────────
   Future<void> _onCheckRequested(
     AuthCheckRequested event,
@@ -73,7 +92,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           (List<AccountSession> a) => a,
         );
         if (saved.isNotEmpty) {
-          // Accounts exist but none active — show picker
           emit(AuthNeedsAccountPicker(savedAccounts: saved));
         } else {
           emit(AuthUnauthenticated());
@@ -82,12 +100,15 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       }
 
       final accountsResult = await _getSavedAccounts(NoParams());
-      final savedAccounts = accountsResult.fold<List<AccountSession>>(
-        (_) => <AccountSession>[session],
+      final raw = accountsResult.fold<List<AccountSession>>(
+        (_) => <AccountSession>[],
         (List<AccountSession> a) => a,
       );
       emit(
-        AuthAuthenticated(activeSession: session, savedAccounts: savedAccounts),
+        AuthAuthenticated(
+          activeSession: session,
+          savedAccounts: _ensureActiveIncluded(session, raw),
+        ),
       );
     });
   }
@@ -107,14 +128,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
         final accountsResult = await _getSavedAccounts(NoParams());
-        final savedAccounts = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[session],
+        final raw = accountsResult.fold<List<AccountSession>>(
+          (_) => <AccountSession>[],
           (List<AccountSession> a) => a,
         );
         emit(
           AuthAuthenticated(
             activeSession: session,
-            savedAccounts: savedAccounts,
+            savedAccounts: _ensureActiveIncluded(session, raw),
           ),
         );
       },
@@ -142,14 +163,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
         final accountsResult = await _getSavedAccounts(NoParams());
-        final savedAccounts = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[session],
+        final raw = accountsResult.fold<List<AccountSession>>(
+          (_) => <AccountSession>[],
           (List<AccountSession> a) => a,
         );
         emit(
           AuthAuthenticated(
             activeSession: session,
-            savedAccounts: savedAccounts,
+            savedAccounts: _ensureActiveIncluded(session, raw),
           ),
         );
       },
@@ -157,7 +178,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   }
 
   // ── Logout active account ─────────────────────────────────
-  // KEY CHANGE: emits AuthNeedsAccountPicker if other accounts remain.
+  // Emits AuthNeedsAccountPicker if other accounts remain.
   Future<void> _onLogoutRequested(
     AuthLogoutRequested event,
     Emitter<AuthState> emit,
@@ -176,10 +197,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         );
 
         if (remaining.isEmpty) {
-          // No other accounts → go to login
           emit(AuthUnauthenticated());
         } else {
-          // Other accounts exist → show picker
           emit(AuthNeedsAccountPicker(savedAccounts: remaining));
         }
       },
@@ -207,7 +226,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           return;
         }
 
-        // Check if there's still an active session
+        // Check if there is still an active session
         final sessionResult = await _getActiveSession(NoParams());
         sessionResult.fold(
           (_) => emit(AuthNeedsAccountPicker(savedAccounts: remaining)),
@@ -220,7 +239,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
               emit(
                 AuthAccountsUpdated(
                   activeSession: session,
-                  savedAccounts: remaining,
+                  savedAccounts: _ensureActiveIncluded(session, remaining),
                 ),
               );
             }
@@ -254,14 +273,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       },
       (newSession) async {
         final accountsResult = await _getSavedAccounts(NoParams());
-        final savedAccounts = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[newSession],
+        final raw = accountsResult.fold<List<AccountSession>>(
+          (_) => <AccountSession>[],
           (List<AccountSession> a) => a,
         );
         emit(
           AuthAuthenticated(
             activeSession: newSession,
-            savedAccounts: savedAccounts,
+            savedAccounts: _ensureActiveIncluded(newSession, raw),
           ),
         );
       },
@@ -290,11 +309,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         return;
       }
 
-      final saved = accountsResult.fold<List<AccountSession>>(
-        (_) => <AccountSession>[session],
+      final raw = accountsResult.fold<List<AccountSession>>(
+        (_) => <AccountSession>[],
         (List<AccountSession> a) => a,
       );
-      emit(AuthAccountsUpdated(activeSession: session, savedAccounts: saved));
+      emit(
+        AuthAccountsUpdated(
+          activeSession: session,
+          savedAccounts: _ensureActiveIncluded(session, raw),
+        ),
+      );
     });
   }
 
@@ -309,14 +333,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
         final accountsResult = await _getSavedAccounts(NoParams());
-        final savedAccounts = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[session],
+        final raw = accountsResult.fold<List<AccountSession>>(
+          (_) => <AccountSession>[],
           (List<AccountSession> a) => a,
         );
         emit(
           AuthAuthenticated(
             activeSession: session,
-            savedAccounts: savedAccounts,
+            savedAccounts: _ensureActiveIncluded(session, raw),
           ),
         );
       },

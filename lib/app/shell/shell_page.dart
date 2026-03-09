@@ -124,9 +124,6 @@ class _AccountAvatarButton extends StatelessWidget {
     final hasMultiple = auth.savedAccounts.length > 1;
 
     return GestureDetector(
-      // ✅ FIX: AccountSwitcherSheet.show now takes only context.
-      // It reads live savedAccounts and activeSession from the BLoC itself
-      // so the sheet is never stale.
       onTap: () => AccountSwitcherSheet.show(context),
       child: Stack(
         alignment: Alignment.center,

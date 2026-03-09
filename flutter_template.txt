@@ -1,6 +1,6 @@
 ================================================================================
   FLUTTER CLEAN ARCHITECTURE TEMPLATE - lib/ EXPORT
-  Generated : 2026-03-09 11:01:53
+  Generated : 2026-03-09 15:24:47
   Root Path : D:\projects\Software\Kits\Flutter\Flutter Clean Architecture\flutter_clean_architecture
 ================================================================================
 
@@ -264,44 +264,15 @@ class _FcaAppState extends State<FcaApp> {
 FILE [2 / 89] : lib\app\routes\app_router.dart
 --------------------------------------------------------------------------------
 // app_router.dart
-// ─────────────────────────────────────────────────────────────
-// Single source of truth for all app navigation.
-//
-// MIGRATION: Replaced plain Navigator + onGenerateRoute with GoRouter.
-// Reason: AdaptiveNavShell (customnav/) requires GoRouter — having two
-// navigation systems in one app caused split state and back-stack bugs.
-//
-// Architecture:
-//   ┌─────────────────────────────────────────────────────────┐
-//   │  / (splash)      — shown while AuthBloc resolves        │
-//   │  /login          ─┐                                     │
-//   │  /register        ├─ Auth routes  (outside shell)       │
-//   │  /account-picker ─┘                                     │
-//   │  ShellRoute ──────────────────────────────────────────  │
-//   │    /home          ─┐                                     │
-//   │    /dashboard      ├─ Authenticated routes (inside shell)│
-//   │    /profile       ─┘                                     │
-//   └─────────────────────────────────────────────────────────┘
-//
-// Redirect is driven by AuthBloc state — no BlocListener needed
-// inside individual pages for session changes.
-//
-// Adding a new feature route:
-//   1. Add a static const String path constant below.
-//   2. Add a GoRoute inside the ShellRoute routes list.
-//   3. Add a NavItem in shell_nav_items.dart.
-//   4. Add a feature import above.
-//
-// Generator appends between the boundary markers automatically.
-// ─────────────────────────────────────────────────────────────
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/bloc/auth_state.dart';
+import '../../features/auth/domain/entities/account_session.dart';
 import '../../features/auth/presentation/pages/account_picker_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/register_page.dart';
@@ -311,11 +282,9 @@ import '../shell/shell_page.dart';
 import '../shell/shell_page_home_tab.dart';
 
 // ── GENERATOR FEATURE PAGE IMPORTS — append only ─────────────────────────────
-
 // ── END GENERATOR FEATURE PAGE IMPORTS ───────────────────────────────────────
 
 class AppRouter {
-  // ── Route path constants ──────────────────────────────────
   static const String splash = '/';
   static const String login = '/login';
   static const String register = '/register';
@@ -325,12 +294,8 @@ class AppRouter {
   static const String profile = '/profile';
 
   // ── GENERATOR ROUTE CONSTANTS — append only ──────────────
-
   // ── END GENERATOR ROUTE CONSTANTS ────────────────────────
 
-  // ── Router factory ────────────────────────────────────────
-  /// Creates and returns the [GoRouter] instance.
-  /// Call once from [FcaApp] and store it — do not recreate on rebuild.
   static GoRouter createRouter(AuthBloc authBloc) {
     final notifier = AuthRouterNotifier(authBloc);
 
@@ -340,19 +305,33 @@ class AppRouter {
       redirect: (context, state) =>
           _redirect(authBloc.state, state.matchedLocation),
       routes: [
-        // ── Splash ──────────────────────────────────────────
         GoRoute(path: splash, builder: (_, __) => const _SplashScreen()),
 
-        // ── Auth routes (no shell) ───────────────────────────
         GoRoute(
           path: login,
           builder: (_, routeState) {
             final args = routeState.extra as Map<String, dynamic>?;
-            return LoginPage(addAccount: args?['addAccount'] as bool? ?? false);
+            return BlocProvider.value(
+              value: authBloc,
+              child: LoginPage(
+                addAccount: args?['addAccount'] as bool? ?? false,
+              ),
+            );
           },
         ),
 
-        GoRoute(path: register, builder: (_, __) => const RegisterPage()),
+        GoRoute(
+          path: register,
+          builder: (_, routeState) {
+            final args = routeState.extra as Map<String, dynamic>?;
+            return BlocProvider.value(
+              value: authBloc,
+              child: RegisterPage(
+                addAccount: args?['addAccount'] as bool? ?? false,
+              ),
+            );
+          },
+        ),
 
         GoRoute(
           path: accountPicker,
@@ -361,96 +340,92 @@ class AppRouter {
             final mode = args?['mode'] == 'add'
                 ? AccountPickerMode.add
                 : AccountPickerMode.picker;
-            return AccountPickerPage(mode: mode);
+
+            // Read the CURRENT state of the BLoC synchronously at route
+            // build time. This is the same authBloc instance that drives
+            // the redirect, so it's guaranteed to reflect the state that
+            // caused the navigation to this route.
+            final authState = authBloc.state;
+            List<AccountSession> initialAccounts = [];
+            String? initialActiveEmail;
+
+            if (authState is AuthAuthenticated) {
+              initialAccounts = authState.savedAccounts;
+              initialActiveEmail = authState.activeSession.user.email;
+            } else if (authState is AuthNeedsAccountPicker) {
+              initialAccounts = authState.savedAccounts;
+              // No active email — user was just logged out
+            } else if (authState is AuthAccountsUpdated) {
+              initialAccounts = authState.savedAccounts;
+              initialActiveEmail = authState.activeSession.user.email;
+            }
+
+            // Wrap with BlocProvider.value so the page sees the SAME BLoC
+            // instance that the rest of the app uses. GoRouter's route
+            // builders receive a context that may not inherit InheritedWidgets
+            // from ancestors above the MaterialApp — explicit provision is
+            // the safe pattern (same as AccountSwitcherSheet.show).
+            return BlocProvider.value(
+              value: authBloc,
+              child: AccountPickerPage(
+                mode: mode,
+                initialAccounts: initialAccounts,
+                initialActiveEmail: initialActiveEmail,
+              ),
+            );
           },
         ),
 
-        // ── Authenticated shell (AdaptiveNavShell) ───────────
         ShellRoute(
           builder: (context, state, child) => ShellPage(child: child),
           routes: [
             GoRoute(path: home, builder: (_, __) => const HomeTab()),
-
             GoRoute(path: dashboard, builder: (_, __) => const DashboardPage()),
-
             GoRoute(path: profile, builder: (_, __) => const ProfilePage()),
-
-            // Actor Types routes (Level 1, generated 2026-03-09)
-
-      // ── GENERATOR ROUTES — append only ───────────────
+            // ── GENERATOR ROUTES — append only ───────────────
             // ── END GENERATOR ROUTES ─────────────────────────
           ],
         ),
       ],
 
-      // ── 404 fallback ──────────────────────────────────────
       errorBuilder: (context, state) =>
           Scaffold(body: Center(child: Text('Route "${state.uri}" not found'))),
     );
   }
 
-  // ── Redirect logic ────────────────────────────────────────
-  // Pure function — easy to test independently.
-  // Returns a path to redirect to, or null to allow the navigation.
   static String? _redirect(AuthState authState, String location) {
-    final isAuthRoute = const {
-      login,
-      register,
-      accountPicker,
-    }.contains(location);
-
-    final isShellRoute =
-        location == home ||
-        location == dashboard ||
-        location == profile ||
-        (!isAuthRoute && location != splash);
+    final isShellRoute = const {home, dashboard, profile}.contains(location);
 
     return switch (authState) {
-      // ── Initial app load: hold on splash, push anything else back ──
+      // ── Resolving ────────────────────────────────────────────────────────────
       AuthInitial() => location == splash ? null : splash,
-
-      // ── Loading: stay put on splash or auth routes; push shell routes back ──
-      // FIX: was `location == splash ? null : splash`
-      // That sent /login → splash during form submission, orphaning BlocListeners.
       AuthLoading() => isShellRoute ? splash : null,
 
-      // ── Authenticated: leave auth/splash, stay on shell ──
-      AuthAuthenticated() => isAuthRoute || location == splash ? home : null,
+      // ── Authenticated ────────────────────────────────────────────────────────
+      // Only splash → home. /login, /register, /account-picker are intentionally
+      // NOT redirected so add-account and manual navigation work.
+      AuthAuthenticated() => location == splash ? home : null,
+      AuthAccountsUpdated() => location == splash ? home : null,
 
-      // ── Needs picker ──
+      // ── Needs picker ─────────────────────────────────────────────────────────
       AuthNeedsAccountPicker() =>
         location == accountPicker ? null : accountPicker,
 
-      // ── Unauthenticated: push shell/splash to login ──
+      // ── Unauthenticated ──────────────────────────────────────────────────────
       AuthUnauthenticated() =>
         isShellRoute || location == splash ? login : null,
 
-      // ── Switching: stay wherever we are (shell handles its own loading UI) ──
+      // ── Switching / failure ──────────────────────────────────────────────────
       AuthSwitching() => null,
+      AuthFailureState() => isShellRoute ? login : null,
 
-      // ── Failure: stay on auth routes (snackbar shows); push shell to login ──
-      // FIX: was `_ => isShellRoute ? login : null`
-      // That returned null on splash after AuthLoading redirected there,
-      // trapping the user with no snackbar and no way out.
-      AuthFailureState() =>
-        isShellRoute
-            ? login
-            : isAuthRoute
-            ? null
-            : login,
-
-      // ── Accounts updated: treat same as authenticated ──
-      AuthAccountsUpdated() => isAuthRoute || location == splash ? home : null,
-
-      // ── True catch-all ──
+      // ── Catch-all ────────────────────────────────────────────────────────────
       _ => isShellRoute ? login : null,
     };
   }
 }
 
 // ── AuthRouterNotifier ────────────────────────────────────────
-// Wraps AuthBloc's stream as a ChangeNotifier so GoRouter's
-// refreshListenable re-evaluates redirect on every auth change.
 class AuthRouterNotifier extends ChangeNotifier {
   AuthRouterNotifier(AuthBloc authBloc) {
     _subscription = authBloc.stream.listen((_) => notifyListeners());
@@ -466,21 +441,17 @@ class AuthRouterNotifier extends ChangeNotifier {
 }
 
 // ── Splash screen ─────────────────────────────────────────────
-// Shown while AuthBloc resolves the initial session from storage.
-// GoRouter redirect replaces it automatically once auth state resolves.
 class _SplashScreen extends StatelessWidget {
   const _SplashScreen();
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-
     return Scaffold(
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // ── Brand mark ────────────────────────────────
             Container(
               width: 72,
               height: 72,
@@ -495,8 +466,6 @@ class _SplashScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-
-            // ── App name ──────────────────────────────────
             Text(
               'FCA',
               style: Theme.of(context).textTheme.headlineLarge?.copyWith(
@@ -505,8 +474,6 @@ class _SplashScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 32),
-
-            // ── Spinner ───────────────────────────────────
             CircularProgressIndicator(color: scheme.primary, strokeWidth: 2.5),
           ],
         ),
@@ -514,13 +481,6 @@ class _SplashScreen extends StatelessWidget {
     );
   }
 }
-
-
-
-
-
-
-
 
 
 --------------------------------------------------------------------------------
@@ -609,21 +569,9 @@ abstract class ShellNavItems {
 FILE [4 / 89] : lib\app\shell\shell_page_home_tab.dart
 --------------------------------------------------------------------------------
 // shell_page_home_tab.dart
-// The Home tab placeholder widget.
-//
-// Extracted from the private _HomeTab class that lived inside shell_page.dart.
-// This is a placeholder. Replace it with your actual home feature widget
-// when you have one — or generate a proper Level 0 / Level 4 feature for it.
-//
-// When to replace this:
-//   Option A: Generate a Level 4 aggregator feature named "home" or "overview"
-//             and swap the HomeTab() reference in shell_nav_items.dart.
-//   Option B: Build a custom home page directly here.
-//
-// This file is human territory — the generator never touches it.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/bloc/auth_event.dart';
@@ -664,7 +612,7 @@ class HomeTab extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    'Welcome, ${user.name.split(' ').first}',
+                    'Welcome, ${user.displayName.split(' ').first}',
                     style: textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -687,9 +635,9 @@ class HomeTab extends StatelessWidget {
                   OutlinedButton.icon(
                     icon: const Icon(Icons.person_add_outlined, size: 18),
                     label: const Text('Add another account'),
-                    onPressed: () => Navigator.of(context).pushNamed(
-                      AppRouter.accountPicker,
-                      arguments: {'mode': 'add'},
+                    onPressed: () => context.push(
+                      AppRouter.login,
+                      extra: {'addAccount': true},
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -858,15 +806,11 @@ class _AccountAvatarButton extends StatelessWidget {
     final hasMultiple = auth.savedAccounts.length > 1;
 
     return GestureDetector(
-      onTap: () => AccountSwitcherSheet.show(
-        context,
-        activeSession: auth.activeSession,
-        savedAccounts: auth.savedAccounts,
-      ),
+      onTap: () => AccountSwitcherSheet.show(context),
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // ── Avatar ────────────────────────────────────
+          // ── Avatar ──────────────────────────────────────
           CircleAvatar(
             radius: 18,
             backgroundColor: scheme.primaryContainer,
@@ -880,7 +824,7 @@ class _AccountAvatarButton extends StatelessWidget {
             ),
           ),
 
-          // ── Multi-account badge ───────────────────────
+          // ── Multi-account badge ──────────────────────────
           if (hasMultiple)
             Positioned(
               right: 0,
@@ -911,7 +855,6 @@ class _AccountAvatarButton extends StatelessWidget {
 
 // ── Rail footer ───────────────────────────────────────────────
 // Pinned at the bottom of the nav rail / drawer.
-// Shows current user info and logout button.
 
 class _RailFooter extends StatelessWidget {
   final AuthState state;
@@ -932,7 +875,7 @@ class _RailFooter extends StatelessWidget {
         Divider(color: scheme.outlineVariant, height: 1),
         const SizedBox(height: 4),
 
-        // ── User info row ────────────────────────────────
+        // ── User info row ──────────────────────────────────
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Row(
@@ -958,9 +901,7 @@ class _RailFooter extends StatelessWidget {
                       user.displayName,
                       style: textTheme.labelMedium?.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: scheme.onSurface,
                       ),
-                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
@@ -968,7 +909,6 @@ class _RailFooter extends StatelessWidget {
                       style: textTheme.labelSmall?.copyWith(
                         color: scheme.onSurfaceVariant,
                       ),
-                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
@@ -978,21 +918,26 @@ class _RailFooter extends StatelessWidget {
           ),
         ),
 
-        // ── Logout button ────────────────────────────────
-        ListTile(
-          dense: true,
-          leading: Icon(Icons.logout_rounded, size: 20, color: scheme.error),
-          title: Text(
-            'Sign out',
-            style: textTheme.bodyMedium?.copyWith(
-              color: scheme.error,
-              fontWeight: FontWeight.w500,
+        // ── Logout button ──────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          child: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: Icon(Icons.logout, size: 16, color: scheme.error),
+              label: Text(
+                'Sign out',
+                style: TextStyle(color: scheme.error, fontSize: 13),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: scheme.error.withOpacity(0.4)),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+              onPressed: () =>
+                  context.read<AuthBloc>().add(AuthLogoutRequested()),
             ),
           ),
-          onTap: () => context.read<AuthBloc>().add(AuthLogoutRequested()),
         ),
-
-        const SizedBox(height: 8),
       ],
     );
   }
@@ -9323,8 +9268,13 @@ FILE [60 / 89] : lib\features\auth\presentation\bloc\auth_bloc.dart
 --------------------------------------------------------------------------------
 // auth_bloc.dart
 // ─────────────────────────────────────────────────────────────
-// Key change: logout now emits AuthNeedsAccountPicker when other
-// saved accounts exist, instead of going straight to login.
+// Key changes:
+//   1. logout emits AuthNeedsAccountPicker when other saved
+//      accounts exist, instead of going straight to login.
+//   2. _ensureActiveIncluded() guarantees the active session is
+//      always present in savedAccounts, regardless of whether
+//      getSavedAccounts() includes it. This fixes the empty list
+//      on the AccountPickerPage when adding a second account.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -9376,6 +9326,20 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthSessionRefreshRequested>(_onSessionRefreshRequested);
   }
 
+  // ── Helper ────────────────────────────────────────────────
+  // Guarantees [active] is always present in the returned list.
+  // getSavedAccounts() on some backends only returns non-active
+  // sessions, which caused an empty list on AccountPickerPage.
+  List<AccountSession> _ensureActiveIncluded(
+    AccountSession active,
+    List<AccountSession> accounts,
+  ) {
+    if (accounts.any((a) => a.user.email == active.user.email)) {
+      return accounts;
+    }
+    return [active, ...accounts];
+  }
+
   // ── Startup check ─────────────────────────────────────────
   Future<void> _onCheckRequested(
     AuthCheckRequested event,
@@ -9396,7 +9360,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           (List<AccountSession> a) => a,
         );
         if (saved.isNotEmpty) {
-          // Accounts exist but none active — show picker
           emit(AuthNeedsAccountPicker(savedAccounts: saved));
         } else {
           emit(AuthUnauthenticated());
@@ -9405,12 +9368,15 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       }
 
       final accountsResult = await _getSavedAccounts(NoParams());
-      final savedAccounts = accountsResult.fold<List<AccountSession>>(
-        (_) => <AccountSession>[session],
+      final raw = accountsResult.fold<List<AccountSession>>(
+        (_) => <AccountSession>[],
         (List<AccountSession> a) => a,
       );
       emit(
-        AuthAuthenticated(activeSession: session, savedAccounts: savedAccounts),
+        AuthAuthenticated(
+          activeSession: session,
+          savedAccounts: _ensureActiveIncluded(session, raw),
+        ),
       );
     });
   }
@@ -9430,14 +9396,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
         final accountsResult = await _getSavedAccounts(NoParams());
-        final savedAccounts = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[session],
+        final raw = accountsResult.fold<List<AccountSession>>(
+          (_) => <AccountSession>[],
           (List<AccountSession> a) => a,
         );
         emit(
           AuthAuthenticated(
             activeSession: session,
-            savedAccounts: savedAccounts,
+            savedAccounts: _ensureActiveIncluded(session, raw),
           ),
         );
       },
@@ -9465,14 +9431,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
         final accountsResult = await _getSavedAccounts(NoParams());
-        final savedAccounts = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[session],
+        final raw = accountsResult.fold<List<AccountSession>>(
+          (_) => <AccountSession>[],
           (List<AccountSession> a) => a,
         );
         emit(
           AuthAuthenticated(
             activeSession: session,
-            savedAccounts: savedAccounts,
+            savedAccounts: _ensureActiveIncluded(session, raw),
           ),
         );
       },
@@ -9480,7 +9446,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   }
 
   // ── Logout active account ─────────────────────────────────
-  // KEY CHANGE: emits AuthNeedsAccountPicker if other accounts remain.
+  // Emits AuthNeedsAccountPicker if other accounts remain.
   Future<void> _onLogoutRequested(
     AuthLogoutRequested event,
     Emitter<AuthState> emit,
@@ -9499,10 +9465,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         );
 
         if (remaining.isEmpty) {
-          // No other accounts → go to login
           emit(AuthUnauthenticated());
         } else {
-          // Other accounts exist → show picker
           emit(AuthNeedsAccountPicker(savedAccounts: remaining));
         }
       },
@@ -9530,7 +9494,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           return;
         }
 
-        // Check if there's still an active session
+        // Check if there is still an active session
         final sessionResult = await _getActiveSession(NoParams());
         sessionResult.fold(
           (_) => emit(AuthNeedsAccountPicker(savedAccounts: remaining)),
@@ -9543,7 +9507,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
               emit(
                 AuthAccountsUpdated(
                   activeSession: session,
-                  savedAccounts: remaining,
+                  savedAccounts: _ensureActiveIncluded(session, remaining),
                 ),
               );
             }
@@ -9577,14 +9541,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       },
       (newSession) async {
         final accountsResult = await _getSavedAccounts(NoParams());
-        final savedAccounts = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[newSession],
+        final raw = accountsResult.fold<List<AccountSession>>(
+          (_) => <AccountSession>[],
           (List<AccountSession> a) => a,
         );
         emit(
           AuthAuthenticated(
             activeSession: newSession,
-            savedAccounts: savedAccounts,
+            savedAccounts: _ensureActiveIncluded(newSession, raw),
           ),
         );
       },
@@ -9613,11 +9577,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         return;
       }
 
-      final saved = accountsResult.fold<List<AccountSession>>(
-        (_) => <AccountSession>[session],
+      final raw = accountsResult.fold<List<AccountSession>>(
+        (_) => <AccountSession>[],
         (List<AccountSession> a) => a,
       );
-      emit(AuthAccountsUpdated(activeSession: session, savedAccounts: saved));
+      emit(
+        AuthAccountsUpdated(
+          activeSession: session,
+          savedAccounts: _ensureActiveIncluded(session, raw),
+        ),
+      );
     });
   }
 
@@ -9632,14 +9601,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
         final accountsResult = await _getSavedAccounts(NoParams());
-        final savedAccounts = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[session],
+        final raw = accountsResult.fold<List<AccountSession>>(
+          (_) => <AccountSession>[],
           (List<AccountSession> a) => a,
         );
         emit(
           AuthAuthenticated(
             activeSession: session,
-            savedAccounts: savedAccounts,
+            savedAccounts: _ensureActiveIncluded(session, raw),
           ),
         );
       },
@@ -9792,18 +9761,6 @@ class AuthFailureState extends AuthState {
 FILE [63 / 89] : lib\features\auth\presentation\pages\account_picker_page.dart
 --------------------------------------------------------------------------------
 // account_picker_page.dart
-// ─────────────────────────────────────────────────────────────
-// Shown in two scenarios:
-//   1. After logging out when other saved accounts still exist
-//   2. When user taps "Add account" from profile or home
-//
-// Navigation:
-//   Switch account success → GoRouter redirect handles it
-//                            (AuthAuthenticated → /home)
-//   "Sign in to another"   → context.push(AppRouter.login)
-//   "Create account"       → context.push(AppRouter.register)
-// ─────────────────────────────────────────────────────────────
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -9817,27 +9774,62 @@ enum AccountPickerMode { picker, add }
 
 class AccountPickerPage extends StatelessWidget {
   final AccountPickerMode mode;
+  final List<AccountSession> initialAccounts;
+  final String? initialActiveEmail;
 
-  const AccountPickerPage({super.key, this.mode = AccountPickerMode.picker});
+  const AccountPickerPage({
+    super.key,
+    this.mode = AccountPickerMode.picker,
+    this.initialAccounts = const [],
+    this.initialActiveEmail,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final scheme    = Theme.of(context).colorScheme;
+    final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    return BlocBuilder<AuthBloc, AuthState>(
+    return BlocConsumer<AuthBloc, AuthState>(
+      // Only react to meaningful transitions, not same-type re-emissions.
+      // Without this, opening the picker while AuthAuthenticated (add mode)
+      // triggers context.go(home) on the very next AuthAuthenticated emission.
+      listenWhen: (previous, current) =>
+          previous.runtimeType != current.runtimeType,
+      listener: (context, state) {
+        if (state is AuthAuthenticated) {
+          context.go(AppRouter.home);
+        } else if (state is AuthUnauthenticated) {
+          context.go(AppRouter.login);
+        }
+      },
       builder: (context, state) {
-        // GoRouter redirect handles navigation once AuthAuthenticated fires.
-        final savedAccounts = switch (state) {
-          AuthAuthenticated s      => s.savedAccounts,
-          AuthAccountsUpdated s   => s.savedAccounts,
-          AuthNeedsAccountPicker s => s.savedAccounts,
-          _ => <AccountSession>[],
-        };
+        // Derive live accounts from current BLoC state.
+        // Fall back to initialAccounts (read from authBloc.state at route
+        // build time) when the BLoC is in a transient state like
+        // AuthLoading or AuthSwitching — so the list never disappears
+        // during a switch operation.
+        List<AccountSession> savedAccounts = initialAccounts;
+        String? activeEmail = initialActiveEmail;
+
+        if (state is AuthAuthenticated) {
+          savedAccounts = state.savedAccounts;
+          activeEmail = state.activeSession.user.email;
+        } else if (state is AuthNeedsAccountPicker) {
+          savedAccounts = state.savedAccounts;
+          activeEmail = null;
+        } else if (state is AuthAccountsUpdated) {
+          savedAccounts = state.savedAccounts;
+          activeEmail = state.activeSession.user.email;
+        }
+        // AuthLoading / AuthSwitching / AuthFailureState:
+        //   keep showing the last known list (initialAccounts / previous state)
 
         final isLoading = state is AuthLoading || state is AuthSwitching;
 
         return Scaffold(
+          appBar: mode == AccountPickerMode.add
+              ? AppBar(leading: const BackButton())
+              : null,
           body: SafeArea(
             child: Center(
               child: ConstrainedBox(
@@ -9845,74 +9837,84 @@ class AccountPickerPage extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 24,
-                    vertical:   32,
+                    vertical: 32,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // ── Header ───────────────────────────────
-                      _Header(
-                        mode:      mode,
-                        scheme:    scheme,
-                        textTheme: textTheme,
-                      ),
+                      _Header(mode: mode, scheme: scheme, textTheme: textTheme),
                       const SizedBox(height: 32),
 
-                      // ── Saved accounts ────────────────────────
+                      // ── Account list ──────────────────────────
                       if (savedAccounts.isNotEmpty) ...[
                         Text(
                           'Saved accounts',
                           style: textTheme.labelMedium?.copyWith(
-                            color:      scheme.onSurfaceVariant,
+                            color: scheme.onSurfaceVariant,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 8),
                         Flexible(
                           child: ListView.separated(
-                            shrinkWrap:   true,
-                            itemCount:    savedAccounts.length,
+                            shrinkWrap: true,
+                            itemCount: savedAccounts.length,
                             separatorBuilder: (_, __) =>
                                 const SizedBox(height: 4),
                             itemBuilder: (context, index) {
                               final account = savedAccounts[index];
+                              final isActive =
+                                  account.user.email == activeEmail;
                               return _AccountCard(
-                                account:   account,
+                                account: account,
+                                isActive: isActive,
                                 isLoading: isLoading,
-                                onTap: () => context.read<AuthBloc>().add(
-                                  AuthSwitchAccountRequested(
-                                    account.user.email,
-                                  ),
-                                ),
-                                onRemove: () =>
-                                    _confirmRemove(context, account, scheme),
+                                onTap: isActive || isLoading
+                                    ? null
+                                    : () => context.read<AuthBloc>().add(
+                                        AuthSwitchAccountRequested(
+                                          account.user.email,
+                                        ),
+                                      ),
+                                onRemove: isLoading
+                                    ? null
+                                    : () => _confirmRemove(
+                                        context,
+                                        account,
+                                        scheme,
+                                      ),
                               );
                             },
                           ),
                         ),
                         const SizedBox(height: 24),
-                        _Divider(scheme: scheme, textTheme: textTheme),
+                        _OrDivider(scheme: scheme, textTheme: textTheme),
                         const SizedBox(height: 24),
                       ],
 
-                      // ── Add / login new account ───────────────
+                      // ── Add / sign in ─────────────────────────
                       FilledButton.icon(
-                        icon:  const Icon(Icons.login, size: 18),
+                        icon: const Icon(Icons.login, size: 18),
                         label: const Text('Sign in to another account'),
                         onPressed: isLoading
                             ? null
-                            : () => context.push(AppRouter.login),
+                            : () => context.push(
+                                AppRouter.login,
+                                extra: {'addAccount': true},
+                              ),
                       ),
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
-                        icon:  const Icon(Icons.person_add_outlined, size: 18),
+                        icon: const Icon(Icons.person_add_outlined, size: 18),
                         label: const Text('Create new account'),
                         onPressed: isLoading
                             ? null
-                            : () => context.push(AppRouter.register),
+                            : () => context.push(
+                                AppRouter.register,
+                                extra: {'addAccount': true},
+                              ),
                       ),
 
-                      // ── Loading indicator ─────────────────────
                       if (isLoading) ...[
                         const SizedBox(height: 24),
                         const Center(
@@ -9938,7 +9940,7 @@ class AccountPickerPage extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title:   const Text('Remove account?'),
+        title: const Text('Remove account?'),
         content: Text(
           'Remove ${account.user.email} from this device?\n'
           'You can always sign back in later.',
@@ -9949,9 +9951,9 @@ class AccountPickerPage extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style:     FilledButton.styleFrom(backgroundColor: scheme.error),
+            style: FilledButton.styleFrom(backgroundColor: scheme.error),
             onPressed: () => Navigator.pop(context, true),
-            child:     const Text('Remove'),
+            child: const Text('Remove'),
           ),
         ],
       ),
@@ -9968,8 +9970,8 @@ class AccountPickerPage extends StatelessWidget {
 
 class _Header extends StatelessWidget {
   final AccountPickerMode mode;
-  final ColorScheme       scheme;
-  final TextTheme         textTheme;
+  final ColorScheme scheme;
+  final TextTheme textTheme;
 
   const _Header({
     required this.mode,
@@ -9984,21 +9986,19 @@ class _Header extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width:  56,
+          width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color:        scheme.primaryContainer,
+            color: scheme.primaryContainer,
             borderRadius: BorderRadius.circular(16),
           ),
           child: Icon(
-            isAdd
-                ? Icons.person_add_outlined
-                : Icons.switch_account_outlined,
-            size:  28,
+            isAdd ? Icons.person_add_outlined : Icons.switch_account_outlined,
+            size: 28,
             color: scheme.onPrimaryContainer,
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
         Text(
           isAdd ? 'Add account' : 'Choose account',
           style: textTheme.headlineMedium?.copyWith(
@@ -10008,12 +10008,37 @@ class _Header extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           isAdd
-              ? 'Sign in to add another account or create a new one.'
-              : 'Continue with a saved account or sign in to another.',
-          style: textTheme.bodyMedium?.copyWith(
-            color: scheme.onSurfaceVariant,
+              ? 'Sign in to add another account'
+              : 'Select an account to continue',
+          style: textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+}
+
+// ── "or" divider ──────────────────────────────────────────────
+
+class _OrDivider extends StatelessWidget {
+  final ColorScheme scheme;
+  final TextTheme textTheme;
+  const _OrDivider({required this.scheme, required this.textTheme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: Divider(color: scheme.outlineVariant)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            'or',
+            style: textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
           ),
         ),
+        Expanded(child: Divider(color: scheme.outlineVariant)),
       ],
     );
   }
@@ -10023,12 +10048,14 @@ class _Header extends StatelessWidget {
 
 class _AccountCard extends StatelessWidget {
   final AccountSession account;
-  final bool           isLoading;
-  final VoidCallback   onTap;
-  final VoidCallback   onRemove;
+  final bool isActive;
+  final bool isLoading;
+  final VoidCallback? onTap;
+  final VoidCallback? onRemove;
 
   const _AccountCard({
     required this.account,
+    required this.isActive,
     required this.isLoading,
     required this.onTap,
     required this.onRemove,
@@ -10036,70 +10063,89 @@ class _AccountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme    = Theme.of(context).colorScheme;
+    final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final user      = account.user;
+    final user = account.user;
 
     return Card(
-      margin: EdgeInsets.zero,
-      child: InkWell(
-        onTap:        isLoading ? null : onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius:          22,
-                backgroundColor: scheme.primaryContainer,
-                child: Text(
-                  _initials(user.displayName),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize:   14,
-                    color:      scheme.onPrimaryContainer,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      user.displayName,
-                      style: textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      user.email,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                    if (user.primaryRole != null)
-                      Text(
-                        user.primaryRole!.name,
-                        style: textTheme.labelSmall?.copyWith(
-                          color: scheme.primary,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: Icon(
-                  Icons.person_remove_outlined,
-                  size:  20,
-                  color: scheme.onSurfaceVariant,
-                ),
-                tooltip:   'Remove',
-                onPressed: isLoading ? null : onRemove,
-              ),
-              Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
-            ],
+      elevation: 0,
+      color: isActive
+          ? scheme.primaryContainer.withOpacity(0.4)
+          : scheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: isActive
+            ? BorderSide(color: scheme.primary.withOpacity(0.4))
+            : BorderSide.none,
+      ),
+      child: ListTile(
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: CircleAvatar(
+          radius: 22,
+          backgroundColor: isActive
+              ? scheme.primaryContainer
+              : scheme.surfaceContainerHighest,
+          child: Text(
+            _initials(user.displayName),
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              color: isActive
+                  ? scheme.onPrimaryContainer
+                  : scheme.onSurfaceVariant,
+            ),
           ),
+        ),
+        title: Text(
+          user.displayName,
+          style: textTheme.bodyLarge?.copyWith(
+            fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(user.email, style: textTheme.bodySmall),
+            if (user.primaryRole != null)
+              Text(
+                user.primaryRole!.name,
+                style: textTheme.labelSmall?.copyWith(color: scheme.primary),
+              ),
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isActive)
+              Icon(Icons.check_circle_rounded, color: scheme.primary, size: 20),
+            if (!isActive)
+              SizedBox(
+                height: 32,
+                child: FilledButton.tonal(
+                  onPressed: isLoading ? null : onTap,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Switch'),
+                ),
+              ),
+            const SizedBox(width: 4),
+            IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              tooltip: 'Remove',
+              onPressed: isLoading ? null : onRemove,
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
         ),
       ),
     );
@@ -10114,33 +10160,6 @@ class _AccountCard extends StatelessWidget {
   }
 }
 
-// ── Divider with label ────────────────────────────────────────
-
-class _Divider extends StatelessWidget {
-  final ColorScheme scheme;
-  final TextTheme   textTheme;
-
-  const _Divider({required this.scheme, required this.textTheme});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(child: Divider(color: scheme.outlineVariant)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            'or',
-            style: textTheme.bodySmall?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        Expanded(child: Divider(color: scheme.outlineVariant)),
-      ],
-    );
-  }
-}
 
 --------------------------------------------------------------------------------
 FILE [64 / 89] : lib\features\auth\presentation\pages\home_page.dart
@@ -10154,8 +10173,7 @@ FILE [64 / 89] : lib\features\auth\presentation\pages\home_page.dart
 //
 // Navigation:
 //   Logout / unauthenticated → GoRouter redirect handles it
-//   "Add another account"    → context.push(AppRouter.login)
-//                              (addAccount handled by LoginPage itself)
+//   "Add another account"    → context.push(AppRouter.login, extra: addAccount:true)
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
@@ -10196,11 +10214,9 @@ class HomePage extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: GestureDetector(
-                  onTap: () => AccountSwitcherSheet.show(
-                    context,
-                    activeSession: session,
-                    savedAccounts: accounts,
-                  ),
+                  // ✅ FIX: No longer passes stale activeSession/savedAccounts.
+                  // The sheet reads live data from the BLoC directly.
+                  onTap: () => AccountSwitcherSheet.show(context),
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
@@ -10396,7 +10412,12 @@ class HomePage extends StatelessWidget {
                       OutlinedButton.icon(
                         icon: const Icon(Icons.person_add_outlined, size: 18),
                         label: const Text('Add another account'),
-                        onPressed: () => context.push(AppRouter.login),
+                        // ✅ FIX: pass addAccount:true so LoginPage renders
+                        // the correct AppBar and navigates back properly.
+                        onPressed: () => context.push(
+                          AppRouter.login,
+                          extra: {'addAccount': true},
+                        ),
                       ),
 
                       const SizedBox(height: 12),
@@ -10454,7 +10475,7 @@ class _RoleBadge extends StatelessWidget {
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
-          color: scheme.onPrimaryContainer,
+          color: scheme.primary,
         ),
       ),
     );
@@ -10463,10 +10484,8 @@ class _RoleBadge extends StatelessWidget {
 
 class _InfoRow extends StatelessWidget {
   final IconData icon;
-  final String label;
-  final String value;
+  final String label, value;
   final ColorScheme scheme;
-
   const _InfoRow({
     required this.icon,
     required this.label,
@@ -10481,10 +10500,10 @@ class _InfoRow extends StatelessWidget {
       child: Row(
         children: [
           Icon(icon, size: 18, color: scheme.onSurfaceVariant),
-          const SizedBox(width: 10),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-          const SizedBox(width: 24),
-          Text(value, style: TextStyle(color: scheme.onSurfaceVariant)),
+          const SizedBox(width: 12),
+          Text(label, style: TextStyle(color: scheme.onSurfaceVariant)),
+          const Spacer(),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -10496,17 +10515,6 @@ class _InfoRow extends StatelessWidget {
 FILE [65 / 89] : lib\features\auth\presentation\pages\login_page.dart
 --------------------------------------------------------------------------------
 // login_page.dart
-// ─────────────────────────────────────────────────────────────
-// Navigation handled by GoRouter redirect — this page never
-// calls context.go() on success. The AuthRouterNotifier in
-// app_router.dart watches AuthBloc and redirects automatically:
-//   AuthAuthenticated → /home  (redirect fires, stack cleared)
-//
-// The only manual navigation here is:
-//   "Create one" link  → context.go(AppRouter.register)
-//   "Add account" back → context.pop()
-// ─────────────────────────────────────────────────────────────
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -10557,8 +10565,16 @@ class _LoginPageState extends State<LoginPage> {
 
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
-        // GoRouter redirect handles navigation on AuthAuthenticated.
-        // Only show error snackbars here.
+        if (state is AuthAuthenticated) {
+          if (widget.addAccount) {
+            context.go(
+              AppRouter.accountPicker,
+            ); // return to picker with updated list
+          } else {
+            context.go(AppRouter.home);
+          }
+          return;
+        }
         if (state is AuthFailureState) {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
@@ -10614,10 +10630,8 @@ class _LoginPageState extends State<LoginPage> {
                         _ForgotPassword(scheme: scheme),
                         const SizedBox(height: 32),
                         _SubmitButton(isLoading: isLoading, onSubmit: _submit),
-                        if (!isAdding) ...[
-                          const SizedBox(height: 24),
-                          _RegisterLink(scheme: scheme),
-                        ],
+                        const SizedBox(height: 24),
+                        _RegisterLink(scheme: scheme, isAdding: isAdding),
                       ],
                     ),
                   ),
@@ -10638,13 +10652,10 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-// ── Header ────────────────────────────────────────────────────
-
 class _Header extends StatelessWidget {
   final bool isAdding;
   final ColorScheme scheme;
   final TextTheme textTheme;
-
   const _Header({
     required this.isAdding,
     required this.scheme,
@@ -10688,14 +10699,10 @@ class _Header extends StatelessWidget {
   }
 }
 
-// ── Form ──────────────────────────────────────────────────────
-
 class _LoginForm extends StatelessWidget {
   final GlobalKey<FormState> formKey;
-  final TextEditingController emailCtrl;
-  final TextEditingController passCtrl;
-  final bool submitted;
-  final bool isLoading;
+  final TextEditingController emailCtrl, passCtrl;
+  final bool submitted, isLoading;
   final VoidCallback onSubmit;
 
   const _LoginForm({
@@ -10749,8 +10756,6 @@ class _LoginForm extends StatelessWidget {
   }
 }
 
-// ── Forgot password ───────────────────────────────────────────
-
 class _ForgotPassword extends StatelessWidget {
   final ColorScheme scheme;
   const _ForgotPassword({required this.scheme});
@@ -10767,12 +10772,9 @@ class _ForgotPassword extends StatelessWidget {
   }
 }
 
-// ── Submit button ─────────────────────────────────────────────
-
 class _SubmitButton extends StatelessWidget {
   final bool isLoading;
   final VoidCallback onSubmit;
-
   const _SubmitButton({required this.isLoading, required this.onSubmit});
 
   @override
@@ -10790,11 +10792,10 @@ class _SubmitButton extends StatelessWidget {
   }
 }
 
-// ── Register link ─────────────────────────────────────────────
-
 class _RegisterLink extends StatelessWidget {
   final ColorScheme scheme;
-  const _RegisterLink({required this.scheme});
+  final bool isAdding;
+  const _RegisterLink({required this.scheme, required this.isAdding});
 
   @override
   Widget build(BuildContext context) {
@@ -10806,8 +10807,15 @@ class _RegisterLink extends StatelessWidget {
           style: TextStyle(color: scheme.onSurfaceVariant),
         ),
         TextButton(
-          // GoRouter: replace current location so back doesn't return to login
-          onPressed: () => context.go(AppRouter.register),
+          onPressed: () {
+            if (isAdding) {
+              // Push so the user can still cancel back to account-picker.
+              context.push(AppRouter.register, extra: {'addAccount': true});
+            } else {
+              // Replace so back doesn't loop login ↔ register.
+              context.go(AppRouter.register);
+            }
+          },
           child: const Text('Create one'),
         ),
       ],
@@ -10820,15 +10828,6 @@ class _RegisterLink extends StatelessWidget {
 FILE [66 / 89] : lib\features\auth\presentation\pages\register_page.dart
 --------------------------------------------------------------------------------
 // register_page.dart
-// ─────────────────────────────────────────────────────────────
-// Responsive registration page. Material 3. No custom colors.
-// UI gate validation only — UseCase is the security gate.
-//
-// Navigation:
-//   Success        → GoRouter redirect handles it (AuthAuthenticated → /home)
-//   "Sign in" link → context.go(AppRouter.login)
-// ─────────────────────────────────────────────────────────────
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -10839,20 +10838,21 @@ import '../bloc/auth_state.dart';
 import '../widgets/auth_form_field.dart';
 
 class RegisterPage extends StatefulWidget {
-  const RegisterPage({super.key});
+  final bool addAccount;
+  const RegisterPage({super.key, this.addAccount = false});
 
   @override
   State<RegisterPage> createState() => _RegisterPageState();
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final _formKey     = GlobalKey<FormState>();
-  final _nameCtrl    = TextEditingController();
-  final _emailCtrl   = TextEditingController();
-  final _phoneCtrl   = TextEditingController();
-  final _passCtrl    = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final _nameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
-  bool _submitted    = false;
+  bool _submitted = false;
 
   @override
   void dispose() {
@@ -10868,12 +10868,11 @@ class _RegisterPageState extends State<RegisterPage> {
     setState(() => _submitted = true);
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
-
     context.read<AuthBloc>().add(
       AuthRegisterRequested(
-        name:                 _nameCtrl.text.trim(),
-        email:                _emailCtrl.text.trim(),
-        password:             _passCtrl.text,
+        name: _nameCtrl.text.trim(),
+        email: _emailCtrl.text.trim(),
+        password: _passCtrl.text,
         passwordConfirmation: _confirmCtrl.text,
         phone: _phoneCtrl.text.trim().isNotEmpty
             ? _phoneCtrl.text.trim()
@@ -10884,20 +10883,28 @@ class _RegisterPageState extends State<RegisterPage> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme    = Theme.of(context).colorScheme;
+    final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final isAdding = widget.addAccount;
 
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
-        // GoRouter redirect handles navigation on AuthAuthenticated.
+        if (state is AuthAuthenticated) {
+          if (widget.addAccount) {
+            context.go(AppRouter.accountPicker);
+          } else {
+            context.go(AppRouter.home);
+          }
+          return;
+        }
         if (state is AuthFailureState) {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
             ..showSnackBar(
               SnackBar(
-                content:         Text(state.message),
+                content: Text(state.message),
                 backgroundColor: scheme.error,
-                behavior:        SnackBarBehavior.floating,
+                behavior: SnackBarBehavior.floating,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -10910,6 +10917,12 @@ class _RegisterPageState extends State<RegisterPage> {
           final isLoading = state is AuthLoading;
 
           return Scaffold(
+            appBar: isAdding
+                ? AppBar(
+                    title: const Text('Create account'),
+                    leading: const BackButton(),
+                  )
+                : null,
             body: SafeArea(
               child: Center(
                 child: SingleChildScrollView(
@@ -10926,15 +10939,15 @@ class _RegisterPageState extends State<RegisterPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Container(
-                              width:  56,
+                              width: 56,
                               height: 56,
                               decoration: BoxDecoration(
-                                color:        scheme.secondaryContainer,
+                                color: scheme.secondaryContainer,
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: Icon(
                                 Icons.person_outline_rounded,
-                                size:  28,
+                                size: 28,
                                 color: scheme.onSecondaryContainer,
                               ),
                             ),
@@ -10966,54 +10979,51 @@ class _RegisterPageState extends State<RegisterPage> {
                           child: Column(
                             children: [
                               AuthFormField(
-                                label:      'Full name',
+                                label: 'Full name',
                                 prefixIcon: Icons.badge_outlined,
                                 controller: _nameCtrl,
-                                enabled:    !isLoading,
-                                validator:  (v) {
-                                  if (v == null || v.trim().isEmpty) {
+                                enabled: !isLoading,
+                                validator: (v) {
+                                  if (v == null || v.trim().isEmpty)
                                     return 'Name is required';
-                                  }
-                                  if (v.trim().length < 2) {
+                                  if (v.trim().length < 2)
                                     return 'Name is too short';
-                                  }
                                   return null;
                                 },
                               ),
                               const SizedBox(height: 16),
                               AuthFormField(
-                                label:        'Email',
-                                prefixIcon:   Icons.email_outlined,
-                                controller:   _emailCtrl,
+                                label: 'Email',
+                                prefixIcon: Icons.email_outlined,
+                                controller: _emailCtrl,
                                 keyboardType: TextInputType.emailAddress,
-                                enabled:      !isLoading,
-                                validator:    (v) {
-                                  if (v == null || v.trim().isEmpty) {
+                                enabled: !isLoading,
+                                validator: (v) {
+                                  if (v == null || v.trim().isEmpty)
                                     return 'Email is required';
-                                  }
-                                  if (!v.contains('@')) {
+                                  if (!v.contains('@'))
                                     return 'Enter a valid email';
-                                  }
                                   return null;
                                 },
                               ),
                               const SizedBox(height: 16),
                               AuthFormField(
-                                label:        'Phone',
-                                prefixIcon:   Icons.phone_outlined,
-                                controller:   _phoneCtrl,
+                                label: 'Phone',
+                                prefixIcon: Icons.phone_outlined,
+                                controller: _phoneCtrl,
                                 keyboardType: TextInputType.phone,
-                                isOptional:   true,
-                                enabled:      !isLoading,
-                                validator:    (v) {
-                                  if (v == null || v.trim().isEmpty) {
-                                    return null; // optional
-                                  }
+                                isOptional: true,
+                                enabled: !isLoading,
+                                validator: (v) {
+                                  if (v == null || v.trim().isEmpty)
+                                    return null;
                                   final digits = v.replaceAll(
                                     RegExp(r'[\s\-()]'),
                                     '',
                                   );
-                                  if (!RegExp(r'^\+?\d{7,15}$').hasMatch(digits)) {
+                                  if (!RegExp(
+                                    r'^\+?\d{7,15}$',
+                                  ).hasMatch(digits)) {
                                     return 'Enter a valid phone number';
                                   }
                                   return null;
@@ -11021,37 +11031,33 @@ class _RegisterPageState extends State<RegisterPage> {
                               ),
                               const SizedBox(height: 16),
                               AuthFormField(
-                                label:      'Password',
+                                label: 'Password',
                                 prefixIcon: Icons.lock_outline,
                                 controller: _passCtrl,
                                 isPassword: true,
-                                enabled:    !isLoading,
-                                validator:  (v) {
-                                  if (v == null || v.isEmpty) {
+                                enabled: !isLoading,
+                                validator: (v) {
+                                  if (v == null || v.isEmpty)
                                     return 'Password is required';
-                                  }
-                                  if (v.length < 8) {
+                                  if (v.length < 8)
                                     return 'At least 8 characters';
-                                  }
                                   return null;
                                 },
                               ),
                               const SizedBox(height: 16),
                               AuthFormField(
-                                label:           'Confirm password',
-                                prefixIcon:      Icons.lock_outline,
-                                controller:      _confirmCtrl,
-                                isPassword:      true,
-                                enabled:         !isLoading,
+                                label: 'Confirm password',
+                                prefixIcon: Icons.lock_outline,
+                                controller: _confirmCtrl,
+                                isPassword: true,
+                                enabled: !isLoading,
                                 textInputAction: TextInputAction.done,
                                 onEditingComplete: _submit,
                                 validator: (v) {
-                                  if (v == null || v.isEmpty) {
+                                  if (v == null || v.isEmpty)
                                     return 'Please confirm your password';
-                                  }
-                                  if (v != _passCtrl.text) {
+                                  if (v != _passCtrl.text)
                                     return 'Passwords do not match';
-                                  }
                                   return null;
                                 },
                               ),
@@ -11061,12 +11067,12 @@ class _RegisterPageState extends State<RegisterPage> {
 
                         const SizedBox(height: 32),
 
-                        // ── Submit ────────────────────────────
                         FilledButton(
                           onPressed: isLoading ? null : _submit,
                           child: isLoading
                               ? const SizedBox(
-                                  width: 22, height: 22,
+                                  width: 22,
+                                  height: 22,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2.5,
                                   ),
@@ -11076,7 +11082,6 @@ class _RegisterPageState extends State<RegisterPage> {
 
                         const SizedBox(height: 24),
 
-                        // ── Login link ────────────────────────
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -11085,7 +11090,14 @@ class _RegisterPageState extends State<RegisterPage> {
                               style: TextStyle(color: scheme.onSurfaceVariant),
                             ),
                             TextButton(
-                              onPressed: () => context.go(AppRouter.login),
+                              onPressed: () {
+                                if (isAdding) {
+                                  // Pop back to LoginPage (was pushed before register).
+                                  context.pop();
+                                } else {
+                                  context.go(AppRouter.login);
+                                }
+                              },
                               child: const Text('Sign in'),
                             ),
                           ],
@@ -11105,40 +11117,34 @@ class _RegisterPageState extends State<RegisterPage> {
   double _formMaxWidth(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
     if (w >= 1024) return 440;
-    if (w >= 600)  return 480;
+    if (w >= 600) return 480;
     return double.infinity;
   }
 }
+
 
 --------------------------------------------------------------------------------
 FILE [67 / 89] : lib\features\auth\presentation\widgets\account_switcher_sheet.dart
 --------------------------------------------------------------------------------
 // account_switcher_sheet.dart
-// Fix: FilledButton.tonal in ListTile trailing wrapped in SizedBox
-// to prevent BoxConstraints infinite width error.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
 import '../../domain/entities/account_session.dart';
 import '../bloc/auth_bloc.dart';
 import '../bloc/auth_event.dart';
 import '../bloc/auth_state.dart';
 
-class AccountSwitcherSheet extends StatelessWidget {
-  final AccountSession activeSession;
-  final List<AccountSession> savedAccounts;
+class AccountSwitcherSheet {
+  const AccountSwitcherSheet._();
 
-  const AccountSwitcherSheet({
-    super.key,
-    required this.activeSession,
-    required this.savedAccounts,
-  });
+  static Future<void> show(BuildContext context) {
+    // Capture the router BEFORE the modal opens so that we can push to it
+    // from inside the sheet (the modal has its own Navigator scope).
+    final router = GoRouter.of(context);
+    final authBloc = context.read<AuthBloc>();
 
-  static Future<void> show(
-    BuildContext context, {
-    required AccountSession activeSession,
-    required List<AccountSession> savedAccounts,
-  }) {
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -11147,115 +11153,170 @@ class AccountSwitcherSheet extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => BlocProvider.value(
-        value: context.read<AuthBloc>(),
-        child: AccountSwitcherSheet(
-          activeSession: activeSession,
-          savedAccounts: savedAccounts,
-        ),
+        value: authBloc,
+        child: _AccountSwitcherSheetBody(router: router),
       ),
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal body — receives the pre-captured router so it can navigate without
+// depending on the modal's Navigator scope.
+// ─────────────────────────────────────────────────────────────────────────────
+class _AccountSwitcherSheetBody extends StatelessWidget {
+  final GoRouter router;
+  const _AccountSwitcherSheetBody({required this.router});
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    return BlocListener<AuthBloc, AuthState>(
+    return BlocConsumer<AuthBloc, AuthState>(
+      listenWhen: (previous, current) => previous != current,
       listener: (context, state) {
-        if (state is AuthAuthenticated || state is AuthUnauthenticated) {
-          Navigator.of(context).pop();
+        // Close the sheet on any auth-transition that means the user's
+        // context has changed.
+        switch (state) {
+          case AuthAuthenticated():
+          case AuthAccountsUpdated():
+          case AuthNeedsAccountPicker():
+          case AuthUnauthenticated():
+            if (context.mounted) Navigator.of(context).pop();
+          default:
+            break;
         }
       },
-      child: DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.55,
-        minChildSize: 0.4,
-        maxChildSize: 0.9,
-        builder: (_, scrollController) => Column(
-          children: [
-            // ── Handle ──────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.only(top: 12, bottom: 8),
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: scheme.onSurfaceVariant.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(2),
+      builder: (context, state) {
+        // ── Read LIVE data from the BLoC ─────────────────────────────────────
+        // This is the core fix: instead of relying on the constructor-param
+        // snapshot (which was captured when the sheet opened and never updated),
+        // we read directly from the current BLoC state.
+        final liveAccounts = switch (state) {
+          AuthAuthenticated s => s.savedAccounts,
+          AuthAccountsUpdated s => s.savedAccounts,
+          _ => <AccountSession>[],
+        };
+
+        final activeEmail = switch (state) {
+          AuthAuthenticated s => s.activeSession.user.email,
+          _ => null,
+        };
+
+        final isLoading = state is AuthLoading || state is AuthSwitching;
+
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.55,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          builder: (_, scrollController) => Column(
+            children: [
+              // ── Handle ────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.only(top: 12, bottom: 8),
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: scheme.onSurfaceVariant.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
 
-            // ── Header ──────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-              child: Row(
-                children: [
-                  Text('Accounts', style: textTheme.titleLarge),
-                  const SizedBox(width: 24),
-                  TextButton.icon(
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Add account'),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      Navigator.of(
-                        context,
-                      ).pushNamed('/login', arguments: {'addAccount': true});
-                    },
-                  ),
-                ],
+              // ── Header ────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Row(
+                  children: [
+                    Text('Accounts', style: textTheme.titleLarge),
+                    const Spacer(),
+                    TextButton.icon(
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add account'),
+                      onPressed: isLoading
+                          ? null
+                          : () {
+                              // Pop the sheet first (uses the modal Navigator —
+                              // this is correct). Then push the login route
+                              // using the pre-captured GoRouter reference.
+                              Navigator.of(context).pop();
+                              router.push(
+                                AppRouter.login,
+                                extra: {'addAccount': true},
+                              );
+                            },
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            const Divider(height: 1),
+              const Divider(height: 1),
 
-            // ── Account list ─────────────────────────────────
-            Expanded(
-              child: ListView.builder(
-                controller: scrollController,
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: savedAccounts.length,
-                itemBuilder: (context, index) {
-                  final account = savedAccounts[index];
-                  final isActive =
-                      account.user.email == activeSession.user.email;
-
-                  return _AccountTile(
-                    account: account,
-                    isActive: isActive,
-                    onSwitch: isActive
-                        ? null
-                        : () => context.read<AuthBloc>().add(
-                            AuthSwitchAccountRequested(account.user.email),
+              // ── Account list ──────────────────────────────────
+              Expanded(
+                child: liveAccounts.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No saved accounts',
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
                           ),
-                    onRemove: () => _confirmRemove(context, account),
-                  );
-                },
-              ),
-            ),
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: scrollController,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemCount: liveAccounts.length,
+                        itemBuilder: (context, index) {
+                          final account = liveAccounts[index];
+                          final isActive = account.user.email == activeEmail;
 
-            // ── Logout current ───────────────────────────────
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.logout, size: 18),
-                  label: const Text('Sign out of this account'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: scheme.error,
-                    side: BorderSide(color: scheme.error.withOpacity(0.5)),
+                          return _AccountTile(
+                            account: account,
+                            isActive: isActive,
+                            isLoading: isLoading,
+                            onSwitch: isActive || isLoading
+                                ? null
+                                : () => context.read<AuthBloc>().add(
+                                    AuthSwitchAccountRequested(
+                                      account.user.email,
+                                    ),
+                                  ),
+                            onRemove: isLoading
+                                ? null
+                                : () => _confirmRemove(context, account),
+                          );
+                        },
+                      ),
+              ),
+
+              // ── Sign out current ──────────────────────────────
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.logout, size: 18),
+                    label: const Text('Sign out of this account'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: scheme.error,
+                      side: BorderSide(color: scheme.error.withOpacity(0.5)),
+                    ),
+                    onPressed: isLoading
+                        ? null
+                        : () {
+                            Navigator.of(context).pop();
+                            context.read<AuthBloc>().add(AuthLogoutRequested());
+                          },
                   ),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    context.read<AuthBloc>().add(AuthLogoutRequested());
-                  },
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -11299,12 +11360,14 @@ class AccountSwitcherSheet extends StatelessWidget {
 class _AccountTile extends StatelessWidget {
   final AccountSession account;
   final bool isActive;
+  final bool isLoading;
   final VoidCallback? onSwitch;
-  final VoidCallback onRemove;
+  final VoidCallback? onRemove;
 
   const _AccountTile({
     required this.account,
     required this.isActive,
+    required this.isLoading,
     required this.onSwitch,
     required this.onRemove,
   });
@@ -11350,33 +11413,38 @@ class _AccountTile extends StatelessWidget {
             ),
         ],
       ),
-      // ── FIX: constrain trailing Row so buttons don't get infinite width ──
-      trailing: isActive
-          ? Icon(Icons.check_circle, color: scheme.primary)
-          : Row(
-              mainAxisSize: MainAxisSize.min, // critical — shrink to content
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.person_remove_outlined, size: 20),
-                  tooltip: 'Remove account',
-                  onPressed: onRemove,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isActive)
+            Icon(Icons.check_circle_rounded, color: scheme.primary, size: 20),
+          if (!isActive)
+            SizedBox(
+              height: 32,
+              child: FilledButton.tonal(
+                onPressed: isLoading ? null : onSwitch,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                // FIX: SizedBox gives the button a finite width
-                SizedBox(
-                  width: 80,
-                  child: FilledButton.tonal(
-                    style: FilledButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(80, 36),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    onPressed: onSwitch,
-                    child: const Text('Switch'),
-                  ),
-                ),
-              ],
+                child: isLoading
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Switch'),
+              ),
             ),
-      onTap: onSwitch,
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            tooltip: 'Remove',
+            onPressed: isLoading ? null : onRemove,
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
     );
   }
 
@@ -11399,17 +11467,17 @@ FILE [68 / 89] : lib\features\auth\presentation\widgets\auth_form_field.dart
 import 'package:flutter/material.dart';
 
 class AuthFormField extends StatefulWidget {
-  final String             label;
-  final String?            hint;
-  final IconData           prefixIcon;
-  final bool               isPassword;
-  final bool               isOptional;
-  final TextInputType      keyboardType;
+  final String label;
+  final String? hint;
+  final IconData prefixIcon;
+  final bool isPassword;
+  final bool isOptional;
+  final TextInputType keyboardType;
   final TextEditingController controller;
-  final String?            Function(String?)? validator;
-  final TextInputAction     textInputAction;
-  final VoidCallback?      onEditingComplete;
-  final bool               enabled;
+  final String? Function(String?)? validator;
+  final TextInputAction textInputAction;
+  final VoidCallback? onEditingComplete;
+  final bool enabled;
 
   const AuthFormField({
     super.key,
@@ -11417,13 +11485,13 @@ class AuthFormField extends StatefulWidget {
     required this.prefixIcon,
     required this.controller,
     this.hint,
-    this.isPassword      = false,
-    this.isOptional      = false,
-    this.keyboardType    = TextInputType.text,
+    this.isPassword = false,
+    this.isOptional = false,
+    this.keyboardType = TextInputType.text,
     this.validator,
     this.textInputAction = TextInputAction.next,
     this.onEditingComplete,
-    this.enabled         = true,
+    this.enabled = true,
   });
 
   @override
@@ -11438,24 +11506,25 @@ class _AuthFormFieldState extends State<AuthFormField> {
     final scheme = Theme.of(context).colorScheme;
 
     return TextFormField(
-      controller:        widget.controller,
-      obscureText:       widget.isPassword && _obscure,
-      keyboardType:      widget.keyboardType,
-      textInputAction:   widget.textInputAction,
-      enabled:           widget.enabled,
+      controller: widget.controller,
+      obscureText: widget.isPassword && _obscure,
+      keyboardType: widget.keyboardType,
+      textInputAction: widget.textInputAction,
+      enabled: widget.enabled,
       onEditingComplete: widget.onEditingComplete,
-      validator:         widget.validator,
-      autocorrect:       false,
+      validator: widget.validator,
+      autocorrect: false,
       decoration: InputDecoration(
-        labelText:  widget.label +
-            (widget.isOptional ? '  (optional)' : ''),
-        hintText:   widget.hint,
-        fillColor:  scheme.surfaceContainerHighest.withOpacity(0.5),
+        labelText: widget.label + (widget.isOptional ? '  (optional)' : ''),
+        hintText: widget.hint,
+        fillColor: scheme.surfaceContainerHighest.withOpacity(0.5),
         prefixIcon: Icon(widget.prefixIcon, size: 20),
         suffixIcon: widget.isPassword
             ? IconButton(
                 icon: Icon(
-                  _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                  _obscure
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
                   size: 20,
                 ),
                 onPressed: () => setState(() => _obscure = !_obscure),
@@ -13112,6 +13181,7 @@ import '../bloc/profile_bloc.dart';
 import '../bloc/profile_event.dart';
 import '../bloc/profile_state.dart';
 import '../../domain/entities/profile_entity.dart';
+import 'package:go_router/go_router.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -13295,9 +13365,9 @@ class _ProfileContent extends StatelessWidget {
                       ),
                       title: const Text('Add or switch account'),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.of(context).pushNamed(
+                      onTap: () => context.push(
                         AppRouter.accountPicker,
-                        arguments: {'mode': 'add'},
+                        extra: {'mode': 'add'},
                       ),
                     ),
 

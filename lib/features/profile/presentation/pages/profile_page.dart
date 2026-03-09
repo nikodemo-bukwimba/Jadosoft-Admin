@@ -13,6 +13,7 @@ import '../bloc/profile_bloc.dart';
 import '../bloc/profile_event.dart';
 import '../bloc/profile_state.dart';
 import '../../domain/entities/profile_entity.dart';
+import 'package:go_router/go_router.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -196,9 +197,9 @@ class _ProfileContent extends StatelessWidget {
                       ),
                       title: const Text('Add or switch account'),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.of(context).pushNamed(
+                      onTap: () => context.push(
                         AppRouter.accountPicker,
-                        arguments: {'mode': 'add'},
+                        extra: {'mode': 'add'},
                       ),
                     ),
 
