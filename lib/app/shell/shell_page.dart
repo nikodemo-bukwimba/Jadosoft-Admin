@@ -124,15 +124,14 @@ class _AccountAvatarButton extends StatelessWidget {
     final hasMultiple = auth.savedAccounts.length > 1;
 
     return GestureDetector(
-      onTap: () => AccountSwitcherSheet.show(
-        context,
-        activeSession: auth.activeSession,
-        savedAccounts: auth.savedAccounts,
-      ),
+      // ✅ FIX: AccountSwitcherSheet.show now takes only context.
+      // It reads live savedAccounts and activeSession from the BLoC itself
+      // so the sheet is never stale.
+      onTap: () => AccountSwitcherSheet.show(context),
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // ── Avatar ────────────────────────────────────
+          // ── Avatar ──────────────────────────────────────
           CircleAvatar(
             radius: 18,
             backgroundColor: scheme.primaryContainer,
@@ -146,7 +145,7 @@ class _AccountAvatarButton extends StatelessWidget {
             ),
           ),
 
-          // ── Multi-account badge ───────────────────────
+          // ── Multi-account badge ──────────────────────────
           if (hasMultiple)
             Positioned(
               right: 0,
@@ -177,7 +176,6 @@ class _AccountAvatarButton extends StatelessWidget {
 
 // ── Rail footer ───────────────────────────────────────────────
 // Pinned at the bottom of the nav rail / drawer.
-// Shows current user info and logout button.
 
 class _RailFooter extends StatelessWidget {
   final AuthState state;
@@ -198,7 +196,7 @@ class _RailFooter extends StatelessWidget {
         Divider(color: scheme.outlineVariant, height: 1),
         const SizedBox(height: 4),
 
-        // ── User info row ────────────────────────────────
+        // ── User info row ──────────────────────────────────
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Row(
@@ -224,9 +222,7 @@ class _RailFooter extends StatelessWidget {
                       user.displayName,
                       style: textTheme.labelMedium?.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: scheme.onSurface,
                       ),
-                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
@@ -234,7 +230,6 @@ class _RailFooter extends StatelessWidget {
                       style: textTheme.labelSmall?.copyWith(
                         color: scheme.onSurfaceVariant,
                       ),
-                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
@@ -244,21 +239,26 @@ class _RailFooter extends StatelessWidget {
           ),
         ),
 
-        // ── Logout button ────────────────────────────────
-        ListTile(
-          dense: true,
-          leading: Icon(Icons.logout_rounded, size: 20, color: scheme.error),
-          title: Text(
-            'Sign out',
-            style: textTheme.bodyMedium?.copyWith(
-              color: scheme.error,
-              fontWeight: FontWeight.w500,
+        // ── Logout button ──────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          child: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: Icon(Icons.logout, size: 16, color: scheme.error),
+              label: Text(
+                'Sign out',
+                style: TextStyle(color: scheme.error, fontSize: 13),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: scheme.error.withOpacity(0.4)),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+              onPressed: () =>
+                  context.read<AuthBloc>().add(AuthLogoutRequested()),
             ),
           ),
-          onTap: () => context.read<AuthBloc>().add(AuthLogoutRequested()),
         ),
-
-        const SizedBox(height: 8),
       ],
     );
   }

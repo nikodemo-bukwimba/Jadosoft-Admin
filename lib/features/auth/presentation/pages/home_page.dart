@@ -7,7 +7,7 @@
 //
 // Navigation:
 //   Logout / unauthenticated → GoRouter redirect handles it
-//   "Add another account"    → context.push(AppRouter.login, extra: {'addAccount': true})
+//   "Add another account"    → context.push(AppRouter.login, extra: addAccount:true)
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
@@ -26,6 +26,8 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<AuthBloc, AuthState>(
       builder: (context, state) {
+        // Guard: GoRouter redirect handles unauthenticated navigation.
+        // Only render when authenticated.
         if (state is! AuthAuthenticated) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
@@ -42,14 +44,13 @@ class HomePage extends StatelessWidget {
           appBar: AppBar(
             title: const Text('Home'),
             actions: [
+              // ── Account avatar / switcher ───────────────
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: GestureDetector(
-                  onTap: () => AccountSwitcherSheet.show(
-                    context,
-                    activeSession: session,
-                    savedAccounts: accounts,
-                  ),
+                  // ✅ FIX: No longer passes stale activeSession/savedAccounts.
+                  // The sheet reads live data from the BLoC directly.
+                  onTap: () => AccountSwitcherSheet.show(context),
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
@@ -108,6 +109,7 @@ class HomePage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // ── Welcome card ─────────────────────
                       Card(
                         color: scheme.primaryContainer,
                         child: Padding(
@@ -164,6 +166,7 @@ class HomePage extends StatelessWidget {
 
                       const SizedBox(height: 24),
 
+                      // ── Session info ─────────────────────
                       Text('Session Info', style: textTheme.titleSmall),
                       const SizedBox(height: 12),
                       _InfoRow(
@@ -187,6 +190,7 @@ class HomePage extends StatelessWidget {
 
                       const SizedBox(height: 24),
 
+                      // ── Saved accounts summary ────────────
                       if (accounts.length > 1) ...[
                         Text('Signed-in accounts', style: textTheme.titleSmall),
                         const SizedBox(height: 12),
@@ -238,12 +242,12 @@ class HomePage extends StatelessWidget {
 
                       const SizedBox(height: 16),
 
+                      // ── Add account ───────────────────────
                       OutlinedButton.icon(
                         icon: const Icon(Icons.person_add_outlined, size: 18),
                         label: const Text('Add another account'),
-                        // ✅ FIX: was context.push(AppRouter.login) with no extra.
-                        // LoginPage received addAccount:false → no AppBar, no back
-                        // button, wrong header text.
+                        // ✅ FIX: pass addAccount:true so LoginPage renders
+                        // the correct AppBar and navigates back properly.
                         onPressed: () => context.push(
                           AppRouter.login,
                           extra: {'addAccount': true},
@@ -252,6 +256,7 @@ class HomePage extends StatelessWidget {
 
                       const SizedBox(height: 12),
 
+                      // ── Logout ────────────────────────────
                       OutlinedButton.icon(
                         icon: const Icon(Icons.logout, size: 18),
                         label: const Text('Sign out'),
@@ -284,6 +289,8 @@ class HomePage extends StatelessWidget {
   }
 }
 
+// ── Small widgets ─────────────────────────────────────────────
+
 class _RoleBadge extends StatelessWidget {
   final String label;
   final ColorScheme scheme;
@@ -302,7 +309,7 @@ class _RoleBadge extends StatelessWidget {
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
-          color: scheme.onPrimaryContainer,
+          color: scheme.primary,
         ),
       ),
     );
@@ -311,10 +318,8 @@ class _RoleBadge extends StatelessWidget {
 
 class _InfoRow extends StatelessWidget {
   final IconData icon;
-  final String label;
-  final String value;
+  final String label, value;
   final ColorScheme scheme;
-
   const _InfoRow({
     required this.icon,
     required this.label,
@@ -329,10 +334,10 @@ class _InfoRow extends StatelessWidget {
       child: Row(
         children: [
           Icon(icon, size: 18, color: scheme.onSurfaceVariant),
-          const SizedBox(width: 10),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-          const SizedBox(width: 24),
-          Text(value, style: TextStyle(color: scheme.onSurfaceVariant)),
+          const SizedBox(width: 12),
+          Text(label, style: TextStyle(color: scheme.onSurfaceVariant)),
+          const Spacer(),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
       ),
     );

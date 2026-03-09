@@ -87,65 +87,52 @@ class AppRouter {
   }
 
   static String? _redirect(AuthState authState, String location) {
+    final isShellRoute = const {home, dashboard, profile}.contains(location);
     final isAuthRoute = const {
       login,
       register,
       accountPicker,
     }.contains(location);
 
-    final isShellRoute =
-        location == home ||
-        location == dashboard ||
-        location == profile ||
-        (!isAuthRoute && location != splash);
-
     return switch (authState) {
-      // Still resolving — hold on splash
+      // ── Still resolving ──────────────────────────────────────────────────────
       AuthInitial() => location == splash ? null : splash,
 
-      // Loading: stay on auth/splash; push shell routes back
+      // ── Loading ──────────────────────────────────────────────────────────────
       AuthLoading() => isShellRoute ? splash : null,
 
-      // ── Authenticated ──────────────────────────────────────────────────────
-      // Only boot off splash and /account-picker → /home.
+      // ── Authenticated ────────────────────────────────────────────────────────
+      // Only boot off the initial splash screen → home.
       //
-      // CRITICAL: /login and /register are intentionally NOT redirected here.
-      // An already-authenticated user must be able to push to /login or
-      // /register for the add-account flow. If we redirected them away,
-      // context.push(AppRouter.login) would immediately bounce back to /home
-      // before the page builds.
+      // /login and /register: intentionally NOT redirected so authenticated
+      //   users can reach them for the add-account flow.
       //
-      // On successful add-account login/register, LoginPage and RegisterPage
-      // each call context.go(AppRouter.home) from their own BlocListener when
-      // they see AuthAuthenticated. That is the correct place for that
-      // navigation — not here in the global redirect.
-      AuthAuthenticated() =>
-        (location == splash || location == accountPicker) ? home : null,
+      // /account-picker: intentionally NOT redirected so authenticated users
+      //   can browse saved accounts and switch. The page's own BlocListener
+      //   handles navigation to /home after a successful switch.
+      //
+      // After login / register success the page calls context.go(home) itself.
+      AuthAuthenticated() => location == splash ? home : null,
 
-      // Needs picker — redirect anywhere except the picker itself
+      // ── Needs picker ─────────────────────────────────────────────────────────
       AuthNeedsAccountPicker() =>
         location == accountPicker ? null : accountPicker,
 
-      // Unauthenticated — redirect shell/splash to login
+      // ── Unauthenticated ──────────────────────────────────────────────────────
       AuthUnauthenticated() =>
         isShellRoute || location == splash ? login : null,
 
-      // Switching — stay wherever we are
+      // ── Switching ────────────────────────────────────────────────────────────
       AuthSwitching() => null,
 
-      // Failure — stay on auth routes; push shell to login
-      AuthFailureState() =>
-        isShellRoute
-            ? login
-            : isAuthRoute
-            ? null
-            : login,
+      // ── Failure ──────────────────────────────────────────────────────────────
+      AuthFailureState() => isShellRoute ? login : null,
 
-      // Accounts updated — treat same as authenticated
-      AuthAccountsUpdated() =>
-        (location == splash || location == accountPicker) ? home : null,
+      // ── Accounts updated ─────────────────────────────────────────────────────
+      // Treat same as authenticated — page handles its own navigation.
+      AuthAccountsUpdated() => location == splash ? home : null,
 
-      // Catch-all
+      // ── Catch-all ────────────────────────────────────────────────────────────
       _ => isShellRoute ? login : null,
     };
   }

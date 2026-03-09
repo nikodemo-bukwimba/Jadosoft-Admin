@@ -1,4 +1,17 @@
 // account_picker_page.dart
+// ─────────────────────────────────────────────────────────────
+// Shown in two scenarios:
+//   1. After logging out when other saved accounts still exist
+//      (AuthNeedsAccountPicker → GoRouter redirect → /account-picker)
+//   2. When user taps "Add account" from profile or home
+//      (context.push(AppRouter.accountPicker, extra: {'mode': 'add'}))
+//
+// Navigation:
+//   Switch account success  → BlocListener sees AuthAuthenticated → go /home
+//   "Sign in to another"    → context.push(AppRouter.login, extra: addAccount:true)
+//   "Create account"        → context.push(AppRouter.register, extra: addAccount:true)
+// ─────────────────────────────────────────────────────────────
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -10,33 +23,10 @@ import '../bloc/auth_state.dart';
 
 enum AccountPickerMode { picker, add }
 
-class AccountPickerPage extends StatefulWidget {
+class AccountPickerPage extends StatelessWidget {
   final AccountPickerMode mode;
+
   const AccountPickerPage({super.key, this.mode = AccountPickerMode.picker});
-
-  @override
-  State<AccountPickerPage> createState() => _AccountPickerPageState();
-}
-
-class _AccountPickerPageState extends State<AccountPickerPage> {
-  // ── Cache last known non-empty accounts list ───────────────
-  // BLoC transitions through AuthSwitching/AuthLoading which carry no
-  // accounts. Without caching, the list disappears mid-transition and
-  // if a switch fails the page is stuck showing nothing.
-  List<AccountSession> _cachedAccounts = [];
-
-  List<AccountSession> _accountsFromState(AuthState state) {
-    final accounts = switch (state) {
-      AuthAuthenticated s => s.savedAccounts,
-      AuthAccountsUpdated s => s.savedAccounts,
-      AuthNeedsAccountPicker s => s.savedAccounts,
-      _ => null,
-    };
-    if (accounts != null && accounts.isNotEmpty) {
-      _cachedAccounts = accounts;
-    }
-    return _cachedAccounts;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -44,31 +34,51 @@ class _AccountPickerPageState extends State<AccountPickerPage> {
     final textTheme = Theme.of(context).textTheme;
 
     return BlocConsumer<AuthBloc, AuthState>(
-      // ── Show error snackbar on failure ─────────────────────
-      // Without this, a failed switch emits AuthFailureState and the
-      // BlocBuilder rebuilds with _cachedAccounts (list stays visible)
-      // but the user sees zero feedback about what went wrong.
+      // ── Navigate away when a switch completes ─────────────────────────────
+      // The global redirect (app_router.dart) no longer bounces authenticated
+      // users away from /account-picker, so the PAGE is responsible for
+      // navigating to /home after a successful account switch.
+      listenWhen: (previous, current) =>
+          // Only react to a meaningful state change — ignore initial build.
+          previous != current,
       listener: (context, state) {
-        if (state is AuthFailureState) {
-          ScaffoldMessenger.of(context)
-            ..hideCurrentSnackBar()
-            ..showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: scheme.error,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            );
+        switch (state) {
+          case AuthAuthenticated():
+            // Switch succeeded (or add-account login succeeded if user ended
+            // up here). Go home and clear the navigation stack.
+            context.go(AppRouter.home);
+          case AuthUnauthenticated():
+            // Every account was removed — go to login.
+            context.go(AppRouter.login);
+          default:
+            break;
         }
       },
       builder: (context, state) {
-        final savedAccounts = _accountsFromState(state);
+        // ── Derive live data from the current BLoC state ─────────────────────
+        // This is the critical fix: read savedAccounts directly from the
+        // current state so the list is never stale.
+        final savedAccounts = switch (state) {
+          AuthAuthenticated s => s.savedAccounts,
+          AuthAccountsUpdated s => s.savedAccounts,
+          AuthNeedsAccountPicker s => s.savedAccounts,
+          _ => <AccountSession>[],
+        };
+
+        // The currently active account (null when unauthenticated / needs-picker).
+        final activeEmail = switch (state) {
+          AuthAuthenticated s => s.activeSession.user.email,
+          _ => null,
+        };
+
         final isLoading = state is AuthLoading || state is AuthSwitching;
 
         return Scaffold(
+          // Show a back button only when the user deliberately pushed here
+          // (add-account mode) — not when redirected here after logout.
+          appBar: mode == AccountPickerMode.add
+              ? AppBar(leading: const BackButton())
+              : null,
           body: SafeArea(
             child: Center(
               child: ConstrainedBox(
@@ -81,13 +91,11 @@ class _AccountPickerPageState extends State<AccountPickerPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _Header(
-                        mode: widget.mode,
-                        scheme: scheme,
-                        textTheme: textTheme,
-                      ),
+                      // ── Header ─────────────────────────────────
+                      _Header(mode: mode, scheme: scheme, textTheme: textTheme),
                       const SizedBox(height: 32),
 
+                      // ── Saved accounts list ────────────────────
                       if (savedAccounts.isNotEmpty) ...[
                         Text(
                           'Saved accounts',
@@ -105,16 +113,26 @@ class _AccountPickerPageState extends State<AccountPickerPage> {
                                 const SizedBox(height: 4),
                             itemBuilder: (context, index) {
                               final account = savedAccounts[index];
+                              final isActive =
+                                  account.user.email == activeEmail;
                               return _AccountCard(
                                 account: account,
+                                isActive: isActive,
                                 isLoading: isLoading,
-                                onTap: () => context.read<AuthBloc>().add(
-                                  AuthSwitchAccountRequested(
-                                    account.user.email,
-                                  ),
-                                ),
-                                onRemove: () =>
-                                    _confirmRemove(context, account, scheme),
+                                onTap: isActive || isLoading
+                                    ? null
+                                    : () => context.read<AuthBloc>().add(
+                                        AuthSwitchAccountRequested(
+                                          account.user.email,
+                                        ),
+                                      ),
+                                onRemove: isLoading
+                                    ? null
+                                    : () => _confirmRemove(
+                                        context,
+                                        account,
+                                        scheme,
+                                      ),
                               );
                             },
                           ),
@@ -124,6 +142,9 @@ class _AccountPickerPageState extends State<AccountPickerPage> {
                         const SizedBox(height: 24),
                       ],
 
+                      // ── Add / login new account ────────────────
+                      // Always pass addAccount:true so LoginPage / RegisterPage
+                      // show the correct AppBar and navigate back properly.
                       FilledButton.icon(
                         icon: const Icon(Icons.login, size: 18),
                         label: const Text('Sign in to another account'),
@@ -146,6 +167,7 @@ class _AccountPickerPageState extends State<AccountPickerPage> {
                               ),
                       ),
 
+                      // ── Loading indicator ──────────────────────
                       if (isLoading) ...[
                         const SizedBox(height: 24),
                         const Center(
@@ -229,7 +251,7 @@ class _Header extends StatelessWidget {
             color: scheme.onPrimaryContainer,
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
         Text(
           isAdd ? 'Add account' : 'Choose account',
           style: textTheme.headlineMedium?.copyWith(
@@ -239,8 +261,8 @@ class _Header extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           isAdd
-              ? 'Sign in to add another account or create a new one.'
-              : 'Continue with a saved account or sign in to another.',
+              ? 'Sign in to add another account'
+              : 'Select an account to continue',
           style: textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
         ),
       ],
@@ -248,102 +270,7 @@ class _Header extends StatelessWidget {
   }
 }
 
-// ── Account card ──────────────────────────────────────────────
-
-class _AccountCard extends StatelessWidget {
-  final AccountSession account;
-  final bool isLoading;
-  final VoidCallback onTap;
-  final VoidCallback onRemove;
-
-  const _AccountCard({
-    required this.account,
-    required this.isLoading,
-    required this.onTap,
-    required this.onRemove,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final user = account.user;
-
-    return Card(
-      margin: EdgeInsets.zero,
-      child: InkWell(
-        onTap: isLoading ? null : onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: scheme.primaryContainer,
-                child: Text(
-                  _initials(user.displayName),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: scheme.onPrimaryContainer,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      user.displayName,
-                      style: textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      user.email,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                    if (user.primaryRole != null)
-                      Text(
-                        user.primaryRole!.name,
-                        style: textTheme.labelSmall?.copyWith(
-                          color: scheme.primary,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: Icon(
-                  Icons.person_remove_outlined,
-                  size: 20,
-                  color: scheme.onSurfaceVariant,
-                ),
-                tooltip: 'Remove',
-                onPressed: isLoading ? null : onRemove,
-              ),
-              Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _initials(String name) {
-    final parts = name.trim().split(' ');
-    if (parts.length >= 2) {
-      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
-    }
-    return name.isNotEmpty ? name[0].toUpperCase() : '?';
-  }
-}
-
-// ── Divider with label ────────────────────────────────────────
+// ── Divider ───────────────────────────────────────────────────
 
 class _Divider extends StatelessWidget {
   final ColorScheme scheme;
@@ -360,7 +287,7 @@ class _Divider extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text(
             'or',
-            style: textTheme.bodySmall?.copyWith(
+            style: textTheme.labelSmall?.copyWith(
               color: scheme.onSurfaceVariant,
             ),
           ),
@@ -368,5 +295,115 @@ class _Divider extends StatelessWidget {
         Expanded(child: Divider(color: scheme.outlineVariant)),
       ],
     );
+  }
+}
+
+// ── Account card ──────────────────────────────────────────────
+
+class _AccountCard extends StatelessWidget {
+  final AccountSession account;
+  final bool isActive;
+  final bool isLoading;
+  final VoidCallback? onTap;
+  final VoidCallback? onRemove;
+
+  const _AccountCard({
+    required this.account,
+    required this.isActive,
+    required this.isLoading,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final user = account.user;
+
+    return Card(
+      elevation: 0,
+      color: isActive
+          ? scheme.primaryContainer.withOpacity(0.4)
+          : scheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: isActive
+            ? BorderSide(color: scheme.primary.withOpacity(0.4))
+            : BorderSide.none,
+      ),
+      child: ListTile(
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: CircleAvatar(
+          radius: 22,
+          backgroundColor: isActive
+              ? scheme.primaryContainer
+              : scheme.surfaceContainerHighest,
+          child: Text(
+            _initials(user.displayName),
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              color: isActive
+                  ? scheme.onPrimaryContainer
+                  : scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        title: Text(
+          user.displayName,
+          style: textTheme.bodyLarge?.copyWith(
+            fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(user.email, style: textTheme.bodySmall),
+            if (user.primaryRole != null)
+              Text(
+                user.primaryRole!.name,
+                style: textTheme.labelSmall?.copyWith(color: scheme.primary),
+              ),
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isActive)
+              Icon(Icons.check_circle_rounded, color: scheme.primary, size: 20),
+            if (!isActive && onTap != null)
+              SizedBox(
+                height: 32,
+                child: FilledButton.tonal(
+                  onPressed: isLoading ? null : onTap,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('Switch'),
+                ),
+              ),
+            const SizedBox(width: 4),
+            IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              tooltip: 'Remove',
+              onPressed: isLoading ? null : onRemove,
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _initials(String name) {
+    final parts = name.trim().split(' ');
+    if (parts.length >= 2) {
+      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    }
+    return name.isNotEmpty ? name[0].toUpperCase() : '?';
   }
 }

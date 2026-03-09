@@ -2,25 +2,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-
 import '../../../../app/routes/app_router.dart';
 import '../../domain/entities/account_session.dart';
 import '../bloc/auth_bloc.dart';
 import '../bloc/auth_event.dart';
 import '../bloc/auth_state.dart';
 
-class AccountSwitcherSheet extends StatefulWidget {
-  /// Snapshot of the active session at the time the sheet opened.
-  /// Used only as a fallback until the first BlocBuilder rebuild.
-  final AccountSession activeSession;
+class AccountSwitcherSheet {
+  const AccountSwitcherSheet._();
 
-  const AccountSwitcherSheet({super.key, required this.activeSession});
+  static Future<void> show(BuildContext context) {
+    // Capture the router BEFORE the modal opens so that we can push to it
+    // from inside the sheet (the modal has its own Navigator scope).
+    final router = GoRouter.of(context);
+    final authBloc = context.read<AuthBloc>();
 
-  static Future<void> show(
-    BuildContext context, {
-    required AccountSession activeSession,
-    required List<AccountSession> savedAccounts, // kept for API compat
-  }) {
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -29,46 +25,20 @@ class AccountSwitcherSheet extends StatefulWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => BlocProvider.value(
-        value: context.read<AuthBloc>(),
-        child: AccountSwitcherSheet(activeSession: activeSession),
+        value: authBloc,
+        child: _AccountSwitcherSheetBody(router: router),
       ),
     );
   }
-
-  @override
-  State<AccountSwitcherSheet> createState() => _AccountSwitcherSheetState();
 }
 
-class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
-  // ── Cache last known non-empty accounts list ───────────────
-  // BLoC emits AuthSwitching (no accounts) between states. Without
-  // caching the list goes blank mid-transition. If the switch FAILS,
-  // AuthFailureState is emitted (also no accounts); without caching the
-  // list disappears permanently and the user has no way to retry.
-  List<AccountSession> _cachedAccounts = [];
-  late AccountSession _cachedActive;
-
-  @override
-  void initState() {
-    super.initState();
-    _cachedActive = widget.activeSession;
-  }
-
-  /// Returns the best available list and updates the cache when richer
-  /// data arrives.
-  List<AccountSession> _liveAccounts(AuthState state) {
-    switch (state) {
-      case AuthAuthenticated():
-        _cachedActive = state.activeSession;
-        _cachedAccounts = state.savedAccounts;
-      case AuthAccountsUpdated():
-        _cachedActive = state.activeSession;
-        _cachedAccounts = state.savedAccounts;
-      default:
-        break;
-    }
-    return _cachedAccounts;
-  }
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal body — receives the pre-captured router so it can navigate without
+// depending on the modal's Navigator scope.
+// ─────────────────────────────────────────────────────────────────────────────
+class _AccountSwitcherSheetBody extends StatelessWidget {
+  final GoRouter router;
+  const _AccountSwitcherSheetBody({required this.router});
 
   @override
   Widget build(BuildContext context) {
@@ -76,38 +46,36 @@ class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
     final textTheme = Theme.of(context).textTheme;
 
     return BlocConsumer<AuthBloc, AuthState>(
+      listenWhen: (previous, current) => previous != current,
       listener: (context, state) {
+        // Close the sheet on any auth-transition that means the user's
+        // context has changed.
         switch (state) {
-          // ── Close sheet on clean transitions ────────────────
           case AuthAuthenticated():
           case AuthAccountsUpdated():
           case AuthNeedsAccountPicker():
           case AuthUnauthenticated():
             if (context.mounted) Navigator.of(context).pop();
-
-          // ── Show error but KEEP sheet open so user can retry ─
-          // Previously AuthFailureState was unhandled — switch silently
-          // did nothing and the user had no idea why.
-          case AuthFailureState():
-            ScaffoldMessenger.of(context)
-              ..hideCurrentSnackBar()
-              ..showSnackBar(
-                SnackBar(
-                  content: Text(state.message),
-                  backgroundColor: scheme.error,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              );
-
           default:
             break;
         }
       },
       builder: (context, state) {
-        final accounts = _liveAccounts(state);
+        // ── Read LIVE data from the BLoC ─────────────────────────────────────
+        // This is the core fix: instead of relying on the constructor-param
+        // snapshot (which was captured when the sheet opened and never updated),
+        // we read directly from the current BLoC state.
+        final liveAccounts = switch (state) {
+          AuthAuthenticated s => s.savedAccounts,
+          AuthAccountsUpdated s => s.savedAccounts,
+          _ => <AccountSession>[],
+        };
+
+        final activeEmail = switch (state) {
+          AuthAuthenticated s => s.activeSession.user.email,
+          _ => null,
+        };
+
         final isLoading = state is AuthLoading || state is AuthSwitching;
 
         return DraggableScrollableSheet(
@@ -117,7 +85,7 @@ class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
           maxChildSize: 0.9,
           builder: (_, scrollController) => Column(
             children: [
-              // ── Handle ──────────────────────────────────────
+              // ── Handle ────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.only(top: 12, bottom: 8),
                 child: Container(
@@ -130,7 +98,7 @@ class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
                 ),
               ),
 
-              // ── Header ──────────────────────────────────────
+              // ── Header ────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
                 child: Row(
@@ -143,7 +111,9 @@ class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
                       onPressed: isLoading
                           ? null
                           : () {
-                              final router = GoRouter.of(context);
+                              // Pop the sheet first (uses the modal Navigator —
+                              // this is correct). Then push the login route
+                              // using the pre-captured GoRouter reference.
                               Navigator.of(context).pop();
                               router.push(
                                 AppRouter.login,
@@ -157,9 +127,9 @@ class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
 
               const Divider(height: 1),
 
-              // ── Account list (live + cached) ─────────────────
+              // ── Account list ──────────────────────────────────
               Expanded(
-                child: accounts.isEmpty && !isLoading
+                child: liveAccounts.isEmpty
                     ? Center(
                         child: Text(
                           'No saved accounts',
@@ -168,37 +138,34 @@ class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
                           ),
                         ),
                       )
-                    : accounts.isEmpty && isLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(strokeWidth: 2.5),
-                      )
                     : ListView.builder(
                         controller: scrollController,
                         padding: const EdgeInsets.symmetric(vertical: 8),
-                        itemCount: accounts.length,
+                        itemCount: liveAccounts.length,
                         itemBuilder: (context, index) {
-                          final account = accounts[index];
-                          final isActive =
-                              account.user.email == _cachedActive.user.email;
+                          final account = liveAccounts[index];
+                          final isActive = account.user.email == activeEmail;
 
                           return _AccountTile(
                             account: account,
                             isActive: isActive,
                             isLoading: isLoading,
-                            onSwitch: isActive
+                            onSwitch: isActive || isLoading
                                 ? null
                                 : () => context.read<AuthBloc>().add(
                                     AuthSwitchAccountRequested(
                                       account.user.email,
                                     ),
                                   ),
-                            onRemove: () => _confirmRemove(context, account),
+                            onRemove: isLoading
+                                ? null
+                                : () => _confirmRemove(context, account),
                           );
                         },
                       ),
               ),
 
-              // ── Logout current ───────────────────────────────
+              // ── Sign out current ──────────────────────────────
               SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -262,13 +229,12 @@ class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
 }
 
 // ── Single account tile ───────────────────────────────────────
-
 class _AccountTile extends StatelessWidget {
   final AccountSession account;
   final bool isActive;
   final bool isLoading;
   final VoidCallback? onSwitch;
-  final VoidCallback onRemove;
+  final VoidCallback? onRemove;
 
   const _AccountTile({
     required this.account,
@@ -294,8 +260,8 @@ class _AccountTile extends StatelessWidget {
         child: Text(
           _initials(user.displayName),
           style: TextStyle(
-            fontSize: 12,
             fontWeight: FontWeight.w700,
+            fontSize: 14,
             color: isActive
                 ? scheme.onPrimaryContainer
                 : scheme.onSurfaceVariant,
@@ -304,37 +270,53 @@ class _AccountTile extends StatelessWidget {
       ),
       title: Text(
         user.displayName,
-        style: textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+        style: textTheme.bodyLarge?.copyWith(
+          fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+        ),
       ),
-      subtitle: Text(
-        user.email,
-        style: textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(user.email, style: textTheme.bodySmall),
+          if (user.primaryRole != null)
+            Text(
+              user.primaryRole!.name,
+              style: textTheme.labelSmall?.copyWith(color: scheme.primary),
+            ),
+        ],
       ),
-      trailing: isActive
-          ? Chip(
-              label: const Text('Active'),
-              padding: EdgeInsets.zero,
-              labelStyle: TextStyle(
-                fontSize: 11,
-                color: scheme.onSecondaryContainer,
-              ),
-              backgroundColor: scheme.secondaryContainer,
-            )
-          : SizedBox(
-              width: 80,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isActive)
+            Icon(Icons.check_circle_rounded, color: scheme.primary, size: 20),
+          if (!isActive)
+            SizedBox(
+              height: 32,
               child: FilledButton.tonal(
-                // Disable only during loading so user cannot double-tap.
                 onPressed: isLoading ? null : onSwitch,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 child: isLoading
                     ? const SizedBox(
-                        width: 16,
-                        height: 16,
+                        width: 14,
+                        height: 14,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Text('Switch'),
               ),
             ),
-      onLongPress: isLoading ? null : onRemove,
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            tooltip: 'Remove',
+            onPressed: isLoading ? null : onRemove,
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
     );
   }
 
