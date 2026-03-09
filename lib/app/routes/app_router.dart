@@ -145,8 +145,7 @@ class AppRouter {
       AuthAccountsUpdated() => location == splash ? home : null,
 
       // ── Needs picker ─────────────────────────────────────────────────────────
-      AuthNeedsAccountPicker() =>
-        location == accountPicker ? null : accountPicker,
+      AuthNeedsAccountPicker() => isAuthRoute ? null : accountPicker,
 
       // ── Unauthenticated ──────────────────────────────────────────────────────
       AuthUnauthenticated() =>
