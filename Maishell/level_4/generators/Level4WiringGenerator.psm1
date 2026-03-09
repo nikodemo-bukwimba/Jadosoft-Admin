@@ -1,5 +1,7 @@
 # ============================================================
 # Level4WiringGenerator.psm1 — DI + Routes + Nav for Aggregator
+# FIX: Routes use GoRouter GoRoute, not MaterialPageRoute
+# FIX: Nav uses permission-gated NavItem, not ShellTabConfig
 # ============================================================
 
 function _Insert-AboveMarker {
@@ -20,10 +22,10 @@ function _Insert-AboveMarker {
 
 function Update-InjectionContainer {
     param([Parameter(Mandatory)][hashtable]$Ctx)
-    $fname    = $Ctx.Tokens.FNAME
-    $fclass   = $Ctx.Tokens.FCLASS
-    $pRoot    = $Ctx.ProjectRoot
-    $config   = $Ctx.Config
+    $fname = $Ctx.Tokens.FNAME
+    $fclass = $Ctx.Tokens.FCLASS
+    $pRoot = $Ctx.ProjectRoot
+    $config = $Ctx.Config
     $isDryRun = $Ctx.DryRun
 
     $diPath = Join-Path $pRoot "lib\config\di\injection_container.dart"
@@ -36,13 +38,12 @@ function Update-InjectionContainer {
     $imports.Add("import 'package:fca/features/${fname}/presentation/cubit/${fname}_cubit.dart';")
 
     foreach ($srcProp in $sources) {
-        $srcKey   = $srcProp.Name
-        $src      = $srcProp.Value
+        $srcKey = $srcProp.Name
+        $src = $srcProp.Value
         $srcSnake = ConvertTo-SnakeCase $srcKey
         $srcClass = ConvertTo-PascalCase $srcKey
         $imports.Add("import 'package:fca/features/${fname}/domain/providers/${srcSnake}_data_provider.dart';")
         $imports.Add("import 'package:fca/features/${fname}/data/providers/${srcSnake}_data_provider_impl.dart';")
-        # Source feature's repository import
         $imports.Add("import 'package:fca/features/$($src.feature)/domain/repositories/$($src.feature)_repository.dart';")
     }
 
@@ -52,7 +53,7 @@ function Update-InjectionContainer {
 
     # Provider registrations
     foreach ($srcProp in $sources) {
-        $srcKey   = $srcProp.Name
+        $srcKey = $srcProp.Name
         $srcClass = ConvertTo-PascalCase $srcKey
         $regs.Add("  sl.registerLazySingleton<${srcClass}DataProvider>(")
         $regs.Add("    () => ${srcClass}DataProviderImpl(repository: sl()),")
@@ -85,101 +86,97 @@ function Update-InjectionContainer {
     if (-not $isDryRun) {
         Set-Content -Path $diPath -Value $content -Encoding UTF8
         Write-Host "  [OK] injection_container.dart updated" -ForegroundColor Green
-    } else {
+    }
+    else {
         Write-Host "    [DRY RUN] Would update injection_container.dart" -ForegroundColor DarkGray
     }
 }
 
 function Update-AppRouter {
     param([Parameter(Mandatory)][hashtable]$Ctx)
-    $fname    = $Ctx.Tokens.FNAME
-    $fclass   = $Ctx.Tokens.FCLASS
-    $flabel   = $Ctx.Tokens.FLABEL
-    $pRoot    = $Ctx.ProjectRoot
+    $fname = $Ctx.Tokens.FNAME
+    $fclass = $Ctx.Tokens.FCLASS
+    $flabel = $Ctx.Tokens.FLABEL
+    $pRoot = $Ctx.ProjectRoot
     $isDryRun = $Ctx.DryRun
 
     $routerPath = Join-Path $pRoot "lib\app\routes\app_router.dart"
     if (-not (Test-Path $routerPath)) { Write-Warning "app_router.dart not found"; return }
 
+    # ── Imports ────────────────────────────────────────────
     $imports = @(
         "import '../../features/${fname}/presentation/pages/${fname}_dashboard_page.dart';",
         "import '../../features/${fname}/presentation/cubit/${fname}_cubit.dart';",
-        "import '../../features/${fname}/presentation/cubit/${fname}_state.dart';",
         "import '../../config/di/injection_container.dart';",
         "import 'package:flutter_bloc/flutter_bloc.dart';"
     ) -join "`n"
 
-    $consts = "  static const String ${fname}Dashboard = '/${fname}s/dashboard';"
+    # ── Route constant — aggregator has one page only ──────
+    $consts = "  static const String ${fname}Dashboard = '/${fname}/dashboard';"
 
-    $cases = @"
+    # ── GoRoute entry inside ShellRoute ───────────────────
+    $goRoute = @"
 
-      // $flabel routes (Level 4 Aggregator, generated $(Get-Date -Format 'yyyy-MM-dd'))
-      case ${fname}Dashboard:
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<${fclass}Cubit>()..load(),
-            child: const ${fclass}DashboardPage(),
-          ),
-          settings: settings,
-        );
+            // $flabel (Level 4 Aggregator, generated $(Get-Date -Format 'yyyy-MM-dd'))
+            GoRoute(
+              path: ${fname}Dashboard,
+              builder: (_, __) => BlocProvider(
+                create: (_) => sl<${fclass}Cubit>()..load(),
+                child: const ${fclass}DashboardPage(),
+              ),
+            ),
 "@
 
     $content = Get-Content $routerPath -Raw
     $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR FEATURE PAGE IMPORTS' -Insert $imports
-    $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR ROUTE CONSTANTS' -Insert $consts
-    $content = _Insert-AboveMarker -Content $content -Marker '// ── GENERATOR ROUTES' -Insert $cases
+    $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR ROUTE CONSTANTS'      -Insert $consts
+    $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR ROUTES'               -Insert $goRoute
 
     if (-not $isDryRun) {
         Set-Content -Path $routerPath -Value $content -Encoding UTF8
         Write-Host "  [OK] app_router.dart updated" -ForegroundColor Green
-    } else {
+    }
+    else {
         Write-Host "    [DRY RUN] Would update app_router.dart" -ForegroundColor DarkGray
     }
 }
 
 function Update-ShellNavItems {
     param([Parameter(Mandatory)][hashtable]$Ctx)
-    $fname    = $Ctx.Tokens.FNAME
-    $fclass   = $Ctx.Tokens.FCLASS
-    $flabel   = $Ctx.Tokens.FLABEL
-    $config   = $Ctx.Config
-    $pRoot    = $Ctx.ProjectRoot
+    $fname = $Ctx.Tokens.FNAME
+    $flabel = $Ctx.Tokens.FLABEL
+    $config = $Ctx.Config
+    $pRoot = $Ctx.ProjectRoot
     $isDryRun = $Ctx.DryRun
 
     $navPath = Join-Path $pRoot "lib\app\shell\shell_nav_items.dart"
     if (-not (Test-Path $navPath)) { Write-Warning "shell_nav_items.dart not found"; return }
 
-    $icon       = if ($config.feature.icon)       { $config.feature.icon }       else { 'Icons.dashboard_outlined' }
-    $activeIcon = if ($config.feature.activeIcon)  { $config.feature.activeIcon }  else { 'Icons.dashboard' }
+    # ── Permission slug + icon from config ─────────────────
+    $fperm = $config.feature.permission
+    $icon = if ($config.feature.icon) { $config.feature.icon } else { 'Icons.dashboard_outlined' }
 
-    $imports = @(
-        "import '../../features/${fname}/presentation/pages/${fname}_dashboard_page.dart';",
-        "import '../../features/${fname}/presentation/cubit/${fname}_cubit.dart';",
-        "import '../../config/di/injection_container.dart';",
-        "import 'package:flutter_bloc/flutter_bloc.dart';"
-    ) -join "`n"
+    # ── NavItem entry — permission-gated, path-only ────────
+    $navItem = @"
 
-    $tab = @"
-      // $flabel tab (Level 4 Aggregator, generated $(Get-Date -Format 'yyyy-MM-dd'))
-      ShellTabConfig(
-        label:      '$flabel',
-        icon:       $icon,
-        activeIcon: $activeIcon,
-        page: BlocProvider(
-          create: (_) => sl<${fclass}Cubit>()..load(),
-          child: const ${fclass}DashboardPage(),
+      // $flabel (Level 4 Aggregator, generated $(Get-Date -Format 'yyyy-MM-dd'))
+      if (auth.can('${fperm}.view'))
+        NavItem(
+          id:    '${fname}',
+          label: '$flabel',
+          icon:  $icon,
+          path:  AppRouter.${fname}Dashboard,
         ),
-      ),
 "@
 
     $content = Get-Content $navPath -Raw
-    $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR FEATURE IMPORTS' -Insert $imports
-    $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR TABS' -Insert $tab
+    $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR TABS' -Insert $navItem
 
     if (-not $isDryRun) {
         Set-Content -Path $navPath -Value $content -Encoding UTF8
         Write-Host "  [OK] shell_nav_items.dart updated" -ForegroundColor Green
-    } else {
+    }
+    else {
         Write-Host "    [DRY RUN] Would update shell_nav_items.dart" -ForegroundColor DarkGray
     }
 }

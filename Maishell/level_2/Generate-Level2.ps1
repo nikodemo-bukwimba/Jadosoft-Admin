@@ -13,7 +13,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $ModuleRoot = Join-Path $PSScriptRoot "modules"
-$GenRoot    = Join-Path $PSScriptRoot "generators"
+$GenRoot = Join-Path $PSScriptRoot "generators"
 
 Import-Module (Join-Path $ModuleRoot "TemplateEngine.psm1")              -Force
 Import-Module (Join-Path $ModuleRoot "Validator.psm1")                   -Force
@@ -26,9 +26,9 @@ Import-Module (Join-Path $GenRoot    "Level3PageGenerator.psm1")         -Force
 Import-Module (Join-Path $GenRoot    "Level2WiringGenerator.psm1")       -Force
 
 function Write-Header([string]$t) { Write-Host "`n===============================================" -ForegroundColor DarkCyan; Write-Host " $t" -ForegroundColor Cyan; Write-Host "===============================================" -ForegroundColor DarkCyan }
-function Write-Step([string]$t)    { Write-Host "  > $t" }
+function Write-Step([string]$t) { Write-Host "  > $t" }
 function Write-Success([string]$t) { Write-Host "  [OK] $t" -ForegroundColor Green }
-function Write-Fail([string]$t)    { Write-Host "`n  [ERROR] $t`n" -ForegroundColor Red }
+function Write-Fail([string]$t) { Write-Host "`n  [ERROR] $t`n" -ForegroundColor Red }
 
 function New-GeneratedFile {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Content)
@@ -112,7 +112,8 @@ Update-ShellNavItems -Ctx $ctx
 Write-Header "Generation Complete"
 if ($DryRun) {
     Write-Host "  [DRY RUN] No files written" -ForegroundColor Yellow
-} else {
+}
+else {
     $fileCount = 0
     if (Test-Path $featureDir) { $fileCount = (Get-ChildItem $featureDir -Recurse -File).Count }
     Write-Success "$fileCount files generated in lib/features/$($tokens.FNAME)"

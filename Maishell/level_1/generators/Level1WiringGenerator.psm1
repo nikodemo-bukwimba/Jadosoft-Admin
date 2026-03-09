@@ -92,6 +92,7 @@ function Update-AppRouter {
   $routerPath = Join-Path $pRoot "lib\app\routes\app_router.dart"
   if (-not (Test-Path $routerPath)) { Write-Warning "app_router.dart not found — skipping routes"; return }
 
+  # ── Imports ────────────────────────────────────────────
   $imports = @(
     "import '../../features/${fname}/presentation/pages/${fname}_list_page.dart';",
     "import '../../features/${fname}/presentation/pages/${fname}_detail_page.dart';",
@@ -102,65 +103,66 @@ function Update-AppRouter {
     "import 'package:flutter_bloc/flutter_bloc.dart';"
   ) -join "`n"
 
+  # ── Route constants — use :id path parameters ──────────
   $consts = @"
   static const String ${fname}List   = '/${fname}s';
   static const String ${fname}Create = '/${fname}s/create';
-  static const String ${fname}Detail = '/${fname}s/detail';
-  static const String ${fname}Edit   = '/${fname}s/edit';
+  static const String ${fname}Detail = '/${fname}s/:id';
+  static const String ${fname}Edit   = '/${fname}s/:id/edit';
+
+  /// Helpers for building concrete paths with a known id.
+  static String ${fname}DetailPath(String id) => '/${fname}s/`$id';
+  static String ${fname}EditPath(String id)   => '/${fname}s/`$id/edit';
 "@
 
-  $cases = @"
+  # ── GoRoute entries inside ShellRoute ─────────────────
+  $goRoutes = @"
 
-      // $flabel routes (Level 1, generated $(Get-Date -Format 'yyyy-MM-dd'))
-      case ${fname}List:
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<${fclass}Bloc>()..add(${fclass}LoadAllRequested()),
-            child: const ${fclass}ListPage(),
-          ),
-          settings: settings,
-        );
-
-      case ${fname}Create:
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<${fclass}Bloc>(),
-            child: const ${fclass}FormPage(mode: ${fclass}FormMode.create),
-          ),
-          settings: settings,
-        );
-
-      case ${fname}Detail:
-        final args = settings.arguments as Map<String, dynamic>? ?? {};
-        final id = args['id'] as String? ?? '';
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<${fclass}Bloc>()..add(${fclass}LoadOneRequested(id)),
-            child: const ${fclass}DetailPage(),
-          ),
-          settings: settings,
-        );
-
-      case ${fname}Edit:
-        final args = settings.arguments as Map<String, dynamic>? ?? {};
-        final id = args['id'] as String? ?? '';
-        return MaterialPageRoute(
-          builder: (_) => BlocProvider(
-            create: (_) => sl<${fclass}Bloc>()..add(${fclass}LoadOneRequested(id)),
-            child: ${fclass}FormPage(mode: ${fclass}FormMode.edit, id: id),
-          ),
-          settings: settings,
-        );
+            // $flabel routes (Level 1, generated $(Get-Date -Format 'yyyy-MM-dd'))
+            GoRoute(
+              path: ${fname}List,
+              builder: (_, __) => BlocProvider(
+                create: (_) => sl<${fclass}Bloc>()..add(${fclass}LoadAllRequested()),
+                child: const ${fclass}ListPage(),
+              ),
+            ),
+            GoRoute(
+              path: ${fname}Create,
+              builder: (_, __) => BlocProvider(
+                create: (_) => sl<${fclass}Bloc>(),
+                child: const ${fclass}FormPage(mode: FormMode.create),
+              ),
+            ),
+            GoRoute(
+              path: ${fname}Detail,
+              builder: (_, state) {
+                final id = state.pathParameters['id'] ?? '';
+                return BlocProvider(
+                  create: (_) => sl<${fclass}Bloc>()..add(${fclass}LoadOneRequested(id)),
+                  child: const ${fclass}DetailPage(),
+                );
+              },
+            ),
+            GoRoute(
+              path: ${fname}Edit,
+              builder: (_, state) {
+                final id = state.pathParameters['id'] ?? '';
+                return BlocProvider(
+                  create: (_) => sl<${fclass}Bloc>()..add(${fclass}LoadOneRequested(id)),
+                  child: ${fclass}FormPage(mode: FormMode.edit, id: id),
+                );
+              },
+            ),
 "@
 
   $content = Get-Content $routerPath -Raw
   $m1 = '// ── END GENERATOR FEATURE PAGE IMPORTS'
   $m2 = '// ── END GENERATOR ROUTE CONSTANTS'
-  $m3 = '// ── GENERATOR ROUTES — append only'
+  $m3 = '// ── END GENERATOR ROUTES'
 
   if ($content.Contains($m1)) { $content = $content.Replace($m1, "$imports`n$m1") }
   if ($content.Contains($m2)) { $content = $content.Replace($m2, "$consts`n  $m2") }
-  if ($content.Contains($m3)) { $content = $content.Replace($m3, "$cases`n      $m3") }
+  if ($content.Contains($m3)) { $content = $content.Replace($m3, "$goRoutes`n            $m3") }
 
   if (-not $isDryRun) {
     Set-Content -Path $routerPath -Value $content -Encoding UTF8
@@ -174,7 +176,6 @@ function Update-AppRouter {
 function Update-ShellNavItems {
   param([Parameter(Mandatory)][hashtable]$Ctx)
   $fname = $Ctx.Tokens.FNAME
-  $fclass = $Ctx.Tokens.FCLASS
   $flabel = $Ctx.Tokens.FLABEL
   $config = $Ctx.Config
   $pRoot = $Ctx.ProjectRoot
@@ -183,36 +184,27 @@ function Update-ShellNavItems {
   $navPath = Join-Path $pRoot "lib\app\shell\shell_nav_items.dart"
   if (-not (Test-Path $navPath)) { Write-Warning "shell_nav_items.dart not found — skipping nav"; return }
 
-  $icon = if ($config.feature.icon) { $config.feature.icon }       else { 'Icons.list_outlined' }
-  $activeIcon = if ($config.feature.activeIcon) { $config.feature.activeIcon }  else { 'Icons.list' }
+  # ── Permission slug + icon from config ─────────────────
+  $fperm = $config.feature.permission
+  $icon = if ($config.feature.icon) { $config.feature.icon } else { 'Icons.list_outlined' }
 
-  $imports = @(
-    "import '../../features/${fname}/presentation/pages/${fname}_list_page.dart';",
-    "import '../../features/${fname}/presentation/bloc/${fname}_bloc.dart';",
-    "import '../../features/${fname}/presentation/bloc/${fname}_event.dart';",
-    "import '../../config/di/injection_container.dart';",
-    "import 'package:flutter_bloc/flutter_bloc.dart';"
-  ) -join "`n"
+  # ── NavItem entry — permission-gated, path-only ────────
+  $navItem = @"
 
-  $tab = @"
-      // $flabel tab (Level 1, generated $(Get-Date -Format 'yyyy-MM-dd'))
-      ShellTabConfig(
-        label:      '$flabel',
-        icon:       $icon,
-        activeIcon: $activeIcon,
-        page: BlocProvider(
-          create: (_) => sl<${fclass}Bloc>()..add(${fclass}LoadAllRequested()),
-          child: const ${fclass}ListPage(),
+      // $flabel (Level 1, generated $(Get-Date -Format 'yyyy-MM-dd'))
+      if (auth.can('${fperm}.view'))
+        NavItem(
+          id:    '${fname}',
+          label: '$flabel',
+          icon:  $icon,
+          path:  AppRouter.${fname}List,
         ),
-      ),
 "@
 
   $content = Get-Content $navPath -Raw
-  $m1 = '// ── END GENERATOR FEATURE IMPORTS'
-  $m2 = '// ── END GENERATOR TABS'
+  $m1 = '// ── END GENERATOR TABS'
 
-  if ($content.Contains($m1)) { $content = $content.Replace($m1, "$imports`n$m1") }
-  if ($content.Contains($m2)) { $content = $content.Replace($m2, "$tab`n      $m2") }
+  if ($content.Contains($m1)) { $content = $content.Replace($m1, "$navItem`n      $m1") }
 
   if (-not $isDryRun) {
     Set-Content -Path $navPath -Value $content -Encoding UTF8

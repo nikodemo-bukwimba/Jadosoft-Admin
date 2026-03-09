@@ -1,6 +1,6 @@
 ================================================================================
   FLUTTER CLEAN ARCHITECTURE TEMPLATE - lib/ EXPORT
-  Generated : 2026-03-09 16:28:30
+  Generated : 2026-03-09 18:38:34
   Root Path : D:\projects\hmscp-pd\hmscp-pd
 ================================================================================
 
@@ -404,8 +404,7 @@ class AppRouter {
       AuthAccountsUpdated() => location == splash ? home : null,
 
       // ── Needs picker ─────────────────────────────────────────────────────────
-      AuthNeedsAccountPicker() =>
-        location == accountPicker ? null : accountPicker,
+      AuthNeedsAccountPicker() => isAuthRoute ? null : accountPicker,
 
       // ── Unauthenticated ──────────────────────────────────────────────────────
       AuthUnauthenticated() =>
@@ -3709,193 +3708,6 @@ extension FutureEitherX<L extends Failure, R> on Future<Either<L, R>> {
 --------------------------------------------------------------------------------
 FILE [24 / 89] : lib\core\extensions\string_extensions.dart
 --------------------------------------------------------------------------------
-// datetime_extensions.dart
-// ─────────────────────────────────────────────────────────────
-// Extension methods on DateTime and DateTime?.
-//
-// Every method here has a concrete use site in this template:
-//   - savedAt / createdAt on AccountSession / UserEntity
-//   - emailVerifiedAt on UserEntity
-//   - sessionTimeoutMinutes from AppConstants
-//   - "last seen" / "joined" display in ProfilePage
-//   - session age check for background re-auth
-//
-// Import:
-//   import 'package:fca/core/extensions/datetime_extensions.dart';
-// ─────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────
-// Non-nullable DateTime extensions
-// ─────────────────────────────────────────────────────────────
-
-extension DateTimeX on DateTime {
-  // ── Relative time ─────────────────────────────────────────
-
-  /// Returns a human-readable "time ago" string.
-  /// Used on ProfilePage and session debug panels.
-  ///
-  /// ```dart
-  /// session.savedAt.timeAgo   // → 'just now' / '3 min ago' / '2 days ago'
-  /// ```
-  String get timeAgo {
-    final diff = DateTime.now().difference(this);
-
-    if (diff.inSeconds < 60) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
-    if (diff.inHours < 24) return '${diff.inHours} hr ago';
-    if (diff.inDays == 1) return 'yesterday';
-    if (diff.inDays < 7) return '${diff.inDays} days ago';
-    if (diff.inDays < 30) return '${(diff.inDays / 7).floor()} wk ago';
-    if (diff.inDays < 365) return '${(diff.inDays / 30).floor()} mo ago';
-    return '${(diff.inDays / 365).floor()} yr ago';
-  }
-
-  // ── Formatting ────────────────────────────────────────────
-
-  /// Formats as 'MMM d, yyyy' — e.g. 'Mar 7, 2026'.
-  /// Used for createdAt / joined date on ProfilePage.
-  String get displayDate {
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return '${months[month - 1]} $day, $year';
-  }
-
-  /// Formats as 'MMM d, yyyy · HH:mm' — e.g. 'Mar 7, 2026 · 14:30'.
-  /// Used for savedAt timestamps in the account switcher debug view.
-  String get displayDateTime {
-    final h = hour.toString().padLeft(2, '0');
-    final m = minute.toString().padLeft(2, '0');
-    return '$displayDate · $h:$m';
-  }
-
-  /// Formats as 'HH:mm' — e.g. '09:05'.
-  String get displayTime {
-    final h = hour.toString().padLeft(2, '0');
-    final m = minute.toString().padLeft(2, '0');
-    return '$h:$m';
-  }
-
-  /// Formats as ISO 8601 date-only — 'yyyy-MM-dd'. Safe for API params.
-  String get isoDate =>
-      '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
-
-  // ── Predicates ────────────────────────────────────────────
-
-  /// True if this DateTime is today (in local time).
-  bool get isToday {
-    final now = DateTime.now();
-    return year == now.year && month == now.month && day == now.day;
-  }
-
-  /// True if this DateTime was yesterday (in local time).
-  bool get isYesterday {
-    final yesterday = DateTime.now().subtract(const Duration(days: 1));
-    return year == yesterday.year &&
-        month == yesterday.month &&
-        day == yesterday.day;
-  }
-
-  /// True if this DateTime is in the past.
-  bool get isPast => isBefore(DateTime.now());
-
-  /// True if this DateTime is in the future.
-  bool get isFuture => isAfter(DateTime.now());
-
-  // ── Session helpers ───────────────────────────────────────
-
-  /// True if the session is older than [minutes].
-  ///
-  /// Used by AuthBloc to decide whether a background re-auth is needed.
-  ///
-  /// ```dart
-  /// if (session.savedAt.isOlderThan(AppConstants.sessionTimeoutMinutes)) {
-  ///   add(AuthSessionRefreshRequested());
-  /// }
-  /// ```
-  bool isOlderThan(int minutes) =>
-      DateTime.now().difference(this).inMinutes >= minutes;
-
-  /// True if the session was saved within [minutes] ago.
-  bool isFresherThan(int minutes) => !isOlderThan(minutes);
-
-  /// How many minutes have elapsed since this DateTime.
-  int get minutesElapsed => DateTime.now().difference(this).inMinutes;
-
-  /// How many seconds have elapsed since this DateTime.
-  int get secondsElapsed => DateTime.now().difference(this).inSeconds;
-
-  // ── Arithmetic helpers ────────────────────────────────────
-
-  /// Returns a new DateTime with only the date component (time zeroed).
-  DateTime get dateOnly => DateTime(year, month, day);
-
-  /// Returns a copy of this DateTime with the given fields replaced.
-  DateTime copyWith({
-    int? year,
-    int? month,
-    int? day,
-    int? hour,
-    int? minute,
-    int? second,
-    int? millisecond,
-  }) => DateTime(
-    year ?? this.year,
-    month ?? this.month,
-    day ?? this.day,
-    hour ?? this.hour,
-    minute ?? this.minute,
-    second ?? this.second,
-    millisecond ?? this.millisecond,
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// Nullable DateTime extensions
-// ─────────────────────────────────────────────────────────────
-
-extension NullableDateTimeX on DateTime? {
-  /// Returns [fallback] when null, otherwise calls [displayDate].
-  ///
-  /// ```dart
-  /// user.createdAt.displayDateOrDefault('Unknown')
-  /// ```
-  String displayDateOrDefault([String fallback = '—']) =>
-      this == null ? fallback : this!.displayDate;
-
-  /// Returns [fallback] when null, otherwise calls [displayDateTime].
-  String displayDateTimeOrDefault([String fallback = '—']) =>
-      this == null ? fallback : this!.displayDateTime;
-
-  /// Returns [fallback] when null, otherwise calls [timeAgo].
-  ///
-  /// ```dart
-  /// user.emailVerifiedAt.timeAgoOrDefault('Not verified')
-  /// ```
-  String timeAgoOrDefault([String fallback = 'Never']) =>
-      this == null ? fallback : this!.timeAgo;
-
-  /// True if non-null and in the past — used for email verification check.
-  ///
-  /// ```dart
-  /// final isVerified = user.emailVerifiedAt.isVerified;
-  /// ```
-  bool get isVerified => this != null && this!.isPast;
-
-  /// True if null — readable inverse of [isVerified].
-  bool get isNotVerified => !isVerified;
-}
 
 extension StringX on String {
   /// Extracts 1–2 letter initials from a display name.
@@ -8086,20 +7898,39 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
 --------------------------------------------------------------------------------
 FILE [48 / 89] : lib\features\auth\data\datasources\auth_remote_datasource.dart
 --------------------------------------------------------------------------------
-// auth_remote_datasource.dart  [R3 — Secure Network]
+// auth_remote_datasource.dart
 // ─────────────────────────────────────────────────────────────
 // All calls go through the shared Dio instance.
-// LOGIN RESPONSE NOTE:
-//   Laravel Sanctum typically returns: { token: "...", user: {...} }
-//   OR just: { access_token: "...", user: {...} }
-//   OR: { data: { token: "...", user: {...} } }
-//   _extractToken() handles all common shapes.
+//
+// ENDPOINTS:
+//   POST /auth/login    → { user: {...}, token: "..." }
+//   POST /auth/register → { user: {...}, token: "..." }
+//   POST /auth/logout   → 204
+//   GET  /auth/me       → { data: { user + roles + permissions } }
+//
+// REMOVED: GET /me/roles — this endpoint never existed in the
+// HMSCP API. Roles and permissions are now returned inline by
+// GET /auth/me as part of the user resource.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/user_model.dart';
+
+/// Raw data returned from GET /auth/me — contains user, roles,
+/// and permissions all in one response.
+class AuthMeResponse {
+  final UserModel user;
+  final List<RoleModel> roles;
+  final List<PermissionModel> permissions;
+
+  const AuthMeResponse({
+    required this.user,
+    required this.roles,
+    required this.permissions,
+  });
+}
 
 abstract class AuthRemoteDataSource {
   Future<Map<String, dynamic>> login(String email, String password);
@@ -8111,15 +7942,17 @@ abstract class AuthRemoteDataSource {
     String? phone,
   });
   Future<void> logout();
-  Future<UserModel> getUser();
-  Future<Map<String, dynamic>> getRolesAndPermissions();
+
+  /// Fetches the full authenticated user profile including roles
+  /// and permissions from GET /auth/me.
+  Future<AuthMeResponse> getAuthMe();
 }
 
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   final Dio _dio;
   AuthRemoteDataSourceImpl(this._dio);
 
-  // ── POST /login ───────────────────────────────────────────
+  // ── POST /auth/login ──────────────────────────────────────
   @override
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
@@ -8129,10 +7962,8 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       );
       final body = _parseBody(response);
 
-      // Debug: log the response shape in dev so we can verify token key
       if (kDebugMode) {
         debugPrint('[AUTH] Login response keys: ${body.keys.toList()}');
-        // Log token presence without logging the actual value (R9)
         final token = _extractToken(body);
         debugPrint(
           '[AUTH] Token extracted: ${token != null ? "YES (${token.length} chars)" : "NO — check response shape"}',
@@ -8145,7 +7976,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     }
   }
 
-  // ── POST /register ────────────────────────────────────────
+  // ── POST /auth/register ───────────────────────────────────
   @override
   Future<Map<String, dynamic>> register({
     required String name,
@@ -8181,7 +8012,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     }
   }
 
-  // ── POST /logout ──────────────────────────────────────────
+  // ── POST /auth/logout ─────────────────────────────────────
   @override
   Future<void> logout() async {
     try {
@@ -8192,47 +8023,68 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     }
   }
 
-  // ── GET /user ─────────────────────────────────────────────
+  // ── GET /auth/me ──────────────────────────────────────────
+  // Returns user + roles + permissions in one call.
+  //
+  // Expected response shape:
+  //   { "data": { ...user fields, "roles": [...], "permissions": [...] } }
+  // OR flat (no wrapper):
+  //   { ...user fields, "roles": [...], "permissions": [...] }
   @override
-  Future<UserModel> getUser() async {
+  Future<AuthMeResponse> getAuthMe() async {
     try {
       final response = await _dio.get('/auth/me');
-      final data = response.data;
-      if (data == null)
-        throw const ServerException('Empty response from /auth/me');
-      return UserModel.fromJson(data as Map<String, dynamic>);
-    } on DioException catch (e) {
-      throw _handleDioError(e);
-    }
-  }
+      final raw = response.data;
 
-  // ── GET /me/roles ─────────────────────────────────────────
-  @override
-  Future<Map<String, dynamic>> getRolesAndPermissions() async {
-    try {
-      final response = await _dio.get('/me/roles');
-      final body = response.data as Map<String, dynamic>?;
-      if (body == null)
-        throw const ServerException('Empty response from /me/roles');
-      // Shape: { success: true, data: { roles: [], permissions: [] } }
-      return body['data'] as Map<String, dynamic>? ?? {};
+      if (raw == null) {
+        throw const ServerException('Empty response from /auth/me');
+      }
+
+      // Unwrap: may be nested under 'data' or flat
+      final Map<String, dynamic> body;
+      if (raw is Map<String, dynamic>) {
+        body = raw.containsKey('data') && raw['data'] is Map<String, dynamic>
+            ? raw['data'] as Map<String, dynamic>
+            : raw;
+      } else {
+        throw const ServerException('Unexpected response format from /auth/me');
+      }
+
+      // Parse user (roles embedded in user JSON too)
+      final user = UserModel.fromJson(body);
+
+      // Parse permissions — may be at top level of the response
+      final rawPerms = body['permissions'] as List<dynamic>? ?? [];
+      final permissions = rawPerms
+          .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
+          .toList();
+
+      // Roles are already parsed inside UserModel.fromJson,
+      // but we also extract them here for the auth flow.
+      final rawRoles = body['roles'] as List<dynamic>? ?? [];
+      final roles = rawRoles
+          .map((r) => RoleModel.fromJson(r as Map<String, dynamic>))
+          .toList();
+
+      if (kDebugMode) {
+        debugPrint(
+          '[AUTH] /auth/me: user=${user.email}, '
+          'roles=${roles.length}, permissions=${permissions.length}',
+        );
+      }
+
+      return AuthMeResponse(user: user, roles: roles, permissions: permissions);
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
   }
 
   // ── Token extraction ──────────────────────────────────────
-  // Handles the most common Sanctum response shapes:
-  //   { "token": "..." }
-  //   { "access_token": "..." }
-  //   { "data": { "token": "..." } }
   static String? extractToken(Map<String, dynamic> body) => _extractToken(body);
 
   static String? _extractToken(Map<String, dynamic> body) {
-    // Direct key
     if (body['token'] is String) return body['token'] as String;
     if (body['access_token'] is String) return body['access_token'] as String;
-    // Nested under 'data'
     final data = body['data'];
     if (data is Map<String, dynamic>) {
       if (data['token'] is String) return data['token'] as String;
@@ -8246,8 +8098,9 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   Map<String, dynamic> _parseBody(Response response) {
     final data = response.data;
     if (data == null) throw const ServerException('Empty response body');
-    if (data is! Map<String, dynamic>)
+    if (data is! Map<String, dynamic>) {
       throw const ServerException('Unexpected response format');
+    }
     return data;
   }
 
@@ -8379,6 +8232,10 @@ FILE [50 / 89] : lib\features\auth\data\models\user_model.dart
 // CHANGE: UserModel.id is now String (Laravel uses ULIDs).
 // RoleModel / PermissionModel keep int ids (standard auto-increment)
 // but use safe parsing so they never hard-cast.
+//
+// FIX: RoleModel.slug falls back to name when the API doesn't
+// return a 'slug' field (platform_roles table has no slug column).
+// Same for PermissionModel — slug falls back to name.
 // ─────────────────────────────────────────────────────────────
 
 import '../../domain/entities/user_entity.dart';
@@ -8391,10 +8248,10 @@ class RoleModel extends RoleEntity {
   });
 
   factory RoleModel.fromJson(Map<String, dynamic> json) => RoleModel(
-    // Safe parse — handles both int and numeric-string ids
     id: int.parse(json['id'].toString()),
-    name: json['name'] as String,
-    slug: json['slug'] as String,
+    name: json['name'] as String? ?? '',
+    // platform_roles has no slug column — fall back to name
+    slug: json['slug'] as String? ?? json['name'] as String? ?? '',
   );
 
   Map<String, dynamic> toJson() => {'id': id, 'name': name, 'slug': slug};
@@ -8410,8 +8267,9 @@ class PermissionModel extends PermissionEntity {
   factory PermissionModel.fromJson(Map<String, dynamic> json) =>
       PermissionModel(
         id: int.parse(json['id'].toString()),
-        name: json['name'] as String,
-        slug: json['slug'] as String,
+        name: json['name'] as String? ?? '',
+        // platform_permissions has a slug column, but defend anyway
+        slug: json['slug'] as String? ?? json['name'] as String? ?? '',
       );
 
   Map<String, dynamic> toJson() => {'id': id, 'name': name, 'slug': slug};
@@ -8443,6 +8301,9 @@ class UserModel extends UserEntity {
       primaryRole = RoleModel.fromJson(
         json['primary_role'] as Map<String, dynamic>,
       );
+    } else if (roles.isNotEmpty) {
+      // If no explicit primary_role, use first role
+      primaryRole = roles.first;
     }
 
     return UserModel(
@@ -8453,8 +8314,12 @@ class UserModel extends UserEntity {
       email: json['email'] as String,
       phone: json['phone'] as String?,
 
-      // Laravel may return 0/1 or true/false for booleans
-      isActive: json['is_active'] == true || json['is_active'] == 1,
+      // Laravel may return 0/1, true/false, or 'active' status string
+      isActive:
+          json['is_active'] == true ||
+          json['is_active'] == 1 ||
+          json['status'] == 'active',
+
       hasActiveSubscription:
           json['has_active_subscription'] == true ||
           json['has_active_subscription'] == 1,
@@ -8503,13 +8368,15 @@ FILE [51 / 89] : lib\features\auth\data\repositories\auth_repository_impl.dart
 --------------------------------------------------------------------------------
 // auth_repository_impl.dart
 // ─────────────────────────────────────────────────────────────
-// FIX: Token must be persisted to secure storage BEFORE any
-// authenticated request (GET /me/roles) is made.
-// Previous order:  login → fetch roles → save session   ❌
-// Correct order:   login → save token → fetch roles → update session ✅
+// FLOW (login & register):
+//   1. POST /auth/login (or /register) → get token
+//   2. Parse user from login response (if present)
+//   3. Save preliminary session (token only) so interceptor works
+//   4. GET /auth/me → full user + roles + permissions
+//   5. Save final session with everything
 //
-// FIX 2: UserModel.id is now String (ULID). _placeholderUser
-// uses id: '' instead of id: 0.
+// Single endpoint for user data: GET /auth/me returns user, roles,
+// and permissions in one response. No separate /me/roles call.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:dartz/dartz.dart';
@@ -8546,55 +8413,28 @@ class AuthRepositoryImpl implements AuthRepository {
         return const Left(ServerFailure('No token received from server'));
       }
 
-      // ── Step 2: Parse user ────────────────────────────────
-      UserModel user;
-      if (loginData.containsKey('user') && loginData['user'] != null) {
-        user = UserModel.fromJson(loginData['user'] as Map<String, dynamic>);
-      } else {
-        // Sanctum setups that return only token — need separate /user call.
-        // Save a temporary session first so the interceptor has a token.
-        final tempSession = AccountSessionModel(
-          token: token,
-          user: _placeholderUser(email),
-          permissions: const [],
-          savedAt: DateTime.now(),
-        );
-        await _local.saveSession(tempSession);
-        await _local.setActiveAccount(email);
-        user = await _remote.getUser();
-      }
-
-      // ── Step 3: Persist token FIRST so interceptor can use it ──
+      // ── Step 2: Save preliminary session so interceptor has token ──
       final prelimSession = AccountSessionModel(
         token: token,
-        user: user,
+        user: _placeholderUser(email),
         permissions: const [],
         savedAt: DateTime.now(),
       );
       await _local.saveSession(prelimSession);
-      await _local.setActiveAccount(user.email);
+      await _local.setActiveAccount(email);
 
-      // ── Step 4: Fetch roles + permissions ─────────────────
-      List<PermissionModel> permissions = [];
-      try {
-        final rolesData = await _remote.getRolesAndPermissions();
-        final rawPerms = rolesData['permissions'] as List<dynamic>? ?? [];
-        permissions = rawPerms
-            .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
-            .toList();
-      } catch (_) {
-        // Roles fetch failed — allow login with empty permissions.
-        // Refresh later via AuthSessionRefreshRequested.
-      }
+      // ── Step 3: Fetch full profile (user + roles + permissions) ──
+      final meResponse = await _remote.getAuthMe();
 
-      // ── Step 5: Save final session with permissions ───────
+      // ── Step 4: Save final session ────────────────────────
       final finalSession = AccountSessionModel(
         token: token,
-        user: user,
-        permissions: permissions,
+        user: meResponse.user,
+        permissions: meResponse.permissions,
         savedAt: DateTime.now(),
       );
       await _local.saveSession(finalSession);
+      await _local.setActiveAccount(meResponse.user.email);
 
       return Right(finalSession);
     } on AuthException catch (e) {
@@ -8636,54 +8476,32 @@ class AuthRepositoryImpl implements AuthRepository {
         );
       }
 
-      // ── Step 2: Parse user ────────────────────────────────
-      UserModel user;
-      if (registerData.containsKey('user') && registerData['user'] != null) {
-        user = UserModel.fromJson(registerData['user'] as Map<String, dynamic>);
-      } else {
-        final tempSession = AccountSessionModel(
-          token: token,
-          user: _placeholderUser(email),
-          permissions: const [],
-          savedAt: DateTime.now(),
-        );
-        await _local.saveSession(tempSession);
-        await _local.setActiveAccount(email);
-        user = await _remote.getUser();
-      }
-
-      // ── Step 3: Persist token BEFORE /me/roles ────────────
+      // ── Step 2: Save preliminary session ──────────────────
       final prelimSession = AccountSessionModel(
         token: token,
-        user: user,
+        user: _placeholderUser(email),
         permissions: const [],
         savedAt: DateTime.now(),
       );
       await _local.saveSession(prelimSession);
-      await _local.setActiveAccount(user.email);
+      await _local.setActiveAccount(email);
 
-      // ── Step 4: Fetch roles ───────────────────────────────
-      List<PermissionModel> permissions = [];
-      try {
-        final rolesData = await _remote.getRolesAndPermissions();
-        final rawPerms = rolesData['permissions'] as List<dynamic>? ?? [];
-        permissions = rawPerms
-            .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
-            .toList();
-      } catch (_) {
-        // New users may have no roles yet — continue
-      }
+      // ── Step 3: Fetch full profile ────────────────────────
+      final meResponse = await _remote.getAuthMe();
 
-      // ── Step 5: Final session ─────────────────────────────
+      // ── Step 4: Save final session ────────────────────────
       final finalSession = AccountSessionModel(
         token: token,
-        user: user,
-        permissions: permissions,
+        user: meResponse.user,
+        permissions: meResponse.permissions,
         savedAt: DateTime.now(),
       );
       await _local.saveSession(finalSession);
+      await _local.setActiveAccount(meResponse.user.email);
 
       return Right(finalSession);
+    } on AuthException catch (e) {
+      return Left(AuthFailure(e.message));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } on NetworkException catch (e) {
@@ -8778,6 +8596,7 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   // ── refreshSession ────────────────────────────────────────
+  // Re-fetches user + roles + permissions from GET /auth/me.
   @override
   Future<Either<Failure, AccountSession>> refreshSession() async {
     try {
@@ -8786,17 +8605,12 @@ class AuthRepositoryImpl implements AuthRepository {
         return const Left(AuthFailure('No active session to refresh'));
       }
 
-      final user = await _remote.getUser();
-      final rolesData = await _remote.getRolesAndPermissions();
-      final rawPerms = rolesData['permissions'] as List<dynamic>? ?? [];
-      final permissions = rawPerms
-          .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
-          .toList();
+      final meResponse = await _remote.getAuthMe();
 
       final updated = AccountSessionModel(
         token: current.token,
-        user: user,
-        permissions: permissions,
+        user: meResponse.user,
+        permissions: meResponse.permissions,
         savedAt: DateTime.now(),
       );
       await _local.saveSession(updated);
@@ -8815,10 +8629,8 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   // ── Placeholder user ──────────────────────────────────────
-  // Temporary stand-in when the API returns only a token and we need
-  // storage populated before calling /user or /me/roles.
   UserModel _placeholderUser(String email) => UserModel(
-    id: '', // String — ULID, filled after /user call
+    id: '',
     name: '',
     email: email,
     isActive: false,
@@ -12623,14 +12435,15 @@ FILE [79 / 89] : lib\features\profile\data\datasources\profile_remote_datasource
 --------------------------------------------------------------------------------
 // profile_remote_datasource.dart
 // ─────────────────────────────────────────────────────────────
-// Fetches own profile data from two endpoints:
-//   GET /auth/me  → user object
-//   GET /me/roles → { data: { roles, permissions } }
-// Token is attached by AuthInterceptor — no manual headers needed.
+// Fetches own profile data from a single endpoint:
+//   GET /auth/me → { data: { user + roles + permissions } }
 //
-// Uses relative paths (no AppConstants.baseUrl prefix) so Dio's
-// configured baseUrl is the single source of truth, consistent
-// with all other datasources in the app.
+// REMOVED: GET /me/roles — this endpoint never existed in the
+// HMSCP API. The /auth/me response now includes roles and
+// permissions inline.
+//
+// Token is attached by AuthInterceptor — no manual headers needed.
+// Uses relative paths so Dio's baseUrl is the single source of truth.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:dio/dio.dart';
@@ -12649,29 +12462,34 @@ class ProfileRemoteDataSourceImpl implements ProfileRemoteDataSource {
   @override
   Future<ProfileModel> getOwnProfile() async {
     try {
-      final userResponse = await _dio.get('/auth/me');
-      final rolesResponse = await _dio.get('/me/roles');
+      final response = await _dio.get('/auth/me');
+      final raw = response.data;
 
-      final userData = userResponse.data;
-      final rolesBody = rolesResponse.data as Map<String, dynamic>?;
-
-      if (userData == null) {
+      if (raw == null) {
         throw const ServerException('Empty response from /auth/me');
       }
-      if (rolesBody == null) {
-        throw const ServerException('Empty response from /me/roles');
+
+      // Unwrap: may be nested under 'data' or flat
+      final Map<String, dynamic> body;
+      if (raw is Map<String, dynamic>) {
+        body = raw.containsKey('data') && raw['data'] is Map<String, dynamic>
+            ? raw['data'] as Map<String, dynamic>
+            : raw;
+      } else {
+        throw const ServerException('Unexpected response format from /auth/me');
       }
 
-      final user = UserModel.fromJson(userData as Map<String, dynamic>);
+      // Parse user (includes roles inline)
+      final user = UserModel.fromJson(body);
 
-      // Shape: { success: true, data: { roles: [], permissions: [] } }
-      final rolesData = rolesBody['data'] as Map<String, dynamic>? ?? {};
-      final rawRoles = rolesData['roles'] as List<dynamic>? ?? [];
-      final rawPerms = rolesData['permissions'] as List<dynamic>? ?? [];
-
+      // Parse roles from the same response
+      final rawRoles = body['roles'] as List<dynamic>? ?? [];
       final roles = rawRoles
           .map((r) => RoleModel.fromJson(r as Map<String, dynamic>))
           .toList();
+
+      // Parse permissions from the same response
+      final rawPerms = body['permissions'] as List<dynamic>? ?? [];
       final permissions = rawPerms
           .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
           .toList();
