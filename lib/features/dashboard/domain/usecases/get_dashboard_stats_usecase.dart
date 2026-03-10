@@ -6,8 +6,8 @@
 // ─────────────────────────────────────────────────────────────
 
 import 'package:dartz/dartz.dart';
-import 'package:fca/core/error/failures.dart';
-import 'package:fca/core/usecase/usecase.dart';
+import 'package:admin_panel/core/error/failures.dart';
+import 'package:admin_panel/core/usecase/usecase.dart';
 
 import '../entities/dashboard_stats.dart';
 import '../repositories/dashboard_repository.dart';

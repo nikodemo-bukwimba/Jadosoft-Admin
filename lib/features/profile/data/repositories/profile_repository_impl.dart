@@ -16,12 +16,12 @@
 import 'dart:convert';
 
 import 'package:dartz/dartz.dart';
-import 'package:fca/core/constants/app_constants.dart';
-import 'package:fca/core/database/app_database.dart';
-import 'package:fca/core/database/profile_cache_dao.dart';
-import 'package:fca/core/error/exceptions.dart';
-import 'package:fca/core/error/failures.dart';
-import 'package:fca/core/storage/secure_storage_service.dart';
+import 'package:admin_panel/core/constants/app_constants.dart';
+import 'package:admin_panel/core/database/app_database.dart';
+import 'package:admin_panel/core/database/profile_cache_dao.dart';
+import 'package:admin_panel/core/error/exceptions.dart';
+import 'package:admin_panel/core/error/failures.dart';
+import 'package:admin_panel/core/storage/secure_storage_service.dart';
 import 'package:drift/drift.dart' show Value;
 
 import '../../../../features/auth/data/models/user_model.dart';

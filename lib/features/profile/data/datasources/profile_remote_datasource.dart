@@ -12,8 +12,8 @@
 // ─────────────────────────────────────────────────────────────
 
 import 'package:dio/dio.dart';
-import 'package:fca/core/error/exceptions.dart';
-import 'package:fca/features/auth/data/models/user_model.dart';
+import 'package:admin_panel/core/error/exceptions.dart';
+import 'package:admin_panel/features/auth/data/models/user_model.dart';
 import '../models/profile_model.dart';
 
 abstract class ProfileRemoteDataSource {

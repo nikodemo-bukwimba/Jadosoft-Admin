@@ -19,7 +19,7 @@
 //   No Dart code changes needed when adding features.
 // ─────────────────────────────────────────────────────────────
 
-import 'package:fca/features/auth/presentation/bloc/auth_state.dart';
+import 'package:admin_panel/features/auth/presentation/bloc/auth_state.dart';
 
 extension RbacExtensions on AuthAuthenticated {
   // ═════════════════════════════════════════════════════════════

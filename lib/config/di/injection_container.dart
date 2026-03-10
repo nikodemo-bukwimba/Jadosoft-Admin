@@ -14,17 +14,17 @@
 // ─────────────────────────────────────────────────────────────
 // ── GENERATOR FEATURE IMPORTS — append only ──────────────────
 
-import 'package:fca/features/actor/data/datasources/actor_remote_datasource.dart';
-import 'package:fca/features/actor/data/datasources/actor_local_datasource.dart';
-import 'package:fca/features/actor/data/repositories/actor_repository_impl.dart';
-import 'package:fca/features/actor/domain/repositories/actor_repository.dart';
-import 'package:fca/features/actor/domain/usecases/get_all_actor_usecase.dart';
-import 'package:fca/features/actor/domain/usecases/get_actor_usecase.dart';
-import 'package:fca/features/actor/domain/usecases/create_actor_usecase.dart';
-import 'package:fca/features/actor/domain/usecases/update_actor_usecase.dart';
-import 'package:fca/features/actor/domain/usecases/delete_actor_usecase.dart';
-import 'package:fca/features/actor/presentation/bloc/actor_bloc.dart';
-import 'package:fca/core/database/actor_cache_dao.dart';
+import 'package:admin_panel/features/actor/data/datasources/actor_remote_datasource.dart';
+import 'package:admin_panel/features/actor/data/datasources/actor_local_datasource.dart';
+import 'package:admin_panel/features/actor/data/repositories/actor_repository_impl.dart';
+import 'package:admin_panel/features/actor/domain/repositories/actor_repository.dart';
+import 'package:admin_panel/features/actor/domain/usecases/get_all_actor_usecase.dart';
+import 'package:admin_panel/features/actor/domain/usecases/get_actor_usecase.dart';
+import 'package:admin_panel/features/actor/domain/usecases/create_actor_usecase.dart';
+import 'package:admin_panel/features/actor/domain/usecases/update_actor_usecase.dart';
+import 'package:admin_panel/features/actor/domain/usecases/delete_actor_usecase.dart';
+import 'package:admin_panel/features/actor/presentation/bloc/actor_bloc.dart';
+import 'package:admin_panel/core/database/actor_cache_dao.dart';
 
 // ── END GENERATOR FEATURE IMPORTS
 

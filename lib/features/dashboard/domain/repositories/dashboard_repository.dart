@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import 'package:dartz/dartz.dart';
-import 'package:fca/core/error/failures.dart';
+import 'package:admin_panel/core/error/failures.dart';
 
 import '../entities/dashboard_stats.dart';
 

@@ -6,7 +6,7 @@
 
  
 
-import 'package:fca/features/auth/domain/entities/user_entity.dart';
+import 'package:admin_panel/features/auth/domain/entities/user_entity.dart';
 
 class ProfileStats {
   final int    totalSubscriptions;

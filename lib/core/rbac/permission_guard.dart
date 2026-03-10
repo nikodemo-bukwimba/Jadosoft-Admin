@@ -35,8 +35,8 @@
 //     )
 // ─────────────────────────────────────────────────────────────
 
-import 'package:fca/features/auth/presentation/bloc/auth_bloc.dart';
-import 'package:fca/features/auth/presentation/bloc/auth_state.dart';
+import 'package:admin_panel/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:admin_panel/features/auth/presentation/bloc/auth_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
