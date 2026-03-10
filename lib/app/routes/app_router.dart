@@ -25,7 +25,6 @@ import '../../features/actor/presentation/pages/actor_form_page.dart';
 import '../../features/actor/presentation/bloc/actor_bloc.dart';
 import '../../features/actor/presentation/bloc/actor_event.dart';
 import '../../config/di/injection_container.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 // ── END GENERATOR FEATURE PAGE IMPORTS ───────────────────────────────────────
 
 class AppRouter {

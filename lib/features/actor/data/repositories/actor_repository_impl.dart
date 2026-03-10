@@ -21,7 +21,6 @@
 // ─────────────────────────────────────────────────────────────
 
 import 'package:dartz/dartz.dart';
-import '../../../../core/constants/app_constants.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
 import '../../domain/entities/actor_entity.dart';
@@ -37,8 +36,8 @@ class ActorRepositoryImpl implements ActorRepository {
   ActorRepositoryImpl({
     required ActorRemoteDataSource remote,
     required ActorLocalDataSource local,
-  })  : _remote = remote,
-        _local = local;
+  }) : _remote = remote,
+       _local = local;
 
   // ── GET ALL ──────────────────────────────────────────────
 
