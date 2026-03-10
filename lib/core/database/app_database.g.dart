@@ -982,6 +982,280 @@ class CacheEntriesCompanion extends UpdateCompanion<CacheEntry> {
   }
 }
 
+class $CachedActorsTable extends CachedActors
+    with TableInfo<$CachedActorsTable, CachedActor> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedActorsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _actorIdMeta = const VerificationMeta(
+    'actorId',
+  );
+  @override
+  late final GeneratedColumn<String> actorId = GeneratedColumn<String>(
+    'actor_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _actorJsonMeta = const VerificationMeta(
+    'actorJson',
+  );
+  @override
+  late final GeneratedColumn<String> actorJson = GeneratedColumn<String>(
+    'actor_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _fetchedAtMsMeta = const VerificationMeta(
+    'fetchedAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> fetchedAtMs = GeneratedColumn<int>(
+    'fetched_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [actorId, actorJson, fetchedAtMs];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_actors';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CachedActor> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('actor_id')) {
+      context.handle(
+        _actorIdMeta,
+        actorId.isAcceptableOrUnknown(data['actor_id']!, _actorIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_actorIdMeta);
+    }
+    if (data.containsKey('actor_json')) {
+      context.handle(
+        _actorJsonMeta,
+        actorJson.isAcceptableOrUnknown(data['actor_json']!, _actorJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_actorJsonMeta);
+    }
+    if (data.containsKey('fetched_at_ms')) {
+      context.handle(
+        _fetchedAtMsMeta,
+        fetchedAtMs.isAcceptableOrUnknown(
+          data['fetched_at_ms']!,
+          _fetchedAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_fetchedAtMsMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {actorId};
+  @override
+  CachedActor map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedActor(
+      actorId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}actor_id'],
+      )!,
+      actorJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}actor_json'],
+      )!,
+      fetchedAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}fetched_at_ms'],
+      )!,
+    );
+  }
+
+  @override
+  $CachedActorsTable createAlias(String alias) {
+    return $CachedActorsTable(attachedDatabase, alias);
+  }
+}
+
+class CachedActor extends DataClass implements Insertable<CachedActor> {
+  final String actorId;
+  final String actorJson;
+  final int fetchedAtMs;
+  const CachedActor({
+    required this.actorId,
+    required this.actorJson,
+    required this.fetchedAtMs,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['actor_id'] = Variable<String>(actorId);
+    map['actor_json'] = Variable<String>(actorJson);
+    map['fetched_at_ms'] = Variable<int>(fetchedAtMs);
+    return map;
+  }
+
+  CachedActorsCompanion toCompanion(bool nullToAbsent) {
+    return CachedActorsCompanion(
+      actorId: Value(actorId),
+      actorJson: Value(actorJson),
+      fetchedAtMs: Value(fetchedAtMs),
+    );
+  }
+
+  factory CachedActor.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedActor(
+      actorId: serializer.fromJson<String>(json['actorId']),
+      actorJson: serializer.fromJson<String>(json['actorJson']),
+      fetchedAtMs: serializer.fromJson<int>(json['fetchedAtMs']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'actorId': serializer.toJson<String>(actorId),
+      'actorJson': serializer.toJson<String>(actorJson),
+      'fetchedAtMs': serializer.toJson<int>(fetchedAtMs),
+    };
+  }
+
+  CachedActor copyWith({
+    String? actorId,
+    String? actorJson,
+    int? fetchedAtMs,
+  }) => CachedActor(
+    actorId: actorId ?? this.actorId,
+    actorJson: actorJson ?? this.actorJson,
+    fetchedAtMs: fetchedAtMs ?? this.fetchedAtMs,
+  );
+  CachedActor copyWithCompanion(CachedActorsCompanion data) {
+    return CachedActor(
+      actorId: data.actorId.present ? data.actorId.value : this.actorId,
+      actorJson: data.actorJson.present ? data.actorJson.value : this.actorJson,
+      fetchedAtMs: data.fetchedAtMs.present
+          ? data.fetchedAtMs.value
+          : this.fetchedAtMs,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedActor(')
+          ..write('actorId: $actorId, ')
+          ..write('actorJson: $actorJson, ')
+          ..write('fetchedAtMs: $fetchedAtMs')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(actorId, actorJson, fetchedAtMs);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedActor &&
+          other.actorId == this.actorId &&
+          other.actorJson == this.actorJson &&
+          other.fetchedAtMs == this.fetchedAtMs);
+}
+
+class CachedActorsCompanion extends UpdateCompanion<CachedActor> {
+  final Value<String> actorId;
+  final Value<String> actorJson;
+  final Value<int> fetchedAtMs;
+  final Value<int> rowid;
+  const CachedActorsCompanion({
+    this.actorId = const Value.absent(),
+    this.actorJson = const Value.absent(),
+    this.fetchedAtMs = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CachedActorsCompanion.insert({
+    required String actorId,
+    required String actorJson,
+    required int fetchedAtMs,
+    this.rowid = const Value.absent(),
+  }) : actorId = Value(actorId),
+       actorJson = Value(actorJson),
+       fetchedAtMs = Value(fetchedAtMs);
+  static Insertable<CachedActor> custom({
+    Expression<String>? actorId,
+    Expression<String>? actorJson,
+    Expression<int>? fetchedAtMs,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (actorId != null) 'actor_id': actorId,
+      if (actorJson != null) 'actor_json': actorJson,
+      if (fetchedAtMs != null) 'fetched_at_ms': fetchedAtMs,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CachedActorsCompanion copyWith({
+    Value<String>? actorId,
+    Value<String>? actorJson,
+    Value<int>? fetchedAtMs,
+    Value<int>? rowid,
+  }) {
+    return CachedActorsCompanion(
+      actorId: actorId ?? this.actorId,
+      actorJson: actorJson ?? this.actorJson,
+      fetchedAtMs: fetchedAtMs ?? this.fetchedAtMs,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (actorId.present) {
+      map['actor_id'] = Variable<String>(actorId.value);
+    }
+    if (actorJson.present) {
+      map['actor_json'] = Variable<String>(actorJson.value);
+    }
+    if (fetchedAtMs.present) {
+      map['fetched_at_ms'] = Variable<int>(fetchedAtMs.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedActorsCompanion(')
+          ..write('actorId: $actorId, ')
+          ..write('actorJson: $actorJson, ')
+          ..write('fetchedAtMs: $fetchedAtMs, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -989,12 +1263,14 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $CachedDashboardStatsTable cachedDashboardStats =
       $CachedDashboardStatsTable(this);
   late final $CacheEntriesTable cacheEntries = $CacheEntriesTable(this);
+  late final $CachedActorsTable cachedActors = $CachedActorsTable(this);
   late final ProfileCacheDao profileCacheDao = ProfileCacheDao(
     this as AppDatabase,
   );
   late final DashboardCacheDao dashboardCacheDao = DashboardCacheDao(
     this as AppDatabase,
   );
+  late final ActorCacheDao actorCacheDao = ActorCacheDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1003,6 +1279,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     cachedProfiles,
     cachedDashboardStats,
     cacheEntries,
+    cachedActors,
   ];
 }
 
@@ -1575,6 +1852,170 @@ typedef $$CacheEntriesTableProcessedTableManager =
       CacheEntry,
       PrefetchHooks Function()
     >;
+typedef $$CachedActorsTableCreateCompanionBuilder =
+    CachedActorsCompanion Function({
+      required String actorId,
+      required String actorJson,
+      required int fetchedAtMs,
+      Value<int> rowid,
+    });
+typedef $$CachedActorsTableUpdateCompanionBuilder =
+    CachedActorsCompanion Function({
+      Value<String> actorId,
+      Value<String> actorJson,
+      Value<int> fetchedAtMs,
+      Value<int> rowid,
+    });
+
+class $$CachedActorsTableFilterComposer
+    extends Composer<_$AppDatabase, $CachedActorsTable> {
+  $$CachedActorsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get actorId => $composableBuilder(
+    column: $table.actorId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get actorJson => $composableBuilder(
+    column: $table.actorJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get fetchedAtMs => $composableBuilder(
+    column: $table.fetchedAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CachedActorsTableOrderingComposer
+    extends Composer<_$AppDatabase, $CachedActorsTable> {
+  $$CachedActorsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get actorId => $composableBuilder(
+    column: $table.actorId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get actorJson => $composableBuilder(
+    column: $table.actorJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get fetchedAtMs => $composableBuilder(
+    column: $table.fetchedAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CachedActorsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CachedActorsTable> {
+  $$CachedActorsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get actorId =>
+      $composableBuilder(column: $table.actorId, builder: (column) => column);
+
+  GeneratedColumn<String> get actorJson =>
+      $composableBuilder(column: $table.actorJson, builder: (column) => column);
+
+  GeneratedColumn<int> get fetchedAtMs => $composableBuilder(
+    column: $table.fetchedAtMs,
+    builder: (column) => column,
+  );
+}
+
+class $$CachedActorsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CachedActorsTable,
+          CachedActor,
+          $$CachedActorsTableFilterComposer,
+          $$CachedActorsTableOrderingComposer,
+          $$CachedActorsTableAnnotationComposer,
+          $$CachedActorsTableCreateCompanionBuilder,
+          $$CachedActorsTableUpdateCompanionBuilder,
+          (
+            CachedActor,
+            BaseReferences<_$AppDatabase, $CachedActorsTable, CachedActor>,
+          ),
+          CachedActor,
+          PrefetchHooks Function()
+        > {
+  $$CachedActorsTableTableManager(_$AppDatabase db, $CachedActorsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedActorsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CachedActorsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CachedActorsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> actorId = const Value.absent(),
+                Value<String> actorJson = const Value.absent(),
+                Value<int> fetchedAtMs = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CachedActorsCompanion(
+                actorId: actorId,
+                actorJson: actorJson,
+                fetchedAtMs: fetchedAtMs,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String actorId,
+                required String actorJson,
+                required int fetchedAtMs,
+                Value<int> rowid = const Value.absent(),
+              }) => CachedActorsCompanion.insert(
+                actorId: actorId,
+                actorJson: actorJson,
+                fetchedAtMs: fetchedAtMs,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CachedActorsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CachedActorsTable,
+      CachedActor,
+      $$CachedActorsTableFilterComposer,
+      $$CachedActorsTableOrderingComposer,
+      $$CachedActorsTableAnnotationComposer,
+      $$CachedActorsTableCreateCompanionBuilder,
+      $$CachedActorsTableUpdateCompanionBuilder,
+      (
+        CachedActor,
+        BaseReferences<_$AppDatabase, $CachedActorsTable, CachedActor>,
+      ),
+      CachedActor,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -1585,4 +2026,6 @@ class $AppDatabaseManager {
       $$CachedDashboardStatsTableTableManager(_db, _db.cachedDashboardStats);
   $$CacheEntriesTableTableManager get cacheEntries =>
       $$CacheEntriesTableTableManager(_db, _db.cacheEntries);
+  $$CachedActorsTableTableManager get cachedActors =>
+      $$CachedActorsTableTableManager(_db, _db.cachedActors);
 }

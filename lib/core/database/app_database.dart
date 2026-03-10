@@ -46,12 +46,14 @@ import 'tables/cached_profiles_table.dart';
 import 'tables/cache_entries_table.dart';
 import 'dashboard_cache_dao.dart';
 import 'profile_cache_dao.dart';
+import 'tables/cached_actors_table.dart';
+import 'actor_cache_dao.dart';
 
 part 'app_database.g.dart';
 
 @DriftDatabase(
-  tables: [CachedProfiles, CachedDashboardStats, CacheEntries],
-  daos: [ProfileCacheDao, DashboardCacheDao],
+  tables: [CachedProfiles, CachedDashboardStats, CacheEntries, CachedActors],
+  daos: [ProfileCacheDao, DashboardCacheDao, ActorCacheDao],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -59,23 +61,15 @@ class AppDatabase extends _$AppDatabase {
   /// Bump this when any table definition changes and add a migration
   /// step in the [migration] getter below.
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
     onUpgrade: (m, from, to) async {
-      // ── Add migration steps here when schemaVersion > 1 ──
-      // Example:
-      //   if (from < 2) {
-      //     await m.addColumn(cachedProfiles, cachedProfiles.newColumn);
-      //   }
-    },
-    beforeOpen: (details) async {
-      // Enable WAL mode for better concurrent read performance.
-      await customStatement('PRAGMA journal_mode = WAL');
-      // Enable foreign key constraints.
-      await customStatement('PRAGMA foreign_keys = ON');
+      if (from < 2) {
+        await m.createTable(cachedActors);
+      }
     },
   );
 }

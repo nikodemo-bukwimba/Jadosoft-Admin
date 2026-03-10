@@ -1,17 +1,19 @@
 {
   "feature": {
-    "name": "category",
-    "label": "Category",
-    "purpose": "Manage item categories",
+    "name": "actor",
+    "label": "Actors",
+    "purpose": "Platform admin management of actors — organizations, customers, and marketplace participants",
     "maturity": 1,
-    "permission": "categories"
+    "permission": "actors",
+    "icon": "Icons.people_outlined",
+    "activeIcon": "Icons.people"
   },
   "storage": {
     "remote": true,
-    "local": false
+    "local": true
   },
   "entities": {
-    "Category": {
+    "Actor": {
       "primary": true,
       "fields": {
         "id": {
@@ -19,18 +21,36 @@
           "primary": true,
           "readonly": true
         },
-        "name": {
+        "displayName": {
           "type": "String",
           "nullable": false,
           "validation": {
             "required": {
               "value": true,
-              "message": "Category name is required"
+              "message": "Display name is required"
             },
-            "minLength": { "value": 2, "message": "Name too short" }
+            "minLength": {
+              "value": 2,
+              "message": "Name must be at least 2 characters"
+            }
+          }
+        },
+        "status": {
+          "type": "String",
+          "nullable": false,
+          "validation": {
+            "required": {
+              "value": true,
+              "message": "Status is required"
+            }
           }
         },
         "createdAt": {
+          "type": "DateTime",
+          "nullable": false,
+          "readonly": true
+        },
+        "updatedAt": {
           "type": "DateTime",
           "nullable": false,
           "readonly": true
@@ -38,19 +58,25 @@
       },
       "relationships": {},
       "api": {
-        "endpoint": "/categories",
-        "paginatable": false,
-        "searchable": false
+        "endpoint": "/actors",
+        "paginatable": true,
+        "searchable": true
       },
       "ui": {
-        "card": { "title": "name" },
-        "detail": { "header": ["name"], "body": ["createdAt"] },
+        "card": {
+          "title": "displayName",
+          "subtitle": "status"
+        },
+        "detail": {
+          "header": ["displayName", "status"],
+          "body": ["createdAt", "updatedAt"]
+        },
         "form": {
-          "create": ["name"],
-          "edit": ["name"]
+          "create": ["displayName", "status"],
+          "edit": ["displayName", "status"]
         },
         "list": {
-          "emptyMessage": "No categories yet."
+          "emptyMessage": "No actors found. Create your first actor."
         }
       }
     }

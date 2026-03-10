@@ -13,7 +13,19 @@
 //   from Drift first and only hit the API when the TTL has expired.
 // ─────────────────────────────────────────────────────────────
 // ── GENERATOR FEATURE IMPORTS — append only ──────────────────
- 
+
+import 'package:fca/features/actor/data/datasources/actor_remote_datasource.dart';
+import 'package:fca/features/actor/data/datasources/actor_local_datasource.dart';
+import 'package:fca/features/actor/data/repositories/actor_repository_impl.dart';
+import 'package:fca/features/actor/domain/repositories/actor_repository.dart';
+import 'package:fca/features/actor/domain/usecases/get_all_actor_usecase.dart';
+import 'package:fca/features/actor/domain/usecases/get_actor_usecase.dart';
+import 'package:fca/features/actor/domain/usecases/create_actor_usecase.dart';
+import 'package:fca/features/actor/domain/usecases/update_actor_usecase.dart';
+import 'package:fca/features/actor/domain/usecases/delete_actor_usecase.dart';
+import 'package:fca/features/actor/presentation/bloc/actor_bloc.dart';
+import 'package:fca/core/database/actor_cache_dao.dart';
+
 // ── END GENERATOR FEATURE IMPORTS
 
 import 'package:dio/dio.dart';
@@ -190,5 +202,39 @@ Future<void> initDependencies() async {
   );
 
   // ── GENERATOR MANAGED ─────────────────────────────────────
+
+  // DAO — depends on AppDatabase (already registered)
+  sl.registerLazySingleton<ActorCacheDao>(() => ActorCacheDao(sl()));
+
+  // Data sources
+  sl.registerLazySingleton<ActorRemoteDataSource>(
+    () => ActorRemoteDataSourceImpl(dio: sl()),
+  );
+  sl.registerLazySingleton<ActorLocalDataSource>(
+    () => ActorLocalDataSourceImpl(dao: sl()),
+  );
+
+  // Repository — API-first with cache fallback
+  sl.registerLazySingleton<ActorRepository>(
+    () => ActorRepositoryImpl(remote: sl(), local: sl()),
+  );
+
+  // Use cases
+  sl.registerLazySingleton(() => GetAllActorUseCase(sl()));
+  sl.registerLazySingleton(() => GetActorUseCase(sl()));
+  sl.registerLazySingleton(() => CreateActorUseCase(sl()));
+  sl.registerLazySingleton(() => UpdateActorUseCase(sl()));
+  sl.registerLazySingleton(() => DeleteActorUseCase(sl()));
+
+  // BLoC
+  sl.registerFactory<ActorBloc>(
+    () => ActorBloc(
+      getAllUseCase: sl(),
+      getUseCase: sl(),
+      createUseCase: sl(),
+      updateUseCase: sl(),
+      deleteUseCase: sl(),
+    ),
+  );
   // ── END GENERATOR MANAGED ─────────────────────────────────
 }

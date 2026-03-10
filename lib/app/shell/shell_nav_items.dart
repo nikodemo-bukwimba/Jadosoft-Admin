@@ -51,6 +51,15 @@ abstract class ShellNavItems {
       //   if (auth.can('feature_name.view'))
       //     NavItem(id: '...', label: '...', icon: ..., path: AppRouter.featureList),
 
+      
+      // Actors (Level 1, generated 2026-03-10)
+      if (auth.can('actors.view'))
+        NavItem(
+          id:    'actor',
+          label: 'Actors',
+          icon:  Icons.people_outlined,
+          path:  AppRouter.actorList,
+        ),
       // ── END GENERATOR TABS ────────────────────────────────
 
       // ── Permission-gated — Dashboard ──────────────────────

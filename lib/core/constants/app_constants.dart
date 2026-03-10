@@ -39,4 +39,7 @@ class AppConstants {
   /// Dashboard stats TTL — 2 minutes.
   /// Short because admin data (user counts, revenue) changes frequently.
   static const int dashboardCacheTtlMinutes = 2;
+
+  //-----------
+  static const int actorCacheTtlMinutes = 10;
 }

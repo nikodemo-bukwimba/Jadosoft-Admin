@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/enums/form_mode.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/bloc/auth_state.dart';
 import '../../features/auth/domain/entities/account_session.dart';
@@ -18,6 +19,13 @@ import '../shell/shell_page_home_tab.dart';
 
 // ── GENERATOR FEATURE PAGE IMPORTS — append only ─────────────────────────────
  
+import '../../features/actor/presentation/pages/actor_list_page.dart';
+import '../../features/actor/presentation/pages/actor_detail_page.dart';
+import '../../features/actor/presentation/pages/actor_form_page.dart';
+import '../../features/actor/presentation/bloc/actor_bloc.dart';
+import '../../features/actor/presentation/bloc/actor_event.dart';
+import '../../config/di/injection_container.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 // ── END GENERATOR FEATURE PAGE IMPORTS ───────────────────────────────────────
 
 class AppRouter {
@@ -31,6 +39,14 @@ class AppRouter {
 
   // ── GENERATOR ROUTE CONSTANTS — append only ──────────────
 
+    static const String actorList   = '/actors';
+  static const String actorCreate = '/actors/create';
+  static const String actorDetail = '/actors/:id';
+  static const String actorEdit   = '/actors/:id/edit';
+
+  /// Helpers for building concrete paths with a known id.
+  static String actorDetailPath(String id) => '/actors/$id';
+  static String actorEditPath(String id)   => '/actors/$id/edit';
   // ── END GENERATOR ROUTE CONSTANTS ────────────────────────
 
   static GoRouter createRouter(AuthBloc authBloc) {
@@ -121,6 +137,42 @@ class AppRouter {
             GoRoute(path: profile, builder: (_, __) => const ProfilePage()),
             // ── GENERATOR ROUTES — append only ───────────────
  
+            
+            // Actors routes (Level 1, generated 2026-03-10)
+            GoRoute(
+              path: actorList,
+              builder: (_, __) => BlocProvider(
+                create: (_) => sl<ActorBloc>()..add(ActorLoadAllRequested()),
+                child: const ActorListPage(),
+              ),
+            ),
+            GoRoute(
+              path: actorCreate,
+              builder: (_, __) => BlocProvider(
+                create: (_) => sl<ActorBloc>(),
+                child: const ActorFormPage(mode: ActorFormMode.create),
+              ),
+            ),
+            GoRoute(
+              path: actorDetail,
+              builder: (_, state) {
+                final id = state.pathParameters['id'] ?? '';
+                return BlocProvider(
+                  create: (_) => sl<ActorBloc>()..add(ActorLoadOneRequested(id)),
+                  child: const ActorDetailPage(),
+                );
+              },
+            ),
+            GoRoute(
+              path: actorEdit,
+              builder: (_, state) {
+                final id = state.pathParameters['id'] ?? '';
+                return BlocProvider(
+                  create: (_) => sl<ActorBloc>()..add(ActorLoadOneRequested(id)),
+                  child: ActorFormPage(mode: ActorFormMode.edit, id: id),
+                );
+              },
+            ),
             // ── END GENERATOR ROUTES ─────────────────────────
           ],
         ),
@@ -220,6 +272,7 @@ class _SplashScreen extends StatelessWidget {
     );
   }
 }
+
 
 
 
