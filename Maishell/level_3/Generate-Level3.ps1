@@ -19,7 +19,7 @@ Import-Module (Join-Path $ModuleRoot "TemplateEngine.psm1")              -Force
 Import-Module (Join-Path $ModuleRoot "Validator.psm1")                   -Force
 Import-Module (Join-Path $GenRoot    "Level3EntityGenerator.psm1")       -Force
 Import-Module (Join-Path $GenRoot    "Level3DataGenerator.psm1")         -Force
-Import-Module (Join-Path $GenRoot    "Level1UseCaseGenerator.psm1")      -Force   # Reused from Level 1
+Import-Module (Join-Path $GenRoot    "Level3UseCaseGenerator.psm1")      -Force 
 Import-Module (Join-Path $GenRoot    "Level3StateMachineGenerator.psm1") -Force
 Import-Module (Join-Path $GenRoot    "Level3WorkflowGenerator.psm1")     -Force
 Import-Module (Join-Path $GenRoot    "Level3BlocGenerator.psm1")         -Force

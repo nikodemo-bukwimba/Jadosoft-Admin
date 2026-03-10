@@ -67,12 +67,11 @@ function _Validate-FeatureBlock {
         $Errors.Add("feature.maturity must be 0-5. Got: $($f.maturity)")
     }
 
-    # permission — required, snake_case
-    if ([string]::IsNullOrWhiteSpace($f.permission)) {
-        $Errors.Add("feature.permission is required")
-    }
-    elseif ($f.permission -notmatch '^[a-z][a-z0-9_]*$') {
-        $Errors.Add("feature.permission must be snake_case. Got: '$($f.permission)'")
+    # permission — optional. If provided, must be snake_case.
+    if (-not [string]::IsNullOrWhiteSpace($f.permission)) {
+        if ($f.permission -notmatch '^[a-z][a-z0-9_]*$') {
+            $Errors.Add("feature.permission must be snake_case. Got: '$($f.permission)'")
+        }
     }
 }
 

@@ -4,7 +4,7 @@
 #
 # Level 0 has NO BLoC, NO DI registrations.
 # Routes are GoRoute entries inside ShellRoute — no BlocProvider wrapping.
-# Nav item is a permission-gated NavItem — no page import needed in shell_nav_items.dart.
+# Nav item is a NavItem — permission-gated only if permission is provided.
 # ============================================================
 
 <#
@@ -76,8 +76,8 @@ function Update-AppRouter {
 
 <#
 .SYNOPSIS
-    Appends a permission-gated NavItem to shell_nav_items.dart for a Level 0 feature.
-    NavItem only needs the path — no page import required in shell_nav_items.dart.
+    Appends a NavItem to shell_nav_items.dart for a Level 0 feature.
+    Permission-gated only if feature.permission is provided in config.
 #>
 function Update-ShellNavItems {
     param([Parameter(Mandatory)][hashtable]$Ctx)
@@ -95,14 +95,13 @@ function Update-ShellNavItems {
         return
     }
 
-    # ── Permission slug from config ────────────────────────
+    # ── Permission slug (optional) + icon ─────────────────
     $fperm = $config.feature.permission
-
-    # ── Icon from config or defaults ───────────────────────
     $icon = if ($config.feature.icon) { $config.feature.icon } else { 'Icons.article_outlined' }
 
-    # ── NavItem entry — permission-gated, path-only ────────
-    $navItem = @"
+    # ── NavItem — permission-gated only if permission provided ──
+    if (-not [string]::IsNullOrWhiteSpace($fperm)) {
+        $navItem = @"
 
       // $flabel (Level 0 — static, generated $(Get-Date -Format 'yyyy-MM-dd'))
       if (auth.can('${fperm}.view'))
@@ -113,11 +112,23 @@ function Update-ShellNavItems {
           path:  AppRouter.${fname}Page,
         ),
 "@
+    }
+    else {
+        $navItem = @"
+
+      // $flabel (Level 0 — static, generated $(Get-Date -Format 'yyyy-MM-dd'))
+      NavItem(
+        id:    '${fname}',
+        label: '$flabel',
+        icon:  $icon,
+        path:  AppRouter.${fname}Page,
+      ),
+"@
+    }
 
     # ── Write to file ──────────────────────────────────────
     $content = Get-Content $navPath -Raw
 
-    # Insert NavItem inside generator markers
     $tabMarker = '// ── END GENERATOR TABS'
     if ($content.Contains($tabMarker)) {
         $content = $content.Replace($tabMarker, "$navItem`n      $tabMarker")

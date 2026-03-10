@@ -17,12 +17,12 @@ $GenRoot = Join-Path $PSScriptRoot "generators"
 
 Import-Module (Join-Path $ModuleRoot "TemplateEngine.psm1")              -Force
 Import-Module (Join-Path $ModuleRoot "Validator.psm1")                   -Force
-Import-Module (Join-Path $GenRoot    "Level3EntityGenerator.psm1")       -Force
-Import-Module (Join-Path $GenRoot    "Level3DataGenerator.psm1")         -Force
-Import-Module (Join-Path $GenRoot    "Level1UseCaseGenerator.psm1")      -Force
-Import-Module (Join-Path $GenRoot    "Level3StateMachineGenerator.psm1") -Force
-Import-Module (Join-Path $GenRoot    "Level3BlocGenerator.psm1")         -Force
-Import-Module (Join-Path $GenRoot    "Level3PageGenerator.psm1")         -Force
+Import-Module (Join-Path $GenRoot    "Level2EntityGenerator.psm1")       -Force
+Import-Module (Join-Path $GenRoot    "Level2DataGenerator.psm1")         -Force
+Import-Module (Join-Path $GenRoot    "Level2UseCaseGenerator.psm1")      -Force
+Import-Module (Join-Path $GenRoot    "Level2StateMachineGenerator.psm1") -Force
+Import-Module (Join-Path $GenRoot    "Level2BlocGenerator.psm1")         -Force
+Import-Module (Join-Path $GenRoot    "Level2PageGenerator.psm1")         -Force
 Import-Module (Join-Path $GenRoot    "Level2WiringGenerator.psm1")       -Force
 
 function Write-Header([string]$t) { Write-Host "`n===============================================" -ForegroundColor DarkCyan; Write-Host " $t" -ForegroundColor Cyan; Write-Host "===============================================" -ForegroundColor DarkCyan }

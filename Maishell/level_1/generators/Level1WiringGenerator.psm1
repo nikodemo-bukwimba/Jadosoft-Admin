@@ -1,5 +1,8 @@
 # ============================================================
 # Level1WiringGenerator.psm1 — DI + Routes + Nav
+# FIX: Routes use ${fclass}FormMode (feature-specific, inlined in form page),
+#      not a bare FormMode that has no declaration in scope.
+# FIX: Permission is optional — NavItem is visible to all if not provided.
 # ============================================================
 
 function Update-InjectionContainer {
@@ -93,6 +96,8 @@ function Update-AppRouter {
   if (-not (Test-Path $routerPath)) { Write-Warning "app_router.dart not found — skipping routes"; return }
 
   # ── Imports ────────────────────────────────────────────
+  # NOTE: ${fclass}FormMode is defined inline in ${fname}_form_page.dart (Level 1).
+  # Importing the form page file is sufficient — no separate enum file needed.
   $imports = @(
     "import '../../features/${fname}/presentation/pages/${fname}_list_page.dart';",
     "import '../../features/${fname}/presentation/pages/${fname}_detail_page.dart';",
@@ -116,6 +121,7 @@ function Update-AppRouter {
 "@
 
   # ── GoRoute entries inside ShellRoute ─────────────────
+  # FIX: use ${fclass}FormMode (inlined enum in form page), not bare FormMode.
   $goRoutes = @"
 
             // $flabel routes (Level 1, generated $(Get-Date -Format 'yyyy-MM-dd'))
@@ -130,7 +136,7 @@ function Update-AppRouter {
               path: ${fname}Create,
               builder: (_, __) => BlocProvider(
                 create: (_) => sl<${fclass}Bloc>(),
-                child: const ${fclass}FormPage(mode: FormMode.create),
+                child: const ${fclass}FormPage(mode: ${fclass}FormMode.create),
               ),
             ),
             GoRoute(
@@ -149,7 +155,7 @@ function Update-AppRouter {
                 final id = state.pathParameters['id'] ?? '';
                 return BlocProvider(
                   create: (_) => sl<${fclass}Bloc>()..add(${fclass}LoadOneRequested(id)),
-                  child: ${fclass}FormPage(mode: FormMode.edit, id: id),
+                  child: ${fclass}FormPage(mode: ${fclass}FormMode.edit, id: id),
                 );
               },
             ),
@@ -184,12 +190,13 @@ function Update-ShellNavItems {
   $navPath = Join-Path $pRoot "lib\app\shell\shell_nav_items.dart"
   if (-not (Test-Path $navPath)) { Write-Warning "shell_nav_items.dart not found — skipping nav"; return }
 
-  # ── Permission slug + icon from config ─────────────────
+  # ── Permission slug (optional) + icon ─────────────────
   $fperm = $config.feature.permission
   $icon = if ($config.feature.icon) { $config.feature.icon } else { 'Icons.list_outlined' }
 
-  # ── NavItem entry — permission-gated, path-only ────────
-  $navItem = @"
+  # ── NavItem — permission-gated only if permission provided ──
+  if (-not [string]::IsNullOrWhiteSpace($fperm)) {
+    $navItem = @"
 
       // $flabel (Level 1, generated $(Get-Date -Format 'yyyy-MM-dd'))
       if (auth.can('${fperm}.view'))
@@ -200,6 +207,19 @@ function Update-ShellNavItems {
           path:  AppRouter.${fname}List,
         ),
 "@
+  }
+  else {
+    $navItem = @"
+
+      // $flabel (Level 1, generated $(Get-Date -Format 'yyyy-MM-dd'))
+      NavItem(
+        id:    '${fname}',
+        label: '$flabel',
+        icon:  $icon,
+        path:  AppRouter.${fname}List,
+      ),
+"@
+  }
 
   $content = Get-Content $navPath -Raw
   $m1 = '// ── END GENERATOR TABS'

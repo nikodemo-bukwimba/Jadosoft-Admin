@@ -1,5 +1,6 @@
 # ============================================================
 # Validator.psm1
+# FIX: feature.permission is optional — if provided, must be snake_case.
 # ============================================================
 
 function Invoke-ConfigValidation {
@@ -26,8 +27,10 @@ function _Validate-FeatureBlock {
     if ([string]::IsNullOrWhiteSpace($f.purpose)) { $Errors.Add("feature.purpose is required") }
     if ($null -eq $f.maturity) { $Errors.Add("feature.maturity is required") }
     elseif ($f.maturity -lt 0 -or $f.maturity -gt 5) { $Errors.Add("feature.maturity must be 0-5. Got: $($f.maturity)") }
-    if ([string]::IsNullOrWhiteSpace($f.permission)) { $Errors.Add("feature.permission is required") }
-    elseif ($f.permission -notmatch '^[a-z][a-z0-9_]*$') { $Errors.Add("feature.permission must be snake_case. Got: '$($f.permission)'") }
+    # permission — optional. If provided, must be snake_case.
+    if (-not [string]::IsNullOrWhiteSpace($f.permission)) {
+        if ($f.permission -notmatch '^[a-z][a-z0-9_]*$') { $Errors.Add("feature.permission must be snake_case. Got: '$($f.permission)'") }
+    }
 }
 
 function _Validate-MaturityGates {
@@ -62,7 +65,6 @@ function _Validate-Entities {
         $eDef = $ep.Value
         if ($eDef.primary -eq $true) { $primaryCount++ }
 
-        # Fields validation
         if ($null -eq $eDef.fields) { $Errors.Add("Entity '$eName' must declare a 'fields' block"); continue }
         $fieldProps = $eDef.fields.PSObject.Properties
         if ($fieldProps.Count -eq 0) { $Errors.Add("Entity '$eName' must have at least one field") }
@@ -73,8 +75,6 @@ function _Validate-Entities {
             $fDef = $fp.Value
             if ($fName -cmatch '^[A-Z]') { $Errors.Add("Field '$eName.$fName' must be camelCase") }
             if ($fDef.primary -eq $true) { $hasPK = $true }
-
-            # Validate type
             $validTypes = @('String', 'int', 'double', 'bool', 'DateTime')
             if ($fDef.type -and $fDef.type -notin $validTypes -and $fDef.type -notmatch 'Status$') {
                 $Errors.Add("Field '$eName.$fName' has unknown type '$($fDef.type)'")
@@ -82,7 +82,6 @@ function _Validate-Entities {
         }
         if (-not $hasPK) { $Errors.Add("Entity '$eName' must have at least one field with primary: true") }
 
-        # UI form validation: form fields must reference declared fields
         if ($eDef.ui -and $eDef.ui.form) {
             $declaredFields = @($fieldProps | ForEach-Object { $_.Name })
             foreach ($formType in @('create', 'edit')) {
@@ -101,7 +100,6 @@ function _Validate-Entities {
             }
         }
 
-        # Relationship validation
         if ($eDef.relationships) {
             $relProps = $eDef.relationships.PSObject.Properties
             $declaredEntityNames = @($entityProps | ForEach-Object { $_.Name })

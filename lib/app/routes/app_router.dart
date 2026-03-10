@@ -17,6 +17,7 @@ import '../shell/shell_page.dart';
 import '../shell/shell_page_home_tab.dart';
 
 // ── GENERATOR FEATURE PAGE IMPORTS — append only ─────────────────────────────
+
 // ── END GENERATOR FEATURE PAGE IMPORTS ───────────────────────────────────────
 
 class AppRouter {
@@ -29,6 +30,7 @@ class AppRouter {
   static const String profile = '/profile';
 
   // ── GENERATOR ROUTE CONSTANTS — append only ──────────────
+
   // ── END GENERATOR ROUTE CONSTANTS ────────────────────────
 
   static GoRouter createRouter(AuthBloc authBloc) {
@@ -118,6 +120,9 @@ class AppRouter {
             GoRoute(path: dashboard, builder: (_, __) => const DashboardPage()),
             GoRoute(path: profile, builder: (_, __) => const ProfilePage()),
             // ── GENERATOR ROUTES — append only ───────────────
+
+
+
             // ── END GENERATOR ROUTES ─────────────────────────
           ],
         ),
@@ -217,4 +222,5 @@ class _SplashScreen extends StatelessWidget {
     );
   }
 }
+
 

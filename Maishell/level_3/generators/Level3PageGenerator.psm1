@@ -10,6 +10,8 @@
 #              Missing dot + PS7 ?. bug
 #   Bug 6 fix: Card delete msg — `${item.field}` via single-quoted concat
 #              PS eats ${item} as an empty PS variable in here-strings
+# FIX: FormNode is feature-specific (${fclass}FormNode) generated per-feature,
+#      not a shared FormMode in core/enums
 # ============================================================
 
 function Invoke-GeneratePages {
@@ -17,7 +19,7 @@ function Invoke-GeneratePages {
 
   $meta = Get-PrimaryEntityMeta -Config $Ctx.Config
 
-  _Gen-FormModeEnum  -Ctx $Ctx -NewFile $NewFile
+  _Gen-FormNode      -Ctx $Ctx -NewFile $NewFile
   _Gen-ListPage      -Ctx $Ctx -NewFile $NewFile -Meta $meta
   _Gen-DetailPage    -Ctx $Ctx -NewFile $NewFile -Meta $meta
   _Gen-FormPage      -Ctx $Ctx -NewFile $NewFile -Meta $meta
@@ -25,15 +27,19 @@ function Invoke-GeneratePages {
   _Gen-StatusBadge   -Ctx $Ctx -NewFile $NewFile
 }
 
-function _Gen-FormModeEnum {
+function _Gen-FormNode {
   param($Ctx, $NewFile)
-  $pRoot = $Ctx.ProjectRoot
-  $path = Join-Path $pRoot "lib\core\enums\form_mode.dart"
-  if (Test-Path $path) { return }
+  $fname = $Ctx.Tokens.FNAME
+  $fclass = $Ctx.Tokens.FCLASS
+  $fDir = $Ctx.FeatureDir
+
+  # Each feature owns its own FormNode enum — no shared core enum.
+  $path = Join-Path $fDir "presentation\enums\${fname}_form_node.dart"
   $content = @"
-/// Shared enum used by all feature form pages.
-/// Generated once — safe across multiple features.
-enum FormMode { create, edit }
+/// Form navigation node for ${fclass}.
+/// Generated per-feature — use ${fclass}FormNode to avoid conflicts
+/// across features that each have their own form pages.
+enum ${fclass}FormNode { create, edit }
 "@
   & $NewFile $path $content
 }
@@ -448,19 +454,19 @@ function _Gen-FormPage {
   $content = @"
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../../core/enums/form_mode.dart';
+import '../enums/${fname}_form_node.dart';
 import '../bloc/${fname}_bloc.dart';
 import '../bloc/${fname}_event.dart';
 import '../bloc/${fname}_state.dart';
 import '../../domain/usecases/create_${fname}_usecase.dart';
 
 class ${fclass}FormPage extends StatefulWidget {
-  final FormMode mode;
+  final ${fclass}FormNode mode;
   final String? id;
 
   const ${fclass}FormPage({
     super.key,
-    this.mode = FormMode.create,
+    this.mode = ${fclass}FormNode.create,
     this.id,
   });
 
@@ -483,7 +489,7 @@ $($disposeStmts -join "`n")
 
   @override
   Widget build(BuildContext context) {
-    final isCreate = widget.mode == FormMode.create;
+    final isCreate = widget.mode == ${fclass}FormNode.create;
 
     return Scaffold(
       appBar: AppBar(

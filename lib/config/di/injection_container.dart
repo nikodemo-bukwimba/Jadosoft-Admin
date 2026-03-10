@@ -13,7 +13,6 @@
 //   from Drift first and only hit the API when the TTL has expired.
 // ─────────────────────────────────────────────────────────────
 // ── GENERATOR FEATURE IMPORTS — append only ──────────────────
-
 // ── END GENERATOR FEATURE IMPORTS
 
 import 'package:dio/dio.dart';
@@ -190,6 +189,5 @@ Future<void> initDependencies() async {
   );
 
   // ── GENERATOR MANAGED ─────────────────────────────────────
-
   // ── END GENERATOR MANAGED ─────────────────────────────────
 }

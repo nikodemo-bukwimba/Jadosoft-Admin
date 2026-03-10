@@ -1,7 +1,7 @@
 # ============================================================
 # Level4WiringGenerator.psm1 — DI + Routes + Nav for Aggregator
 # FIX: Routes use GoRouter GoRoute, not MaterialPageRoute
-# FIX: Nav uses permission-gated NavItem, not ShellTabConfig
+# FIX: Nav uses NavItem — permission-gated only if permission is provided
 # ============================================================
 
 function _Insert-AboveMarker {
@@ -152,12 +152,13 @@ function Update-ShellNavItems {
     $navPath = Join-Path $pRoot "lib\app\shell\shell_nav_items.dart"
     if (-not (Test-Path $navPath)) { Write-Warning "shell_nav_items.dart not found"; return }
 
-    # ── Permission slug + icon from config ─────────────────
+    # ── Permission slug (optional) + icon ─────────────────
     $fperm = $config.feature.permission
     $icon = if ($config.feature.icon) { $config.feature.icon } else { 'Icons.dashboard_outlined' }
 
-    # ── NavItem entry — permission-gated, path-only ────────
-    $navItem = @"
+    # ── NavItem — permission-gated only if permission provided ──
+    if (-not [string]::IsNullOrWhiteSpace($fperm)) {
+        $navItem = @"
 
       // $flabel (Level 4 Aggregator, generated $(Get-Date -Format 'yyyy-MM-dd'))
       if (auth.can('${fperm}.view'))
@@ -168,6 +169,19 @@ function Update-ShellNavItems {
           path:  AppRouter.${fname}Dashboard,
         ),
 "@
+    }
+    else {
+        $navItem = @"
+
+      // $flabel (Level 4 Aggregator, generated $(Get-Date -Format 'yyyy-MM-dd'))
+      NavItem(
+        id:    '${fname}',
+        label: '$flabel',
+        icon:  $icon,
+        path:  AppRouter.${fname}Dashboard,
+      ),
+"@
+    }
 
     $content = Get-Content $navPath -Raw
     $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR TABS' -Insert $navItem

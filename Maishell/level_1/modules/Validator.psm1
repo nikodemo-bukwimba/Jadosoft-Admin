@@ -1,5 +1,6 @@
 # ============================================================
 # Validator.psm1
+# FIX: feature.permission is optional — if provided, must be snake_case.
 # ============================================================
 
 function Invoke-ConfigValidation {
@@ -13,7 +14,7 @@ function Invoke-ConfigValidation {
             _Validate-Entities -Config $Config -Errors $errors
         }
     }
-      return ,$errors.ToArray()
+    return , $errors.ToArray()
 }
 
 function _Validate-FeatureBlock {
@@ -22,18 +23,20 @@ function _Validate-FeatureBlock {
     $f = $Config.feature
     if ([string]::IsNullOrWhiteSpace($f.name)) { $Errors.Add("feature.name is required") }
     elseif ($f.name -notmatch '^[a-z][a-z0-9_]*$') { $Errors.Add("feature.name must be snake_case. Got: '$($f.name)'") }
-    if ([string]::IsNullOrWhiteSpace($f.label))   { $Errors.Add("feature.label is required") }
-    if ([string]::IsNullOrWhiteSpace($f.purpose))  { $Errors.Add("feature.purpose is required") }
+    if ([string]::IsNullOrWhiteSpace($f.label)) { $Errors.Add("feature.label is required") }
+    if ([string]::IsNullOrWhiteSpace($f.purpose)) { $Errors.Add("feature.purpose is required") }
     if ($null -eq $f.maturity) { $Errors.Add("feature.maturity is required") }
     elseif ($f.maturity -lt 0 -or $f.maturity -gt 5) { $Errors.Add("feature.maturity must be 0-5. Got: $($f.maturity)") }
-    if ([string]::IsNullOrWhiteSpace($f.permission)) { $Errors.Add("feature.permission is required") }
-    elseif ($f.permission -notmatch '^[a-z][a-z0-9_]*$') { $Errors.Add("feature.permission must be snake_case. Got: '$($f.permission)'") }
+    # permission — optional. If provided, must be snake_case.
+    if (-not [string]::IsNullOrWhiteSpace($f.permission)) {
+        if ($f.permission -notmatch '^[a-z][a-z0-9_]*$') { $Errors.Add("feature.permission must be snake_case. Got: '$($f.permission)'") }
+    }
 }
 
 function _Validate-MaturityGates {
     param([psobject]$Config, [int]$Maturity, [System.Collections.Generic.List[string]]$Errors)
     if ($Maturity -eq 0) {
-        if ($null -ne $Config.storage)      { $Errors.Add("Level 0 features must NOT declare a 'storage' block") }
+        if ($null -ne $Config.storage) { $Errors.Add("Level 0 features must NOT declare a 'storage' block") }
         if ($null -ne $Config.stateMachine) { $Errors.Add("Level 0 features must NOT declare a 'stateMachine' block") }
     }
     if ($Maturity -ge 1 -and $Maturity -ne 4) {
@@ -59,10 +62,9 @@ function _Validate-Entities {
     $primaryCount = 0
     foreach ($ep in $entityProps) {
         $eName = $ep.Name
-        $eDef  = $ep.Value
+        $eDef = $ep.Value
         if ($eDef.primary -eq $true) { $primaryCount++ }
 
-        # Fields validation
         if ($null -eq $eDef.fields) { $Errors.Add("Entity '$eName' must declare a 'fields' block"); continue }
         $fieldProps = $eDef.fields.PSObject.Properties
         if ($fieldProps.Count -eq 0) { $Errors.Add("Entity '$eName' must have at least one field") }
@@ -70,22 +72,19 @@ function _Validate-Entities {
         $hasPK = $false
         foreach ($fp in $fieldProps) {
             $fName = $fp.Name
-            $fDef  = $fp.Value
+            $fDef = $fp.Value
             if ($fName -cmatch '^[A-Z]') { $Errors.Add("Field '$eName.$fName' must be camelCase") }
             if ($fDef.primary -eq $true) { $hasPK = $true }
-
-            # Validate type
-            $validTypes = @('String','int','double','bool','DateTime')
+            $validTypes = @('String', 'int', 'double', 'bool', 'DateTime')
             if ($fDef.type -and $fDef.type -notin $validTypes -and $fDef.type -notmatch 'Status$') {
                 $Errors.Add("Field '$eName.$fName' has unknown type '$($fDef.type)'")
             }
         }
         if (-not $hasPK) { $Errors.Add("Entity '$eName' must have at least one field with primary: true") }
 
-        # UI form validation: form fields must reference declared fields
         if ($eDef.ui -and $eDef.ui.form) {
             $declaredFields = @($fieldProps | ForEach-Object { $_.Name })
-            foreach ($formType in @('create','edit')) {
+            foreach ($formType in @('create', 'edit')) {
                 $formFields = $eDef.ui.form.$formType
                 if ($null -ne $formFields) {
                     foreach ($ff in $formFields) {
@@ -101,27 +100,26 @@ function _Validate-Entities {
             }
         }
 
-        # Relationship validation
         if ($eDef.relationships) {
             $relProps = $eDef.relationships.PSObject.Properties
             $declaredEntityNames = @($entityProps | ForEach-Object { $_.Name })
             foreach ($rp in $relProps) {
                 $rName = $rp.Name
-                $rDef  = $rp.Value
+                $rDef = $rp.Value
                 if ($rDef.type -eq 'hasMany' -or $rDef.type -eq 'hasOne') {
                     if ($rDef.entity -notin $declaredEntityNames) {
                         $Errors.Add("Relationship '$eName.$rName' references undeclared entity '$($rDef.entity)'")
                     }
                 }
                 if ($rDef.type -eq 'belongsTo') {
-                    if (-not $rDef.entity)  { $Errors.Add("belongsTo '$eName.$rName' must declare 'entity'") }
+                    if (-not $rDef.entity) { $Errors.Add("belongsTo '$eName.$rName' must declare 'entity'") }
                     if (-not $rDef.feature) { $Errors.Add("belongsTo '$eName.$rName' must declare 'feature'") }
                 }
             }
         }
     }
-    if ($primaryCount -eq 0)  { $Errors.Add("Exactly one entity must have primary: true (found 0)") }
-    if ($primaryCount -gt 1)  { $Errors.Add("Exactly one entity must have primary: true (found $primaryCount)") }
+    if ($primaryCount -eq 0) { $Errors.Add("Exactly one entity must have primary: true (found 0)") }
+    if ($primaryCount -gt 1) { $Errors.Add("Exactly one entity must have primary: true (found $primaryCount)") }
 }
 
 Export-ModuleMember -Function 'Invoke-ConfigValidation'
