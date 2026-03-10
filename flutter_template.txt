@@ -1,6 +1,6 @@
 ================================================================================
   FLUTTER CLEAN ARCHITECTURE TEMPLATE - lib/ EXPORT
-  Generated : 2026-03-09 18:38:34
+  Generated : 2026-03-10 08:51:43
   Root Path : D:\projects\hmscp-pd\hmscp-pd
 ================================================================================
 
@@ -276,6 +276,7 @@ import '../shell/shell_page.dart';
 import '../shell/shell_page_home_tab.dart';
 
 // ── GENERATOR FEATURE PAGE IMPORTS — append only ─────────────────────────────
+ 
 // ── END GENERATOR FEATURE PAGE IMPORTS ───────────────────────────────────────
 
 class AppRouter {
@@ -288,6 +289,7 @@ class AppRouter {
   static const String profile = '/profile';
 
   // ── GENERATOR ROUTE CONSTANTS — append only ──────────────
+
   // ── END GENERATOR ROUTE CONSTANTS ────────────────────────
 
   static GoRouter createRouter(AuthBloc authBloc) {
@@ -377,6 +379,7 @@ class AppRouter {
             GoRoute(path: dashboard, builder: (_, __) => const DashboardPage()),
             GoRoute(path: profile, builder: (_, __) => const ProfilePage()),
             // ── GENERATOR ROUTES — append only ───────────────
+ 
             // ── END GENERATOR ROUTES ─────────────────────────
           ],
         ),
@@ -478,6 +481,14 @@ class _SplashScreen extends StatelessWidget {
 }
 
 
+
+
+
+
+
+
+
+
 --------------------------------------------------------------------------------
 FILE [3 / 89] : lib\app\shell\shell_nav_items.dart
 --------------------------------------------------------------------------------
@@ -505,7 +516,6 @@ FILE [3 / 89] : lib\app\shell\shell_nav_items.dart
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
-
 import '../../core/rbac/rbac_extensions.dart';
 import '../../customnav/nav_item.dart';
 import '../../features/auth/presentation/bloc/auth_state.dart';
@@ -556,7 +566,6 @@ abstract class ShellNavItems {
     ];
   }
 }
-
 
 --------------------------------------------------------------------------------
 FILE [4 / 89] : lib\app\shell\shell_page_home_tab.dart
@@ -690,7 +699,6 @@ FILE [5 / 89] : lib\app\shell\shell_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-
 import '../../core/extensions/string_extensions.dart';
 import '../../customnav/navigation.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
@@ -974,7 +982,7 @@ FILE [7 / 89] : lib\config\di\injection_container.dart
 //   from Drift first and only hit the API when the TTL has expired.
 // ─────────────────────────────────────────────────────────────
 // ── GENERATOR FEATURE IMPORTS — append only ──────────────────
-
+ 
 // ── END GENERATOR FEATURE IMPORTS
 
 import 'package:dio/dio.dart';
@@ -1151,10 +1159,8 @@ Future<void> initDependencies() async {
   );
 
   // ── GENERATOR MANAGED ─────────────────────────────────────
-
   // ── END GENERATOR MANAGED ─────────────────────────────────
 }
-
 
 --------------------------------------------------------------------------------
 FILE [8 / 89] : lib\config\theme\app_theme.dart

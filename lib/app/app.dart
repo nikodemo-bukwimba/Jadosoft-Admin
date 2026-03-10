@@ -12,7 +12,7 @@
 //   Creating them in build() would recreate on every rebuild — a subtle bug.
 //
 // MIGRATION NOTE:
-//   Previously main.dart contained FcaApp (StatelessWidget) with
+//   Previously main.dart contained HMSCPPD (StatelessWidget) with
 //   MaterialApp + onGenerateRoute. That approach is replaced here with
 //   MaterialApp.router so GoRouter drives all navigation.
 // ─────────────────────────────────────────────────────────────
@@ -28,14 +28,14 @@ import '../features/auth/presentation/bloc/auth_event.dart';
 import '../features/profile/presentation/bloc/profile_bloc.dart';
 import 'routes/app_router.dart';
 
-class FcaApp extends StatefulWidget {
-  const FcaApp({super.key});
+class HMSCPPD extends StatefulWidget {
+  const HMSCPPD({super.key});
 
   @override
-  State<FcaApp> createState() => _FcaAppState();
+  State<HMSCPPD> createState() => _HMSCPPDState();
 }
 
-class _FcaAppState extends State<FcaApp> {
+class _HMSCPPDState extends State<HMSCPPD> {
   late final AuthBloc _authBloc;
   late final GoRouter _router;
 
@@ -69,7 +69,7 @@ class _FcaAppState extends State<FcaApp> {
         BlocProvider<ProfileBloc>(create: (_) => sl<ProfileBloc>()),
       ],
       child: MaterialApp.router(
-        title: 'FCA',
+        title: 'The Dashboard',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
