@@ -1,10 +1,13 @@
 // actor_list_page.dart
 // ─────────────────────────────────────────────────────────────
-// Phase 2: Status filter chips, search bar, offline indicator.
+// Phase 2: Status filter chips, search bar.
+// Uses GoRouter (context.push / context.go) for navigation.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
 import '../bloc/actor_bloc.dart';
 import '../bloc/actor_event.dart';
 import '../bloc/actor_state.dart';
@@ -48,12 +51,12 @@ class _ActorListPageState extends State<ActorListPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Actors')),
       floatingActionButton: FloatingActionButton(
-        onPressed: () =>
-            Navigator.of(context).pushNamed('/actors/create').then((result) {
-              if (result == true) {
-                context.read<ActorBloc>().add(ActorLoadAllRequested());
-              }
-            }),
+        onPressed: () async {
+          final result = await context.push<bool>(AppRouter.actorCreate);
+          if (result == true && mounted) {
+            context.read<ActorBloc>().add(ActorLoadAllRequested());
+          }
+        },
         child: const Icon(Icons.add),
       ),
       body: Column(
@@ -206,16 +209,16 @@ class _ActorListPageState extends State<ActorListPage> {
                       itemCount: filtered.length,
                       itemBuilder: (_, i) => ActorCard(
                         item: filtered[i],
-                        onTap: () => Navigator.of(context)
-                            .pushNamed(
-                              '/actors/detail',
-                              arguments: {'id': filtered[i].id},
-                            )
-                            .then(
-                              (_) => context.read<ActorBloc>().add(
-                                ActorLoadAllRequested(),
-                              ),
-                            ),
+                        onTap: () async {
+                          await context.push(
+                            AppRouter.actorDetailPath(filtered[i].id),
+                          );
+                          if (mounted) {
+                            context.read<ActorBloc>().add(
+                              ActorLoadAllRequested(),
+                            );
+                          }
+                        },
                         onDelete: () => context.read<ActorBloc>().add(
                           ActorDeleteRequested(filtered[i].id),
                         ),

@@ -1,6 +1,7 @@
 // actor_form_page.dart
 // ─────────────────────────────────────────────────────────────
 // Phase 2: Properly handles create + edit modes.
+// Uses GoRouter (context.pop) for navigation.
 //   - Edit mode pre-populates fields from loaded state
 //   - Status uses dropdown (pending/active/suspended/inactive)
 //   - Uses ActorFormMode enum from core/enums (shared across features)
@@ -8,6 +9,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/enums/form_mode.dart';
 import '../../domain/usecases/create_actor_usecase.dart';
 import '../bloc/actor_bloc.dart';
@@ -47,10 +49,10 @@ class _ActorFormPageState extends State<ActorFormPage> {
       appBar: AppBar(title: Text(isCreate ? 'New Actor' : 'Edit Actor')),
       body: BlocConsumer<ActorBloc, ActorState>(
         listener: (context, state) {
-          // ── Success → pop back ──────────────────────────
+          // ── Success → pop back with result ───────────────
           if (state is ActorOperationSuccess) {
             setState(() => _isSubmitting = false);
-            Navigator.of(context).pop(true);
+            context.pop(true);
           }
           // ── Failure → show error ────────────────────────
           if (state is ActorFailure) {

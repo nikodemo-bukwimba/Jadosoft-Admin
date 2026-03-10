@@ -1,10 +1,13 @@
 // actor_detail_page.dart
 // ─────────────────────────────────────────────────────────────
 // Phase 2: Shows actor types as chips, status badge, metadata.
+// Uses GoRouter (context.push) for navigation.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
 import '../../domain/entities/actor_entity.dart';
 import '../bloc/actor_bloc.dart';
 import '../bloc/actor_event.dart';
@@ -25,9 +28,7 @@ class ActorDetailPage extends StatelessWidget {
             onPressed: () {
               final state = context.read<ActorBloc>().state;
               if (state is ActorDetailLoaded) {
-                Navigator.of(
-                  context,
-                ).pushNamed('/actors/edit', arguments: {'id': state.item.id});
+                context.push(AppRouter.actorEditPath(state.item.id));
               }
             },
           ),
@@ -55,7 +56,8 @@ class ActorDetailPage extends StatelessWidget {
                     icon: const Icon(Icons.refresh),
                     label: const Text('Retry'),
                     onPressed: () {
-                      // Retry if we have the id from route
+                      // Retry — pop and let list re-push
+                      context.pop();
                     },
                   ),
                 ],

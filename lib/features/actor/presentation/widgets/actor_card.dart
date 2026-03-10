@@ -1,6 +1,8 @@
 // actor_card.dart
 // ─────────────────────────────────────────────────────────────
 // Phase 2: shows actor types as chips + status badge.
+// FIX: Delete dialog uses dialogContext for Navigator.pop
+//      so it closes the dialog, not the GoRouter page.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
@@ -106,19 +108,19 @@ class ActorCard extends StatelessWidget {
   Future<void> _confirmDelete(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Delete?'),
         content: Text('Remove "${item.displayName}"? This cannot be undone.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
             ),
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Delete'),
           ),
         ],
