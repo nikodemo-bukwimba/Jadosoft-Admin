@@ -99,7 +99,7 @@ class _ShellLogo extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         Text(
-          'FCA',
+          'Admin Panel',
           style: textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w800,
             letterSpacing: 1.5,
