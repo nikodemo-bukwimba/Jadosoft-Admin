@@ -1,103 +1,257 @@
-# ═══════════════════════════════════════════════════════════════
-# HMSCP Platform Admin — Maishell Batch Generator
-# ═══════════════════════════════════════════════════════════════
-#
-# Run from your Flutter project root where Maishell/ folder exists.
+# ============================================================
+# Generate-All.ps1
+# Orchestrator — generates multiple features from a manifest
+# or from a list of config paths passed directly.
 #
 # Usage:
-#   PS> .\generate-all.ps1
-#
-# Prerequisites:
-#   - Flutter Clean Architecture template already scaffolded
-#   - Auth feature already present (from template)
-#   - Maishell generator scripts in .\Maishell\level_N\
-#
-# Generation Order Matters:
-#   1. Level 1 features first (they define entities other features depend on)
-#   2. Level 4 dashboard last (it aggregates from Level 1 features)
-#
-# After Generation:
-#   1. Check injection_container.dart — ensure all DI registrations are wired
-#   2. Check app_router.dart — ensure all routes are registered
-#   3. Check shell_nav_items.dart — ensure nav tabs appear
-#   4. Update core/constants/app_constants.dart with your API base URL
-#
-# API Note:
-#   The users feature requires a GET /api/v1/admin/users endpoint.
-#   Add this route to modules/Platform/Routes/api.php if not present:
-#     Route::apiResource('users', UserAdminController::class)->only(['index', 'show', 'update']);
-#
-# ═══════════════════════════════════════════════════════════════
+#   .\Generate-All.ps1
+#   .\Generate-All.ps1 -ManifestPath .\custom.manifest.json
+#   .\Generate-All.ps1 -Configs @("Maishell\level_0\config.json","Maishell\level_1\config.json")
+#   .\Generate-All.ps1 -DryRun
+#   .\Generate-All.ps1 -Force
+#   .\Generate-All.ps1 -StopOnError
+# ============================================================
 
-$ErrorActionPreference = "Stop"
+param(
+    # Path to manifest file (default: maishell.manifest.json next to this script)
+    [string]$ManifestPath = (Join-Path $PSScriptRoot "maishell.manifest.json"),
 
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  HMSCP Platform Admin — Maishell Feature Generation" -ForegroundColor Cyan
-Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host ""
+    # Alternatively, pass config paths directly — skips manifest entirely
+    [string[]]$Configs,
 
-# ── Feature configs in dependency order ──
-$configs = @(
-    # Level 1 — CRUD features (entities that others reference)
-    @{ Level = 1; Path = ".\configs\actor_types.json";          Label = "Actor Types" }
-    @{ Level = 1; Path = ".\configs\platform_permissions.json"; Label = "Platform Permissions" }
-    @{ Level = 1; Path = ".\configs\platform_roles.json";       Label = "Platform Roles" }
-    @{ Level = 1; Path = ".\configs\actors.json";               Label = "Actors" }
-    @{ Level = 1; Path = ".\configs\organizations.json";        Label = "Organizations" }
-    @{ Level = 1; Path = ".\configs\users.json";                Label = "Users" }
+    # Pass through to each generator
+    [switch]$DryRun,
+    [switch]$Force,
 
-    # Level 4 — Aggregator dashboard (depends on Level 1 features above)
-    @{ Level = 4; Path = ".\configs\admin_dashboard.json";      Label = "Admin Dashboard" }
+    # Halt the entire run on first failure (default: continue and report)
+    [switch]$StopOnError
 )
 
-$total   = $configs.Count
-$success = 0
-$failed  = 0
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
 
-foreach ($c in $configs) {
-    $idx = $configs.IndexOf($c) + 1
-    Write-Host "[$idx/$total] Generating Level $($c.Level): $($c.Label)" -ForegroundColor Yellow
+# ── Helpers ───────────────────────────────────────────────────
+function Write-Header([string]$t) {
+    Write-Host "`n================================================================" -ForegroundColor DarkCyan
+    Write-Host "  $t" -ForegroundColor Cyan
+    Write-Host "================================================================" -ForegroundColor DarkCyan
+}
+function Write-Section([string]$t) {
+    Write-Host "`n  ── $t" -ForegroundColor DarkYellow
+}
+function Write-Step([string]$t) { Write-Host "     > $t" }
+function Write-OK([string]$t) { Write-Host "     [OK] $t" -ForegroundColor Green }
+function Write-Fail([string]$t) { Write-Host "     [FAIL] $t" -ForegroundColor Red }
+function Write-Skip([string]$t) { Write-Host "     [SKIP] $t" -ForegroundColor DarkGray }
+function Write-Warn([string]$t) { Write-Host "     [WARN] $t" -ForegroundColor Yellow }
 
-    if (-not (Test-Path $c.Path)) {
-        Write-Host "  ERROR: Config not found: $($c.Path)" -ForegroundColor Red
-        $failed++
-        continue
+# ── Resolve the generator script for a given maturity level ──
+function Get-GeneratorScript([int]$Maturity) {
+    $name = "Generate-Level${Maturity}.ps1"
+    $path = Join-Path $PSScriptRoot "Maishell\level_${Maturity}\${name}"
+    if (-not (Test-Path $path)) {
+        throw "Generator script not found: $path"
+    }
+    return $path
+}
+
+Write-Header "MAISHELL — Batch Feature Generator"
+
+# ── Build the job list ────────────────────────────────────────
+$jobs = [System.Collections.Generic.List[hashtable]]::new()
+
+if ($Configs -and $Configs.Count -gt 0) {
+    # ── Mode A: explicit config paths passed via -Configs ─────
+    Write-Step "Mode: explicit -Configs list ($($Configs.Count) entries)"
+    foreach ($cp in $Configs) {
+        $jobs.Add(@{ ConfigPath = $cp; Force = $Force.IsPresent })
+    }
+}
+else {
+    # ── Mode B: read manifest ─────────────────────────────────
+    if (-not (Test-Path $ManifestPath)) {
+        Write-Fail "Manifest not found: $ManifestPath"
+        Write-Host "  Create maishell.manifest.json next to this script, or pass -Configs directly." -ForegroundColor Yellow
+        exit 1
     }
 
-    $script = ".\Maishell\level_$($c.Level)\Generate-Level$($c.Level).ps1"
+    Write-Step "Mode: manifest  →  $ManifestPath"
+    $manifest = Get-Content $ManifestPath -Raw | ConvertFrom-Json
 
-    if (-not (Test-Path $script)) {
-        Write-Host "  ERROR: Generator not found: $script" -ForegroundColor Red
-        $failed++
+    if ($null -eq $manifest.features -or $manifest.features.Count -eq 0) {
+        Write-Fail "Manifest has no 'features' entries."
+        exit 1
+    }
+
+    foreach ($entry in $manifest.features) {
+        if ($entry.skip -eq $true) {
+            Write-Skip "Skipping (skip: true): $($entry.config)"
+            continue
+        }
+        # Per-entry force overrides global -Force
+        $entryForce = $Force.IsPresent -or ($entry.force -eq $true)
+        $jobs.Add(@{ ConfigPath = $entry.config; Force = $entryForce })
+    }
+}
+
+if ($jobs.Count -eq 0) {
+    Write-Warn "No features to generate after applying skip filters."
+    exit 0
+}
+
+# ── Load each config and resolve maturity ─────────────────────
+Write-Section "Resolving configs"
+
+$resolved = [System.Collections.Generic.List[hashtable]]::new()
+
+foreach ($job in $jobs) {
+    $rawPath = $job.ConfigPath
+
+    # Resolve relative to the script root
+    $configPath = if ([System.IO.Path]::IsPathRooted($rawPath)) {
+        $rawPath
+    }
+    else {
+        Join-Path $PSScriptRoot $rawPath
+    }
+
+    if (-not (Test-Path $configPath)) {
+        Write-Fail "Config not found: $configPath"
+        if ($StopOnError) { exit 1 }
+        $resolved.Add(@{
+                ConfigPath = $configPath
+                Status     = 'MISSING'
+                Label      = $rawPath
+                Maturity   = $null
+            })
         continue
     }
 
     try {
-        & $script -ConfigPath $c.Path
-        Write-Host "  OK" -ForegroundColor Green
-        $success++
+        $config = Get-Content $configPath -Raw | ConvertFrom-Json
+        $maturity = [int]$config.feature.maturity
+        $label = if ($config.feature.label) { $config.feature.label } else { $config.feature.name }
+
+        $resolved.Add(@{
+                ConfigPath = $configPath
+                Status     = 'PENDING'
+                Label      = $label
+                Maturity   = $maturity
+                Force      = $job.Force
+            })
+        Write-OK "$label  (Level $maturity)  →  $configPath"
     }
     catch {
-        Write-Host "  FAILED: $_" -ForegroundColor Red
+        Write-Fail "Failed to parse config: $configPath — $_"
+        if ($StopOnError) { exit 1 }
+        $resolved.Add(@{
+                ConfigPath = $configPath
+                Status     = 'PARSE_ERROR'
+                Label      = $rawPath
+                Maturity   = $null
+            })
+    }
+}
+
+# ── Sort: ascending maturity so lower levels wire in first ────
+$ordered = $resolved | Where-Object { $_.Status -eq 'PENDING' } |
+Sort-Object { $_.Maturity }
+
+$skipped = $resolved | Where-Object { $_.Status -ne 'PENDING' }
+
+$total = $ordered.Count
+$passed = 0
+$failed = 0
+$results = [System.Collections.Generic.List[hashtable]]::new()
+
+# ── Carry over already-failed/missing entries into results ────
+foreach ($s in $skipped) {
+    $results.Add($s)
+}
+
+# ── Run generators ────────────────────────────────────────────
+Write-Section "Generating $total feature(s)"
+
+foreach ($job in $ordered) {
+    $label = $job.Label
+    $maturity = $job.Maturity
+    $cfgPath = $job.ConfigPath
+
+    Write-Host ""
+    Write-Host "  ┌─ [$($results.Count + 1)/$($total + $skipped.Count)] $label  (Level $maturity)" -ForegroundColor Cyan
+
+    try {
+        $genScript = Get-GeneratorScript -Maturity $maturity
+
+        # Build argument list
+        $args = @("-ConfigPath", $cfgPath, "-ProjectRoot", $PSScriptRoot)
+        if ($DryRun) { $args += "-DryRun" }
+        if ($job.Force) { $args += "-Force" }
+
+        & $genScript @args
+
+        if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            throw "Generator exited with code $LASTEXITCODE"
+        }
+
+        Write-Host "  └─ " -NoNewline -ForegroundColor Cyan
+        Write-Host "DONE" -ForegroundColor Green
+        $job.Status = 'OK'
+        $passed++
+    }
+    catch {
+        Write-Host "  └─ " -NoNewline -ForegroundColor Cyan
+        Write-Fail "FAILED: $_"
+        $job.Status = 'FAILED'
+        $job.Error = "$_"
         $failed++
+
+        if ($StopOnError) {
+            Write-Warn "-StopOnError is set — aborting remaining features."
+            # Add current and push remaining as SKIPPED
+            $results.Add($job)
+            $remaining = $ordered | Where-Object { $_.Status -eq 'PENDING' }
+            foreach ($r in $remaining) { $r.Status = 'ABORTED'; $results.Add($r) }
+            break
+        }
     }
 
-    Write-Host ""
+    $results.Add($job)
 }
 
-Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  Done. $success succeeded, $failed failed out of $total." -ForegroundColor Cyan
-Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Cyan
+# ── Summary table ─────────────────────────────────────────────
+Write-Header "Summary"
+
+$colW = 30
+Write-Host ("  {0,-$colW} {1,-8} {2}" -f "Feature", "Level", "Status") -ForegroundColor White
+Write-Host ("  {0,-$colW} {1,-8} {2}" -f ("-" * ($colW - 1)), "-------", "------") -ForegroundColor DarkGray
+
+foreach ($r in $results) {
+    $lvl = if ($null -ne $r.Maturity) { "Level $($r.Maturity)" } else { "?" }
+    $statusColor = switch ($r.Status) {
+        'OK' { 'Green' }
+        'PENDING' { 'Gray' }
+        'FAILED' { 'Red' }
+        'ABORTED' { 'DarkYellow' }
+        'MISSING' { 'Red' }
+        'PARSE_ERROR' { 'Red' }
+        default { 'Gray' }
+    }
+    Write-Host ("  {0,-$colW} {1,-8} " -f $r.Label, $lvl) -NoNewline
+    Write-Host $r.Status -ForegroundColor $statusColor
+    if ($r.Error) {
+        Write-Host ("  {0,-$colW}          {1}" -f "", $r.Error) -ForegroundColor DarkRed
+    }
+}
+
+Write-Host ""
+$dryTag = if ($DryRun) { "  [DRY RUN — no files written]" } else { "" }
+if ($failed -eq 0) {
+    Write-Host "  $passed/$total features generated successfully.$dryTag" -ForegroundColor Green
+}
+else {
+    Write-Host "  $passed/$total succeeded, $failed failed.$dryTag" -ForegroundColor Yellow
+}
 Write-Host ""
 
-if ($success -gt 0) {
-    Write-Host "Next steps:" -ForegroundColor White
-    Write-Host "  1. Review lib/config/di/injection_container.dart" -ForegroundColor Gray
-    Write-Host "  2. Review lib/app/routes/app_router.dart" -ForegroundColor Gray
-    Write-Host "  3. Review lib/app/shell/shell_nav_items.dart" -ForegroundColor Gray
-    Write-Host "  4. Run: flutter pub get" -ForegroundColor Gray
-    Write-Host "  5. Run: dart run build_runner build --delete-conflicting-outputs" -ForegroundColor Gray
-    Write-Host "  6. Run: flutter run -d windows" -ForegroundColor Gray
-    Write-Host ""
-}
+exit $failed

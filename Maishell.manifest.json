@@ -1,0 +1,36 @@
+{
+  "_comment": "Maishell feature manifest — lists every feature to generate.",
+  "_usage": [
+    "Run all:          .\\Generate-All.ps1",
+    "Dry run:          .\\Generate-All.ps1 -DryRun",
+    "Force overwrite:  .\\Generate-All.ps1 -Force",
+    "Stop on failure:  .\\Generate-All.ps1 -StopOnError",
+    "Custom manifest:  .\\Generate-All.ps1 -ManifestPath .\\other.manifest.json"
+  ],
+  "features": [
+    {
+      "_comment": "Level 0 — static pages, no BLoC, no persistence",
+      "config": "Maishell\\level_0\\config.json"
+    },
+    {
+      "_comment": "Level 1 — basic CRUD with BLoC",
+      "config": "Maishell\\level_1\\config.json"
+    },
+    {
+      "_comment": "Level 2 — CRUD + state machine (no workflow executor)",
+      "config": "Maishell\\level_2\\config.json"
+    },
+    {
+      "_comment": "Level 3 — full workflow with state machine + WorkflowExecutor",
+      "config": "Maishell\\level_3\\config.json"
+    },
+    {
+      "_comment": "Level 4 — aggregator/dashboard (Cubit, multi-source projection)",
+      "config": "Maishell\\level_4\\config.json"
+    },
+    {
+      "_comment": "Level 5 — external integration (Cubit, API client, webhooks)",
+      "config": "Maishell\\level_5\\config.json"
+    }
+  ]
+}
