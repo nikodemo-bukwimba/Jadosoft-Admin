@@ -25,10 +25,17 @@ class ActorDetailPage extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'Edit',
-            onPressed: () {
-              final state = context.read<ActorBloc>().state;
+            onPressed: () async {
+              final bloc = context.read<ActorBloc>();
+              final state = bloc.state;
               if (state is ActorDetailLoaded) {
-                context.push(AppRouter.actorEditPath(state.item.id));
+                final updated = await context.push<bool>(
+                  AppRouter.actorEditPath(state.item.id),
+                );
+                // Re-fetch actor when edit was successful
+                if (updated == true) {
+                  bloc.add(ActorLoadOneRequested(state.item.id));
+                }
               }
             },
           ),
