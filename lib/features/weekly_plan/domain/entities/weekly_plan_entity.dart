@@ -1,4 +1,4 @@
-﻿import 'package:equatable/equatable.dart';
+import 'package:equatable/equatable.dart';
 import '../value_objects/weekly_plan_status.dart';
 
 class WeeklyPlanEntity extends Equatable {

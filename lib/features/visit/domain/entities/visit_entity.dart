@@ -1,4 +1,4 @@
-﻿import 'package:equatable/equatable.dart';
+import 'package:equatable/equatable.dart';
 import '../value_objects/visit_status.dart';
 
 class VisitEntity extends Equatable {

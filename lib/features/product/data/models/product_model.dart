@@ -11,21 +11,25 @@ class ProductModel extends ProductEntity {
     required super.isFeatured,
     required super.isNew,
     required super.status,
+    super.imageUrl,
     required super.createdAt,
   });
 
   factory ProductModel.fromJson(Map<String, dynamic> json) {
     return ProductModel(
-      id: json['id'] as String,
-      name: json['name'] as String,
+      id: json['id']?.toString() ?? '',
+      name: json['name'] as String? ?? '',
       description: json['description'] as String?,
-      price: (json['price'] as num).toDouble(),
-      categoryId: json['category_id'] as String,
+      price: (json['price'] as num? ?? 0).toDouble(),
+      categoryId: json['category_id']?.toString() ?? '',
       isAvailable: json['is_available'] as bool? ?? false,
       isFeatured: json['is_featured'] as bool? ?? false,
       isNew: json['is_new'] as bool? ?? false,
-      status: json['status'] as String,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      status: json['status'] as String? ?? 'draft',
+      imageUrl: json['image_url'] as String?,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'].toString())
+          : DateTime.now(),
     );
   }
 
@@ -39,6 +43,7 @@ class ProductModel extends ProductEntity {
     'is_featured': isFeatured,
     'is_new': isNew,
     'status': status,
+    'image_url': imageUrl,
     'created_at': createdAt.toIso8601String(),
   };
 
@@ -53,6 +58,7 @@ class ProductModel extends ProductEntity {
       isFeatured: entity.isFeatured,
       isNew: entity.isNew,
       status: entity.status,
+      imageUrl: entity.imageUrl,
       createdAt: entity.createdAt,
     );
   }

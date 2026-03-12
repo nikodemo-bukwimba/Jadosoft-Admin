@@ -21,16 +21,56 @@ class CategoryCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         onTap: onTap,
-        title: Text(
-          item.name,
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-            fontWeight: FontWeight.w600,
+        leading: CircleAvatar(
+          backgroundColor: item.isActive
+              ? Colors.green.withValues(alpha: 0.15)
+              : scheme.surfaceContainerHighest,
+          child: Icon(
+            Icons.category_outlined,
+            color: item.isActive ? Colors.green : scheme.onSurfaceVariant,
+            size: 20,
           ),
         ),
-        subtitle: Text(item.description?.toString() ?? ''),        trailing: IconButton(
-          icon: Icon(Icons.delete_outline, color: scheme.error),
-          tooltip: 'Delete',
-          onPressed: () => _confirmDelete(context),
+        title: Text(
+          item.name,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        subtitle: item.description != null && item.description!.isNotEmpty
+            ? Text(
+                item.description!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              )
+            : null,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: item.isActive
+                    ? Colors.green.withValues(alpha: 0.15)
+                    : scheme.errorContainer.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                item.isActive ? 'Active' : 'Inactive',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: item.isActive ? Colors.green : scheme.error,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              icon: Icon(Icons.delete_outline, color: scheme.error, size: 20),
+              tooltip: 'Delete',
+              onPressed: () => _confirmDelete(context),
+            ),
+          ],
         ),
       ),
     );
@@ -39,19 +79,19 @@ class CategoryCard extends StatelessWidget {
   Future<void> _confirmDelete(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete?'),
-        content: Text('Remove "\"? This cannot be undone.'),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Category?'),
+        content: Text('Remove "${item.name}"? This cannot be undone.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Delete'),
           ),
         ],

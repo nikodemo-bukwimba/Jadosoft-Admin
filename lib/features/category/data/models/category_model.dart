@@ -4,14 +4,14 @@ class CategoryModel extends CategoryEntity {
   const CategoryModel({
     required super.id,
     required super.name,
-    required super.description,
+    super.description,
     required super.isActive,
   });
 
   factory CategoryModel.fromJson(Map<String, dynamic> json) {
     return CategoryModel(
-      id: json['id'] as String,
-      name: json['name'] as String,
+      id: json['id']?.toString() ?? '',
+      name: json['name'] as String? ?? '',
       description: json['description'] as String?,
       isActive: json['is_active'] as bool? ?? false,
     );

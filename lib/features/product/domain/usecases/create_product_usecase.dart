@@ -12,6 +12,7 @@ class CreateProductParams {
   final bool isAvailable;
   final bool isFeatured;
   final bool isNew;
+  final String? imageUrl;
 
   const CreateProductParams({
     required this.name,
@@ -21,10 +22,12 @@ class CreateProductParams {
     required this.isAvailable,
     required this.isFeatured,
     required this.isNew,
+    this.imageUrl,
   });
 }
 
-class CreateProductUseCase implements UseCase<ProductEntity, CreateProductParams> {
+class CreateProductUseCase
+    implements UseCase<ProductEntity, CreateProductParams> {
   final ProductRepository repository;
   CreateProductUseCase(this.repository);
 
@@ -35,7 +38,9 @@ class CreateProductUseCase implements UseCase<ProductEntity, CreateProductParams
       return const Left(ValidationFailure('Product name is required'));
     }
     if (p.name.trim().length < 2) {
-      return const Left(ValidationFailure('Name must be at least 2 characters'));
+      return const Left(
+        ValidationFailure('Name must be at least 2 characters'),
+      );
     }
     if (p.price < 0.01) {
       return const Left(ValidationFailure('Price must be positive'));
@@ -55,6 +60,7 @@ class CreateProductUseCase implements UseCase<ProductEntity, CreateProductParams
         isFeatured: p.isFeatured,
         isNew: p.isNew,
         status: '',
+        imageUrl: p.imageUrl,
         createdAt: DateTime.now(),
       ),
     );

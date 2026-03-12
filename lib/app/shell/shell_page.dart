@@ -1,254 +1,425 @@
-// shell_page.dart
+// shell_page_home_tab.dart
 // ─────────────────────────────────────────────────────────────
-// Authenticated app scaffold — wraps AdaptiveNavShell.
+// Admin command centre — the authenticated landing page.
 //
-// MIGRATION: Replaced IndexedStack + NavigationBar/Drawer approach
-// with AdaptiveNavShell from customnav/. GoRouter's ShellRoute now
-// owns which page is active; this widget only provides the chrome.
-//
-// Responsibilities (and only these):
-//   - Wrap AdaptiveNavShell with RBAC-aware nav items
-//   - Supply AppBar actions (account switcher)
-//   - Supply rail footer (logout)
-//   - Re-render nav items when auth state / account changes
-//
-// What does NOT belong here:
-//   - Which nav items exist  → shell_nav_items.dart
-//   - Page content           → individual feature pages
-//   - Auth redirect logic    → app_router.dart (_redirect)
-//   - Permission definitions → core/rbac/rbac_extensions.dart
+// Displays all system modules organized by functional group.
+// Each card navigates to its feature's list/dashboard page.
+// Integration monitoring pages are accessible from here even
+// though they don't have dedicated sidebar nav entries.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../core/extensions/string_extensions.dart';
-import '../../customnav/navigation.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
-import '../../features/auth/presentation/bloc/auth_event.dart';
 import '../../features/auth/presentation/bloc/auth_state.dart';
-import '../../features/auth/presentation/widgets/account_switcher_sheet.dart';
-import 'shell_nav_items.dart';
+import '../routes/app_router.dart';
 
-class ShellPage extends StatelessWidget {
-  /// The currently active page widget provided by GoRouter's ShellRoute.
-  final Widget child;
-
-  const ShellPage({super.key, required this.child});
+class HomeTab extends StatelessWidget {
+  const HomeTab({super.key});
 
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<AuthBloc, AuthState>(
-      // Only rebuild when auth type changes or the active account switches.
-      // Prevents unnecessary AdaptiveNavShell rebuilds on unrelated state.
-      buildWhen: (prev, curr) =>
-          prev.runtimeType != curr.runtimeType ||
-          (curr is AuthAuthenticated &&
-              prev is AuthAuthenticated &&
-              curr.activeSession.user.email != prev.activeSession.user.email),
       builder: (context, state) {
-        final navItems = state is AuthAuthenticated
-            ? ShellNavItems.buildNavItems(auth: state)
-            : const <NavItem>[];
-
-        return AdaptiveNavShell(
-          router: GoRouter.of(context),
-          items: navItems,
-          showBackButton: true,
-          logo: const _ShellLogo(),
-          appBarActions: _appBarActions(context, state),
-          railFooter: _RailFooter(state: state),
-          child: child,
-        );
+        if (state is! AuthAuthenticated) return const SizedBox.shrink();
+        return _HomeContent(auth: state);
       },
     );
   }
-
-  // ── AppBar actions ────────────────────────────────────────
-  List<Widget> _appBarActions(BuildContext context, AuthState state) {
-    if (state is! AuthAuthenticated) return const [];
-    return [_AccountAvatarButton(auth: state), const SizedBox(width: 8)];
-  }
 }
 
-// ── Shell logo ────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Main scrollable content
+// ─────────────────────────────────────────────────────────────
 
-class _ShellLogo extends StatelessWidget {
-  const _ShellLogo();
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: scheme.primaryContainer,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            Icons.lock_outline_rounded,
-            size: 18,
-            color: scheme.onPrimaryContainer,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          'Admin Panel',
-          style: textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.5,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ── Account avatar button ─────────────────────────────────────
-// Tapping opens the AccountSwitcherSheet bottom sheet.
-
-class _AccountAvatarButton extends StatelessWidget {
+class _HomeContent extends StatelessWidget {
   final AuthAuthenticated auth;
-  const _AccountAvatarButton({required this.auth});
+  const _HomeContent({required this.auth});
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final user = auth.activeSession.user;
-    final hasMultiple = auth.savedAccounts.length > 1;
 
-    return GestureDetector(
-      onTap: () => AccountSwitcherSheet.show(context),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // ── Avatar ──────────────────────────────────────
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: scheme.primaryContainer,
-            child: Text(
-              user.displayName.initials,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: scheme.onPrimaryContainer,
-              ),
+    return Scaffold(
+      body: CustomScrollView(
+        slivers: [
+          // ── Header ──────────────────────────────────────────
+          SliverToBoxAdapter(child: _GreetingHeader(auth: auth)),
+
+          // ── Feature sections ────────────────────────────────
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                _FeatureSection(
+                  title: 'Field Operations',
+                  subtitle: 'Officers, customers, visits & reporting',
+                  accentColor: scheme.primary,
+                  items: [
+                    _FeatureItem(icon: Icons.badge_outlined,              label: 'Officers',      path: AppRouter.officerList,    accent: const Color(0xFF2196F3)),
+                    _FeatureItem(icon: Icons.store_outlined,              label: 'Customers',     path: AppRouter.customerList,   accent: const Color(0xFF4CAF50)),
+                    _FeatureItem(icon: Icons.place_outlined,              label: 'Visits',        path: AppRouter.visitList,      accent: const Color(0xFFFF9800)),
+                    _FeatureItem(icon: Icons.calendar_month_outlined,     label: 'Weekly Plans',  path: AppRouter.weeklyPlanList, accent: const Color(0xFF9C27B0)),
+                    _FeatureItem(icon: Icons.summarize_outlined,          label: 'Daily Reports', path: AppRouter.dailyReportList,accent: const Color(0xFF00BCD4)),
+                  ],
+                ),
+
+                const SizedBox(height: 28),
+
+                _FeatureSection(
+                  title: 'Products & Commerce',
+                  subtitle: 'Catalog, promotions, orders & payments',
+                  accentColor: const Color(0xFFFF9800),
+                  items: [
+                    _FeatureItem(icon: Icons.category_outlined,           label: 'Categories',  path: AppRouter.categoryList,  accent: const Color(0xFF607D8B)),
+                    _FeatureItem(icon: Icons.inventory_2_outlined,        label: 'Products',    path: AppRouter.productList,   accent: const Color(0xFF3F51B5)),
+                    _FeatureItem(icon: Icons.campaign_outlined,           label: 'Promotions',  path: AppRouter.promotionList, accent: const Color(0xFFE91E63)),
+                    _FeatureItem(icon: Icons.receipt_long_outlined,       label: 'Orders',      path: AppRouter.orderList,     accent: const Color(0xFF009688)),
+                    _FeatureItem(icon: Icons.payments_outlined,           label: 'Payments',    path: AppRouter.paymentList,   accent: const Color(0xFF4CAF50)),
+                  ],
+                ),
+
+                const SizedBox(height: 28),
+
+                _FeatureSection(
+                  title: 'Communication',
+                  subtitle: 'Messages & notification centre',
+                  accentColor: const Color(0xFF9C27B0),
+                  items: [
+                    _FeatureItem(icon: Icons.forum_outlined,              label: 'Messages',      path: AppRouter.conversationList, accent: const Color(0xFF2196F3)),
+                    _FeatureItem(icon: Icons.notifications_outlined,      label: 'Notifications', path: AppRouter.notificationList, accent: const Color(0xFFFF5722)),
+                  ],
+                ),
+
+                const SizedBox(height: 28),
+
+                _FeatureSection(
+                  title: 'Analytics & Reports',
+                  subtitle: 'Dashboards, exports & audit trail',
+                  accentColor: const Color(0xFF4CAF50),
+                  items: [
+                    _FeatureItem(icon: Icons.insights_outlined,           label: 'Marketing',     path: AppRouter.marketingDashboard, accent: const Color(0xFF2196F3)),
+                    _FeatureItem(icon: Icons.trending_up_outlined,        label: 'Sales',         path: AppRouter.salesDashboard,     accent: const Color(0xFF4CAF50)),
+                    _FeatureItem(icon: Icons.file_download_outlined,      label: 'Export',        path: AppRouter.reportExport,       accent: const Color(0xFF607D8B)),
+                    _FeatureItem(icon: Icons.history_outlined,            label: 'Activity Logs', path: AppRouter.activityLogList,    accent: const Color(0xFF795548)),
+                  ],
+                ),
+
+                const SizedBox(height: 28),
+
+                _FeatureSection(
+                  title: 'Integrations',
+                  subtitle: 'SMS, WhatsApp & mobile money status',
+                  accentColor: const Color(0xFF607D8B),
+                  items: [
+                    _FeatureItem(icon: Icons.sms_outlined,                label: 'SMS Gateway',   path: AppRouter.smsGateway,  accent: const Color(0xFF009688)),
+                    _FeatureItem(icon: Icons.chat_outlined,               label: 'WhatsApp',      path: AppRouter.whatsapp,    accent: const Color(0xFF4CAF50)),
+                    _FeatureItem(icon: Icons.phone_android_outlined,      label: 'Mobile Money',  path: AppRouter.mobileMoney, accent: const Color(0xFFFF9800)),
+                  ],
+                ),
+              ]),
             ),
           ),
-
-          // ── Multi-account badge ──────────────────────────
-          if (hasMultiple)
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: scheme.primary,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: scheme.surface, width: 1.5),
-                ),
-              ),
-            ),
         ],
       ),
     );
   }
 }
 
-// ── Rail footer ───────────────────────────────────────────────
-// Pinned at the bottom of the nav rail / drawer.
+// ─────────────────────────────────────────────────────────────
+// Greeting header
+// ─────────────────────────────────────────────────────────────
 
-class _RailFooter extends StatelessWidget {
-  final AuthState state;
-  const _RailFooter({required this.state});
+class _GreetingHeader extends StatelessWidget {
+  final AuthAuthenticated auth;
+  const _GreetingHeader({required this.auth});
+
+  String get _greeting {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (state is! AuthAuthenticated) return const SizedBox.shrink();
-
-    final auth = state as AuthAuthenticated;
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final user = auth.activeSession.user;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Divider(color: scheme.outlineVariant, height: 1),
-        const SizedBox(height: 4),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            scheme.primaryContainer,
+            scheme.primaryContainer.withOpacity(0.6),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          // ── Avatar ──────────────────────────────────────────
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: scheme.primary.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Center(
+              child: Text(
+                user.displayName.initials,
+                style: textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: scheme.primary,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 20),
 
-        // ── User info row ──────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: scheme.primaryContainer,
-                child: Text(
-                  user.displayName.initials,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+          // ── Text block ──────────────────────────────────────
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$_greeting,',
+                  style: textTheme.bodyLarge?.copyWith(
+                    color: scheme.onPrimaryContainer.withOpacity(0.7),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  user.displayName.split(' ').first,
+                  style: textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
                     color: scheme.onPrimaryContainer,
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      user.displayName,
-                      style: textTheme.labelMedium?.copyWith(
+                if (user.primaryRole != null) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      user.primaryRole!.name,
+                      style: textTheme.labelSmall?.copyWith(
+                        color: scheme.primary,
                         fontWeight: FontWeight.w600,
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    Text(
-                      user.email,
-                      style: textTheme.labelSmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // ── Logout button ──────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-          child: SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              icon: Icon(Icons.logout, size: 16, color: scheme.error),
-              label: Text(
-                'Sign out',
-                style: TextStyle(color: scheme.error, fontSize: 13),
-              ),
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(color: scheme.error.withOpacity(0.4)),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-              ),
-              onPressed: () =>
-                  context.read<AuthBloc>().add(AuthLogoutRequested()),
+                  ),
+                ],
+              ],
             ),
           ),
+
+          // ── Pharmacy brand mark ─────────────────────────────
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: scheme.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              Icons.local_pharmacy_outlined,
+              color: scheme.primary,
+              size: 22,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Feature section — title + grid of cards
+// ─────────────────────────────────────────────────────────────
+
+class _FeatureSection extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final Color accentColor;
+  final List<_FeatureItem> items;
+
+  const _FeatureSection({
+    required this.title,
+    required this.subtitle,
+    required this.accentColor,
+    required this.items,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Section header ─────────────────────────────────────
+        Row(
+          children: [
+            Container(
+              width: 4,
+              height: 24,
+              decoration: BoxDecoration(
+                color: accentColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurface,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 14),
+
+        // ── Card grid ──────────────────────────────────────────
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            // Responsive columns: 2 on small, 3 on medium, 4+ on wide
+            final crossAxisCount = width < 400 ? 2 : width < 700 ? 3 : 4;
+            final childAspectRatio = width < 400 ? 1.15 : 1.2;
+
+            return GridView.count(
+              crossAxisCount: crossAxisCount,
+              childAspectRatio: childAspectRatio,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              children: items
+                  .map((item) => _FeatureCard(item: item))
+                  .toList(),
+            );
+          },
         ),
       ],
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Individual feature card
+// ─────────────────────────────────────────────────────────────
+
+class _FeatureCard extends StatelessWidget {
+  final _FeatureItem item;
+  const _FeatureCard({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => context.go(item.path),
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: scheme.outlineVariant.withOpacity(0.5),
+              width: 1,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // ── Icon container ────────────────────────────
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: item.accent.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    item.icon,
+                    color: item.accent,
+                    size: 24,
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                // ── Label ─────────────────────────────────────
+                Text(
+                  item.label,
+                  style: textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurface,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Data model for a feature card
+// ─────────────────────────────────────────────────────────────
+
+class _FeatureItem {
+  final IconData icon;
+  final String label;
+  final String path;
+  final Color accent;
+
+  const _FeatureItem({
+    required this.icon,
+    required this.label,
+    required this.path,
+    required this.accent,
+  });
 }

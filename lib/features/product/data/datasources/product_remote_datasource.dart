@@ -1,4 +1,4 @@
-﻿import 'package:dio/dio.dart';
+import 'package:dio/dio.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/product_model.dart';
 
@@ -18,7 +18,7 @@ class ProductRemoteDataSourceImpl implements ProductRemoteDataSource {
   Future<List<ProductModel>> getAll() async {
     try {
       final response = await _dio.get('/products');
-      final data = response.data as List;
+      final data = (response.data['data'] ?? response.data) as List;
       return data
           .map((e) => ProductModel.fromJson(e as Map<String, dynamic>))
           .toList();

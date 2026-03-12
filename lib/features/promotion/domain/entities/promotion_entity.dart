@@ -1,4 +1,4 @@
-﻿import 'package:equatable/equatable.dart';
+import 'package:equatable/equatable.dart';
 import '../value_objects/promotion_status.dart';
 
 class PromotionEntity extends Equatable {

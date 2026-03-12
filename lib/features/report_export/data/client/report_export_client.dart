@@ -1,4 +1,4 @@
-﻿import 'package:dio/dio.dart';
+import 'package:dio/dio.dart';
 import '../../domain/models/request_export_response.dart';
 import '../../domain/models/request_export_request.dart';
 import '../../domain/models/get_export_status_response.dart';
@@ -10,7 +10,7 @@ class ReportExportClient {
   static const int _backoffMs = 2000;
 
   ReportExportClient({required Dio dio}) : _dio = dio {
-    _dio.options.baseUrl = '{{BACKEND_API_BASE_URL}}';
+    _dio.options.baseUrl = 'http://localhost:8000/api/v1';
     _dio.options.connectTimeout = const Duration(seconds: 120000);
     _dio.options.receiveTimeout = const Duration(seconds: 120000);
   }

@@ -1,6 +1,7 @@
-﻿  import '../../../../core/constants/app_constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
 import '../bloc/category_bloc.dart';
 import '../bloc/category_event.dart';
 import '../bloc/category_state.dart';
@@ -25,11 +26,9 @@ class _CategoryListPageState extends State<CategoryListPage> {
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Product Categoriess')),
+      appBar: AppBar(title: const Text('Product Categories')),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.of(context)
-            .pushNamed('/categorys/create')
-            .then((_) => context.read<CategoryBloc>().add(CategoryLoadAllRequested())),
+        onPressed: () => context.push(AppRouter.categoryCreate),
         child: const Icon(Icons.add),
       ),
       body: BlocConsumer<CategoryBloc, CategoryState>(
@@ -58,11 +57,18 @@ class _CategoryListPageState extends State<CategoryListPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.inbox_outlined, size: 64, color: scheme.outlineVariant),
+                  Icon(Icons.category_outlined, size: 64, color: scheme.outlineVariant),
                   const SizedBox(height: 16),
                   Text(
-                    'No categories yet. Create your first category.',
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    'No categories yet.',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Tap + to create your first category.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),
                   ),
@@ -75,11 +81,14 @@ class _CategoryListPageState extends State<CategoryListPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(state.message),
+                  Icon(Icons.error_outline, size: 48, color: scheme.error),
                   const SizedBox(height: 16),
-                  FilledButton(
+                  Text(state.message, textAlign: TextAlign.center),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
                     onPressed: () => context.read<CategoryBloc>().add(CategoryLoadAllRequested()),
-                    child: const Text('Retry'),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
                   ),
                 ],
               ),
@@ -94,9 +103,9 @@ class _CategoryListPageState extends State<CategoryListPage> {
                 itemCount: state.items.length,
                 itemBuilder: (_, i) => CategoryCard(
                   item: state.items[i],
-                  onTap: () => Navigator.of(context)
-                      .pushNamed('/categorys/detail', arguments: {'id': state.items[i].id})
-                      .then((_) => context.read<CategoryBloc>().add(CategoryLoadAllRequested())),
+                  onTap: () => context.push(
+                    AppRouter.categoryDetailPath(state.items[i].id),
+                  ),
                   onDelete: () => context.read<CategoryBloc>()
                       .add(CategoryDeleteRequested(state.items[i].id)),
                 ),

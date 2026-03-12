@@ -1,4 +1,4 @@
-﻿import 'package:equatable/equatable.dart';
+import 'package:equatable/equatable.dart';
 import '../value_objects/notification_status.dart';
 
 class NotificationEntity extends Equatable {

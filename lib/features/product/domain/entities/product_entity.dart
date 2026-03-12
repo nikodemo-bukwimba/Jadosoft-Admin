@@ -1,5 +1,4 @@
 ﻿import 'package:equatable/equatable.dart';
-import '../value_objects/product_status.dart';
 
 class ProductEntity extends Equatable {
   final String id;
@@ -11,6 +10,7 @@ class ProductEntity extends Equatable {
   final bool isFeatured;
   final bool isNew;
   final String status;
+  final String? imageUrl;
   final DateTime createdAt;
 
   const ProductEntity({
@@ -23,6 +23,7 @@ class ProductEntity extends Equatable {
     required this.isFeatured,
     required this.isNew,
     required this.status,
+    this.imageUrl,
     required this.createdAt,
   });
 
@@ -36,6 +37,7 @@ class ProductEntity extends Equatable {
     bool? isFeatured,
     bool? isNew,
     String? status,
+    String? imageUrl,
     DateTime? createdAt,
   }) {
     return ProductEntity(
@@ -48,10 +50,23 @@ class ProductEntity extends Equatable {
       isFeatured: isFeatured ?? this.isFeatured,
       isNew: isNew ?? this.isNew,
       status: status ?? this.status,
+      imageUrl: imageUrl ?? this.imageUrl,
       createdAt: createdAt ?? this.createdAt,
     );
   }
 
   @override
-  List<Object?> get props => [id, name, description, price, categoryId, isAvailable, isFeatured, isNew, status, createdAt];
+  List<Object?> get props => [
+    id,
+    name,
+    description,
+    price,
+    categoryId,
+    isAvailable,
+    isFeatured,
+    isNew,
+    status,
+    imageUrl,
+    createdAt,
+  ];
 }

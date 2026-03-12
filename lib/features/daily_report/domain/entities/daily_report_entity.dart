@@ -1,4 +1,4 @@
-﻿import 'package:equatable/equatable.dart';
+import 'package:equatable/equatable.dart';
 import '../value_objects/daily_report_status.dart';
 
 class DailyReportEntity extends Equatable {

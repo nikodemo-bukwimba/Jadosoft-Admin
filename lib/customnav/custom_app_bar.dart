@@ -22,7 +22,16 @@ class NavCustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback? onMenuTap;
 
   @override
-  Size get preferredSize => const Size.fromHeight(_kAppBarHeight);
+  Size get preferredSize => Size.fromHeight(
+    _kAppBarHeight +
+        WidgetsBinding.instance.platformDispatcher.views.first.padding.top /
+            WidgetsBinding
+                .instance
+                .platformDispatcher
+                .views
+                .first
+                .devicePixelRatio,
+  );
 
   static const double _kAppBarHeight = 64;
 
@@ -44,10 +53,11 @@ class NavCustomAppBar extends StatelessWidget implements PreferredSizeWidget {
             ? pageConfig.actions
             : actions;
 
+        final statusBarHeight = MediaQuery.of(context).padding.top;
         return Container(
-          height: navTheme.appBarHeight,
+          height: (navTheme.appBarHeight ?? _kAppBarHeight) + statusBarHeight,
           color: navTheme.appBarBackgroundColor,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
+          padding: EdgeInsets.only(top: statusBarHeight, left: 8, right: 8),
           child: Row(
             children: [
               // ── Leading slot ──────────────────────────────────────────────

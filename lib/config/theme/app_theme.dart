@@ -1,6 +1,7 @@
 // app_theme.dart
 // ─────────────────────────────────────────────────────────────
-// Material 3 theme. Uses ColorScheme.fromSeed — no custom colors.
+// Barick Pharmacy — Material 3 theme.
+// Brand: Green primary, white surfaces.
 // Responsive breakpoints for mobile / tablet / desktop.
 // ─────────────────────────────────────────────────────────────
 
@@ -9,9 +10,8 @@ import 'package:flutter/material.dart';
 class AppTheme {
   AppTheme._();
 
-  static const _seed = Color(
-    0xFF1A73E8,
-  ); // Google-blue seed — clean, professional
+  // Barick Pharmacy brand green
+  static const _seed = Color(0xFF2E7D32);
 
   // ── Light theme ───────────────────────────────────────────
   static ThemeData get light => ThemeData(
@@ -121,7 +121,6 @@ class Responsive {
   static bool isDesktop(BuildContext context) =>
       MediaQuery.of(context).size.width >= 1024;
 
-  /// Max content width for auth forms on large screens.
   static double authFormMaxWidth(BuildContext context) {
     if (isDesktop(context)) return 440;
     if (isTablet(context)) return 480;

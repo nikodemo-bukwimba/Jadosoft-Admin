@@ -1,4 +1,4 @@
-﻿import 'package:equatable/equatable.dart';
+import 'package:equatable/equatable.dart';
 import '../value_objects/officer_status.dart';
 
 class OfficerEntity extends Equatable {
