@@ -1,6 +1,6 @@
 # ============================================================
-# Level2WiringGenerator.psm1 — DI + Routes + Nav (No Workflow)
-# FIX: Permission is optional — NavItem is visible to all if not provided.
+# Level2WiringGenerator.psm1 -- DI + Routes + Nav (No Workflow)
+# FIX: Permission is optional -- NavItem is visible to all if not provided.
 # ============================================================
 
 function _Insert-AboveMarker {
@@ -44,12 +44,12 @@ function Update-InjectionContainer {
   $imports.Add("import 'package:fca/features/${fname}/domain/usecases/delete_${fname}_usecase.dart';")
   $imports.Add("import 'package:fca/features/${fname}/domain/guards/${fname}_transition_guard.dart';")
   $imports.Add("import 'package:fca/features/${fname}/domain/services/${fname}_domain_service.dart';")
-  # NO workflow import — Level 2
+  # NO workflow import -- Level 2
   $imports.Add("import 'package:fca/features/${fname}/presentation/bloc/${fname}_bloc.dart';")
 
   $regs = [System.Collections.Generic.List[string]]::new()
   $regs.Add("")
-  $regs.Add("  // ── ${fclass} (Level 2) ──────────────────────────────")
+  $regs.Add("  // -- ${fclass} (Level 2) --")
 
   if ($isRemote) {
     $regs.Add("  sl.registerLazySingleton<${fclass}RemoteDataSource>(")
@@ -74,7 +74,7 @@ function Update-InjectionContainer {
   $regs.Add("  sl.registerLazySingleton(() => ${fclass}DomainService(")
   $regs.Add("    repository: sl(), guard: sl(),")
   $regs.Add("  ));")
-  # NO workflow executor — Level 2
+  # NO workflow executor -- Level 2
 
   $regs.Add("  sl.registerFactory<${fclass}Bloc>(() => ${fclass}Bloc(")
   $regs.Add("    getAllUseCase: sl(), getUseCase: sl(), createUseCase: sl(),")
@@ -84,10 +84,10 @@ function Update-InjectionContainer {
 
   $content = Get-Content $diPath -Raw
   $content = _Insert-AboveMarker -Content $content `
-    -Marker '// ── END GENERATOR FEATURE IMPORTS' `
+    -Marker '// -- END GENERATOR FEATURE IMPORTS' `
     -Insert ($imports -join "`n")
   $content = _Insert-AboveMarker -Content $content `
-    -Marker '// ── END GENERATOR MANAGED' `
+    -Marker '// -- END GENERATOR MANAGED' `
     -Insert ($regs -join "`n")
 
   if (-not $isDryRun) {
@@ -110,7 +110,7 @@ function Update-AppRouter {
   $routerPath = Join-Path $pRoot "lib\app\routes\app_router.dart"
   if (-not (Test-Path $routerPath)) { Write-Warning "app_router.dart not found"; return }
 
-  # ── Imports ────────────────────────────────────────────
+  # -- Imports --
   $imports = @(
     "import '../../features/${fname}/presentation/pages/${fname}_list_page.dart';",
     "import '../../features/${fname}/presentation/pages/${fname}_detail_page.dart';",
@@ -122,7 +122,7 @@ function Update-AppRouter {
     "import 'package:flutter_bloc/flutter_bloc.dart';"
   ) -join "`n"
 
-  # ── Route constants — use :id path parameters ──────────
+  # -- Route constants -- use :id path parameters --
   $consts = @"
   static const String ${fname}List   = '/${fname}s';
   static const String ${fname}Create = '/${fname}s/create';
@@ -134,7 +134,7 @@ function Update-AppRouter {
   static String ${fname}EditPath(String id)   => '/${fname}s/`$id/edit';
 "@
 
-  # ── GoRoute entries inside ShellRoute ─────────────────
+  # -- GoRoute entries inside ShellRoute --
   $goRoutes = @"
 
             // $flabel routes (Level 2, generated $(Get-Date -Format 'yyyy-MM-dd'))
@@ -175,9 +175,9 @@ function Update-AppRouter {
 "@
 
   $content = Get-Content $routerPath -Raw
-  $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR FEATURE PAGE IMPORTS' -Insert $imports
-  $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR ROUTE CONSTANTS'      -Insert $consts
-  $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR ROUTES'               -Insert $goRoutes
+  $content = _Insert-AboveMarker -Content $content -Marker '// -- END GENERATOR FEATURE PAGE IMPORTS' -Insert $imports
+  $content = _Insert-AboveMarker -Content $content -Marker '// -- END GENERATOR ROUTE CONSTANTS'      -Insert $consts
+  $content = _Insert-AboveMarker -Content $content -Marker '// -- END GENERATOR ROUTES'               -Insert $goRoutes
 
   if (-not $isDryRun) {
     Set-Content -Path $routerPath -Value $content -Encoding UTF8
@@ -199,11 +199,11 @@ function Update-ShellNavItems {
   $navPath = Join-Path $pRoot "lib\app\shell\shell_nav_items.dart"
   if (-not (Test-Path $navPath)) { Write-Warning "shell_nav_items.dart not found"; return }
 
-  # ── Permission slug (optional) + icon ─────────────────
+  # -- Permission slug (optional) + icon --
   $fperm = $config.feature.permission
   $icon = if ($config.feature.icon) { $config.feature.icon } else { 'Icons.list_outlined' }
 
-  # ── NavItem — permission-gated only if permission provided ──
+  # -- NavItem -- permission-gated only if permission provided --
   if (-not [string]::IsNullOrWhiteSpace($fperm)) {
     $navItem = @"
 
@@ -231,7 +231,7 @@ function Update-ShellNavItems {
   }
 
   $content = Get-Content $navPath -Raw
-  $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR TABS' -Insert $navItem
+  $content = _Insert-AboveMarker -Content $content -Marker '// -- END GENERATOR TABS' -Insert $navItem
 
   if (-not $isDryRun) {
     Set-Content -Path $navPath -Value $content -Encoding UTF8

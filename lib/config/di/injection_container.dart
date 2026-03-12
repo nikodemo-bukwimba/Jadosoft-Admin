@@ -1,18 +1,18 @@
-// injection_container.dart
-// ─────────────────────────────────────────────────────────────
+﻿// injection_container.dart
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Dependency injection setup using get_it.
 //
 // TOKEN REFRESH CONFIGURATION:
-//   By default TokenRefreshConfig.disabled() is used — safe for backends
+//   By default TokenRefreshConfig.disabled() is used â€” safe for backends
 //   where tokens never expire (e.g. Laravel Sanctum with default settings).
 //   Swap to TokenRefreshConfig.enabled(...) on line marked [REFRESH CONFIG].
 //
 // CACHE:
-//   AppDatabase is a singleton — one SQLite file, shared by all DAOs.
+//   AppDatabase is a singleton â€” one SQLite file, shared by all DAOs.
 //   Profile and Dashboard repositories are now cache-first: they read
 //   from Drift first and only hit the API when the TTL has expired.
-// ─────────────────────────────────────────────────────────────
-// ── GENERATOR FEATURE IMPORTS — append only ──────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€ GENERATOR FEATURE IMPORTS â€” append only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import 'package:admin_panel/features/actor/data/datasources/actor_remote_datasource.dart';
 import 'package:admin_panel/features/actor/data/datasources/actor_local_datasource.dart';
@@ -26,7 +26,7 @@ import 'package:admin_panel/features/actor/domain/usecases/delete_actor_usecase.
 import 'package:admin_panel/features/actor/presentation/bloc/actor_bloc.dart';
 import 'package:admin_panel/core/database/actor_cache_dao.dart';
 
-// ── END GENERATOR FEATURE IMPORTS
+// â”€â”€ END GENERATOR FEATURE IMPORTS
 
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -60,15 +60,15 @@ import '../../features/profile/domain/repositories/profile_repository.dart';
 import '../../features/profile/domain/usecases/get_profile_usecase.dart';
 import '../../features/profile/presentation/bloc/profile_bloc.dart';
 
-// ── GENERATOR IMPORTS — append only ──────────────────────────
-// ── END GENERATOR IMPORTS ─────────────────────────────────────
+// â”€â”€ GENERATOR IMPORTS â€” append only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€ END GENERATOR IMPORTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 final sl = GetIt.instance;
 
 Future<void> initDependencies() async {
-  // ── 1. Infrastructure ─────────────────────────────────────
+  // â”€â”€ 1. Infrastructure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  // encryptedSharedPreferences removed — deprecated in flutter_secure_storage v11.
+  // encryptedSharedPreferences removed â€” deprecated in flutter_secure_storage v11.
   // The library now uses custom ciphers automatically on Android.
   sl.registerLazySingleton<FlutterSecureStorage>(
     () => const FlutterSecureStorage(),
@@ -78,7 +78,7 @@ Future<void> initDependencies() async {
     () => SecureStorageService(sl<FlutterSecureStorage>()),
   );
 
-  // ── [REFRESH CONFIG] ──────────────────────────────────────
+  // â”€â”€ [REFRESH CONFIG] â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Swap to TokenRefreshConfig.enabled(...) when your backend
   // expires tokens. See token_refresh_config.dart for examples.
   sl.registerLazySingleton<TokenRefreshConfig>(
@@ -98,9 +98,9 @@ Future<void> initDependencies() async {
     () => buildSecureDioClient(authInterceptor: sl<AuthInterceptor>()),
   );
 
-  // ── 2. Local cache (Drift) ────────────────────────────────
+  // â”€â”€ 2. Local cache (Drift) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  // Single database instance — one SQLite file for the whole app.
+  // Single database instance â€” one SQLite file for the whole app.
   sl.registerLazySingleton<AppDatabase>(() => AppDatabase());
 
   // DAOs are lightweight accessors on the same database instance.
@@ -113,7 +113,7 @@ Future<void> initDependencies() async {
     () => sl<AppDatabase>().dashboardCacheDao,
   );
 
-  // ── 3. Auth datasources ───────────────────────────────────
+  // â”€â”€ 3. Auth datasources â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   sl.registerLazySingleton<AuthLocalDataSource>(
     () => AuthLocalDataSourceImpl(sl<SecureStorageService>()),
@@ -123,7 +123,7 @@ Future<void> initDependencies() async {
     () => AuthRemoteDataSourceImpl(sl<Dio>()),
   );
 
-  // ── 4. Auth repository ────────────────────────────────────
+  // â”€â”€ 4. Auth repository â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   sl.registerLazySingleton<AuthRepository>(
     () => AuthRepositoryImpl(
@@ -132,7 +132,7 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // ── 5. Auth use cases ─────────────────────────────────────
+  // â”€â”€ 5. Auth use cases â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   sl.registerLazySingleton(() => LoginUseCase(sl<AuthRepository>()));
   sl.registerLazySingleton(() => RegisterUseCase(sl<AuthRepository>()));
@@ -143,7 +143,7 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton(() => GetSavedAccountsUseCase(sl<AuthRepository>()));
   sl.registerLazySingleton(() => RefreshSessionUseCase(sl<AuthRepository>()));
 
-  // ── 6. Auth BLoC (factory — fresh per widget tree) ────────
+  // â”€â”€ 6. Auth BLoC (factory â€” fresh per widget tree) â”€â”€â”€â”€â”€â”€â”€â”€
 
   sl.registerFactory<AuthBloc>(
     () => AuthBloc(
@@ -158,7 +158,7 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // ── 7. Profile datasource + repository + use case ─────────
+  // â”€â”€ 7. Profile datasource + repository + use case â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   sl.registerLazySingleton<ProfileRemoteDataSource>(
     () => ProfileRemoteDataSourceImpl(sl<Dio>()),
@@ -174,11 +174,11 @@ Future<void> initDependencies() async {
 
   sl.registerLazySingleton(() => GetProfileUseCase(sl<ProfileRepository>()));
 
-  // ── 8. Profile BLoC (factory) ─────────────────────────────
+  // â”€â”€ 8. Profile BLoC (factory) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   sl.registerFactory<ProfileBloc>(() => ProfileBloc(sl<GetProfileUseCase>()));
 
-  // ── 9. Dashboard datasource + repository + use case ───────
+  // â”€â”€ 9. Dashboard datasource + repository + use case â”€â”€â”€â”€â”€â”€â”€
 
   sl.registerLazySingleton<DashboardRemoteDataSource>(
     () => DashboardRemoteDataSourceImpl(sl<Dio>()),
@@ -195,15 +195,15 @@ Future<void> initDependencies() async {
     () => GetDashboardStatsUseCase(sl<DashboardRepository>()),
   );
 
-  // ── 10. Dashboard BLoC (factory) ──────────────────────────
+  // â”€â”€ 10. Dashboard BLoC (factory) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   sl.registerFactory<DashboardBloc>(
     () => DashboardBloc(getDashboardStats: sl<GetDashboardStatsUseCase>()),
   );
 
-  // ── GENERATOR MANAGED ─────────────────────────────────────
+  // â”€â”€ GENERATOR MANAGED â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  // DAO — depends on AppDatabase (already registered)
+  // DAO â€” depends on AppDatabase (already registered)
   sl.registerLazySingleton<ActorCacheDao>(() => ActorCacheDao(sl()));
 
   // Data sources
@@ -214,7 +214,7 @@ Future<void> initDependencies() async {
     () => ActorLocalDataSourceImpl(dao: sl()),
   );
 
-  // Repository — API-first with cache fallback
+  // Repository â€” API-first with cache fallback
   sl.registerLazySingleton<ActorRepository>(
     () => ActorRepositoryImpl(remote: sl(), local: sl()),
   );
@@ -236,5 +236,26 @@ Future<void> initDependencies() async {
       deleteUseCase: sl(),
     ),
   );
-  // ── END GENERATOR MANAGED ─────────────────────────────────
+  // â”€â”€ END GENERATOR MANAGED â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

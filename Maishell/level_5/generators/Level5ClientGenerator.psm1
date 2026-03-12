@@ -344,7 +344,7 @@ function _Gen-Service {
       $opImports.Add("import '../models/${opSnake}_request.dart';")
     }
 
-    # Build service method that wraps client call in try/catch → Either
+    # Build service method that wraps client call in try/catch -> Either
     $hasPathParam = $op.path -match '\{(\w+)\}'
     $paramName = if ($hasPathParam) { $Matches[1] } else { $null }
 

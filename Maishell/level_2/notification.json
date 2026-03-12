@@ -1,0 +1,128 @@
+{
+  "feature": {
+    "name":       "notification",
+    "label":      "Notifications",
+    "purpose":    "Unified notification centre — monitor delivery status across SMS, WhatsApp, in-app channels with retry capability",
+    "maturity":   2,
+    "permission": "notifications",
+    "icon":       "Icons.notifications_outlined",
+    "activeIcon": "Icons.notifications"
+  },
+  "storage": {
+    "remote": true,
+    "local":  false
+  },
+  "entities": {
+    "Notification": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "recipientId": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Recipient is required" }
+          }
+        },
+        "recipientType": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Recipient type is required" }
+          }
+        },
+        "channel": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Channel is required" }
+          }
+        },
+        "content": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Content is required" }
+          }
+        },
+        "templateId": {
+          "type":     "String",
+          "nullable": true
+        },
+        "status": {
+          "type":     "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "sentAt": {
+          "type":     "DateTime",
+          "nullable": true,
+          "readonly": true
+        },
+        "deliveredAt": {
+          "type":     "DateTime",
+          "nullable": true,
+          "readonly": true
+        },
+        "failureReason": {
+          "type":     "String",
+          "nullable": true,
+          "readonly": true
+        },
+        "createdAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {},
+      "api": {
+        "endpoint":    "/notifications",
+        "paginatable": true,
+        "searchable":  true
+      },
+      "ui": {
+        "card": {
+          "title":    "recipientId",
+          "subtitle": "channel"
+        },
+        "detail": {
+          "header": ["recipientId", "channel"],
+          "body":   ["recipientType", "content", "templateId", "status", "sentAt", "deliveredAt", "failureReason", "createdAt"]
+        },
+        "form": {
+          "create": ["recipientId", "recipientType", "channel", "content", "templateId"],
+          "edit":   []
+        },
+        "list": {
+          "emptyMessage": "No notifications found.",
+          "searchBy":     "recipientId",
+          "filterBy":     "status"
+        }
+      }
+    }
+  },
+  "stateMachine": {
+    "statusField":   "status",
+    "initialStatus": "queued",
+    "statuses": [
+      { "name": "queued",    "label": "Queued",    "color": "grey" },
+      { "name": "sent",      "label": "Sent",      "color": "blue" },
+      { "name": "delivered", "label": "Delivered", "color": "green" },
+      { "name": "failed",    "label": "Failed",    "color": "red" }
+    ],
+    "transitions": [
+      {
+        "name":       "retry",
+        "label":      "Retry Notification",
+        "from":       ["failed"],
+        "to":         "queued",
+        "permission": "notifications.retry"
+      }
+    ]
+  }
+}

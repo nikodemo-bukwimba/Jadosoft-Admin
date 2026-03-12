@@ -1,6 +1,6 @@
 # ============================================================
-# Level3DataGenerator.psm1 — Data layer with status awareness
-# Extends Level 1: model handles status ↔ string conversion
+# Level3DataGenerator.psm1 -- Data layer with status awareness
+# Extends Level 1: model handles status -- string conversion
 # ============================================================
 
 function Invoke-GenerateData {
@@ -21,7 +21,7 @@ function Invoke-GenerateData {
   $statusField = $sm.field
   $statusType = "${fclass}Status"
 
-  # ── Repository interface ──────────────────────────────
+  # -- Repository interface --
   $repoContent = @"
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
@@ -37,7 +37,7 @@ abstract class ${fclass}Repository {
 "@
   & $NewFile (Join-Path $fDir "domain\repositories\${fname}_repository.dart") $repoContent
 
-  # ── Model (with status serialization) ─────────────────
+  # -- Model (with status serialization) --
   # Determine if status field exists in config fields
   $hasStatusInConfig = ($meta.Fields | Where-Object { $_.Name -eq $statusField }).Count -gt 0
 
@@ -103,7 +103,7 @@ $(if (-not $hasStatusInConfig) { "      $statusField`: entity.$statusField," })
 "@
   & $NewFile (Join-Path $fDir "data\models\${eSnake}_model.dart") $modelContent
 
-  # ── Remote datasource (same as Level 1) ───────────────
+  # -- Remote datasource (same as Level 1) --
   if ($isRemote) {
     $dsContent = @"
 import 'package:dio/dio.dart';
@@ -186,7 +186,7 @@ class ${fclass}RemoteDataSourceImpl implements ${fclass}RemoteDataSource {
     & $NewFile (Join-Path $fDir "data\datasources\${fname}_remote_datasource.dart") $dsContent
   }
 
-  # ── Repository implementation (same structure as Level 1) ──
+  # -- Repository implementation (same structure as Level 1) --
   $dsImports = ''
   $dsFields = ''
   $dsCtorParams = ''

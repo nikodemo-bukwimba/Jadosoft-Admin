@@ -1,5 +1,5 @@
 # ============================================================
-# Generate-Level2.ps1 — Level 2: CRUD + State Machine
+# Generate-Level2.ps1 -- Level 2: CRUD + State Machine
 # ============================================================
 
 param(
@@ -59,7 +59,7 @@ Write-Success "Schema valid"
 $maturity = [int]$config.feature.maturity
 if ($maturity -ne 2) { Write-Fail "This generator handles Level 2 only. Config declares maturity $maturity."; exit 1 }
 if ($null -eq $config.stateMachine) { Write-Fail "Level 2 requires a 'stateMachine' block."; exit 1 }
-if ($null -eq $config.stateMachine.states -or $config.stateMachine.states.Count -eq 0) { Write-Fail "stateMachine.states must have at least 1 state."; exit 1 }
+if ($null -eq $config.stateMachine.statuses -or $config.stateMachine.statuses.Count -eq 0) { Write-Fail "stateMachine.states must have at least 1 state."; exit 1 }
 if ($null -eq $config.stateMachine.transitions -or $config.stateMachine.transitions.Count -eq 0) { Write-Fail "stateMachine.transitions must have at least 1 transition."; exit 1 }
 
 $tokens = Get-NamingTokens -FeatureConfig $config.feature
@@ -119,3 +119,5 @@ else {
     Write-Success "$fileCount files generated in lib/features/$($tokens.FNAME)"
 }
 Write-Host ""
+
+

@@ -1,0 +1,232 @@
+{
+  "feature": {
+    "name":       "daily_report",
+    "label":      "Daily Reports",
+    "purpose":    "Daily report management with auto-construction from visit logs, officer/customer details embedding, and admin feedback workflow",
+    "maturity":   3,
+    "permission": "daily_reports",
+    "icon":       "Icons.summarize_outlined",
+    "activeIcon": "Icons.summarize"
+  },
+  "storage": {
+    "remote": true,
+    "local":  false
+  },
+  "entities": {
+    "DailyReport": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "officerId": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Officer is required" }
+          }
+        },
+        "officerName": {
+          "type":     "String",
+          "nullable": true
+        },
+        "officerEmail": {
+          "type":     "String",
+          "nullable": true
+        },
+        "officerPhone": {
+          "type":     "String",
+          "nullable": true
+        },
+        "officerRole": {
+          "type":     "String",
+          "nullable": true
+        },
+        "officerStatus": {
+          "type":     "String",
+          "nullable": true
+        },
+        "reportNumber": {
+          "type":     "String",
+          "nullable": true,
+          "readonly": true
+        },
+        "reportDate": {
+          "type":     "DateTime",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Report date is required" }
+          }
+        },
+        "submittedAt": {
+          "type":     "DateTime",
+          "nullable": true
+        },
+        "reviewedAt": {
+          "type":     "DateTime",
+          "nullable": true
+        },
+        "visitedCustomers": {
+          "type":     "List<Map<String, dynamic>>",
+          "nullable": true
+        },
+        "keyOutcomes": {
+          "type":     "String",
+          "nullable": true
+        },
+        "challengesFaced": {
+          "type":     "String",
+          "nullable": true
+        },
+        "nextDayPlan": {
+          "type":     "String",
+          "nullable": true
+        },
+        "customBody": {
+          "type":     "String",
+          "nullable": true
+        },
+        "isCustomized": {
+          "type":     "bool",
+          "nullable": false
+        },
+        "reviewedByName": {
+          "type":     "String",
+          "nullable": true
+        },
+        "reviewedByRole": {
+          "type":     "String",
+          "nullable": true
+        },
+        "adminFeedback": {
+          "type":     "String",
+          "nullable": true
+        },
+        "reviewDecision": {
+          "type":     "String",
+          "nullable": true
+        },
+        "status": {
+          "type":     "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "createdAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {
+        "officer": {
+          "type":       "belongsTo",
+          "entity":     "Officer",
+          "feature":    "officer",
+          "foreignKey": "officerId"
+        }
+      },
+      "api": {
+        "endpoint":    "/daily-reports",
+        "paginatable": true,
+        "searchable":  true
+      },
+      "ui": {
+        "card": {
+          "title":    "reportNumber",
+          "subtitle": "reportDate"
+        },
+        "detail": {
+          "header": ["reportNumber", "reportDate"],
+          "body":   ["officerId", "officerName", "officerEmail", "officerPhone", "officerRole", "visitedCustomers", "keyOutcomes", "challengesFaced", "nextDayPlan", "customBody", "isCustomized", "reviewedByName", "adminFeedback", "reviewDecision", "status", "submittedAt", "reviewedAt", "createdAt"]
+        },
+        "form": {
+          "create": ["officerId", "reportDate", "keyOutcomes", "challengesFaced", "nextDayPlan", "customBody"],
+          "edit":   ["keyOutcomes", "challengesFaced", "nextDayPlan", "customBody", "adminFeedback"]
+        },
+        "list": {
+          "emptyMessage": "No daily reports found.",
+          "searchBy":     "reportNumber",
+          "filterBy":     "status"
+        }
+      }
+    }
+  },
+  "stateMachine": {
+    "statusField":   "status",
+    "initialStatus": "draft",
+    "statuses": [
+      { "name": "draft",     "label": "Draft",     "color": "grey" },
+      { "name": "submitted", "label": "Submitted", "color": "blue" },
+      { "name": "approved",  "label": "Approved",  "color": "green" },
+      { "name": "rejected",  "label": "Rejected",  "color": "red" }
+    ],
+    "transitions": [
+      {
+        "name":       "submit",
+        "label":      "Submit Report",
+        "from":       ["draft"],
+        "to":         "submitted",
+        "permission": "daily_reports.submit"
+      },
+      {
+        "name":       "approve",
+        "label":      "Approve Report",
+        "from":       ["submitted"],
+        "to":         "approved",
+        "permission": "daily_reports.approve"
+      },
+      {
+        "name":       "reject",
+        "label":      "Reject Report",
+        "from":       ["submitted"],
+        "to":         "rejected",
+        "permission": "daily_reports.reject"
+      },
+      {
+        "name":       "resubmit",
+        "label":      "Resubmit Report",
+        "from":       ["rejected"],
+        "to":         "submitted",
+        "permission": "daily_reports.resubmit"
+      }
+    ]
+  },
+  "workflow": {
+    "steps": [
+      {
+        "name":     "notifyAdminOnSubmit",
+        "label":    "Notify Admin on Submission",
+        "trigger":  "submit",
+        "executor": "NotifyAdminOnSubmitExecutor"
+      },
+      {
+        "name":     "notifyOfficerApproved",
+        "label":    "Notify Officer on Approval",
+        "trigger":  "approve",
+        "executor": "NotifyOfficerApprovedExecutor"
+      },
+      {
+        "name":     "notifyOfficerRejected",
+        "label":    "Notify Officer on Rejection",
+        "trigger":  "reject",
+        "executor": "NotifyOfficerRejectedExecutor"
+      }
+    ],
+    "events": [
+      {
+        "name":    "DailyReportSubmitted",
+        "payload": ["reportId", "officerId", "reportDate"]
+      },
+      {
+        "name":    "DailyReportApproved",
+        "payload": ["reportId", "adminId", "feedback"]
+      },
+      {
+        "name":    "DailyReportRejected",
+        "payload": ["reportId", "adminId", "feedback"]
+      }
+    ]
+  }
+}

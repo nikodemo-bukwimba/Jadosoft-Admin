@@ -2,10 +2,10 @@
 # Level3StateMachineGenerator.psm1
 # Generates: domain/value_objects, domain/guards, domain/services
 #
-# PS→Dart SAFETY RULES applied:
-#   1. Dart ${expr} interpolation → string concat (PS eats ${} as variable)
-#   2. Dart Set literal {a, b} → string concat (PS sees {} as scriptblock)
-#   3. Dart $variable? → N/A here, but see PageGenerator
+# PS--Dart SAFETY RULES applied:
+#   1. Dart ${expr} interpolation -- string concat (PS eats ${} as variable)
+#   2. Dart Set literal {a, b} -- string concat (PS sees {} as scriptblock)
+#   3. Dart $variable? -- N/A here, but see PageGenerator
 # ============================================================
 
 function Invoke-GenerateStateMachine {
@@ -36,8 +36,8 @@ function _Gen-StatusEnum {
   # Enum values
   $enumValues = ($states | ForEach-Object { "  $_," }) -join "`n"
 
-  # ── FIX Bug 2: canTransitionTo map ──
-  # PS sees {$targetCsv} as a scriptblock → use string concat for Dart Set literal
+  # -- FIX Bug 2: canTransitionTo map --
+  # PS sees {$targetCsv} as a scriptblock -- use string concat for Dart Set literal
   $transMap = [System.Collections.Generic.List[string]]::new()
   foreach ($s in $states) {
     $targets = [System.Collections.Generic.List[string]]::new()
@@ -64,7 +64,7 @@ function _Gen-StatusEnum {
     $colorCases.Add("      ${fclass}Status.$($states[$i]) => $color,")
   }
 
-  # ── Dart ?. on _transitions[this] needs protection too ──
+  # -- Dart ?. on _transitions[this] needs protection too --
   # Build the canTransitionTo line via concat
   $canTransLine = '      _transitions[this]' + '?.contains(target) ?? false;'
 
@@ -103,7 +103,7 @@ function _Gen-TransitionGuard {
   $fclass = $Ctx.Tokens.FCLASS
   $fDir = $Ctx.FeatureDir
 
-  # ── FIX Bug 1: Dart ${current.displayName} interpolation ──
+  # -- FIX Bug 1: Dart ${current.displayName} interpolation --
   # PS here-strings interpret ${current} as a PS variable (empty).
   # Build the error-message line entirely via string concat.
   $errMsg = "        'Cannot transition from " + '${current.displayName}' + " to " + '${target.displayName}' + "',"
@@ -126,12 +126,12 @@ $errMsg
       ));
     }
 
-    // ── HUMAN CUSTOMIZATION ZONE ──────────────────────────
+    // -- HUMAN CUSTOMIZATION ZONE --
     // Add business rule checks here, e.g.:
     //   if (target == ${fclass}Status.approved && !hasManagerRole) {
     //     return Left(ValidationFailure('Manager approval required'));
     //   }
-    // ── END CUSTOMIZATION ZONE ────────────────────────────
+    // -- END CUSTOMIZATION ZONE --
 
     return Right(target);
   }

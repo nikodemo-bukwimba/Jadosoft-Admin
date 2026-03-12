@@ -1,5 +1,5 @@
 # ============================================================
-# Generate-Level1.ps1 — Level 1 CRUD Feature Generator
+# Generate-Level1.ps1 -- Level 1 CRUD Feature Generator
 # ============================================================
 
 param(
@@ -59,7 +59,7 @@ $maturity = [int]$config.feature.maturity
 if ($maturity -ne 1) { Write-Fail "This generator handles Level 1 only. Config declares maturity $maturity."; exit 1 }
 
 $tokens = Get-NamingTokens -FeatureConfig $config.feature
-Write-Step "Feature: $($tokens.FLABEL) (Level 1 — CRUD)"
+Write-Step "Feature: $($tokens.FLABEL) (Level 1 -- CRUD)"
 
 $featureDir = Join-Path $ProjectRoot "lib/features/$($tokens.FNAME)"
 if ((Test-Path $featureDir) -and -not $Force) {
@@ -112,3 +112,4 @@ else {
     Write-Success "$fileCount files generated in lib/features/$($tokens.FNAME)"
 }
 Write-Host ""
+

@@ -1,5 +1,5 @@
 # ============================================================
-# MetaHelpers.psm1 — Entity Metadata Resolver
+# MetaHelpers.psm1 -- Entity Metadata Resolver
 # ============================================================
 
 function Get-PrimaryEntityMeta {

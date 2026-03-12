@@ -1,4 +1,4 @@
-// app_router.dart
+﻿// app_router.dart
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -17,7 +17,7 @@ import '../../features/profile/presentation/pages/profile_page.dart';
 import '../shell/shell_page.dart';
 import '../shell/shell_page_home_tab.dart';
 
-// ── GENERATOR FEATURE PAGE IMPORTS — append only ─────────────────────────────
+// â”€â”€ GENERATOR FEATURE PAGE IMPORTS â€” append only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  
 import '../../features/actor/presentation/pages/actor_list_page.dart';
 import '../../features/actor/presentation/pages/actor_detail_page.dart';
@@ -25,7 +25,7 @@ import '../../features/actor/presentation/pages/actor_form_page.dart';
 import '../../features/actor/presentation/bloc/actor_bloc.dart';
 import '../../features/actor/presentation/bloc/actor_event.dart';
 import '../../config/di/injection_container.dart';
-// ── END GENERATOR FEATURE PAGE IMPORTS ───────────────────────────────────────
+// â”€â”€ END GENERATOR FEATURE PAGE IMPORTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class AppRouter {
   static const String splash = '/';
@@ -36,7 +36,7 @@ class AppRouter {
   static const String dashboard = '/dashboard';
   static const String profile = '/profile';
 
-  // ── GENERATOR ROUTE CONSTANTS — append only ──────────────
+  // â”€â”€ GENERATOR ROUTE CONSTANTS â€” append only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     static const String actorList   = '/actors';
   static const String actorCreate = '/actors/create';
@@ -46,7 +46,7 @@ class AppRouter {
   /// Helpers for building concrete paths with a known id.
   static String actorDetailPath(String id) => '/actors/$id';
   static String actorEditPath(String id)   => '/actors/$id/edit';
-  // ── END GENERATOR ROUTE CONSTANTS ────────────────────────
+  // â”€â”€ END GENERATOR ROUTE CONSTANTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   static GoRouter createRouter(AuthBloc authBloc) {
     final notifier = AuthRouterNotifier(authBloc);
@@ -106,7 +106,7 @@ class AppRouter {
               initialActiveEmail = authState.activeSession.user.email;
             } else if (authState is AuthNeedsAccountPicker) {
               initialAccounts = authState.savedAccounts;
-              // No active email — user was just logged out
+              // No active email â€” user was just logged out
             } else if (authState is AuthAccountsUpdated) {
               initialAccounts = authState.savedAccounts;
               initialActiveEmail = authState.activeSession.user.email;
@@ -115,7 +115,7 @@ class AppRouter {
             // Wrap with BlocProvider.value so the page sees the SAME BLoC
             // instance that the rest of the app uses. GoRouter's route
             // builders receive a context that may not inherit InheritedWidgets
-            // from ancestors above the MaterialApp — explicit provision is
+            // from ancestors above the MaterialApp â€” explicit provision is
             // the safe pattern (same as AccountSwitcherSheet.show).
             return BlocProvider.value(
               value: authBloc,
@@ -134,7 +134,7 @@ class AppRouter {
             GoRoute(path: home, builder: (_, __) => const HomeTab()),
             GoRoute(path: dashboard, builder: (_, __) => const DashboardPage()),
             GoRoute(path: profile, builder: (_, __) => const ProfilePage()),
-            // ── GENERATOR ROUTES — append only ───────────────
+            // â”€â”€ GENERATOR ROUTES â€” append only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  
             
             // Actors routes (Level 1, generated 2026-03-10)
@@ -172,7 +172,7 @@ class AppRouter {
                 );
               },
             ),
-            // ── END GENERATOR ROUTES ─────────────────────────
+            // â”€â”€ END GENERATOR ROUTES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           ],
         ),
       ],
@@ -188,34 +188,34 @@ class AppRouter {
     final isShellRoute = !isAuthRoute && location != splash;
 
     return switch (authState) {
-      // ── Resolving ────────────────────────────────────────────────────────────
+      // â”€â”€ Resolving â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       AuthInitial() => location == splash ? null : splash,
       AuthLoading() => isShellRoute ? splash : null,
 
-      // ── Authenticated ────────────────────────────────────────────────────────
-      // Only splash → home. /login, /register, /account-picker are intentionally
+      // â”€â”€ Authenticated â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // Only splash â†’ home. /login, /register, /account-picker are intentionally
       // NOT redirected so add-account and manual navigation work.
       AuthAuthenticated() => location == splash ? home : null,
       AuthAccountsUpdated() => location == splash ? home : null,
 
-      // ── Needs picker ─────────────────────────────────────────────────────────
+      // â”€â”€ Needs picker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       AuthNeedsAccountPicker() => isAuthRoute ? null : accountPicker,
 
-      // ── Unauthenticated ──────────────────────────────────────────────────────
+      // â”€â”€ Unauthenticated â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       AuthUnauthenticated() =>
         isShellRoute || location == splash ? login : null,
 
-      // ── Switching / failure ──────────────────────────────────────────────────
+      // â”€â”€ Switching / failure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       AuthSwitching() => null,
       AuthFailureState() => isShellRoute ? login : null,
 
-      // ── Catch-all ────────────────────────────────────────────────────────────
+      // â”€â”€ Catch-all â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       _ => isShellRoute ? login : null,
     };
   }
 }
 
-// ── AuthRouterNotifier ────────────────────────────────────────
+// â”€â”€ AuthRouterNotifier â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class AuthRouterNotifier extends ChangeNotifier {
   AuthRouterNotifier(AuthBloc authBloc) {
     _subscription = authBloc.stream.listen((_) => notifyListeners());
@@ -230,7 +230,7 @@ class AuthRouterNotifier extends ChangeNotifier {
   }
 }
 
-// ── Splash screen ─────────────────────────────────────────────
+// â”€â”€ Splash screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class _SplashScreen extends StatelessWidget {
   const _SplashScreen();
 
@@ -271,6 +271,27 @@ class _SplashScreen extends StatelessWidget {
     );
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -1,0 +1,103 @@
+{
+  "feature": {
+    "name":       "activity_log",
+    "label":      "Activity Logs",
+    "purpose":    "Comprehensive audit logging of all administrative actions — read-only, written by backend",
+    "maturity":   1,
+    "permission": "activity_logs",
+    "icon":       "Icons.history_outlined",
+    "activeIcon": "Icons.history"
+  },
+  "storage": {
+    "remote": true,
+    "local":  false
+  },
+  "entities": {
+    "ActivityLog": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "actorId": {
+          "type":     "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "actorName": {
+          "type":     "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "actorRole": {
+          "type":     "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "action": {
+          "type":     "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "entityType": {
+          "type":     "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "entityId": {
+          "type":     "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "entitySnapshot": {
+          "type":     "Map<String, dynamic>",
+          "nullable": true,
+          "readonly": true
+        },
+        "ipAddress": {
+          "type":     "String",
+          "nullable": true,
+          "readonly": true
+        },
+        "userAgent": {
+          "type":     "String",
+          "nullable": true,
+          "readonly": true
+        },
+        "occurredAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {},
+      "api": {
+        "endpoint":    "/activity-logs",
+        "paginatable": true,
+        "searchable":  true,
+        "filterBy":    ["actorRole", "entityType", "action", "dateRange"]
+      },
+      "ui": {
+        "card": {
+          "title":    "action",
+          "subtitle": "actorName"
+        },
+        "detail": {
+          "header": ["action", "actorName"],
+          "body":   ["actorId", "actorRole", "entityType", "entityId", "entitySnapshot", "ipAddress", "userAgent", "occurredAt"]
+        },
+        "form": {
+          "create": [],
+          "edit":   []
+        },
+        "list": {
+          "emptyMessage": "No activity logs recorded yet.",
+          "searchBy":     "actorName",
+          "filterBy":     "entityType"
+        }
+      }
+    }
+  }
+}

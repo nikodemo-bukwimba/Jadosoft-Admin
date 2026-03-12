@@ -1,5 +1,5 @@
 # ============================================================
-# Level3EntityGenerator.psm1 — Entity with status field
+# Level3EntityGenerator.psm1 -- Entity with status field
 # ============================================================
 
 function Invoke-GenerateEntity {

@@ -33,7 +33,7 @@ function Get-NamingTokens {
     }
 }
 
-# ── Level 1+ helpers ──────────────────────────────────────
+# -- Level 1+ helpers --
 
 function Get-DartType {
     param([Parameter(Mandatory)][string]$ConfigType, [bool]$Nullable = $false)

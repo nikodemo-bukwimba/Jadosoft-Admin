@@ -1,0 +1,72 @@
+{
+  "feature": {
+    "name":       "report_export",
+    "label":      "Report Export",
+    "purpose":    "Export visit reports, daily report archives, officer performance, and sales data to PDF and Excel",
+    "maturity":   5,
+    "permission": "report_export",
+    "icon":       "Icons.file_download_outlined",
+    "activeIcon": "Icons.file_download"
+  },
+  "integration": {
+    "baseUrl":   "{{BACKEND_API_BASE_URL}}",
+    "authType":  "bearer",
+    "timeout":   120000,
+    "retryPolicy": {
+      "maxAttempts": 3,
+      "backoffMs":   2000,
+      "retryOn":     [500, 502, 503]
+    },
+    "operations": [
+      {
+        "name":        "requestExport",
+        "method":      "POST",
+        "path":        "/exports",
+        "label":       "Request Export",
+        "description": "Request an async export of a report in PDF or Excel format",
+        "icon":        "Icons.upload_file",
+        "requestFields": [
+          { "name": "reportType", "type": "String" },
+          { "name": "format",     "type": "String" },
+          { "name": "dateRange",  "type": "Map<String, String>", "nullable": true },
+          { "name": "filters",    "type": "Map<String, dynamic>", "nullable": true }
+        ],
+        "responseFields": [
+          { "name": "exportId",  "type": "String" },
+          { "name": "status",    "type": "String" },
+          { "name": "createdAt", "type": "DateTime" }
+        ]
+      },
+      {
+        "name":        "getExportStatus",
+        "method":      "GET",
+        "path":        "/exports/{exportId}",
+        "label":       "Get Export Status",
+        "description": "Poll the status of an export request until ready",
+        "icon":        "Icons.hourglass_empty",
+        "responseFields": [
+          { "name": "exportId",    "type": "String" },
+          { "name": "status",      "type": "String" },
+          { "name": "progress",    "type": "int", "nullable": true },
+          { "name": "downloadUrl", "type": "String", "nullable": true },
+          { "name": "error",       "type": "String", "nullable": true }
+        ]
+      },
+      {
+        "name":        "downloadExport",
+        "method":      "GET",
+        "path":        "/exports/{exportId}/download",
+        "label":       "Download Export",
+        "description": "Download the completed export file",
+        "icon":        "Icons.download",
+        "responseFields": [
+          { "name": "fileUrl",     "type": "String" },
+          { "name": "fileName",    "type": "String" },
+          { "name": "contentType", "type": "String" },
+          { "name": "fileSize",    "type": "int" }
+        ]
+      }
+    ],
+    "webhooks": []
+  }
+}

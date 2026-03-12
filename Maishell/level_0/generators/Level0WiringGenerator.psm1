@@ -1,16 +1,16 @@
 # ============================================================
 # Level0WiringGenerator.psm1
-# Level 0 wiring — routes + shell nav tab
+# Level 0 wiring -- routes + shell nav tab
 #
 # Level 0 has NO BLoC, NO DI registrations.
-# Routes are GoRoute entries inside ShellRoute — no BlocProvider wrapping.
-# Nav item is a NavItem — permission-gated only if permission is provided.
+# Routes are GoRoute entries inside ShellRoute -- no BlocProvider wrapping.
+# Nav item is a NavItem -- permission-gated only if permission is provided.
 # ============================================================
 
 <#
 .SYNOPSIS
     Appends a GoRoute entry to app_router.dart for a Level 0 feature.
-    No BlocProvider wrapping — just a direct const page reference.
+    No BlocProvider wrapping -- just a direct const page reference.
 #>
 function Update-AppRouter {
     param([Parameter(Mandatory)][hashtable]$Ctx)
@@ -24,43 +24,43 @@ function Update-AppRouter {
     $routerPath = Join-Path $pRoot "lib\app\routes\app_router.dart"
 
     if (-not (Test-Path $routerPath)) {
-        Write-Warning "app_router.dart not found at: $routerPath — skipping route wiring"
+        Write-Warning "app_router.dart not found at: $routerPath -- skipping route wiring"
         return
     }
 
-    # ── Import statement ───────────────────────────────────
+    # -- Import statement --
     $import = "import '../../features/${fname}/presentation/pages/${fname}_page.dart';"
 
-    # ── Route constant ─────────────────────────────────────
+    # -- Route constant --
     $routeConst = "  static const String ${fname}Page = '/${fname}';"
 
-    # ── GoRoute entry — Level 0: no BlocProvider, just const page ──
+    # -- GoRoute entry -- Level 0: no BlocProvider, just const page --
     $goRoute = @"
 
-            // $flabel (Level 0 — static, generated $(Get-Date -Format 'yyyy-MM-dd'))
+            // $flabel (Level 0 -- static, generated $(Get-Date -Format 'yyyy-MM-dd'))
             GoRoute(
               path: ${fname}Page,
               builder: (_, __) => const ${fclass}Page(),
             ),
 "@
 
-    # ── Write to file ──────────────────────────────────────
+    # -- Write to file --
     $content = Get-Content $routerPath -Raw
 
     # Insert import
-    $importMarker = '// ── END GENERATOR FEATURE PAGE IMPORTS'
+    $importMarker = '// -- END GENERATOR FEATURE PAGE IMPORTS'
     if ($content.Contains($importMarker)) {
         $content = $content.Replace($importMarker, "$import`n$importMarker")
     }
 
     # Insert route constant
-    $constMarker = '// ── END GENERATOR ROUTE CONSTANTS'
+    $constMarker = '// -- END GENERATOR ROUTE CONSTANTS'
     if ($content.Contains($constMarker)) {
         $content = $content.Replace($constMarker, "$routeConst`n  $constMarker")
     }
 
     # Insert GoRoute inside ShellRoute
-    $routeMarker = '// ── END GENERATOR ROUTES'
+    $routeMarker = '// -- END GENERATOR ROUTES'
     if ($content.Contains($routeMarker)) {
         $content = $content.Replace($routeMarker, "$goRoute`n            $routeMarker")
     }
@@ -91,19 +91,19 @@ function Update-ShellNavItems {
     $navPath = Join-Path $pRoot "lib\app\shell\shell_nav_items.dart"
 
     if (-not (Test-Path $navPath)) {
-        Write-Warning "shell_nav_items.dart not found at: $navPath — skipping nav wiring"
+        Write-Warning "shell_nav_items.dart not found at: $navPath -- skipping nav wiring"
         return
     }
 
-    # ── Permission slug (optional) + icon ─────────────────
+    # -- Permission slug (optional) + icon --
     $fperm = $config.feature.permission
     $icon = if ($config.feature.icon) { $config.feature.icon } else { 'Icons.article_outlined' }
 
-    # ── NavItem — permission-gated only if permission provided ──
+    # -- NavItem -- permission-gated only if permission provided --
     if (-not [string]::IsNullOrWhiteSpace($fperm)) {
         $navItem = @"
 
-      // $flabel (Level 0 — static, generated $(Get-Date -Format 'yyyy-MM-dd'))
+      // $flabel (Level 0 -- static, generated $(Get-Date -Format 'yyyy-MM-dd'))
       if (auth.can('${fperm}.view'))
         NavItem(
           id:    '${fname}',
@@ -116,7 +116,7 @@ function Update-ShellNavItems {
     else {
         $navItem = @"
 
-      // $flabel (Level 0 — static, generated $(Get-Date -Format 'yyyy-MM-dd'))
+      // $flabel (Level 0 -- static, generated $(Get-Date -Format 'yyyy-MM-dd'))
       NavItem(
         id:    '${fname}',
         label: '$flabel',
@@ -126,10 +126,10 @@ function Update-ShellNavItems {
 "@
     }
 
-    # ── Write to file ──────────────────────────────────────
+    # -- Write to file --
     $content = Get-Content $navPath -Raw
 
-    $tabMarker = '// ── END GENERATOR TABS'
+    $tabMarker = '// -- END GENERATOR TABS'
     if ($content.Contains($tabMarker)) {
         $content = $content.Replace($tabMarker, "$navItem`n      $tabMarker")
     }

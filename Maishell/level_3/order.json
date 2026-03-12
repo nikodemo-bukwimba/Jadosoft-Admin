@@ -1,0 +1,172 @@
+{
+  "feature": {
+    "name":       "order",
+    "label":      "Orders",
+    "purpose":    "Order management with payment verification and customer notification workflow on state transitions",
+    "maturity":   3,
+    "permission": "orders",
+    "icon":       "Icons.shopping_cart_outlined",
+    "activeIcon": "Icons.shopping_cart"
+  },
+  "storage": {
+    "remote": true,
+    "local":  false
+  },
+  "entities": {
+    "Order": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "customerId": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Customer is required" }
+          }
+        },
+        "items": {
+          "type":     "List<Map<String, dynamic>>",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "At least one item is required" }
+          }
+        },
+        "total": {
+          "type":     "double",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Total is required" },
+            "min":      { "value": 0.01, "message": "Total must be positive" }
+          }
+        },
+        "paymentRef": {
+          "type":     "String",
+          "nullable": true
+        },
+        "status": {
+          "type":     "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "createdAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {
+        "customer": {
+          "type":       "belongsTo",
+          "entity":     "Customer",
+          "feature":    "customer",
+          "foreignKey": "customerId"
+        }
+      },
+      "api": {
+        "endpoint":    "/orders",
+        "paginatable": true,
+        "searchable":  true
+      },
+      "ui": {
+        "card": {
+          "title":    "customerId",
+          "subtitle": "total"
+        },
+        "detail": {
+          "header": ["customerId", "total"],
+          "body":   ["items", "paymentRef", "status", "createdAt"]
+        },
+        "form": {
+          "create": ["customerId", "items", "total", "paymentRef"],
+          "edit":   ["items", "total", "paymentRef"]
+        },
+        "list": {
+          "emptyMessage": "No orders yet.",
+          "searchBy":     "customerId",
+          "filterBy":     "status"
+        }
+      }
+    }
+  },
+  "stateMachine": {
+    "statusField":   "status",
+    "initialStatus": "draft",
+    "statuses": [
+      { "name": "draft",     "label": "Draft",     "color": "grey" },
+      { "name": "confirmed", "label": "Confirmed", "color": "blue" },
+      { "name": "shipped",   "label": "Shipped",   "color": "orange" },
+      { "name": "delivered", "label": "Delivered",  "color": "green" },
+      { "name": "cancelled", "label": "Cancelled",  "color": "red" }
+    ],
+    "transitions": [
+      {
+        "name":       "confirm",
+        "label":      "Confirm Order",
+        "from":       ["draft"],
+        "to":         "confirmed",
+        "permission": "orders.confirm"
+      },
+      {
+        "name":       "ship",
+        "label":      "Ship Order",
+        "from":       ["confirmed"],
+        "to":         "shipped",
+        "permission": "orders.ship"
+      },
+      {
+        "name":       "deliver",
+        "label":      "Mark Delivered",
+        "from":       ["shipped"],
+        "to":         "delivered",
+        "permission": "orders.deliver"
+      },
+      {
+        "name":       "cancel",
+        "label":      "Cancel Order",
+        "from":       ["draft", "confirmed"],
+        "to":         "cancelled",
+        "permission": "orders.cancel"
+      }
+    ]
+  },
+  "workflow": {
+    "steps": [
+      {
+        "name":     "verifyPayment",
+        "label":    "Verify Payment via Mobile Money",
+        "trigger":  "confirm",
+        "executor": "VerifyPaymentExecutor"
+      },
+      {
+        "name":     "notifyCustomerShipped",
+        "label":    "Notify Customer — Order Shipped",
+        "trigger":  "ship",
+        "executor": "NotifyCustomerShippedExecutor"
+      },
+      {
+        "name":     "notifyCustomerDelivered",
+        "label":    "Notify Customer — Order Delivered",
+        "trigger":  "deliver",
+        "executor": "NotifyCustomerDeliveredExecutor"
+      }
+    ],
+    "events": [
+      {
+        "name":    "OrderConfirmed",
+        "payload": ["orderId", "customerId", "total"]
+      },
+      {
+        "name":    "OrderShipped",
+        "payload": ["orderId", "trackingInfo"]
+      },
+      {
+        "name":    "OrderDelivered",
+        "payload": ["orderId", "deliveredAt"]
+      }
+    ]
+  }
+}

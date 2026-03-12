@@ -3,14 +3,14 @@
 # Token substitution engine + Dart code generation helpers.
 #
 # Token convention (conflict-free with Dart syntax):
-#   FNAME   → snake_case feature name  (project)
-#   FCLASS  → PascalCase class name    (Project)
-#   FUPPER  → UPPER_CASE               (PROJECT)
-#   FLABEL  → Human label              (Project)
-#   FPERM   → Permission prefix        (projects)
+#   FNAME   -- snake_case feature name  (project)
+#   FCLASS  -- PascalCase class name    (Project)
+#   FUPPER  -- UPPER_CASE               (PROJECT)
+#   FLABEL  -- Human label              (Project)
+#   FPERM   -- Permission prefix        (projects)
 # ============================================================
 
-# ── Core token replacement ────────────────────────────────────
+# -- Core token replacement --
 function Invoke-TokenReplace {
     param(
         [Parameter(Mandatory)][string]$Template,
@@ -24,25 +24,25 @@ function Invoke-TokenReplace {
     return $result
 }
 
-# ── Shared helper: PascalCase → snake_case ────────────────────
-# Single canonical definition — all other modules import from here.
+# -- Shared helper: PascalCase -- snake_case --
+# Single canonical definition -- all other modules import from here.
 function ConvertTo-SnakeCase {
     param([Parameter(Mandatory)][string]$PascalCase)
     return ($PascalCase -creplace '([A-Z])', '_$1').TrimStart('_').ToLower()
 }
 
-# ── Shared helper: camelCase/snake_case → Human Label ─────────
+# -- Shared helper: camelCase/snake_case -- Human Label --
 function ConvertTo-HumanLabel {
     param([Parameter(Mandatory)][string]$Name)
-    # camelCase → spaced: insert space before uppercase
+    # camelCase -- spaced: insert space before uppercase
     $spaced = $Name -creplace '([A-Z])', ' $1'
-    # snake_case → spaced
+    # snake_case -- spaced
     $spaced = $spaced.Replace('_', ' ')
     # Title-case each word
     return (Get-Culture).TextInfo.ToTitleCase($spaced.Trim().ToLower())
 }
 
-# ── Dart type helpers ─────────────────────────────────────────
+# -- Dart type helpers --
 function Get-DartType {
     param([string]$ConfigType, [bool]$Nullable = $false)
 
@@ -77,7 +77,7 @@ function Get-FormWidget {
     }
 }
 
-# ── Dart field generation ─────────────────────────────────────
+# -- Dart field generation --
 function Get-EntityFields {
     param([object]$Fields, [string]$Indent = '  ')
 
@@ -123,7 +123,7 @@ function Get-CopyWithBody {
     return $lines -join "`n"
 }
 
-# ── Validation gate generation ────────────────────────────────
+# -- Validation gate generation --
 function Get-ValidationGate {
     param([object]$Fields, [string]$ParamsVar = 'params', [string]$Indent = '    ')
 
@@ -215,7 +215,7 @@ function Get-ValidationGate {
     }
 }
 
-# ── Form field widget generation ──────────────────────────────
+# -- Form field widget generation --
 # FIX: Generates proper labels, proper bool state variables, proper validators
 function Get-FormFields {
     param([object]$Fields, [string[]]$FieldList, [string]$Indent = '          ')
@@ -291,7 +291,7 @@ function Get-FormFields {
     return $lines -join "`n"
 }
 
-# ── Form controller declarations ──────────────────────────────
+# -- Form controller declarations --
 # FIX: Bool fields get state variables, non-bool get TextEditingControllers
 function Get-FormControllerDeclarations {
     param([object]$Fields, [string[]]$FieldList, [string]$Indent = '  ')
@@ -313,7 +313,7 @@ function Get-FormControllerDeclarations {
     return $lines -join "`n"
 }
 
-# ── Form dispose calls ───────────────────────────────────────
+# -- Form dispose calls --
 # FIX: Only dispose TextEditingControllers, not bool state variables
 function Get-FormDisposeStatements {
     param([object]$Fields, [string[]]$FieldList, [string]$Indent = '    ')
@@ -331,7 +331,7 @@ function Get-FormDisposeStatements {
     return $lines -join "`n"
 }
 
-# ── JSON fromJson field mapping generation ────────────────────
+# -- JSON fromJson field mapping generation --
 function Get-FromJsonFields {
     param([object]$Fields, [string]$Indent = '      ')
 
@@ -371,7 +371,7 @@ function Get-FromJsonFields {
     return $lines -join "`n"
 }
 
-# ── JSON toJson field mapping generation ─────────────────────
+# -- JSON toJson field mapping generation --
 function Get-ToJsonFields {
     param([object]$Fields, [string]$Indent = '      ')
 
@@ -408,7 +408,7 @@ function ConvertTo-PascalCase {
     ).Replace(' ', '')
 }
 
-# ── Form widget type resolution ──────────────────────────────
+# -- Form widget type resolution --
 function Get-FormWidgetType {
     param([Parameter(Mandatory)][string]$ConfigType)
     switch ($ConfigType) {
@@ -427,7 +427,7 @@ function Get-KeyboardType {
     }
 }
 
-# ── Complete form field code generation ──────────────────────
+# -- Complete form field code generation --
 function Get-FormFieldCode {
     param(
         [Parameter(Mandatory)][string]$FieldName,

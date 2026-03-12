@@ -1,7 +1,7 @@
 # ============================================================
-# Level4WiringGenerator.psm1 — DI + Routes + Nav for Aggregator
+# Level4WiringGenerator.psm1 -- DI + Routes + Nav for Aggregator
 # FIX: Routes use GoRouter GoRoute, not MaterialPageRoute
-# FIX: Nav uses NavItem — permission-gated only if permission is provided
+# FIX: Nav uses NavItem -- permission-gated only if permission is provided
 # ============================================================
 
 function _Insert-AboveMarker {
@@ -49,7 +49,7 @@ function Update-InjectionContainer {
 
     $regs = [System.Collections.Generic.List[string]]::new()
     $regs.Add("")
-    $regs.Add("  // ── ${fclass} (Level 4 Aggregator) ────────────────────")
+    $regs.Add("  // -- ${fclass} (Level 4 Aggregator) --")
 
     # Provider registrations
     foreach ($srcProp in $sources) {
@@ -77,10 +77,10 @@ function Update-InjectionContainer {
 
     $content = Get-Content $diPath -Raw
     $content = _Insert-AboveMarker -Content $content `
-        -Marker '// ── END GENERATOR FEATURE IMPORTS' `
+        -Marker '// -- END GENERATOR FEATURE IMPORTS' `
         -Insert ($imports -join "`n")
     $content = _Insert-AboveMarker -Content $content `
-        -Marker '// ── END GENERATOR MANAGED' `
+        -Marker '// -- END GENERATOR MANAGED' `
         -Insert ($regs -join "`n")
 
     if (-not $isDryRun) {
@@ -103,7 +103,7 @@ function Update-AppRouter {
     $routerPath = Join-Path $pRoot "lib\app\routes\app_router.dart"
     if (-not (Test-Path $routerPath)) { Write-Warning "app_router.dart not found"; return }
 
-    # ── Imports ────────────────────────────────────────────
+    # -- Imports --
     $imports = @(
         "import '../../features/${fname}/presentation/pages/${fname}_dashboard_page.dart';",
         "import '../../features/${fname}/presentation/cubit/${fname}_cubit.dart';",
@@ -111,10 +111,10 @@ function Update-AppRouter {
         "import 'package:flutter_bloc/flutter_bloc.dart';"
     ) -join "`n"
 
-    # ── Route constant — aggregator has one page only ──────
+    # -- Route constant -- aggregator has one page only --
     $consts = "  static const String ${fname}Dashboard = '/${fname}/dashboard';"
 
-    # ── GoRoute entry inside ShellRoute ───────────────────
+    # -- GoRoute entry inside ShellRoute --
     $goRoute = @"
 
             // $flabel (Level 4 Aggregator, generated $(Get-Date -Format 'yyyy-MM-dd'))
@@ -128,9 +128,9 @@ function Update-AppRouter {
 "@
 
     $content = Get-Content $routerPath -Raw
-    $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR FEATURE PAGE IMPORTS' -Insert $imports
-    $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR ROUTE CONSTANTS'      -Insert $consts
-    $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR ROUTES'               -Insert $goRoute
+    $content = _Insert-AboveMarker -Content $content -Marker '// -- END GENERATOR FEATURE PAGE IMPORTS' -Insert $imports
+    $content = _Insert-AboveMarker -Content $content -Marker '// -- END GENERATOR ROUTE CONSTANTS'      -Insert $consts
+    $content = _Insert-AboveMarker -Content $content -Marker '// -- END GENERATOR ROUTES'               -Insert $goRoute
 
     if (-not $isDryRun) {
         Set-Content -Path $routerPath -Value $content -Encoding UTF8
@@ -152,11 +152,11 @@ function Update-ShellNavItems {
     $navPath = Join-Path $pRoot "lib\app\shell\shell_nav_items.dart"
     if (-not (Test-Path $navPath)) { Write-Warning "shell_nav_items.dart not found"; return }
 
-    # ── Permission slug (optional) + icon ─────────────────
+    # -- Permission slug (optional) + icon --
     $fperm = $config.feature.permission
     $icon = if ($config.feature.icon) { $config.feature.icon } else { 'Icons.dashboard_outlined' }
 
-    # ── NavItem — permission-gated only if permission provided ──
+    # -- NavItem -- permission-gated only if permission provided --
     if (-not [string]::IsNullOrWhiteSpace($fperm)) {
         $navItem = @"
 
@@ -184,7 +184,7 @@ function Update-ShellNavItems {
     }
 
     $content = Get-Content $navPath -Raw
-    $content = _Insert-AboveMarker -Content $content -Marker '// ── END GENERATOR TABS' -Insert $navItem
+    $content = _Insert-AboveMarker -Content $content -Marker '// -- END GENERATOR TABS' -Insert $navItem
 
     if (-not $isDryRun) {
         Set-Content -Path $navPath -Value $content -Encoding UTF8

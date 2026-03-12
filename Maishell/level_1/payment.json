@@ -1,0 +1,110 @@
+{
+  "feature": {
+    "name":       "payment",
+    "label":      "Payments",
+    "purpose":    "Read-only payment monitoring — records created by Mobile Money integration, admin views and searches",
+    "maturity":   1,
+    "permission": "payments",
+    "icon":       "Icons.payments_outlined",
+    "activeIcon": "Icons.payments"
+  },
+  "storage": {
+    "remote": true,
+    "local":  false
+  },
+  "entities": {
+    "Payment": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "orderId": {
+          "type":     "String",
+          "nullable": false
+        },
+        "customerId": {
+          "type":     "String",
+          "nullable": false
+        },
+        "amount": {
+          "type":     "double",
+          "nullable": false
+        },
+        "currency": {
+          "type":     "String",
+          "nullable": false
+        },
+        "provider": {
+          "type":     "String",
+          "nullable": false
+        },
+        "transactionRef": {
+          "type":     "String",
+          "nullable": true
+        },
+        "status": {
+          "type":     "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "initiatedAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        },
+        "confirmedAt": {
+          "type":     "DateTime",
+          "nullable": true,
+          "readonly": true
+        },
+        "failureReason": {
+          "type":     "String",
+          "nullable": true,
+          "readonly": true
+        }
+      },
+      "relationships": {
+        "order": {
+          "type":       "belongsTo",
+          "entity":     "Order",
+          "feature":    "order",
+          "foreignKey": "orderId"
+        },
+        "customer": {
+          "type":       "belongsTo",
+          "entity":     "Customer",
+          "feature":    "customer",
+          "foreignKey": "customerId"
+        }
+      },
+      "api": {
+        "endpoint":    "/payments",
+        "paginatable": true,
+        "searchable":  true,
+        "filterBy":    ["provider", "status", "dateRange"]
+      },
+      "ui": {
+        "card": {
+          "title":    "transactionRef",
+          "subtitle": "amount"
+        },
+        "detail": {
+          "header": ["transactionRef", "amount"],
+          "body":   ["orderId", "customerId", "currency", "provider", "status", "initiatedAt", "confirmedAt", "failureReason"]
+        },
+        "form": {
+          "create": [],
+          "edit":   []
+        },
+        "list": {
+          "emptyMessage": "No payments recorded yet.",
+          "searchBy":     "transactionRef",
+          "filterBy":     "provider"
+        }
+      }
+    }
+  }
+}

@@ -217,7 +217,7 @@ function _Gen-Page {
         $onExecStr = if ($canAutoExec) {
             "              onExecute: () => context.read<${fclass}Cubit>().$opName(),"
         } else {
-            "              // Requires parameters — wire up from your UI"
+            "              // Requires parameters -- wire up from your UI"
         }
 
         $opCards.Add(@"

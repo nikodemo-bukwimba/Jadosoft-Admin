@@ -22,7 +22,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# ── Module imports ─────────────────────────────────────────
+# -- Module imports --
 $ModuleRoot = Join-Path $PSScriptRoot "modules"
 $GenRoot    = Join-Path $PSScriptRoot "generators"
 
@@ -31,7 +31,7 @@ Import-Module (Join-Path $ModuleRoot "Validator.psm1")      -Force
 Import-Module (Join-Path $GenRoot    "Level0Generator.psm1") -Force
 Import-Module (Join-Path $GenRoot    "Level0WiringGenerator.psm1") -Force
 
-# ── Console helpers ────────────────────────────────────────
+# -- Console helpers --
 function Write-Header([string]$Text) {
     Write-Host ""
     Write-Host "===============================================" -ForegroundColor DarkCyan
@@ -73,7 +73,7 @@ function New-GeneratedFile {
     Write-Success (Split-Path $Path -Leaf)
 }
 
-# ── Entry ──────────────────────────────────────────────────
+# -- Entry --
 Write-Header "HALA FCA - Level 0 Static Feature Generator"
 
 # Resolve config path
@@ -86,7 +86,7 @@ if (-not (Test-Path $ConfigPath)) {
 Write-Step "Loading config: $ConfigPath"
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 
-# ── Phase A: Validation ────────────────────────────────────
+# -- Phase A: Validation --
 Write-Header "Phase A - Validation"
 
 $errors = Invoke-ConfigValidation -Config $config
@@ -99,7 +99,7 @@ if ($errors.Count -gt 0) {
 }
 Write-Success "Schema valid"
 
-# Maturity gate — this script only handles Level 0
+# Maturity gate -- this script only handles Level 0
 $maturity = [int]$config.feature.maturity
 if ($maturity -ne 0) {
     Write-Fail "This generator handles Level 0 only. Config declares maturity $maturity."
@@ -108,7 +108,7 @@ if ($maturity -ne 0) {
 
 # Derive naming tokens
 $tokens = Get-NamingTokens -FeatureConfig $config.feature
-Write-Step "Feature: $($tokens.FLABEL) (Level 0 — Static)"
+Write-Step "Feature: $($tokens.FLABEL) (Level 0 -- Static)"
 
 # Feature directory
 $featureDir = Join-Path $ProjectRoot "lib/features/$($tokens.FNAME)"
@@ -119,7 +119,7 @@ if ((Test-Path $featureDir) -and -not $Force) {
     exit 1
 }
 
-# ── Phase B: Generation ───────────────────────────────────
+# -- Phase B: Generation --
 Write-Header "Phase B - Generation"
 
 $ctx = @{
@@ -140,7 +140,7 @@ Update-AppRouter -Ctx $ctx
 Write-Step "Wiring shell navigation..."
 Update-ShellNavItems -Ctx $ctx
 
-# ── Summary ────────────────────────────────────────────────
+# -- Summary --
 Write-Header "Generation Complete"
 
 if ($DryRun) {
@@ -157,3 +157,4 @@ else {
 }
 
 Write-Host ""
+

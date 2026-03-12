@@ -1,0 +1,112 @@
+{
+  "feature": {
+    "name":       "marketing_dashboard",
+    "label":      "Marketing Dashboard",
+    "purpose":    "Aggregated marketing performance projection from visits, plans, daily reports, officers, and customers",
+    "maturity":   4,
+    "permission": "marketing_dashboard",
+    "icon":       "Icons.insights_outlined",
+    "activeIcon": "Icons.insights"
+  },
+  "sources": {
+    "visit": {
+      "feature":    "visit",
+      "entity":     "Visit",
+      "repository": "VisitRepository"
+    },
+    "weekly_plan": {
+      "feature":    "weekly_plan",
+      "entity":     "WeeklyPlan",
+      "repository": "WeeklyPlanRepository"
+    },
+    "daily_report": {
+      "feature":    "daily_report",
+      "entity":     "DailyReport",
+      "repository": "DailyReportRepository"
+    },
+    "officer": {
+      "feature":    "officer",
+      "entity":     "Officer",
+      "repository": "OfficerRepository"
+    },
+    "customer": {
+      "feature":    "customer",
+      "entity":     "Customer",
+      "repository": "CustomerRepository"
+    }
+  },
+  "projection": {
+    "metrics": [
+      {
+        "name":      "totalVisits",
+        "type":      "int",
+        "source":    "visit",
+        "operation": "count",
+        "label":     "Total Visits",
+        "icon":      "Icons.place"
+      },
+      {
+        "name":      "visitsByOfficer",
+        "type":      "Map<String, int>",
+        "source":    "visit",
+        "operation": "groupCount",
+        "field":     "officerId",
+        "label":     "Visits by Officer"
+      },
+      {
+        "name":      "planComplianceRate",
+        "type":      "double",
+        "source":    "weekly_plan",
+        "operation": "average",
+        "field":     "isApproved",
+        "label":     "Plan Compliance Rate",
+        "icon":      "Icons.check_circle"
+      },
+      {
+        "name":      "dailyReportSubmissionRate",
+        "type":      "int",
+        "source":    "daily_report",
+        "operation": "count",
+        "filter":    { "field": "status", "value": "submitted" },
+        "label":     "Reports Submitted",
+        "icon":      "Icons.summarize"
+      },
+      {
+        "name":      "totalCustomers",
+        "type":      "int",
+        "source":    "customer",
+        "operation": "count",
+        "label":     "Total Customers",
+        "icon":      "Icons.store"
+      },
+      {
+        "name":      "customersVisitedThisMonth",
+        "type":      "int",
+        "source":    "visit",
+        "operation": "count",
+        "filter":    { "field": "visitDate", "value": "currentMonth" },
+        "label":     "Customers Visited This Month",
+        "icon":      "Icons.calendar_today"
+      },
+      {
+        "name":         "recentVisits",
+        "type":         "List<VisitEntity>",
+        "source":       "visit",
+        "operation":    "latest",
+        "sortBy":       "createdAt",
+        "limit":        10,
+        "label":        "Recent Visits",
+        "displayField": "businessName"
+      },
+      {
+        "name":      "activeOfficers",
+        "type":      "int",
+        "source":    "officer",
+        "operation": "count",
+        "filter":    { "field": "status", "value": "active" },
+        "label":     "Active Officers",
+        "icon":      "Icons.badge"
+      }
+    ]
+  }
+}

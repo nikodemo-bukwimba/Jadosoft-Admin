@@ -1,5 +1,5 @@
-// shell_nav_items.dart
-// ─────────────────────────────────────────────────────────────
+﻿// shell_nav_items.dart
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Produces the ordered List<NavItem> consumed by AdaptiveNavShell.
 //
 // Each NavItem.path must match a GoRoute inside AppRouter's ShellRoute.
@@ -19,7 +19,7 @@
 //   1. Add a NavItem entry below between the generator markers.
 //   2. Add the matching GoRoute in app_router.dart.
 //   3. Add the page import above.
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import 'package:flutter/material.dart';
 import '../../core/rbac/rbac_extensions.dart';
@@ -27,9 +27,9 @@ import '../../customnav/nav_item.dart';
 import '../../features/auth/presentation/bloc/auth_state.dart';
 import '../routes/app_router.dart';
 
-// ── GENERATOR FEATURE IMPORTS — append only ──────────────────
+// â”€â”€ GENERATOR FEATURE IMPORTS â€” append only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// ── END GENERATOR FEATURE IMPORTS ────────────────────────────
+// â”€â”€ END GENERATOR FEATURE IMPORTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 abstract class ShellNavItems {
   /// Returns the ordered [NavItem] list for the current session.
@@ -38,7 +38,7 @@ abstract class ShellNavItems {
   /// Items gated by permission are excluded when the check fails.
   static List<NavItem> buildNavItems({required AuthAuthenticated auth}) {
     return [
-      // ── Always visible — Home ─────────────────────────────
+      // â”€â”€ Always visible â€” Home â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       NavItem(
         id: 'home',
         label: 'Home',
@@ -46,7 +46,7 @@ abstract class ShellNavItems {
         path: AppRouter.home,
       ),
 
-      // ── GENERATOR TABS — append only ──────────────────────
+      // â”€â”€ GENERATOR TABS â€” append only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // Generator wires entries here as:
       //   if (auth.can('feature_name.view'))
       //     NavItem(id: '...', label: '...', icon: ..., path: AppRouter.featureList),
@@ -60,9 +60,9 @@ abstract class ShellNavItems {
           icon:  Icons.people_outlined,
           path:  AppRouter.actorList,
         ),
-      // ── END GENERATOR TABS ────────────────────────────────
+      // â”€â”€ END GENERATOR TABS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-      // ── Permission-gated — Dashboard ──────────────────────
+      // â”€â”€ Permission-gated â€” Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (auth.canViewDashboard)
         NavItem(
           id: 'dashboard',
@@ -71,7 +71,7 @@ abstract class ShellNavItems {
           path: AppRouter.dashboard,
         ),
 
-      // ── Always visible — Profile (always last) ────────────
+      // â”€â”€ Always visible â€” Profile (always last) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       NavItem(
         id: 'profile',
         label: 'Profile',
@@ -81,3 +81,24 @@ abstract class ShellNavItems {
     ];
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,5 +1,5 @@
 # ============================================================
-# Generate-Level3.ps1 — Level 3: CRUD + State Machine + Workflow
+# Generate-Level3.ps1 -- Level 3: CRUD + State Machine + Workflow
 # ============================================================
 
 param(
@@ -62,11 +62,11 @@ if ($maturity -ne 3) { Write-Fail "This generator handles Level 3 only. Config d
 
 # Extra Level 3 validation
 if ($null -eq $config.stateMachine) { Write-Fail "Level 3 requires a 'stateMachine' block."; exit 1 }
-if ($null -eq $config.stateMachine.states -or $config.stateMachine.states.Count -eq 0) { Write-Fail "stateMachine.states must have at least 1 state."; exit 1 }
+if ($null -eq $config.stateMachine.statuses -or $config.stateMachine.statuses.Count -eq 0) { Write-Fail "stateMachine.states must have at least 1 state."; exit 1 }
 if ($null -eq $config.stateMachine.transitions -or $config.stateMachine.transitions.Count -eq 0) { Write-Fail "stateMachine.transitions must have at least 1 transition."; exit 1 }
 
 $tokens = Get-NamingTokens -FeatureConfig $config.feature
-Write-Step "Feature: $($tokens.FLABEL) (Level 3 — CRUD + StateMachine + Workflow)"
+Write-Step "Feature: $($tokens.FLABEL) (Level 3 -- CRUD + StateMachine + Workflow)"
 
 $featureDir = Join-Path $ProjectRoot "lib/features/$($tokens.FNAME)"
 if ((Test-Path $featureDir) -and -not $Force) {
@@ -128,3 +128,5 @@ if ($DryRun) {
     Write-Success "$fileCount files generated in lib/features/$($tokens.FNAME)"
 }
 Write-Host ""
+
+

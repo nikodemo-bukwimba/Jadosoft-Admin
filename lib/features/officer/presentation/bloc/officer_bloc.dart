@@ -1,0 +1,137 @@
+﻿import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../../domain/services/officer_domain_service.dart';
+import '../../domain/usecases/create_officer_usecase.dart';
+import '../../domain/usecases/delete_officer_usecase.dart';
+import '../../domain/usecases/get_officer_usecase.dart';
+import '../../domain/usecases/get_all_officer_usecase.dart';
+import '../../domain/usecases/update_officer_usecase.dart';
+import '../../domain/value_objects/officer_status.dart';
+import 'officer_event.dart';
+import 'officer_state.dart';
+
+class OfficerBloc extends Bloc<OfficerEvent, OfficerState> {
+  final GetAllOfficerUseCase  getAllUseCase;
+  final GetOfficerUseCase     getUseCase;
+  final CreateOfficerUseCase  createUseCase;
+  final UpdateOfficerUseCase  updateUseCase;
+  final DeleteOfficerUseCase  deleteUseCase;
+  final OfficerDomainService  domainService;
+
+  OfficerBloc({
+    required this.getAllUseCase,
+    required this.getUseCase,
+    required this.createUseCase,
+    required this.updateUseCase,
+    required this.deleteUseCase,
+    required this.domainService,
+  }) : super(OfficerInitial()) {
+    on<OfficerLoadAllRequested>(_onLoadAll);
+    on<OfficerLoadOneRequested>(_onLoadOne);
+    on<OfficerCreateRequested>(_onCreate);
+    on<OfficerUpdateRequested>(_onUpdate);
+    on<OfficerDeleteRequested>(_onDelete);
+    on<OfficerFormReset>((_, emit) => emit(OfficerInitial()));
+    on<OfficerActivateRequested>(_onActivate);
+    on<OfficerSuspendRequested>(_onSuspend);
+    on<OfficerDeactivateRequested>(_onDeactivate);
+  }
+
+  Future<void> _onLoadAll(
+      OfficerLoadAllRequested event, Emitter<OfficerState> emit) async {
+    emit(OfficerLoading());
+    final result = await getAllUseCase(NoParams());
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (items) => items.isEmpty
+          ? emit(OfficerEmpty())
+          : emit(OfficerListLoaded(items)),
+    );
+  }
+
+  Future<void> _onLoadOne(
+      OfficerLoadOneRequested event, Emitter<OfficerState> emit) async {
+    emit(OfficerLoading());
+    final result = await getUseCase(GetOfficerParams(id: event.id));
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (item) => emit(OfficerDetailLoaded(item)),
+    );
+  }
+
+  Future<void> _onCreate(
+      OfficerCreateRequested event, Emitter<OfficerState> emit) async {
+    emit(OfficerLoading());
+    final result = await createUseCase(event.params);
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (_) => emit(OfficerOperationSuccess('Officer created successfully')),
+    );
+  }
+
+  Future<void> _onUpdate(
+      OfficerUpdateRequested event, Emitter<OfficerState> emit) async {
+    emit(OfficerLoading());
+    final result = await updateUseCase(UpdateOfficerParams(entity: event.entity));
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (_) => emit(OfficerOperationSuccess('Officer updated successfully')),
+    );
+  }
+
+  Future<void> _onDelete(
+      OfficerDeleteRequested event, Emitter<OfficerState> emit) async {
+    emit(OfficerLoading());
+    final result = await deleteUseCase(DeleteOfficerParams(id: event.id));
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (_) => emit(OfficerOperationSuccess('Officer deleted successfully')),
+    );
+  }
+
+  Future<void> _onActivate(
+      OfficerActivateRequested event, Emitter<OfficerState> emit) async {
+    emit(OfficerLoading());
+    final result = await domainService.transition(
+      id: event.id,
+      targetStatus: OfficerStatus.active,
+    );
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (entity) => emit(OfficerOperationSuccess(
+        'Activate successful',
+        updatedItem: entity,
+      )),
+    );
+  }
+  Future<void> _onSuspend(
+      OfficerSuspendRequested event, Emitter<OfficerState> emit) async {
+    emit(OfficerLoading());
+    final result = await domainService.transition(
+      id: event.id,
+      targetStatus: OfficerStatus.suspended,
+    );
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (entity) => emit(OfficerOperationSuccess(
+        'Suspend successful',
+        updatedItem: entity,
+      )),
+    );
+  }
+  Future<void> _onDeactivate(
+      OfficerDeactivateRequested event, Emitter<OfficerState> emit) async {
+    emit(OfficerLoading());
+    final result = await domainService.transition(
+      id: event.id,
+      targetStatus: OfficerStatus.deactivated,
+    );
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (entity) => emit(OfficerOperationSuccess(
+        'Deactivate successful',
+        updatedItem: entity,
+      )),
+    );
+  }
+}

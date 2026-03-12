@@ -1,0 +1,112 @@
+{
+  "feature": {
+    "name":       "whatsapp",
+    "label":      "WhatsApp Business",
+    "purpose":    "WhatsApp Business API integration — template messages, media messages, status webhooks",
+    "maturity":   5,
+    "permission": "whatsapp",
+    "icon":       "Icons.chat_outlined",
+    "activeIcon": "Icons.chat"
+  },
+  "integration": {
+    "baseUrl":   "https://graph.facebook.com/v18.0",
+    "authType":  "bearer",
+    "timeout":   30000,
+    "retryPolicy": {
+      "maxAttempts": 3,
+      "backoffMs":   1000,
+      "retryOn":     [429, 500, 502, 503]
+    },
+    "operations": [
+      {
+        "name":        "sendTemplate",
+        "method":      "POST",
+        "path":        "/{phoneNumberId}/messages",
+        "label":       "Send Template Message",
+        "description": "Send a pre-approved WhatsApp template message to a recipient",
+        "icon":        "Icons.message",
+        "requestFields": [
+          { "name": "to",             "type": "String" },
+          { "name": "templateName",   "type": "String" },
+          { "name": "languageCode",   "type": "String" },
+          { "name": "components",     "type": "List<Map<String, dynamic>>", "nullable": true }
+        ],
+        "responseFields": [
+          { "name": "messageId", "type": "String" },
+          { "name": "status",    "type": "String" }
+        ]
+      },
+      {
+        "name":        "sendMedia",
+        "method":      "POST",
+        "path":        "/{phoneNumberId}/messages",
+        "label":       "Send Media Message",
+        "description": "Send media (image, document, video) via WhatsApp",
+        "icon":        "Icons.image",
+        "requestFields": [
+          { "name": "to",        "type": "String" },
+          { "name": "mediaType", "type": "String" },
+          { "name": "mediaUrl",  "type": "String" },
+          { "name": "caption",   "type": "String", "nullable": true }
+        ],
+        "responseFields": [
+          { "name": "messageId", "type": "String" },
+          { "name": "status",    "type": "String" }
+        ]
+      },
+      {
+        "name":        "getMessageStatus",
+        "method":      "GET",
+        "path":        "/{messageId}",
+        "label":       "Get Message Status",
+        "description": "Retrieve status of a sent WhatsApp message",
+        "icon":        "Icons.info_outline",
+        "responseFields": [
+          { "name": "messageId", "type": "String" },
+          { "name": "status",    "type": "String" },
+          { "name": "timestamp", "type": "DateTime" }
+        ]
+      }
+    ],
+    "webhooks": [
+      {
+        "name":  "messageSent",
+        "event": "messages.sent",
+        "label": "Message Sent",
+        "fields": [
+          { "name": "messageId", "type": "String" },
+          { "name": "to",        "type": "String" },
+          { "name": "sentAt",    "type": "DateTime" }
+        ]
+      },
+      {
+        "name":  "messageDelivered",
+        "event": "messages.delivered",
+        "label": "Message Delivered",
+        "fields": [
+          { "name": "messageId",   "type": "String" },
+          { "name": "deliveredAt", "type": "DateTime" }
+        ]
+      },
+      {
+        "name":  "messageRead",
+        "event": "messages.read",
+        "label": "Message Read",
+        "fields": [
+          { "name": "messageId", "type": "String" },
+          { "name": "readAt",    "type": "DateTime" }
+        ]
+      },
+      {
+        "name":  "messageFailed",
+        "event": "messages.failed",
+        "label": "Message Failed",
+        "fields": [
+          { "name": "messageId",    "type": "String" },
+          { "name": "errorCode",    "type": "String" },
+          { "name": "errorMessage", "type": "String" }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "feature": {
+    "name":       "mobile_money",
+    "label":      "Mobile Money",
+    "purpose":    "M-Pesa and Airtel Money payment integration — initiate, query, webhook callbacks with HMAC verification",
+    "maturity":   5,
+    "permission": "mobile_money",
+    "icon":       "Icons.phone_android_outlined",
+    "activeIcon": "Icons.phone_android"
+  },
+  "integration": {
+    "baseUrl":   "{{MOBILE_MONEY_BASE_URL}}",
+    "authType":  "bearer",
+    "timeout":   60000,
+    "retryPolicy": {
+      "maxAttempts": 3,
+      "backoffMs":   1000,
+      "retryOn":     [500, 502, 503]
+    },
+    "operations": [
+      {
+        "name":        "initiatePayment",
+        "method":      "POST",
+        "path":        "/payments",
+        "label":       "Initiate Payment",
+        "description": "Initiate a mobile money payment request to a customer",
+        "icon":        "Icons.payment",
+        "requestFields": [
+          { "name": "amount",        "type": "double" },
+          { "name": "currency",      "type": "String" },
+          { "name": "phoneNumber",   "type": "String" },
+          { "name": "provider",      "type": "String" },
+          { "name": "reference",     "type": "String" },
+          { "name": "description",   "type": "String", "nullable": true }
+        ],
+        "responseFields": [
+          { "name": "transactionId", "type": "String" },
+          { "name": "status",        "type": "String" },
+          { "name": "provider",      "type": "String" },
+          { "name": "initiatedAt",   "type": "DateTime" }
+        ]
+      },
+      {
+        "name":        "queryPaymentStatus",
+        "method":      "GET",
+        "path":        "/payments/{transactionId}",
+        "label":       "Query Payment Status",
+        "description": "Check the current status of a payment transaction",
+        "icon":        "Icons.search",
+        "responseFields": [
+          { "name": "transactionId", "type": "String" },
+          { "name": "status",        "type": "String" },
+          { "name": "amount",        "type": "double" },
+          { "name": "currency",      "type": "String" },
+          { "name": "provider",      "type": "String" },
+          { "name": "completedAt",   "type": "DateTime", "nullable": true },
+          { "name": "failureReason", "type": "String",   "nullable": true }
+        ]
+      }
+    ],
+    "webhooks": [
+      {
+        "name":  "paymentCompleted",
+        "event": "payment.completed",
+        "label": "Payment Completed",
+        "fields": [
+          { "name": "transactionId", "type": "String" },
+          { "name": "amount",        "type": "double" },
+          { "name": "completedAt",   "type": "DateTime" }
+        ]
+      },
+      {
+        "name":  "paymentFailed",
+        "event": "payment.failed",
+        "label": "Payment Failed",
+        "fields": [
+          { "name": "transactionId", "type": "String" },
+          { "name": "errorCode",     "type": "String" },
+          { "name": "errorMessage",  "type": "String" }
+        ]
+      },
+      {
+        "name":  "paymentCancelled",
+        "event": "payment.cancelled",
+        "label": "Payment Cancelled",
+        "fields": [
+          { "name": "transactionId", "type": "String" },
+          { "name": "cancelledAt",   "type": "DateTime" }
+        ]
+      }
+    ]
+  }
+}

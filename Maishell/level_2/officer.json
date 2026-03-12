@@ -1,0 +1,123 @@
+{
+  "feature": {
+    "name":       "officer",
+    "label":      "Officers",
+    "purpose":    "Marketing officer management with active/suspended/deactivated lifecycle",
+    "maturity":   2,
+    "permission": "officers",
+    "icon":       "Icons.badge_outlined",
+    "activeIcon": "Icons.badge"
+  },
+  "storage": {
+    "remote": true,
+    "local":  false
+  },
+  "entities": {
+    "Officer": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "name": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required":  { "value": true, "message": "Officer name is required" },
+            "minLength": { "value": 2, "message": "Name must be at least 2 characters" }
+          }
+        },
+        "email": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Email is required" }
+          }
+        },
+        "phone": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Phone number is required" }
+          }
+        },
+        "role": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Role is required" }
+          }
+        },
+        "status": {
+          "type":     "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "createdAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {},
+      "api": {
+        "endpoint":    "/officers",
+        "paginatable": true,
+        "searchable":  true
+      },
+      "ui": {
+        "card": {
+          "title":    "name",
+          "subtitle": "role"
+        },
+        "detail": {
+          "header": ["name", "role"],
+          "body":   ["email", "phone", "status", "createdAt"]
+        },
+        "form": {
+          "create": ["name", "email", "phone", "role"],
+          "edit":   ["name", "email", "phone", "role"]
+        },
+        "list": {
+          "emptyMessage": "No officers found.",
+          "searchBy":     "name",
+          "filterBy":     "status"
+        }
+      }
+    }
+  },
+  "stateMachine": {
+    "statusField":   "status",
+    "initialStatus": "active",
+    "statuses": [
+      { "name": "active",      "label": "Active",      "color": "green" },
+      { "name": "suspended",   "label": "Suspended",   "color": "orange" },
+      { "name": "deactivated", "label": "Deactivated", "color": "red" }
+    ],
+    "transitions": [
+      {
+        "name":       "activate",
+        "label":      "Activate",
+        "from":       ["suspended"],
+        "to":         "active",
+        "permission": "officers.activate"
+      },
+      {
+        "name":       "suspend",
+        "label":      "Suspend",
+        "from":       ["active"],
+        "to":         "suspended",
+        "permission": "officers.suspend"
+      },
+      {
+        "name":       "deactivate",
+        "label":      "Deactivate",
+        "from":       ["active", "suspended"],
+        "to":         "deactivated",
+        "permission": "officers.deactivate"
+      }
+    ]
+  }
+}

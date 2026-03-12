@@ -1,6 +1,6 @@
 # ============================================================
 # Validator.psm1
-# FIX: feature.permission is optional — if provided, must be snake_case.
+# FIX: feature.permission is optional -- if provided, must be snake_case.
 # ============================================================
 
 function Invoke-ConfigValidation {
@@ -27,7 +27,7 @@ function _Validate-FeatureBlock {
     if ([string]::IsNullOrWhiteSpace($f.purpose)) { $Errors.Add("feature.purpose is required") }
     if ($null -eq $f.maturity) { $Errors.Add("feature.maturity is required") }
     elseif ($f.maturity -lt 0 -or $f.maturity -gt 5) { $Errors.Add("feature.maturity must be 0-5. Got: $($f.maturity)") }
-    # permission — optional. If provided, must be snake_case.
+    # permission -- optional. If provided, must be snake_case.
     if (-not [string]::IsNullOrWhiteSpace($f.permission)) {
         if ($f.permission -notmatch '^[a-z][a-z0-9_]*$') { $Errors.Add("feature.permission must be snake_case. Got: '$($f.permission)'") }
     }
@@ -76,7 +76,7 @@ function _Validate-Entities {
             if ($fName -cmatch '^[A-Z]') { $Errors.Add("Field '$eName.$fName' must be camelCase") }
             if ($fDef.primary -eq $true) { $hasPK = $true }
             $validTypes = @('String', 'int', 'double', 'bool', 'DateTime')
-            if ($fDef.type -and $fDef.type -notin $validTypes -and $fDef.type -notmatch 'Status$') {
+            if ($fDef.type -and $fDef.type -notin $validTypes -and $fDef.type -notmatch 'Status$' -and $fDef.type -notmatch '^List<' -and $fDef.type -notmatch '^Map<') {
                 $Errors.Add("Field '$eName.$fName' has unknown type '$($fDef.type)'")
             }
         }
@@ -123,3 +123,4 @@ function _Validate-Entities {
 }
 
 Export-ModuleMember -Function 'Invoke-ConfigValidation'
+

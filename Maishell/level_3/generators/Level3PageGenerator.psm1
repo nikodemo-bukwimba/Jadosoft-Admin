@@ -1,14 +1,14 @@
 # ============================================================
-# Level3PageGenerator.psm1 — Pages + Widgets + Status Badge
+# Level3PageGenerator.psm1 -- Pages + Widgets + Status Badge
 #
-# PS→Dart SAFETY RULES applied:
-#   Bug 3 fix: Detail accessor — string concat for `item.field?.method()`
+# PS--Dart SAFETY RULES applied:
+#   Bug 3 fix: Detail accessor -- string concat for `item.field?.method()`
 #              PS7 treats `$fn?` as null-conditional on the PS variable
-#   Bug 4 fix: Form params — `fieldName: value` not `'fieldName': value`
+#   Bug 4 fix: Form params -- `fieldName: value` not `'fieldName': value`
 #              Named params, not map literals
-#   Bug 5 fix: Card subtitle — `"item." + $subtitleField + "?.toString()"`
+#   Bug 5 fix: Card subtitle -- `"item." + $subtitleField + "?.toString()"`
 #              Missing dot + PS7 ?. bug
-#   Bug 6 fix: Card delete msg — `${item.field}` via single-quoted concat
+#   Bug 6 fix: Card delete msg -- `${item.field}` via single-quoted concat
 #              PS eats ${item} as an empty PS variable in here-strings
 # FIX: FormNode is feature-specific (${fclass}FormNode) generated per-feature,
 #      not a shared FormMode in core/enums
@@ -33,18 +33,18 @@ function _Gen-FormNode {
   $fclass = $Ctx.Tokens.FCLASS
   $fDir = $Ctx.FeatureDir
 
-  # Each feature owns its own FormNode enum — no shared core enum.
+  # Each feature owns its own FormNode enum -- no shared core enum.
   $path = Join-Path $fDir "presentation\enums\${fname}_form_node.dart"
   $content = @"
 /// Form navigation node for ${fclass}.
-/// Generated per-feature — use ${fclass}FormNode to avoid conflicts
+/// Generated per-feature -- use ${fclass}FormNode to avoid conflicts
 /// across features that each have their own form pages.
 enum ${fclass}FormNode { create, edit }
 "@
   & $NewFile $path $content
 }
 
-# ── Helper: build safe Dart accessor via string concat ──
+# -- Helper: build safe Dart accessor via string concat --
 # NEVER put `$var?.method()` inside a PS double-quoted string or here-string.
 function _Get-DetailAccessor {
   param([hashtable]$Field)
@@ -199,7 +199,7 @@ function _Gen-DetailPage {
   $fDir = $Ctx.FeatureDir
   $sm = $Ctx.Config.stateMachine
 
-  # ── FIX Bug 3: Detail field accessors via _Get-DetailAccessor ──
+  # -- FIX Bug 3: Detail field accessors via _Get-DetailAccessor --
   $allDetailFields = @()
   if ($Meta.Ui -and $Meta.Ui.detail) {
     $h = @(); $b = @()
@@ -215,7 +215,7 @@ function _Gen-DetailPage {
   foreach ($fn in $allDetailFields) {
     $f = $Meta.Fields | Where-Object { $_.Name -eq $fn } | Select-Object -First 1
     if (-not $f) { continue }
-    # Use helper — all string concat, no PS interpolation of Dart ?. syntax
+    # Use helper -- all string concat, no PS interpolation of Dart ?. syntax
     $accessor = _Get-DetailAccessor -Field $f
     $label = $f.Label
     $detailRows.Add("                    _buildField(context, '$label', $accessor),")
@@ -426,9 +426,9 @@ function _Gen-FormPage {
 
     if ($widget -eq 'SwitchListTile') {
       $controllerDecls.Add("  bool _${fn}Value = false;")
-      # ── FIX Bug 4: Named param syntax, NOT map literal ──
+      # -- FIX Bug 4: Named param syntax, NOT map literal --
       # Dart named param:  fieldName: value
-      # Dart map literal:  'fieldName': value   ← WRONG
+      # Dart map literal:  'fieldName': value   -- WRONG
       $paramArgs.Add("          ${fn}: _${fn}Value,")
     }
     else {
@@ -569,13 +569,13 @@ function _Gen-CardWidget {
     if ($Meta.Ui.card.subtitle) { $subtitleField = $Meta.Ui.card.subtitle }
   }
 
-  # ── FIX Bug 5: subtitle — dot + PS7 ?. safety via concat ──
+  # -- FIX Bug 5: subtitle -- dot + PS7 ?. safety via concat --
   $subtitleLine = ''
   if ($subtitleField) {
     $subtitleLine = "        subtitle: Text(" + "item." + $subtitleField + "?.toString() ?? ''" + "),"
   }
 
-  # ── FIX Bug 6: delete message — Dart ${item.field} via single-quoted concat ──
+  # -- FIX Bug 6: delete message -- Dart ${item.field} via single-quoted concat --
   # PS here-strings see ${item} as a PS variable (empty).
   # Single-quoted strings pass ${...} literally to Dart.
   $deleteMsg = "        content: Text(" + "'Remove " + '"' + '${item.' + $titleField + '}' + '"' + "? This cannot be undone.'" + "),"

@@ -1,0 +1,117 @@
+{
+  "feature": {
+    "name":       "customer",
+    "label":      "Customers",
+    "purpose":    "Customer database management — business profiles, contact persons, GPS, assigned officers",
+    "maturity":   1,
+    "permission": "customers",
+    "icon":       "Icons.store_outlined",
+    "activeIcon": "Icons.store"
+  },
+  "storage": {
+    "remote": true,
+    "local":  false
+  },
+  "entities": {
+    "Customer": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "businessName": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required":  { "value": true, "message": "Business name is required" },
+            "minLength": { "value": 2, "message": "Business name must be at least 2 characters" }
+          }
+        },
+        "fullOfficeName": {
+          "type":     "String",
+          "nullable": true
+        },
+        "ownerName": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Owner name is required" }
+          }
+        },
+        "officialPhone": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Official phone is required" }
+          }
+        },
+        "contactPerson": {
+          "type":     "String",
+          "nullable": true
+        },
+        "contactPersonPhone": {
+          "type":     "String",
+          "nullable": true
+        },
+        "officeAddress": {
+          "type":     "String",
+          "nullable": true
+        },
+        "gpsLat": {
+          "type":     "double",
+          "nullable": true
+        },
+        "gpsLng": {
+          "type":     "double",
+          "nullable": true
+        },
+        "assignedOfficerId": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Assigned officer is required" }
+          }
+        },
+        "registrationDate": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {
+        "officer": {
+          "type":       "belongsTo",
+          "entity":     "Officer",
+          "feature":    "officer",
+          "foreignKey": "assignedOfficerId"
+        }
+      },
+      "api": {
+        "endpoint":    "/customers",
+        "paginatable": true,
+        "searchable":  true
+      },
+      "ui": {
+        "card": {
+          "title":    "businessName",
+          "subtitle": "ownerName"
+        },
+        "detail": {
+          "header": ["businessName", "ownerName"],
+          "body":   ["fullOfficeName", "officialPhone", "contactPerson", "contactPersonPhone", "officeAddress", "gpsLat", "gpsLng", "assignedOfficerId", "registrationDate"]
+        },
+        "form": {
+          "create": ["businessName", "fullOfficeName", "ownerName", "officialPhone", "contactPerson", "contactPersonPhone", "officeAddress", "gpsLat", "gpsLng", "assignedOfficerId"],
+          "edit":   ["businessName", "fullOfficeName", "ownerName", "officialPhone", "contactPerson", "contactPersonPhone", "officeAddress", "gpsLat", "gpsLng", "assignedOfficerId"]
+        },
+        "list": {
+          "emptyMessage": "No customers found. Create your first customer.",
+          "searchBy":     "businessName",
+          "filterBy":     "assignedOfficerId"
+        }
+      }
+    }
+  }
+}

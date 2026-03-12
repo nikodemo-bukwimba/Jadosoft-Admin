@@ -142,10 +142,10 @@ function _Gen-WorkflowExecutor {
         $stepMethods.Add(@"
   /// Step: $label
   Future<Either<Failure, ${EName}Entity>> _$methodName(${EName}Entity entity) async {
-    // ── HUMAN CUSTOMIZATION ZONE ──────────────────────────
+    // -- HUMAN CUSTOMIZATION ZONE --
     // Implement: $label
     // Return Right(entity) on success, Left(Failure) on failure.
-    // ── END CUSTOMIZATION ZONE ────────────────────────────
+    // -- END CUSTOMIZATION ZONE --
     return Right(entity);
   }
 "@)
@@ -207,3 +207,4 @@ $($rollbackMethods -join "`n")
 }
 
 Export-ModuleMember -Function 'Invoke-GenerateWorkflow'
+

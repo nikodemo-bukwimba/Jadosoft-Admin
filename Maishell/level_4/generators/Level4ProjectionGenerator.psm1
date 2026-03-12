@@ -47,7 +47,7 @@ function _Gen-ProjectionClass {
 
     $propsJoin = $propsList -join ', '
 
-    # ── Build source entity imports (not fname!) ──────────────────
+    # -- Build source entity imports (not fname!) --
     $sourceEntityImports = [System.Collections.Generic.List[string]]::new()
     $sources = $config.sources.PSObject.Properties
     foreach ($srcProp in $sources) {
@@ -243,7 +243,7 @@ function _Gen-UseCase {
     $uniqueProviderImports = $providerImports | Select-Object -Unique
     $uniqueSourceImports = $sourceImports | Select-Object -Unique
 
-    # Constructor field assignments — only first gets `:`, rest are plain
+    # Constructor field assignments -- only first gets `:`, rest are plain
     $ctorAssignments = [System.Collections.Generic.List[string]]::new()
     $isFirst = $true
     foreach ($srcProp in $sources) {
@@ -287,3 +287,4 @@ $($projArgs -join "`n")
 }
 
 Export-ModuleMember -Function 'Invoke-GenerateProjection'
+

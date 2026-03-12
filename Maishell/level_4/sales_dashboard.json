@@ -1,0 +1,102 @@
+{
+  "feature": {
+    "name":       "sales_dashboard",
+    "label":      "Sales Dashboard",
+    "purpose":    "Aggregated sales performance projection from orders, payments, and products",
+    "maturity":   4,
+    "permission": "sales_dashboard",
+    "icon":       "Icons.point_of_sale_outlined",
+    "activeIcon": "Icons.point_of_sale"
+  },
+  "sources": {
+    "order": {
+      "feature":    "order",
+      "entity":     "Order",
+      "repository": "OrderRepository"
+    },
+    "payment": {
+      "feature":    "payment",
+      "entity":     "Payment",
+      "repository": "PaymentRepository"
+    },
+    "product": {
+      "feature":    "product",
+      "entity":     "Product",
+      "repository": "ProductRepository"
+    }
+  },
+  "projection": {
+    "metrics": [
+      {
+        "name":      "totalOrders",
+        "type":      "int",
+        "source":    "order",
+        "operation": "count",
+        "label":     "Total Orders",
+        "icon":      "Icons.shopping_cart"
+      },
+      {
+        "name":      "totalRevenue",
+        "type":      "double",
+        "source":    "order",
+        "operation": "sum",
+        "field":     "total",
+        "label":     "Total Revenue",
+        "icon":      "Icons.attach_money"
+      },
+      {
+        "name":      "averageOrderValue",
+        "type":      "double",
+        "source":    "order",
+        "operation": "average",
+        "field":     "total",
+        "label":     "Avg Order Value",
+        "icon":      "Icons.trending_up"
+      },
+      {
+        "name":      "ordersByStatus",
+        "type":      "Map<String, int>",
+        "source":    "order",
+        "operation": "groupCount",
+        "field":     "status",
+        "label":     "Orders by Status"
+      },
+      {
+        "name":      "confirmedPayments",
+        "type":      "int",
+        "source":    "payment",
+        "operation": "count",
+        "filter":    { "field": "status", "value": "confirmed" },
+        "label":     "Confirmed Payments",
+        "icon":      "Icons.verified"
+      },
+      {
+        "name":         "recentOrders",
+        "type":         "List<OrderEntity>",
+        "source":       "order",
+        "operation":    "latest",
+        "sortBy":       "createdAt",
+        "limit":        5,
+        "label":        "Recent Orders",
+        "displayField": "customerId"
+      },
+      {
+        "name":      "productCount",
+        "type":      "int",
+        "source":    "product",
+        "operation": "count",
+        "label":     "Total Products",
+        "icon":      "Icons.inventory_2"
+      },
+      {
+        "name":      "featuredProductCount",
+        "type":      "int",
+        "source":    "product",
+        "operation": "count",
+        "filter":    { "field": "isFeatured", "value": true },
+        "label":     "Featured Products",
+        "icon":      "Icons.star"
+      }
+    ]
+  }
+}

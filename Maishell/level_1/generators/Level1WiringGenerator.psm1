@@ -1,8 +1,8 @@
 # ============================================================
-# Level1WiringGenerator.psm1 — DI + Routes + Nav
+# Level1WiringGenerator.psm1 -- DI + Routes + Nav
 # FIX: Routes use ${fclass}FormMode (feature-specific, inlined in form page),
 #      not a bare FormMode that has no declaration in scope.
-# FIX: Permission is optional — NavItem is visible to all if not provided.
+# FIX: Permission is optional -- NavItem is visible to all if not provided.
 # ============================================================
 
 function Update-InjectionContainer {
@@ -18,7 +18,7 @@ function Update-InjectionContainer {
   $isLocal = ($null -ne $config.storage.local) -and ($config.storage.local -eq $true)
 
   $diPath = Join-Path $pRoot "lib\config\di\injection_container.dart"
-  if (-not (Test-Path $diPath)) { Write-Warning "injection_container.dart not found — skipping DI"; return }
+  if (-not (Test-Path $diPath)) { Write-Warning "injection_container.dart not found -- skipping DI"; return }
 
   # Imports
   $imports = [System.Collections.Generic.List[string]]::new()
@@ -36,7 +36,7 @@ function Update-InjectionContainer {
   # Registrations
   $regs = [System.Collections.Generic.List[string]]::new()
   $regs.Add("")
-  $regs.Add("  // ── ${fclass} ────────────────────────────────────────")
+  $regs.Add("  // -- ${fclass} --")
   if ($isRemote) {
     $regs.Add("  sl.registerLazySingleton<${fclass}RemoteDataSource>(")
     $regs.Add("    () => ${fclass}RemoteDataSourceImpl(dio: sl()),")
@@ -65,12 +65,12 @@ function Update-InjectionContainer {
   $importStr = $imports -join "`n"
   $regStr = $regs -join "`n"
 
-  $importMarker = '// ── END GENERATOR FEATURE IMPORTS'
+  $importMarker = '// -- END GENERATOR FEATURE IMPORTS'
   if ($content.Contains($importMarker)) {
     $content = $content.Replace($importMarker, "$importStr`n$importMarker")
   }
 
-  $regMarker = '// ── END GENERATOR MANAGED'
+  $regMarker = '// -- END GENERATOR MANAGED'
   if ($content.Contains($regMarker)) {
     $content = $content.Replace($regMarker, "$regStr`n  $regMarker")
   }
@@ -93,11 +93,11 @@ function Update-AppRouter {
   $isDryRun = $Ctx.DryRun
 
   $routerPath = Join-Path $pRoot "lib\app\routes\app_router.dart"
-  if (-not (Test-Path $routerPath)) { Write-Warning "app_router.dart not found — skipping routes"; return }
+  if (-not (Test-Path $routerPath)) { Write-Warning "app_router.dart not found -- skipping routes"; return }
 
-  # ── Imports ────────────────────────────────────────────
+  # -- Imports --
   # NOTE: ${fclass}FormMode is defined inline in ${fname}_form_page.dart (Level 1).
-  # Importing the form page file is sufficient — no separate enum file needed.
+  # Importing the form page file is sufficient -- no separate enum file needed.
   $imports = @(
     "import '../../features/${fname}/presentation/pages/${fname}_list_page.dart';",
     "import '../../features/${fname}/presentation/pages/${fname}_detail_page.dart';",
@@ -108,7 +108,7 @@ function Update-AppRouter {
     "import 'package:flutter_bloc/flutter_bloc.dart';"
   ) -join "`n"
 
-  # ── Route constants — use :id path parameters ──────────
+  # -- Route constants -- use :id path parameters --
   $consts = @"
   static const String ${fname}List   = '/${fname}s';
   static const String ${fname}Create = '/${fname}s/create';
@@ -120,7 +120,7 @@ function Update-AppRouter {
   static String ${fname}EditPath(String id)   => '/${fname}s/`$id/edit';
 "@
 
-  # ── GoRoute entries inside ShellRoute ─────────────────
+  # -- GoRoute entries inside ShellRoute --
   # FIX: use ${fclass}FormMode (inlined enum in form page), not bare FormMode.
   $goRoutes = @"
 
@@ -162,9 +162,9 @@ function Update-AppRouter {
 "@
 
   $content = Get-Content $routerPath -Raw
-  $m1 = '// ── END GENERATOR FEATURE PAGE IMPORTS'
-  $m2 = '// ── END GENERATOR ROUTE CONSTANTS'
-  $m3 = '// ── END GENERATOR ROUTES'
+  $m1 = '// -- END GENERATOR FEATURE PAGE IMPORTS'
+  $m2 = '// -- END GENERATOR ROUTE CONSTANTS'
+  $m3 = '// -- END GENERATOR ROUTES'
 
   if ($content.Contains($m1)) { $content = $content.Replace($m1, "$imports`n$m1") }
   if ($content.Contains($m2)) { $content = $content.Replace($m2, "$consts`n  $m2") }
@@ -188,13 +188,13 @@ function Update-ShellNavItems {
   $isDryRun = $Ctx.DryRun
 
   $navPath = Join-Path $pRoot "lib\app\shell\shell_nav_items.dart"
-  if (-not (Test-Path $navPath)) { Write-Warning "shell_nav_items.dart not found — skipping nav"; return }
+  if (-not (Test-Path $navPath)) { Write-Warning "shell_nav_items.dart not found -- skipping nav"; return }
 
-  # ── Permission slug (optional) + icon ─────────────────
+  # -- Permission slug (optional) + icon --
   $fperm = $config.feature.permission
   $icon = if ($config.feature.icon) { $config.feature.icon } else { 'Icons.list_outlined' }
 
-  # ── NavItem — permission-gated only if permission provided ──
+  # -- NavItem -- permission-gated only if permission provided --
   if (-not [string]::IsNullOrWhiteSpace($fperm)) {
     $navItem = @"
 
@@ -222,7 +222,7 @@ function Update-ShellNavItems {
   }
 
   $content = Get-Content $navPath -Raw
-  $m1 = '// ── END GENERATOR TABS'
+  $m1 = '// -- END GENERATOR TABS'
 
   if ($content.Contains($m1)) { $content = $content.Replace($m1, "$navItem`n      $m1") }
 

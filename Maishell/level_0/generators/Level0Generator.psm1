@@ -1,6 +1,6 @@
 # ============================================================
 # Level0Generator.psm1
-# Level 0 — Static Feature
+# Level 0 -- Static Feature
 #
 # Generates:
 #   presentation/pages/{feature}_page.dart
@@ -21,10 +21,10 @@ function Invoke-GenerateLevel0 {
   $flabel = $Ctx.Tokens.FLABEL
   $fDir = $Ctx.FeatureDir
 
-  # ── Page ──────────────────────────────────────────────
+  # -- Page --
   $pageContent = @"
 // ${fname}_page.dart
-// Level 0 — Static Feature
+// Level 0 -- Static Feature
 // Replace: page title, body content, widget composition.
 // This page requires no BLoC, no repository, no network call.
 
@@ -62,10 +62,10 @@ class ${fclass}Page extends StatelessWidget {
 
   & $NewFile (Join-Path $fDir "presentation\pages\${fname}_page.dart") $pageContent
 
-  # ── Widget ────────────────────────────────────────────
+  # -- Widget --
   $widgetContent = @"
 // ${fname}_widget.dart
-// Level 0 — Static Widget
+// Level 0 -- Static Widget
 // Replace: displayed data and layout.
 // No state, no async calls.
 
@@ -106,3 +106,4 @@ class ${fclass}Widget extends StatelessWidget {
 }
 
 Export-ModuleMember -Function 'Invoke-GenerateLevel0'
+

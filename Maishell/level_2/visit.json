@@ -1,0 +1,172 @@
+{
+  "feature": {
+    "name":       "visit",
+    "label":      "Visits",
+    "purpose":    "Marketing visit monitoring with admin review lifecycle — pending, reviewed, flagged",
+    "maturity":   2,
+    "permission": "visits",
+    "icon":       "Icons.place_outlined",
+    "activeIcon": "Icons.place"
+  },
+  "storage": {
+    "remote": true,
+    "local":  false
+  },
+  "entities": {
+    "Visit": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "customerId": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Customer is required" }
+          }
+        },
+        "officerId": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Officer is required" }
+          }
+        },
+        "visitDate": {
+          "type":     "DateTime",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Visit date is required" }
+          }
+        },
+        "businessName": {
+          "type":     "String",
+          "nullable": true
+        },
+        "ownerPhone": {
+          "type":     "String",
+          "nullable": true
+        },
+        "contactPersonPhone": {
+          "type":     "String",
+          "nullable": true
+        },
+        "businessPhone": {
+          "type":     "String",
+          "nullable": true
+        },
+        "notes": {
+          "type":     "String",
+          "nullable": true
+        },
+        "gpsLat": {
+          "type":     "double",
+          "nullable": true
+        },
+        "gpsLng": {
+          "type":     "double",
+          "nullable": true
+        },
+        "imageUrls": {
+          "type":     "List<String>",
+          "nullable": true
+        },
+        "documentUrls": {
+          "type":     "List<String>",
+          "nullable": true
+        },
+        "promotedProductIds": {
+          "type":     "List<String>",
+          "nullable": true
+        },
+        "discussionSummary": {
+          "type":     "String",
+          "nullable": true
+        },
+        "status": {
+          "type":     "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "createdAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {
+        "customer": {
+          "type":       "belongsTo",
+          "entity":     "Customer",
+          "feature":    "customer",
+          "foreignKey": "customerId"
+        },
+        "officer": {
+          "type":       "belongsTo",
+          "entity":     "Officer",
+          "feature":    "officer",
+          "foreignKey": "officerId"
+        }
+      },
+      "api": {
+        "endpoint":    "/visits",
+        "paginatable": true,
+        "searchable":  true
+      },
+      "ui": {
+        "card": {
+          "title":    "businessName",
+          "subtitle": "visitDate"
+        },
+        "detail": {
+          "header": ["businessName", "visitDate"],
+          "body":   ["customerId", "officerId", "ownerPhone", "contactPersonPhone", "businessPhone", "notes", "gpsLat", "gpsLng", "imageUrls", "documentUrls", "promotedProductIds", "discussionSummary", "status", "createdAt"]
+        },
+        "form": {
+          "create": ["customerId", "officerId", "visitDate", "businessName", "ownerPhone", "contactPersonPhone", "businessPhone", "notes", "gpsLat", "gpsLng", "promotedProductIds", "discussionSummary"],
+          "edit":   ["notes", "discussionSummary"]
+        },
+        "list": {
+          "emptyMessage": "No visits recorded yet.",
+          "searchBy":     "businessName",
+          "filterBy":     "status"
+        }
+      }
+    }
+  },
+  "stateMachine": {
+    "statusField":   "status",
+    "initialStatus": "pending",
+    "statuses": [
+      { "name": "pending",  "label": "Pending",  "color": "grey" },
+      { "name": "reviewed", "label": "Reviewed", "color": "green" },
+      { "name": "flagged",  "label": "Flagged",  "color": "red" }
+    ],
+    "transitions": [
+      {
+        "name":       "review",
+        "label":      "Mark Reviewed",
+        "from":       ["pending"],
+        "to":         "reviewed",
+        "permission": "visits.review"
+      },
+      {
+        "name":       "flag",
+        "label":      "Flag Visit",
+        "from":       ["reviewed"],
+        "to":         "flagged",
+        "permission": "visits.flag"
+      },
+      {
+        "name":       "unflag",
+        "label":      "Remove Flag",
+        "from":       ["flagged"],
+        "to":         "reviewed",
+        "permission": "visits.unflag"
+      }
+    ]
+  }
+}

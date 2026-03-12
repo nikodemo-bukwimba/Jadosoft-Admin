@@ -1,5 +1,5 @@
 # ============================================================
-# Level3BlocGenerator.psm1 — BLoC with CRUD + transitions
+# Level3BlocGenerator.psm1 -- BLoC with CRUD + transitions
 # ============================================================
 
 function Invoke-GenerateBloc {
@@ -15,7 +15,7 @@ function Invoke-GenerateBloc {
 
     $transitions = @($sm.transitions)
 
-    # ── Events ────────────────────────────────────────────
+    # -- Events --
     $transEventClasses = [System.Collections.Generic.List[string]]::new()
     foreach ($t in $transitions) {
         $tClass = ConvertTo-PascalCase $t.name
@@ -61,7 +61,7 @@ $($transEventClasses -join '')
 "@
     & $NewFile (Join-Path $fDir "presentation\bloc\${fname}_event.dart") $eventContent
 
-    # ── States ────────────────────────────────────────────
+    # -- States --
     $stateContent = @"
 import '../../domain/entities/${eSnake}_entity.dart';
 
@@ -95,7 +95,7 @@ class ${fclass}Failure extends ${fclass}State {
 "@
     & $NewFile (Join-Path $fDir "presentation\bloc\${fname}_state.dart") $stateContent
 
-    # ── BLoC ──────────────────────────────────────────────
+    # -- BLoC --
     # Transition handler registrations
     $transOnLines = [System.Collections.Generic.List[string]]::new()
     $transHandlers = [System.Collections.Generic.List[string]]::new()
@@ -223,3 +223,4 @@ $($transHandlers -join '')
 }
 
 Export-ModuleMember -Function 'Invoke-GenerateBloc'
+

@@ -1,0 +1,143 @@
+{
+  "feature": {
+    "name":       "weekly_plan",
+    "label":      "Weekly Plans",
+    "purpose":    "Weekly marketing plan monitoring with approval lifecycle — draft, submitted, approved, rejected",
+    "maturity":   2,
+    "permission": "weekly_plans",
+    "icon":       "Icons.calendar_month_outlined",
+    "activeIcon": "Icons.calendar_month"
+  },
+  "storage": {
+    "remote": true,
+    "local":  false
+  },
+  "entities": {
+    "WeeklyPlan": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "officerId": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Officer is required" }
+          }
+        },
+        "weekStart": {
+          "type":     "DateTime",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Week start date is required" }
+          }
+        },
+        "weekEnd": {
+          "type":     "DateTime",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Week end date is required" }
+          }
+        },
+        "plannedCustomerIds": {
+          "type":     "List<String>",
+          "nullable": true
+        },
+        "plannedActivities": {
+          "type":     "String",
+          "nullable": true
+        },
+        "notes": {
+          "type":     "String",
+          "nullable": true
+        },
+        "status": {
+          "type":     "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "submittedAt": {
+          "type":     "DateTime",
+          "nullable": true
+        },
+        "reviewedAt": {
+          "type":     "DateTime",
+          "nullable": true
+        },
+        "createdAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {
+        "officer": {
+          "type":       "belongsTo",
+          "entity":     "Officer",
+          "feature":    "officer",
+          "foreignKey": "officerId"
+        }
+      },
+      "api": {
+        "endpoint":    "/weekly-plans",
+        "paginatable": true,
+        "searchable":  true
+      },
+      "ui": {
+        "card": {
+          "title":    "officerId",
+          "subtitle": "weekStart"
+        },
+        "detail": {
+          "header": ["officerId", "weekStart"],
+          "body":   ["weekEnd", "plannedCustomerIds", "plannedActivities", "notes", "status", "submittedAt", "reviewedAt", "createdAt"]
+        },
+        "form": {
+          "create": ["officerId", "weekStart", "weekEnd", "plannedCustomerIds", "plannedActivities", "notes"],
+          "edit":   ["plannedCustomerIds", "plannedActivities", "notes"]
+        },
+        "list": {
+          "emptyMessage": "No weekly plans found.",
+          "searchBy":     "officerId",
+          "filterBy":     "status"
+        }
+      }
+    }
+  },
+  "stateMachine": {
+    "statusField":   "status",
+    "initialStatus": "draft",
+    "statuses": [
+      { "name": "draft",     "label": "Draft",     "color": "grey" },
+      { "name": "submitted", "label": "Submitted", "color": "blue" },
+      { "name": "approved",  "label": "Approved",  "color": "green" },
+      { "name": "rejected",  "label": "Rejected",  "color": "red" }
+    ],
+    "transitions": [
+      {
+        "name":       "approve",
+        "label":      "Approve Plan",
+        "from":       ["submitted"],
+        "to":         "approved",
+        "permission": "weekly_plans.approve"
+      },
+      {
+        "name":       "reject",
+        "label":      "Reject Plan",
+        "from":       ["submitted"],
+        "to":         "rejected",
+        "permission": "weekly_plans.reject"
+      },
+      {
+        "name":       "resubmit",
+        "label":      "Resubmit Plan",
+        "from":       ["rejected"],
+        "to":         "submitted",
+        "permission": "weekly_plans.resubmit"
+      }
+    ]
+  }
+}

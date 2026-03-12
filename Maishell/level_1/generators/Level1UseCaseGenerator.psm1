@@ -1,5 +1,5 @@
 # ============================================================
-# Level1UseCaseGenerator.psm1 — CRUD use cases
+# Level1UseCaseGenerator.psm1 -- CRUD use cases
 # ============================================================
 
 function Invoke-GenerateUseCases {
@@ -22,7 +22,7 @@ function Invoke-GenerateUseCases {
         $createFormFields = @($mutableFields | ForEach-Object { $_.Name })
     }
 
-    # ── GetAll ────────────────────────────────────────────
+    # -- GetAll --
     $getAllContent = @"
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
@@ -41,7 +41,7 @@ class GetAll${fclass}UseCase implements UseCase<List<${eName}Entity>, NoParams> 
 "@
     & $NewFile (Join-Path $fDir "domain\usecases\get_all_${fname}_usecase.dart") $getAllContent
 
-    # ── Get ───────────────────────────────────────────────
+    # -- Get --
     $getContent = @"
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
@@ -65,7 +65,7 @@ class Get${fclass}UseCase implements UseCase<${eName}Entity, Get${fclass}Params>
 "@
     & $NewFile (Join-Path $fDir "domain\usecases\get_${fname}_usecase.dart") $getContent
 
-    # ── Create ────────────────────────────────────────────
+    # -- Create --
     # Params class fields from form.create
     $createParamFields = @()
     $createCtorParams  = @()
@@ -150,7 +150,7 @@ class Create${fclass}UseCase implements UseCase<${eName}Entity, Create${fclass}P
 
   @override
   Future<Either<Failure, ${eName}Entity>> call(Create${fclass}Params p) async {
-    // ── Validation gate ─────────────────────────────────
+    // -- Validation gate --
 $valBlock
 
     return repository.create(
@@ -163,7 +163,7 @@ $($entityCtorArgs -join "`n")
 "@
     & $NewFile (Join-Path $fDir "domain\usecases\create_${fname}_usecase.dart") $createContent
 
-    # ── Update ────────────────────────────────────────────
+    # -- Update --
     $updateContent = @"
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
@@ -188,7 +188,7 @@ class Update${fclass}UseCase implements UseCase<${eName}Entity, Update${fclass}P
 "@
     & $NewFile (Join-Path $fDir "domain\usecases\update_${fname}_usecase.dart") $updateContent
 
-    # ── Delete ────────────────────────────────────────────
+    # -- Delete --
     $deleteContent = @"
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
@@ -213,3 +213,4 @@ class Delete${fclass}UseCase implements UseCase<void, Delete${fclass}Params> {
 }
 
 Export-ModuleMember -Function 'Invoke-GenerateUseCases'
+

@@ -1,0 +1,168 @@
+{
+  "feature": {
+    "name":       "promotion",
+    "label":      "Promotions",
+    "purpose":    "Promotion lifecycle with broadcast side effects — SMS and WhatsApp channel execution on activation",
+    "maturity":   3,
+    "permission": "promotions",
+    "icon":       "Icons.campaign_outlined",
+    "activeIcon": "Icons.campaign"
+  },
+  "storage": {
+    "remote": true,
+    "local":  false
+  },
+  "entities": {
+    "Promotion": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "title": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required":  { "value": true, "message": "Promotion title is required" },
+            "minLength": { "value": 3, "message": "Title must be at least 3 characters" }
+          }
+        },
+        "description": {
+          "type":     "String",
+          "nullable": true
+        },
+        "productIds": {
+          "type":     "List<String>",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "At least one product is required" }
+          }
+        },
+        "startDate": {
+          "type":     "DateTime",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Start date is required" }
+          }
+        },
+        "endDate": {
+          "type":     "DateTime",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "End date is required" }
+          }
+        },
+        "channels": {
+          "type":     "List<String>",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "At least one channel is required" }
+          }
+        },
+        "status": {
+          "type":     "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "createdAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {
+        "products": {
+          "type":       "belongsTo",
+          "entity":     "Product",
+          "feature":    "product",
+          "foreignKey": "productIds"
+        }
+      },
+      "api": {
+        "endpoint":    "/promotions",
+        "paginatable": true,
+        "searchable":  true
+      },
+      "ui": {
+        "card": {
+          "title":    "title",
+          "subtitle": "description"
+        },
+        "detail": {
+          "header": ["title"],
+          "body":   ["description", "productIds", "startDate", "endDate", "channels", "status", "createdAt"]
+        },
+        "form": {
+          "create": ["title", "description", "productIds", "startDate", "endDate", "channels"],
+          "edit":   ["title", "description", "productIds", "startDate", "endDate", "channels"]
+        },
+        "list": {
+          "emptyMessage": "No promotions yet. Create your first promotion.",
+          "searchBy":     "title",
+          "filterBy":     "status"
+        }
+      }
+    }
+  },
+  "stateMachine": {
+    "statusField":   "status",
+    "initialStatus": "draft",
+    "statuses": [
+      { "name": "draft",     "label": "Draft",     "color": "grey" },
+      { "name": "active",    "label": "Active",    "color": "green" },
+      { "name": "ended",     "label": "Ended",     "color": "blue" },
+      { "name": "cancelled", "label": "Cancelled", "color": "red" }
+    ],
+    "transitions": [
+      {
+        "name":       "activate",
+        "label":      "Activate Promotion",
+        "from":       ["draft"],
+        "to":         "active",
+        "permission": "promotions.activate"
+      },
+      {
+        "name":       "end",
+        "label":      "End Promotion",
+        "from":       ["active"],
+        "to":         "ended",
+        "permission": "promotions.end"
+      },
+      {
+        "name":       "cancel",
+        "label":      "Cancel Promotion",
+        "from":       ["draft", "active"],
+        "to":         "cancelled",
+        "permission": "promotions.cancel"
+      }
+    ]
+  },
+  "workflow": {
+    "steps": [
+      {
+        "name":     "broadcastSms",
+        "label":    "Broadcast via SMS",
+        "trigger":  "activate",
+        "executor": "BroadcastSmsExecutor"
+      },
+      {
+        "name":     "broadcastWhatsApp",
+        "label":    "Broadcast via WhatsApp",
+        "trigger":  "activate",
+        "executor": "BroadcastWhatsAppExecutor"
+      }
+    ],
+    "events": [
+      {
+        "name":    "PromotionActivated",
+        "payload": ["promotionId", "productIds", "channels", "targetCount"]
+      },
+      {
+        "name":    "PromotionEnded",
+        "payload": ["promotionId", "endedAt"]
+      }
+    ]
+  }
+}

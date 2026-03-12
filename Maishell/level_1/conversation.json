@@ -1,0 +1,141 @@
+{
+  "feature": {
+    "name":       "conversation",
+    "label":      "Conversations",
+    "purpose":    "Read-heavy monitoring of in-app conversations between officers, admins, and customers",
+    "maturity":   1,
+    "permission": "conversations",
+    "icon":       "Icons.forum_outlined",
+    "activeIcon": "Icons.forum"
+  },
+  "storage": {
+    "remote": true,
+    "local":  false
+  },
+  "entities": {
+    "Conversation": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "participantIds": {
+          "type":     "List<String>",
+          "nullable": false
+        },
+        "participantRoles": {
+          "type":     "List<String>",
+          "nullable": false
+        },
+        "lastMessage": {
+          "type":     "String",
+          "nullable": true
+        },
+        "lastMessageAt": {
+          "type":     "DateTime",
+          "nullable": true
+        },
+        "unreadCount": {
+          "type":     "int",
+          "nullable": false
+        },
+        "createdAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {},
+      "api": {
+        "endpoint":    "/conversations",
+        "paginatable": true,
+        "searchable":  true
+      },
+      "ui": {
+        "card": {
+          "title":    "participantIds",
+          "subtitle": "lastMessage"
+        },
+        "detail": {
+          "header": ["participantIds"],
+          "body":   ["participantRoles", "lastMessage", "lastMessageAt", "unreadCount", "createdAt"]
+        },
+        "form": {
+          "create": [],
+          "edit":   []
+        },
+        "list": {
+          "emptyMessage": "No conversations found.",
+          "searchBy":     "participantIds"
+        }
+      }
+    },
+    "Message": {
+      "primary": false,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "conversationId": {
+          "type":     "String",
+          "nullable": false
+        },
+        "senderId": {
+          "type":     "String",
+          "nullable": false
+        },
+        "senderRole": {
+          "type":     "String",
+          "nullable": false
+        },
+        "content": {
+          "type":     "String",
+          "nullable": false
+        },
+        "sentAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        },
+        "isRead": {
+          "type":     "bool",
+          "nullable": false
+        }
+      },
+      "relationships": {
+        "conversation": {
+          "type":       "belongsTo",
+          "entity":     "Conversation",
+          "feature":    "conversation",
+          "foreignKey": "conversationId"
+        }
+      },
+      "api": {
+        "endpoint":    "/messages",
+        "paginatable": true,
+        "searchable":  false
+      },
+      "ui": {
+        "card": {
+          "title":    "senderId",
+          "subtitle": "content"
+        },
+        "detail": {
+          "header": ["senderId", "senderRole"],
+          "body":   ["content", "sentAt", "isRead"]
+        },
+        "form": {
+          "create": [],
+          "edit":   []
+        },
+        "list": {
+          "emptyMessage": "No messages in this conversation."
+        }
+      }
+    }
+  }
+}

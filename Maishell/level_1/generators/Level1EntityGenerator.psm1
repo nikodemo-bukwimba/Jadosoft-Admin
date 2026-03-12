@@ -1,5 +1,5 @@
 # ============================================================
-# Level1EntityGenerator.psm1 — Domain entity only
+# Level1EntityGenerator.psm1 -- Domain entity only
 # ============================================================
 
 function Invoke-GenerateEntity {
@@ -59,3 +59,4 @@ $copyBody
 }
 
 Export-ModuleMember -Function 'Invoke-GenerateEntity'
+

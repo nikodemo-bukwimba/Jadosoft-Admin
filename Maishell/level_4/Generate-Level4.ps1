@@ -1,5 +1,5 @@
 # ============================================================
-# Generate-Level4.ps1 — Level 4: Aggregator / Dashboard
+# Generate-Level4.ps1 -- Level 4: Aggregator / Dashboard
 # ============================================================
 
 param(
@@ -44,7 +44,7 @@ if (-not (Test-Path $ConfigPath)) { Write-Fail "Config not found: $ConfigPath"; 
 Write-Step "Loading config: $ConfigPath"
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 
-# ── Validation ──
+# -- Validation --
 $maturity = [int]$config.feature.maturity
 if ($maturity -ne 4) { Write-Fail "This generator handles Level 4 only. Config declares maturity $maturity."; exit 1 }
 if ($null -eq $config.sources -or ($config.sources.PSObject.Properties | Measure-Object).Count -eq 0) {
@@ -114,3 +114,4 @@ if ($DryRun) {
     Write-Success "$fileCount files generated in lib/features/$($tokens.FNAME)"
 }
 Write-Host ""
+

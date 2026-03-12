@@ -18,7 +18,7 @@ function Invoke-GenerateData {
     $isRemote = $config.storage.remote -eq $true
     $isLocal  = ($null -ne $config.storage.local) -and ($config.storage.local -eq $true)
 
-    # ── Repository interface ──────────────────────────────
+    # -- Repository interface --
     $repoContent = @"
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
@@ -34,7 +34,7 @@ abstract class ${fclass}Repository {
 "@
     & $NewFile (Join-Path $fDir "domain\repositories\${fname}_repository.dart") $repoContent
 
-    # ── Model ─────────────────────────────────────────────
+    # -- Model --
     $fromJsonFields = ($meta.Fields | ForEach-Object {
         $parseExpr = Get-JsonParseExpr -ConfigType $_.Type -JsonKey $_.SnakeCase -Nullable $_.IsNullable
         "      $($_.Name): $parseExpr,"
@@ -76,7 +76,7 @@ $( ($meta.Fields | ForEach-Object { "      $($_.Name): entity.$($_.Name)," }) -j
 "@
     & $NewFile (Join-Path $fDir "data\models\${eSnake}_model.dart") $modelContent
 
-    # ── Remote datasource ─────────────────────────────────
+    # -- Remote datasource --
     if ($isRemote) {
         $dsContent = @"
 import 'package:dio/dio.dart';
@@ -159,7 +159,7 @@ class ${fclass}RemoteDataSourceImpl implements ${fclass}RemoteDataSource {
         & $NewFile (Join-Path $fDir "data\datasources\${fname}_remote_datasource.dart") $dsContent
     }
 
-    # ── Repository implementation ─────────────────────────
+    # -- Repository implementation --
     $dsImports = ''
     $dsFields  = ''
     $dsCtorParams = ''
@@ -263,3 +263,4 @@ ${dsCtorParams}  })  : ${dsCtorInit};
 }
 
 Export-ModuleMember -Function 'Invoke-GenerateData'
+

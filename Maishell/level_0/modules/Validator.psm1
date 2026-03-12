@@ -15,10 +15,10 @@ function Invoke-ConfigValidation {
 
     $errors = [System.Collections.Generic.List[string]]::new()
 
-    # ── Feature block (required for ALL levels) ────────────
+    # -- Feature block (required for ALL levels) --
     _Validate-FeatureBlock -Config $Config -Errors $errors
 
-    # ── Maturity-specific gates ────────────────────────────
+    # -- Maturity-specific gates --
     $maturity = $Config.feature.maturity
 
     if ($null -ne $maturity) {
@@ -38,7 +38,7 @@ function _Validate-FeatureBlock {
 
     $f = $Config.feature
 
-    # name — required, snake_case only
+    # name -- required, snake_case only
     if ([string]::IsNullOrWhiteSpace($f.name)) {
         $Errors.Add("feature.name is required")
     }
@@ -46,17 +46,17 @@ function _Validate-FeatureBlock {
         $Errors.Add("feature.name must be snake_case (lowercase letters, digits, underscores). Got: '$($f.name)'")
     }
 
-    # label — required
+    # label -- required
     if ([string]::IsNullOrWhiteSpace($f.label)) {
         $Errors.Add("feature.label is required")
     }
 
-    # purpose — required
+    # purpose -- required
     if ([string]::IsNullOrWhiteSpace($f.purpose)) {
         $Errors.Add("feature.purpose is required")
     }
 
-    # maturity — required, must be 0-5
+    # maturity -- required, must be 0-5
     if ($null -eq $f.maturity) {
         $Errors.Add("feature.maturity is required")
     }
@@ -67,7 +67,7 @@ function _Validate-FeatureBlock {
         $Errors.Add("feature.maturity must be 0-5. Got: $($f.maturity)")
     }
 
-    # permission — optional. If provided, must be snake_case.
+    # permission -- optional. If provided, must be snake_case.
     if (-not [string]::IsNullOrWhiteSpace($f.permission)) {
         if ($f.permission -notmatch '^[a-z][a-z0-9_]*$') {
             $Errors.Add("feature.permission must be snake_case. Got: '$($f.permission)'")
@@ -78,7 +78,7 @@ function _Validate-FeatureBlock {
 function _Validate-MaturityGates {
     param([psobject]$Config, [int]$Maturity, [System.Collections.Generic.List[string]]$Errors)
 
-    # ── Level 0: No storage, no stateMachine, no entities required ──
+    # -- Level 0: No storage, no stateMachine, no entities required --
     if ($Maturity -eq 0) {
         if ($null -ne $Config.storage) {
             $Errors.Add("Level 0 features must NOT declare a 'storage' block (no persistence at Level 0)")
@@ -88,7 +88,7 @@ function _Validate-MaturityGates {
         }
     }
 
-    # ── Level 1+: Storage required ─────────────────────────
+    # -- Level 1+: Storage required --
     if ($Maturity -ge 1 -and $Maturity -ne 4) {
         if ($null -eq $Config.storage) {
             $Errors.Add("Level $Maturity features require a 'storage' block")
@@ -98,21 +98,21 @@ function _Validate-MaturityGates {
         }
     }
 
-    # ── Level 1+: Entities required (except Level 4) ──────
+    # -- Level 1+: Entities required (except Level 4) --
     if ($Maturity -ge 1 -and $Maturity -ne 4) {
         if ($null -eq $Config.entities) {
             $Errors.Add("Level $Maturity features require an 'entities' block")
         }
     }
 
-    # ── Level 2+: StateMachine required ────────────────────
+    # -- Level 2+: StateMachine required --
     if ($Maturity -ge 2 -and $Maturity -ne 4) {
         if ($null -eq $Config.stateMachine) {
             $Errors.Add("Level $Maturity features require a 'stateMachine' block")
         }
     }
 
-    # ── Level 4: No storage (aggregators have no persistence) ──
+    # -- Level 4: No storage (aggregators have no persistence) --
     if ($Maturity -eq 4) {
         if ($null -ne $Config.storage) {
             $Errors.Add("Level 4 aggregator features must NOT declare a 'storage' block")

@@ -1,5 +1,5 @@
 # ============================================================
-# Generate-Level5.ps1 — Level 5: External Integration
+# Generate-Level5.ps1 -- Level 5: External Integration
 # ============================================================
 
 param(
@@ -44,7 +44,7 @@ if (-not (Test-Path $ConfigPath)) { Write-Fail "Config not found: $ConfigPath"; 
 Write-Step "Loading config: $ConfigPath"
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 
-# ── Validation ──
+# -- Validation --
 $maturity = [int]$config.feature.maturity
 if ($maturity -ne 5) { Write-Fail "This generator handles Level 5 only. Config declares maturity $maturity."; exit 1 }
 if ($null -eq $config.integration) { Write-Fail "Level 5 requires an 'integration' block."; exit 1 }
@@ -59,11 +59,11 @@ foreach ($op in $config.integration.operations) {
     if ($op.method.ToUpper() -notin $validMethods) { Write-Fail "Operation '$($op.name)' method '$($op.method)' not in: $($validMethods -join ', ')"; exit 1 }
     # POST/PUT/PATCH should have requestFields
     if ($op.method.ToUpper() -in @('POST', 'PUT', 'PATCH') -and (-not $op.requestFields -or $op.requestFields.Count -eq 0)) {
-        Write-Warning "Operation '$($op.name)' ($($op.method)) has no requestFields — request DTO will be skipped."
+        Write-Warning "Operation '$($op.name)' ($($op.method)) has no requestFields -- request DTO will be skipped."
     }
     # Non-DELETE should have responseFields
     if ($op.method.ToUpper() -ne 'DELETE' -and (-not $op.responseFields -or $op.responseFields.Count -eq 0)) {
-        Write-Warning "Operation '$($op.name)' ($($op.method)) has no responseFields — response DTO will be empty."
+        Write-Warning "Operation '$($op.name)' ($($op.method)) has no responseFields -- response DTO will be empty."
     }
 }
 
@@ -122,3 +122,4 @@ if ($DryRun) {
     Write-Success "$fileCount files generated in lib/features/$($tokens.FNAME)"
 }
 Write-Host ""
+

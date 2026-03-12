@@ -1,0 +1,148 @@
+{
+  "feature": {
+    "name":       "product",
+    "label":      "Products",
+    "purpose":    "Product management with visibility lifecycle — draft, active, featured, archived",
+    "maturity":   2,
+    "permission": "products",
+    "icon":       "Icons.inventory_2_outlined",
+    "activeIcon": "Icons.inventory_2"
+  },
+  "storage": {
+    "remote": true,
+    "local":  false
+  },
+  "entities": {
+    "Product": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "name": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required":  { "value": true, "message": "Product name is required" },
+            "minLength": { "value": 2, "message": "Name must be at least 2 characters" }
+          }
+        },
+        "description": {
+          "type":     "String",
+          "nullable": true
+        },
+        "price": {
+          "type":     "double",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Price is required" },
+            "min":      { "value": 0.01, "message": "Price must be positive" }
+          }
+        },
+        "categoryId": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required": { "value": true, "message": "Category is required" }
+          }
+        },
+        "isAvailable": {
+          "type":     "bool",
+          "nullable": false
+        },
+        "isFeatured": {
+          "type":     "bool",
+          "nullable": false
+        },
+        "isNew": {
+          "type":     "bool",
+          "nullable": false
+        },
+        "status": {
+          "type":     "String",
+          "nullable": false,
+          "readonly": true
+        },
+        "createdAt": {
+          "type":     "DateTime",
+          "nullable": false,
+          "readonly": true
+        }
+      },
+      "relationships": {
+        "category": {
+          "type":       "belongsTo",
+          "entity":     "Category",
+          "feature":    "category",
+          "foreignKey": "categoryId"
+        }
+      },
+      "api": {
+        "endpoint":    "/products",
+        "paginatable": true,
+        "searchable":  true
+      },
+      "ui": {
+        "card": {
+          "title":    "name",
+          "subtitle": "price"
+        },
+        "detail": {
+          "header": ["name", "price"],
+          "body":   ["description", "categoryId", "isAvailable", "isFeatured", "isNew", "status", "createdAt"]
+        },
+        "form": {
+          "create": ["name", "description", "price", "categoryId", "isAvailable", "isFeatured", "isNew"],
+          "edit":   ["name", "description", "price", "categoryId", "isAvailable", "isFeatured", "isNew"]
+        },
+        "list": {
+          "emptyMessage": "No products yet. Create your first product.",
+          "searchBy":     "name",
+          "filterBy":     "status"
+        }
+      }
+    }
+  },
+  "stateMachine": {
+    "statusField":   "status",
+    "initialStatus": "draft",
+    "statuses": [
+      { "name": "draft",    "label": "Draft",    "color": "grey" },
+      { "name": "active",   "label": "Active",   "color": "blue" },
+      { "name": "featured", "label": "Featured", "color": "amber" },
+      { "name": "archived", "label": "Archived", "color": "red" }
+    ],
+    "transitions": [
+      {
+        "name":       "publish",
+        "label":      "Publish",
+        "from":       ["draft"],
+        "to":         "active",
+        "permission": "products.publish"
+      },
+      {
+        "name":       "feature",
+        "label":      "Mark Featured",
+        "from":       ["active"],
+        "to":         "featured",
+        "permission": "products.feature"
+      },
+      {
+        "name":       "unfeature",
+        "label":      "Remove Featured",
+        "from":       ["featured"],
+        "to":         "active",
+        "permission": "products.feature"
+      },
+      {
+        "name":       "archive",
+        "label":      "Archive",
+        "from":       ["active", "featured"],
+        "to":         "archived",
+        "permission": "products.archive"
+      }
+    ]
+  }
+}

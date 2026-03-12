@@ -1,5 +1,5 @@
 # ============================================================
-# Level1BlocGenerator.psm1 — BLoC + Event + State
+# Level1BlocGenerator.psm1 -- BLoC + Event + State
 # ============================================================
 
 function Invoke-GenerateBloc {
@@ -12,7 +12,7 @@ function Invoke-GenerateBloc {
     $eName  = $meta.Name
     $eSnake = $meta.Snake
 
-    # ── Events ────────────────────────────────────────────
+    # -- Events --
     $eventContent = @"
 import '../../domain/entities/${eSnake}_entity.dart';
 import '../../domain/usecases/create_${fname}_usecase.dart';
@@ -45,7 +45,7 @@ class ${fclass}FormReset extends ${fclass}Event {}
 "@
     & $NewFile (Join-Path $fDir "presentation\bloc\${fname}_event.dart") $eventContent
 
-    # ── States ────────────────────────────────────────────
+    # -- States --
     $stateContent = @"
 import '../../domain/entities/${eSnake}_entity.dart';
 
@@ -78,7 +78,7 @@ class ${fclass}Failure extends ${fclass}State {
 "@
     & $NewFile (Join-Path $fDir "presentation\bloc\${fname}_state.dart") $stateContent
 
-    # ── BLoC ──────────────────────────────────────────────
+    # -- BLoC --
     $blocContent = @"
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/usecase/usecase.dart';
@@ -169,3 +169,4 @@ class ${fclass}Bloc extends Bloc<${fclass}Event, ${fclass}State> {
 }
 
 Export-ModuleMember -Function 'Invoke-GenerateBloc'
+

@@ -1,0 +1,78 @@
+{
+  "feature": {
+    "name":       "sms_gateway",
+    "label":      "SMS Gateway",
+    "purpose":    "External SMS gateway integration with Vodacom/Airtel/Yas — send, delivery status, webhooks",
+    "maturity":   5,
+    "permission": "sms_gateway",
+    "icon":       "Icons.sms_outlined",
+    "activeIcon": "Icons.sms"
+  },
+  "integration": {
+    "baseUrl":   "{{SMS_GATEWAY_BASE_URL}}",
+    "authType":  "apiKey",
+    "timeout":   30000,
+    "retryPolicy": {
+      "maxAttempts": 3,
+      "backoffMs":   1000,
+      "retryOn":     [429, 500, 502, 503]
+    },
+    "operations": [
+      {
+        "name":        "sendSms",
+        "method":      "POST",
+        "path":        "/messages",
+        "label":       "Send SMS",
+        "description": "Send an SMS message to a recipient",
+        "icon":        "Icons.send",
+        "requestFields": [
+          { "name": "to",      "type": "String" },
+          { "name": "message", "type": "String" },
+          { "name": "from",    "type": "String", "nullable": true }
+        ],
+        "responseFields": [
+          { "name": "messageId",  "type": "String" },
+          { "name": "status",     "type": "String" },
+          { "name": "to",         "type": "String" },
+          { "name": "sentAt",     "type": "DateTime" }
+        ]
+      },
+      {
+        "name":        "getDeliveryStatus",
+        "method":      "GET",
+        "path":        "/messages/{messageId}",
+        "label":       "Get Delivery Status",
+        "description": "Retrieve delivery status for a sent SMS",
+        "icon":        "Icons.check_circle_outline",
+        "responseFields": [
+          { "name": "messageId",   "type": "String" },
+          { "name": "status",      "type": "String" },
+          { "name": "deliveredAt", "type": "DateTime", "nullable": true },
+          { "name": "errorCode",   "type": "String",   "nullable": true },
+          { "name": "errorMessage","type": "String",   "nullable": true }
+        ]
+      }
+    ],
+    "webhooks": [
+      {
+        "name":  "messageDelivered",
+        "event": "message.delivered",
+        "label": "Message Delivered",
+        "fields": [
+          { "name": "messageId",   "type": "String" },
+          { "name": "deliveredAt", "type": "DateTime" }
+        ]
+      },
+      {
+        "name":  "messageFailed",
+        "event": "message.failed",
+        "label": "Message Failed",
+        "fields": [
+          { "name": "messageId",    "type": "String" },
+          { "name": "errorCode",    "type": "String" },
+          { "name": "errorMessage", "type": "String" }
+        ]
+      }
+    ]
+  }
+}

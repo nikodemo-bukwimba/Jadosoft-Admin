@@ -1,0 +1,66 @@
+{
+  "feature": {
+    "name":       "category",
+    "label":      "Product Categories",
+    "purpose":    "Foundational product category reference data — simple CRUD, no lifecycle",
+    "maturity":   1,
+    "permission": "categories",
+    "icon":       "Icons.category_outlined",
+    "activeIcon": "Icons.category"
+  },
+  "storage": {
+    "remote": true,
+    "local":  false
+  },
+  "entities": {
+    "Category": {
+      "primary": true,
+      "fields": {
+        "id": {
+          "type":     "String",
+          "primary":  true,
+          "readonly": true
+        },
+        "name": {
+          "type":     "String",
+          "nullable": false,
+          "validation": {
+            "required":  { "value": true, "message": "Category name is required" },
+            "minLength": { "value": 2, "message": "Name must be at least 2 characters" }
+          }
+        },
+        "description": {
+          "type":     "String",
+          "nullable": true
+        },
+        "isActive": {
+          "type":     "bool",
+          "nullable": false
+        }
+      },
+      "relationships": {},
+      "api": {
+        "endpoint":    "/categories",
+        "paginatable": false,
+        "searchable":  false
+      },
+      "ui": {
+        "card": {
+          "title":    "name",
+          "subtitle": "description"
+        },
+        "detail": {
+          "header": ["name"],
+          "body":   ["description", "isActive"]
+        },
+        "form": {
+          "create": ["name", "description", "isActive"],
+          "edit":   ["name", "description", "isActive"]
+        },
+        "list": {
+          "emptyMessage": "No categories yet. Create your first category."
+        }
+      }
+    }
+  }
+}

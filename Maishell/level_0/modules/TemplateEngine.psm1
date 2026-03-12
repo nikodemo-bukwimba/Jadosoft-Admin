@@ -1,15 +1,15 @@
 # ============================================================
 # TemplateEngine.psm1
 # Shared helpers for all generator levels.
-# Each level adds helpers here as needed — never duplicated.
+# Each level adds helpers here as needed -- never duplicated.
 # ============================================================
 
 <#
 .SYNOPSIS
     Converts a PascalCase or camelCase string to snake_case.
 .EXAMPLE
-    ConvertTo-SnakeCase "ProjectMember"  → "project_member"
-    ConvertTo-SnakeCase "about"          → "about"
+    ConvertTo-SnakeCase "ProjectMember"  -- "project_member"
+    ConvertTo-SnakeCase "about"          -- "about"
 #>
 function ConvertTo-SnakeCase {
     param([Parameter(Mandatory)][string]$Name)
@@ -23,8 +23,8 @@ function ConvertTo-SnakeCase {
 .SYNOPSIS
     Converts a snake_case string to PascalCase.
 .EXAMPLE
-    ConvertTo-PascalCase "project_member"  → "ProjectMember"
-    ConvertTo-PascalCase "about"           → "About"
+    ConvertTo-PascalCase "project_member"  -- "ProjectMember"
+    ConvertTo-PascalCase "about"           -- "About"
 #>
 function ConvertTo-PascalCase {
     param([Parameter(Mandatory)][string]$Name)
@@ -38,9 +38,9 @@ function ConvertTo-PascalCase {
 .SYNOPSIS
     Converts a camelCase or PascalCase field name to a human-readable label.
 .EXAMPLE
-    ConvertTo-HumanLabel "firstName"  → "First Name"
-    ConvertTo-HumanLabel "isActive"   → "Is Active"
-    ConvertTo-HumanLabel "id"         → "Id"
+    ConvertTo-HumanLabel "firstName"  -- "First Name"
+    ConvertTo-HumanLabel "isActive"   -- "Is Active"
+    ConvertTo-HumanLabel "id"         -- "Id"
 #>
 function ConvertTo-HumanLabel {
     param([Parameter(Mandatory)][string]$Name)
@@ -74,3 +74,4 @@ Export-ModuleMember -Function @(
     'ConvertTo-HumanLabel',
     'Get-NamingTokens'
 )
+
