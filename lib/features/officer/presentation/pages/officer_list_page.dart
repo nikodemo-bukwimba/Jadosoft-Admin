@@ -1,9 +1,16 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../../domain/entities/officer_entity.dart';
 import '../bloc/officer_bloc.dart';
 import '../bloc/officer_event.dart';
 import '../bloc/officer_state.dart';
-import '../widgets/officer_card.dart';
+import '../widgets/officer_card_tile.dart';
+import '../widgets/officer_list_row.dart';
+import '../widgets/officer_table_row.dart';
+
+enum _ViewMode { cards, list, details }
 
 class OfficerListPage extends StatefulWidget {
   const OfficerListPage({super.key});
@@ -13,10 +20,41 @@ class OfficerListPage extends StatefulWidget {
 }
 
 class _OfficerListPageState extends State<OfficerListPage> {
+  _ViewMode _viewMode = _ViewMode.cards;
+
   @override
   void initState() {
     super.initState();
     context.read<OfficerBloc>().add(OfficerLoadAllRequested());
+  }
+
+  void _navigateToDetail(String id) =>
+      context.push(AppRouter.officerDetailPath(id));
+
+  void _deleteOfficer(String id, String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Officer?'),
+        content: Text('Remove "$name"? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      context.read<OfficerBloc>().add(OfficerDeleteRequested(id));
+    }
   }
 
   @override
@@ -24,12 +62,16 @@ class _OfficerListPageState extends State<OfficerListPage> {
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Officerss')),
+      appBar: AppBar(
+        title: const Text('Marketing Officers'),
+        actions: [
+          _buildViewToggle(scheme),
+          const SizedBox(width: 8),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.of(context)
-            .pushNamed('/officers/create')
-            .then((_) => context.read<OfficerBloc>().add(OfficerLoadAllRequested())),
-        child: const Icon(Icons.add),
+        onPressed: () => context.push(AppRouter.officerCreate),
+        child: const Icon(Icons.person_add),
       ),
       body: BlocConsumer<OfficerBloc, OfficerState>(
         listener: (context, state) {
@@ -49,53 +91,183 @@ class _OfficerListPageState extends State<OfficerListPage> {
           if (state is OfficerLoading || state is OfficerInitial) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (state is OfficerEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.inbox_outlined, size: 64, color: scheme.outlineVariant),
-                  const SizedBox(height: 16),
-                  Text('No officers found.', style: Theme.of(context).textTheme.bodyLarge),
-                ],
-              ),
-            );
-          }
-          if (state is OfficerFailure) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(state.message),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: () => context.read<OfficerBloc>().add(OfficerLoadAllRequested()),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            );
-          }
+          if (state is OfficerEmpty) return _buildEmpty(context, scheme);
+          if (state is OfficerFailure) return _buildError(context, scheme, state.message);
           if (state is OfficerListLoaded) {
             return RefreshIndicator(
               onRefresh: () async =>
                   context.read<OfficerBloc>().add(OfficerLoadAllRequested()),
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: state.items.length,
-                itemBuilder: (_, i) => OfficerCard(
-                  item: state.items[i],
-                  onTap: () => Navigator.of(context)
-                      .pushNamed('/officers/detail', arguments: {'id': state.items[i].id})
-                      .then((_) => context.read<OfficerBloc>().add(OfficerLoadAllRequested())),
-                  onDelete: () => context.read<OfficerBloc>()
-                      .add(OfficerDeleteRequested(state.items[i].id)),
-                ),
-              ),
+              child: _buildView(state.items),
             );
           }
           return const SizedBox.shrink();
         },
+      ),
+    );
+  }
+
+  // ─── View Toggle ───────────────────────────────────────────
+
+  Widget _buildViewToggle(ColorScheme scheme) {
+    const modes = [
+      (_ViewMode.cards, Icons.dashboard_outlined, 'Cards'),
+      (_ViewMode.list, Icons.view_list_outlined, 'List'),
+      (_ViewMode.details, Icons.table_rows_outlined, 'Details'),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      padding: const EdgeInsets.all(2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: modes.map((m) {
+          final selected = m.$1 == _viewMode;
+          return Tooltip(
+            message: m.$3,
+            child: GestureDetector(
+              onTap: () => setState(() => _viewMode = m.$1),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: selected ? scheme.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(m.$2, size: 18,
+                    color: selected ? scheme.onPrimary : scheme.onSurfaceVariant),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ─── View Router ───────────────────────────────────────────
+
+  Widget _buildView(List<OfficerEntity> items) {
+    return switch (_viewMode) {
+      _ViewMode.cards   => _buildCardsView(items),
+      _ViewMode.list    => _buildListView(items),
+      _ViewMode.details => _buildDetailsView(items),
+    };
+  }
+
+  Widget _buildCardsView(List<OfficerEntity> items) {
+    final width = MediaQuery.of(context).size.width;
+    if (width >= 1024) {
+      return GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: width >= 1200 ? 3 : 2,
+          childAspectRatio: 2.4,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 0,
+        ),
+        itemCount: items.length,
+        itemBuilder: (_, i) => OfficerCardTile(
+          item: items[i],
+          onTap: () => _navigateToDetail(items[i].id),
+          onDelete: () => _deleteOfficer(items[i].id, items[i].name),
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: items.length,
+      itemBuilder: (_, i) => OfficerCardTile(
+        item: items[i],
+        onTap: () => _navigateToDetail(items[i].id),
+        onDelete: () => _deleteOfficer(items[i].id, items[i].name),
+      ),
+    );
+  }
+
+  Widget _buildListView(List<OfficerEntity> items) {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: items.length,
+      itemBuilder: (_, i) => OfficerListRow(
+        item: items[i],
+        onTap: () => _navigateToDetail(items[i].id),
+        onDelete: () => _deleteOfficer(items[i].id, items[i].name),
+      ),
+    );
+  }
+
+  Widget _buildDetailsView(List<OfficerEntity> items) {
+    final scheme = Theme.of(context).colorScheme;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 44),
+                const SizedBox(width: 12),
+                Expanded(flex: 3, child: Text('Name', style: _headerStyle)),
+                Expanded(flex: 2, child: Text('Role', style: _headerStyle)),
+                Expanded(flex: 2, child: Text('Phone', style: _headerStyle)),
+                Expanded(flex: 1, child: Text('Status', style: _headerStyle)),
+                const SizedBox(width: 40),
+              ],
+            ),
+          ),
+          ...items.asMap().entries.map((e) => OfficerTableRow(
+            item: e.value,
+            isLast: e.key == items.length - 1,
+            onTap: () => _navigateToDetail(e.value.id),
+            onDelete: () => _deleteOfficer(e.value.id, e.value.name),
+          )),
+        ],
+      ),
+    );
+  }
+
+  TextStyle get _headerStyle => TextStyle(
+        fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      );
+
+  Widget _buildEmpty(BuildContext context, ColorScheme scheme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.people_outline, size: 64, color: scheme.outlineVariant),
+          const SizedBox(height: 16),
+          Text('No officers yet.', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: scheme.onSurfaceVariant)),
+          const SizedBox(height: 4),
+          Text('Tap + to add your first officer.', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildError(BuildContext context, ColorScheme scheme, String msg) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error_outline, size: 48, color: scheme.error),
+          const SizedBox(height: 16),
+          Text(msg, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: () => context.read<OfficerBloc>().add(OfficerLoadAllRequested()),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+          ),
+        ],
       ),
     );
   }

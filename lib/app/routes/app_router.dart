@@ -1,16 +1,15 @@
 ﻿// app_router.dart
-// ─────────────────────────────────────────────────────────────
-// Application routing — GoRouter configuration.
+// -------------------------------------------------------------
+// Application routing � GoRouter configuration.
 // All 21 features wired. Seq 1 (Shell) + Seq 2 (Auth) are the
-// foundation; Seq 3–21 register inside the ShellRoute.
-// ─────────────────────────────────────────────────────────────
+// foundation; Seq 3�21 register inside the ShellRoute.
+// -------------------------------------------------------------
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-
 import '../../core/enums/form_mode.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/bloc/auth_state.dart';
@@ -20,21 +19,22 @@ import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/register_page.dart';
 import '../../features/dashboard/presentation/pages/dashboard_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
-// hide HomeTab — it is also defined in shell_page_home_tab.dart
+import '../../features/auth/presentation/bloc/auth_event.dart';
+// hide HomeTab � it is also defined in shell_page_home_tab.dart
 import '../shell/shell_page_home_tab.dart';
 import '../shell/shell_nav_items.dart';
 import '../../customnav/adaptive_nav_shell.dart';
 
-// ── GENERATOR FEATURE PAGE IMPORTS — append only ──────────────────────
+// -- GENERATOR FEATURE PAGE IMPORTS � append only ----------------------
 
-// Actor (HMSCP core – L1)
+// Actor (HMSCP core � L1)
 import '../../features/actor/presentation/pages/actor_list_page.dart';
 import '../../features/actor/presentation/pages/actor_detail_page.dart';
 import '../../features/actor/presentation/pages/actor_form_page.dart';
 import '../../features/actor/presentation/bloc/actor_bloc.dart';
 import '../../features/actor/presentation/bloc/actor_event.dart';
 
-// Phase 3 · External Integrations (L5)
+// Phase 3 � External Integrations (L5)
 import '../../features/sms_gateway/presentation/cubit/sms_gateway_cubit.dart';
 import '../../features/sms_gateway/presentation/pages/sms_gateway_page.dart';
 import '../../features/whatsapp/presentation/cubit/whatsapp_cubit.dart';
@@ -42,42 +42,42 @@ import '../../features/whatsapp/presentation/pages/whatsapp_page.dart';
 import '../../features/mobile_money/presentation/cubit/mobile_money_cubit.dart';
 import '../../features/mobile_money/presentation/pages/mobile_money_page.dart';
 
-// Phase 4 · Officers (L2)
+// Phase 4 � Officers (L2)
 import '../../features/officer/presentation/bloc/officer_bloc.dart';
 import '../../features/officer/presentation/bloc/officer_event.dart';
 import '../../features/officer/presentation/pages/officer_list_page.dart';
 import '../../features/officer/presentation/pages/officer_detail_page.dart';
 import '../../features/officer/presentation/pages/officer_form_page.dart';
 
-// Phase 4 · Customers (L1)
+// Phase 4 � Customers (L1)
 import '../../features/customer/presentation/bloc/customer_bloc.dart';
 import '../../features/customer/presentation/bloc/customer_event.dart';
 import '../../features/customer/presentation/pages/customer_list_page.dart';
 import '../../features/customer/presentation/pages/customer_detail_page.dart';
 import '../../features/customer/presentation/pages/customer_form_page.dart';
 
-// Phase 5 · Categories (L1)
+// Phase 5 � Categories (L1)
 import '../../features/category/presentation/bloc/category_bloc.dart';
 import '../../features/category/presentation/bloc/category_event.dart';
 import '../../features/category/presentation/pages/category_list_page.dart';
 import '../../features/category/presentation/pages/category_detail_page.dart';
 import '../../features/category/presentation/pages/category_form_page.dart';
 
-// Phase 5 · Products (L2)
+// Phase 5 � Products (L2)
 import '../../features/product/presentation/bloc/product_bloc.dart';
 import '../../features/product/presentation/bloc/product_event.dart';
 import '../../features/product/presentation/pages/product_list_page.dart';
 import '../../features/product/presentation/pages/product_detail_page.dart';
 import '../../features/product/presentation/pages/product_form_page.dart';
 
-// Phase 6 · Promotions (L3)
+// Phase 6 � Promotions (L3)
 import '../../features/promotion/presentation/bloc/promotion_bloc.dart';
 import '../../features/promotion/presentation/bloc/promotion_event.dart';
 import '../../features/promotion/presentation/pages/promotion_list_page.dart';
 import '../../features/promotion/presentation/pages/promotion_detail_page.dart';
 import '../../features/promotion/presentation/pages/promotion_form_page.dart';
 
-// Phase 7 · Field Operations
+// Phase 7 � Field Operations
 import '../../features/visit/presentation/bloc/visit_bloc.dart';
 import '../../features/visit/presentation/bloc/visit_event.dart';
 import '../../features/visit/presentation/pages/visit_list_page.dart';
@@ -96,7 +96,7 @@ import '../../features/daily_report/presentation/pages/daily_report_list_page.da
 import '../../features/daily_report/presentation/pages/daily_report_detail_page.dart';
 import '../../features/daily_report/presentation/pages/daily_report_form_page.dart';
 
-// Phase 8 · Communication & Commerce
+// Phase 8 � Communication & Commerce
 import '../../features/conversation/presentation/bloc/conversation_bloc.dart';
 import '../../features/conversation/presentation/bloc/conversation_event.dart';
 import '../../features/conversation/presentation/pages/conversation_list_page.dart';
@@ -121,7 +121,7 @@ import '../../features/notification/presentation/pages/notification_list_page.da
 import '../../features/notification/presentation/pages/notification_detail_page.dart';
 import '../../features/notification/presentation/pages/notification_form_page.dart';
 
-// Phase 9 · Analytics & Reporting
+// Phase 9 � Analytics & Reporting
 import '../../features/marketing_dashboard/presentation/cubit/marketing_dashboard_cubit.dart';
 import '../../features/marketing_dashboard/presentation/pages/marketing_dashboard_dashboard_page.dart';
 
@@ -136,7 +136,7 @@ import '../../features/activity_log/presentation/bloc/activity_log_event.dart';
 import '../../features/activity_log/presentation/pages/activity_log_list_page.dart';
 import '../../features/activity_log/presentation/pages/activity_log_detail_page.dart';
 
-// ── FormNode enums ─────────────────────────────────────────
+// -- FormNode enums -----------------------------------------
 import '../../features/officer/presentation/enums/officer_form_node.dart';
 import '../../features/customer/presentation/pages/customer_form_page.dart'
     show CustomerFormMode;
@@ -155,10 +155,10 @@ import '../../features/payment/presentation/pages/payment_form_page.dart'
 import '../../features/notification/presentation/enums/notification_form_node.dart';
 
 import '../../config/di/injection_container.dart';
-// ── END GENERATOR FEATURE PAGE IMPORTS ────────────────────────────────
+// -- END GENERATOR FEATURE PAGE IMPORTS --------------------------------
 
 class AppRouter {
-  // ── Core routes ─────────────────────────────────────────────
+  // -- Core routes ---------------------------------------------
   static const String splash = '/';
   static const String login = '/login';
   static const String register = '/register';
@@ -167,7 +167,7 @@ class AppRouter {
   static const String dashboard = '/dashboard';
   static const String profile = '/profile';
 
-  // ── GENERATOR ROUTE CONSTANTS — append only ─────────────────
+  // -- GENERATOR ROUTE CONSTANTS � append only -----------------
 
   // Actor (HMSCP core)
   static const String actorList = '/actors';
@@ -182,7 +182,7 @@ class AppRouter {
   static const String whatsapp = '/integrations/whatsapp';
   static const String mobileMoney = '/integrations/mobile-money';
 
-  // Phase 4 · Officers
+  // Phase 4 � Officers
   static const String officerList = '/officers';
   static const String officerCreate = '/officers/create';
   static const String officerDetail = '/officers/:id';
@@ -190,7 +190,7 @@ class AppRouter {
   static String officerDetailPath(String id) => '/officers/$id';
   static String officerEditPath(String id) => '/officers/$id/edit';
 
-  // Phase 4 · Customers
+  // Phase 4 � Customers
   static const String customerList = '/customers';
   static const String customerCreate = '/customers/create';
   static const String customerDetail = '/customers/:id';
@@ -198,7 +198,7 @@ class AppRouter {
   static String customerDetailPath(String id) => '/customers/$id';
   static String customerEditPath(String id) => '/customers/$id/edit';
 
-  // Phase 5 · Categories
+  // Phase 5 � Categories
   static const String categoryList = '/categories';
   static const String categoryCreate = '/categories/create';
   static const String categoryDetail = '/categories/:id';
@@ -206,7 +206,7 @@ class AppRouter {
   static String categoryDetailPath(String id) => '/categories/$id';
   static String categoryEditPath(String id) => '/categories/$id/edit';
 
-  // Phase 5 · Products
+  // Phase 5 � Products
   static const String productList = '/products';
   static const String productCreate = '/products/create';
   static const String productDetail = '/products/:id';
@@ -214,7 +214,7 @@ class AppRouter {
   static String productDetailPath(String id) => '/products/$id';
   static String productEditPath(String id) => '/products/$id/edit';
 
-  // Phase 6 · Promotions
+  // Phase 6 � Promotions
   static const String promotionList = '/promotions';
   static const String promotionCreate = '/promotions/create';
   static const String promotionDetail = '/promotions/:id';
@@ -222,7 +222,7 @@ class AppRouter {
   static String promotionDetailPath(String id) => '/promotions/$id';
   static String promotionEditPath(String id) => '/promotions/$id/edit';
 
-  // Phase 7 · Visits
+  // Phase 7 � Visits
   static const String visitList = '/visits';
   static const String visitCreate = '/visits/create';
   static const String visitDetail = '/visits/:id';
@@ -230,7 +230,7 @@ class AppRouter {
   static String visitDetailPath(String id) => '/visits/$id';
   static String visitEditPath(String id) => '/visits/$id/edit';
 
-  // Phase 7 · Weekly Plans
+  // Phase 7 � Weekly Plans
   static const String weeklyPlanList = '/weekly-plans';
   static const String weeklyPlanCreate = '/weekly-plans/create';
   static const String weeklyPlanDetail = '/weekly-plans/:id';
@@ -238,7 +238,7 @@ class AppRouter {
   static String weeklyPlanDetailPath(String id) => '/weekly-plans/$id';
   static String weeklyPlanEditPath(String id) => '/weekly-plans/$id/edit';
 
-  // Phase 7 · Daily Reports
+  // Phase 7 � Daily Reports
   static const String dailyReportList = '/daily-reports';
   static const String dailyReportCreate = '/daily-reports/create';
   static const String dailyReportDetail = '/daily-reports/:id';
@@ -246,7 +246,7 @@ class AppRouter {
   static String dailyReportDetailPath(String id) => '/daily-reports/$id';
   static String dailyReportEditPath(String id) => '/daily-reports/$id/edit';
 
-  // Phase 8 · Conversations
+  // Phase 8 � Conversations
   static const String conversationList = '/conversations';
   static const String conversationCreate = '/conversations/create';
   static const String conversationDetail = '/conversations/:id';
@@ -254,7 +254,7 @@ class AppRouter {
   static String conversationDetailPath(String id) => '/conversations/$id';
   static String conversationEditPath(String id) => '/conversations/$id/edit';
 
-  // Phase 8 · Orders
+  // Phase 8 � Orders
   static const String orderList = '/orders';
   static const String orderCreate = '/orders/create';
   static const String orderDetail = '/orders/:id';
@@ -262,7 +262,7 @@ class AppRouter {
   static String orderDetailPath(String id) => '/orders/$id';
   static String orderEditPath(String id) => '/orders/$id/edit';
 
-  // Phase 8 · Payments
+  // Phase 8 � Payments
   static const String paymentList = '/payments';
   static const String paymentCreate = '/payments/create';
   static const String paymentDetail = '/payments/:id';
@@ -270,7 +270,7 @@ class AppRouter {
   static String paymentDetailPath(String id) => '/payments/$id';
   static String paymentEditPath(String id) => '/payments/$id/edit';
 
-  // Phase 8 · Notifications
+  // Phase 8 � Notifications
   static const String notificationList = '/notifications';
   static const String notificationCreate = '/notifications/create';
   static const String notificationDetail = '/notifications/:id';
@@ -286,7 +286,7 @@ class AppRouter {
   static const String activityLogDetail = '/activity-logs/:id';
   static String activityLogDetailPath(String id) => '/activity-logs/$id';
 
-  // ── END GENERATOR ROUTE CONSTANTS ──────────────────────────
+  // -- END GENERATOR ROUTE CONSTANTS --------------------------
 
   static GoRouter createRouter(AuthBloc authBloc) {
     final notifier = AuthRouterNotifier(authBloc);
@@ -355,7 +355,7 @@ class AppRouter {
           },
         ),
 
-        // ── Authenticated shell ─────────────────────────────
+        // -- Authenticated shell -----------------------------
         ShellRoute(
           builder: (context, state, child) {
             final authState = context.read<AuthBloc>().state;
@@ -363,6 +363,7 @@ class AppRouter {
             return AdaptiveNavShell(
               router: GoRouter.of(context),
               items: ShellNavItems.buildNavItems(auth: authState),
+              railFooter: _LogoutFooter(),
               child: child,
             );
           },
@@ -371,9 +372,9 @@ class AppRouter {
             GoRoute(path: dashboard, builder: (_, _) => const DashboardPage()),
             GoRoute(path: profile, builder: (_, _) => const ProfilePage()),
 
-            // ── GENERATOR ROUTES — append only ──────────────
+            // -- GENERATOR ROUTES � append only --------------
 
-            // ─── Actor (HMSCP core, L1) ─────────────────────
+            // --- Actor (HMSCP core, L1) ---------------------
             GoRoute(
               path: actorList,
               builder: (_, _) => BlocProvider(
@@ -411,7 +412,7 @@ class AppRouter {
               },
             ),
 
-            // ─── Phase 3 · Integrations (L5) ────────────────
+            // --- Phase 3 � Integrations (L5) ----------------
             GoRoute(
               path: smsGateway,
               builder: (_, _) => BlocProvider(
@@ -434,7 +435,7 @@ class AppRouter {
               ),
             ),
 
-            // ─── Phase 4 · Officers (L2) ────────────────────
+            // --- Phase 4 � Officers (L2) --------------------
             // NOTE: Uses OfficerFormNode (generated enum). If your
             // generator produced a different name, adjust here.
             GoRoute(
@@ -475,7 +476,7 @@ class AppRouter {
               },
             ),
 
-            // ─── Phase 4 · Customers (L1) ───────────────────
+            // --- Phase 4 � Customers (L1) -------------------
             GoRoute(
               path: customerList,
               builder: (_, _) => BlocProvider(
@@ -514,7 +515,7 @@ class AppRouter {
               },
             ),
 
-            // ─── Phase 5 · Categories (L1) ──────────────────
+            // --- Phase 5 � Categories (L1) ------------------
             GoRoute(
               path: categoryList,
               builder: (_, _) => BlocProvider(
@@ -553,7 +554,7 @@ class AppRouter {
               },
             ),
 
-            // ─── Phase 5 · Products (L2) ────────────────────
+            // --- Phase 5 � Products (L2) --------------------
             GoRoute(
               path: productList,
               builder: (_, _) => BlocProvider(
@@ -592,7 +593,7 @@ class AppRouter {
               },
             ),
 
-            // ─── Phase 6 · Promotions (L3) ──────────────────
+            // --- Phase 6 � Promotions (L3) ------------------
             GoRoute(
               path: promotionList,
               builder: (_, _) => BlocProvider(
@@ -634,7 +635,7 @@ class AppRouter {
               },
             ),
 
-            // ─── Phase 7 · Visits (L2) ─────────────────────
+            // --- Phase 7 � Visits (L2) ---------------------
             GoRoute(
               path: visitList,
               builder: (_, _) => BlocProvider(
@@ -672,7 +673,7 @@ class AppRouter {
               },
             ),
 
-            // ─── Phase 7 · Weekly Plans (L2) ────────────────
+            // --- Phase 7 � Weekly Plans (L2) ----------------
             GoRoute(
               path: weeklyPlanList,
               builder: (_, _) => BlocProvider(
@@ -716,7 +717,7 @@ class AppRouter {
               },
             ),
 
-            // ─── Phase 7 · Daily Reports (L3) ──────────────
+            // --- Phase 7 � Daily Reports (L3) --------------
             GoRoute(
               path: dailyReportList,
               builder: (_, _) => BlocProvider(
@@ -762,7 +763,7 @@ class AppRouter {
               },
             ),
 
-            // ─── Phase 8 · Conversations (L1) ──────────────
+            // --- Phase 8 � Conversations (L1) --------------
             GoRoute(
               path: conversationList,
               builder: (_, _) => BlocProvider(
@@ -808,7 +809,7 @@ class AppRouter {
               },
             ),
 
-            // ─── Phase 8 · Orders (L3) ─────────────────────
+            // --- Phase 8 � Orders (L3) ---------------------
             GoRoute(
               path: orderList,
               builder: (_, _) => BlocProvider(
@@ -846,7 +847,7 @@ class AppRouter {
               },
             ),
 
-            // ─── Phase 8 · Payments (L1) ────────────────────
+            // --- Phase 8 � Payments (L1) --------------------
             GoRoute(
               path: paymentList,
               builder: (_, _) => BlocProvider(
@@ -885,7 +886,7 @@ class AppRouter {
               },
             ),
 
-            // ─── Phase 8 · Notifications (L2) ──────────────
+            // --- Phase 8 � Notifications (L2) --------------
             GoRoute(
               path: notificationList,
               builder: (_, _) => BlocProvider(
@@ -931,7 +932,7 @@ class AppRouter {
               },
             ),
 
-            // ─── Phase 9 · Marketing Dashboard (L4) ────────
+            // --- Phase 9 � Marketing Dashboard (L4) --------
             GoRoute(
               path: marketingDashboard,
               builder: (_, _) => BlocProvider(
@@ -940,7 +941,7 @@ class AppRouter {
               ),
             ),
 
-            // ─── Phase 9 · Sales Dashboard (L4) ────────────
+            // --- Phase 9 � Sales Dashboard (L4) ------------
             GoRoute(
               path: salesDashboard,
               builder: (_, _) => BlocProvider(
@@ -949,7 +950,7 @@ class AppRouter {
               ),
             ),
 
-            // ─── Phase 9 · Report Export (L5) ──────────────
+            // --- Phase 9 � Report Export (L5) --------------
             GoRoute(
               path: reportExport,
               builder: (_, _) => BlocProvider(
@@ -958,7 +959,7 @@ class AppRouter {
               ),
             ),
 
-            // ─── Phase 9 · Activity Logs (L1, read-only) ───
+            // --- Phase 9 � Activity Logs (L1, read-only) ---
             GoRoute(
               path: activityLogList,
               builder: (_, _) => BlocProvider(
@@ -980,7 +981,7 @@ class AppRouter {
               },
             ),
 
-            // ── END GENERATOR ROUTES ────────────────────────
+            // -- END GENERATOR ROUTES ------------------------
           ],
         ),
       ],
@@ -990,7 +991,7 @@ class AppRouter {
     );
   }
 
-  // ── Redirect logic ───────────────────────────────────────
+  // -- Redirect logic ---------------------------------------
   static const _authRoutes = {login, register, accountPicker};
   static String? _redirect(AuthState authState, String location) {
     final isAuthRoute = _authRoutes.contains(location);
@@ -1011,7 +1012,7 @@ class AppRouter {
   }
 }
 
-// ── AuthRouterNotifier ──────────────────────────────────────
+// -- AuthRouterNotifier --------------------------------------
 class AuthRouterNotifier extends ChangeNotifier {
   AuthRouterNotifier(AuthBloc authBloc) {
     _subscription = authBloc.stream.listen((_) => notifyListeners());
@@ -1024,7 +1025,7 @@ class AuthRouterNotifier extends ChangeNotifier {
   }
 }
 
-// ── Splash screen ───────────────────────────────────────────
+// -- Splash screen -------------------------------------------
 class _SplashScreen extends StatelessWidget {
   const _SplashScreen();
   @override
@@ -1061,6 +1062,49 @@ class _SplashScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _LogoutFooter extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return BlocBuilder<AuthBloc, AuthState>(
+      builder: (context, state) {
+        final user = state is AuthAuthenticated
+            ? state.activeSession.user.displayName
+            : '';
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+          child: ListTile(
+            leading: Icon(Icons.logout, color: scheme.error),
+            title: Text(
+              'Sign Out',
+              style: TextStyle(
+                color: scheme.error,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            subtitle: user.isNotEmpty
+                ? Text(
+                    user,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  )
+                : null,
+            onTap: () =>
+                context.read<AuthBloc>().add(AuthLogoutRequested()),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      },
     );
   }
 }

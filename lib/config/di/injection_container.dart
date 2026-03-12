@@ -35,6 +35,7 @@ import 'package:admin_panel/features/mobile_money/presentation/cubit/mobile_mone
 
 // Phase 4 · Officers (L2) — includes DomainService
 import 'package:admin_panel/features/officer/data/datasources/officer_remote_datasource.dart';
+import 'package:admin_panel/features/officer/data/datasources/officer_mock_datasource.dart';
 import 'package:admin_panel/features/officer/data/repositories/officer_repository_impl.dart';
 import 'package:admin_panel/features/officer/domain/repositories/officer_repository.dart';
 import 'package:admin_panel/features/officer/domain/usecases/get_all_officer_usecase.dart';
@@ -47,6 +48,7 @@ import 'package:admin_panel/features/officer/presentation/bloc/officer_bloc.dart
 
 // Phase 4 · Customers (L1)
 import 'package:admin_panel/features/customer/data/datasources/customer_remote_datasource.dart';
+import 'package:admin_panel/features/customer/data/datasources/customer_mock_datasource.dart';
 import 'package:admin_panel/features/customer/data/repositories/customer_repository_impl.dart';
 import 'package:admin_panel/features/customer/domain/repositories/customer_repository.dart';
 import 'package:admin_panel/features/customer/domain/usecases/get_all_customer_usecase.dart';
@@ -405,7 +407,7 @@ Future<void> initDependencies() async {
 
   // Seq 6 · Officers (L2)
   sl.registerLazySingleton<OfficerRemoteDataSource>(
-    () => OfficerRemoteDataSourceImpl(dio: sl()),
+    () => OfficerMockDataSource(),
   );
   sl.registerLazySingleton<OfficerRepository>(
     () => OfficerRepositoryImpl(remoteDataSource: sl()),
@@ -432,7 +434,7 @@ Future<void> initDependencies() async {
 
   // Seq 7 · Customers (L1)
   sl.registerLazySingleton<CustomerRemoteDataSource>(
-    () => CustomerRemoteDataSourceImpl(dio: sl()),
+    () => CustomerMockDataSource(),
   );
   sl.registerLazySingleton<CustomerRepository>(
     () => CustomerRepositoryImpl(remoteDataSource: sl()),

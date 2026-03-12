@@ -60,5 +60,9 @@ class CustomerEntity extends Equatable {
   }
 
   @override
-  List<Object?> get props => [];
+  List<Object?> get props => [
+    id, businessName, fullOfficeName, ownerName, officialPhone,
+    contactPerson, contactPersonPhone, officeAddress, gpsLat, gpsLng,
+    assignedOfficerId, registrationDate,
+  ];
 }

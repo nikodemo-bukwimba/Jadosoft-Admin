@@ -49,6 +49,8 @@ dependencies:
   path: ^1.9.0
   sqlite3_flutter_libs: ^0.6.0+eol
   image_picker: ^1.2.1
+  url_launcher: ^6.3.2
+  location: ^8.0.1
 
 dev_dependencies:
   flutter_test:
