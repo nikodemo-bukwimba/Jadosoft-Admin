@@ -97,6 +97,7 @@ import 'package:admin_panel/features/promotion/presentation/bloc/promotion_bloc.
 
 // Phase 7 · Visits (L2)
 import 'package:admin_panel/features/visit/data/datasources/visit_remote_datasource.dart';
+import 'package:admin_panel/features/visit/data/datasources/visit_mock_datasource.dart';
 import 'package:admin_panel/features/visit/data/repositories/visit_repository_impl.dart';
 import 'package:admin_panel/features/visit/domain/repositories/visit_repository.dart';
 import 'package:admin_panel/features/visit/domain/usecases/get_all_visit_usecase.dart';
@@ -109,6 +110,7 @@ import 'package:admin_panel/features/visit/presentation/bloc/visit_bloc.dart';
 
 // Phase 7 · Weekly Plans (L2)
 import 'package:admin_panel/features/weekly_plan/data/datasources/weekly_plan_remote_datasource.dart';
+import 'package:admin_panel/features/weekly_plan/data/datasources/weekly_plan_mock_datasource.dart';
 import 'package:admin_panel/features/weekly_plan/data/repositories/weekly_plan_repository_impl.dart';
 import 'package:admin_panel/features/weekly_plan/domain/repositories/weekly_plan_repository.dart';
 import 'package:admin_panel/features/weekly_plan/domain/usecases/get_all_weekly_plan_usecase.dart';
@@ -543,7 +545,7 @@ Future<void> initDependencies() async {
 
   // Seq 11 · Visits (L2)
   sl.registerLazySingleton<VisitRemoteDataSource>(
-    () => VisitRemoteDataSourceImpl(dio: sl()),
+    () => VisitMockDataSource(),
   );
   sl.registerLazySingleton<VisitRepository>(
     () => VisitRepositoryImpl(remoteDataSource: sl()),
@@ -570,7 +572,7 @@ Future<void> initDependencies() async {
 
   // Seq 12 · Weekly Plans (L2)
   sl.registerLazySingleton<WeeklyPlanRemoteDataSource>(
-    () => WeeklyPlanRemoteDataSourceImpl(dio: sl()),
+    () => WeeklyPlanMockDataSource(),
   );
   sl.registerLazySingleton<WeeklyPlanRepository>(
     () => WeeklyPlanRepositoryImpl(remoteDataSource: sl()),

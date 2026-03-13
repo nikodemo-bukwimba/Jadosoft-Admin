@@ -15,27 +15,32 @@ class WeeklyPlanModel extends WeeklyPlanEntity {
     required super.createdAt,
   });
 
-  factory WeeklyPlanModel.fromJson(Map<String, dynamic> json) {
-    return WeeklyPlanModel(
-      id: json['id'] as String,
-      officerId: json['officer_id'] as String,
-      weekStart: DateTime.parse(json['week_start'] as String),
-      weekEnd: DateTime.parse(json['week_end'] as String),
-      plannedCustomerIds: json['planned_customer_ids'] != null
-          ? List<String>.from(json['planned_customer_ids'] as List)
-          : null,
-      plannedActivities: json['planned_activities'] as String?,
-      notes: json['notes'] as String?,
-      status: json['status'] as String,
-      submittedAt: json['submitted_at'] != null
-          ? DateTime.parse(json['submitted_at'] as String)
-          : null,
-      reviewedAt: json['reviewed_at'] != null
-          ? DateTime.parse(json['reviewed_at'] as String)
-          : null,
-      createdAt: DateTime.parse(json['created_at'] as String),
-    );
-  }
+  factory WeeklyPlanModel.fromJson(Map<String, dynamic> json) =>
+      WeeklyPlanModel(
+        id: json['id']?.toString() ?? '',
+        officerId: json['officer_id']?.toString() ?? '',
+        weekStart: json['week_start'] != null
+            ? DateTime.parse(json['week_start'].toString())
+            : DateTime.now(),
+        weekEnd: json['week_end'] != null
+            ? DateTime.parse(json['week_end'].toString())
+            : DateTime.now(),
+        plannedCustomerIds: json['planned_customer_ids'] != null
+            ? List<String>.from(json['planned_customer_ids'] as List)
+            : null,
+        plannedActivities: json['planned_activities'] as String?,
+        notes: json['notes'] as String?,
+        status: json['status'] as String? ?? 'draft',
+        submittedAt: json['submitted_at'] != null
+            ? DateTime.parse(json['submitted_at'].toString())
+            : null,
+        reviewedAt: json['reviewed_at'] != null
+            ? DateTime.parse(json['reviewed_at'].toString())
+            : null,
+        createdAt: json['created_at'] != null
+            ? DateTime.parse(json['created_at'].toString())
+            : DateTime.now(),
+      );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -51,19 +56,17 @@ class WeeklyPlanModel extends WeeklyPlanEntity {
     'created_at': createdAt.toIso8601String(),
   };
 
-  factory WeeklyPlanModel.fromEntity(WeeklyPlanEntity entity) {
-    return WeeklyPlanModel(
-      id: entity.id,
-      officerId: entity.officerId,
-      weekStart: entity.weekStart,
-      weekEnd: entity.weekEnd,
-      plannedCustomerIds: entity.plannedCustomerIds,
-      plannedActivities: entity.plannedActivities,
-      notes: entity.notes,
-      status: entity.status,
-      submittedAt: entity.submittedAt,
-      reviewedAt: entity.reviewedAt,
-      createdAt: entity.createdAt,
-    );
-  }
+  factory WeeklyPlanModel.fromEntity(WeeklyPlanEntity e) => WeeklyPlanModel(
+    id: e.id,
+    officerId: e.officerId,
+    weekStart: e.weekStart,
+    weekEnd: e.weekEnd,
+    plannedCustomerIds: e.plannedCustomerIds,
+    plannedActivities: e.plannedActivities,
+    notes: e.notes,
+    status: e.status,
+    submittedAt: e.submittedAt,
+    reviewedAt: e.reviewedAt,
+    createdAt: e.createdAt,
+  );
 }

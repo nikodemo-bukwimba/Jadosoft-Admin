@@ -1,235 +1,150 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../domain/entities/weekly_plan_entity.dart';
+import '../../domain/value_objects/weekly_plan_status.dart';
 import '../bloc/weekly_plan_bloc.dart';
 import '../bloc/weekly_plan_event.dart';
 import '../bloc/weekly_plan_state.dart';
-import '../../domain/value_objects/weekly_plan_status.dart';
-import '../widgets/weekly_plan_status_badge.dart';
+import '../../../officer/data/datasources/officer_mock_datasource.dart';
+import '../../../customer/data/datasources/customer_mock_datasource.dart';
 
 class WeeklyPlanDetailPage extends StatelessWidget {
   const WeeklyPlanDetailPage({super.key});
 
+  Future<String> _officerName(String id) async {
+    try { return (await OfficerMockDataSource().getById(id)).name; } catch (_) { return id; }
+  }
+  Future<String> _customerName(String id) async {
+    try { return (await CustomerMockDataSource().getById(id)).businessName; } catch (_) { return id; }
+  }
+  String _fmtDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Weekly Plans Detail'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit',
-            onPressed: () {
-              final state = context.read<WeeklyPlanBloc>().state;
-              if (state is WeeklyPlanDetailLoaded) {
-                Navigator.of(context).pushNamed(
-                  '/weekly_plans/edit',
-                  arguments: {'id': state.item.id},
-                );
-              }
-            },
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Plan Detail')),
       body: BlocConsumer<WeeklyPlanBloc, WeeklyPlanState>(
-        listener: (context, state) {
-          if (state is WeeklyPlanOperationSuccess) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(state.message)));
-            if (state.updatedItem != null) {
-              context.read<WeeklyPlanBloc>().add(
-                WeeklyPlanLoadOneRequested(state.updatedItem!.id),
-              );
-            }
+        listener: (c, s) {
+          if (s is WeeklyPlanOperationSuccess) {
+            ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message)));
+            if (s.updatedItem != null) c.read<WeeklyPlanBloc>().add(WeeklyPlanLoadOneRequested(s.updatedItem!.id));
+            else c.pop();
           }
-          if (state is WeeklyPlanFailure) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: Theme.of(context).colorScheme.error,
-              ),
-            );
-          }
+          if (s is WeeklyPlanFailure) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message), backgroundColor: scheme.error));
         },
-        builder: (context, state) {
-          if (state is WeeklyPlanLoading || state is WeeklyPlanInitial) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (state is WeeklyPlanFailure) {
-            return Center(child: Text(state.message));
-          }
-          if (state is WeeklyPlanDetailLoaded) {
-            final item = state.item;
-            final statusEnum = WeeklyPlanStatusX.fromString(item.status);
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.id,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .headlineSmall
-                                      ?.copyWith(fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 8),
-                                WeeklyPlanStatusBadge(status: statusEnum),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Actions',
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              if ([
-                                WeeklyPlanStatus.submitted,
-                              ].contains(statusEnum))
-                                FilledButton.tonal(
-                                  onPressed: () => context
-                                      .read<WeeklyPlanBloc>()
-                                      .add(WeeklyPlanApproveRequested(item.id)),
-                                  child: const Text('Approve Plan'),
-                                ),
-                              if ([
-                                WeeklyPlanStatus.submitted,
-                              ].contains(statusEnum))
-                                FilledButton.tonal(
-                                  onPressed: () => context
-                                      .read<WeeklyPlanBloc>()
-                                      .add(WeeklyPlanRejectRequested(item.id)),
-                                  child: const Text('Reject Plan'),
-                                ),
-                              if ([
-                                WeeklyPlanStatus.rejected,
-                              ].contains(statusEnum))
-                                FilledButton.tonal(
-                                  onPressed: () =>
-                                      context.read<WeeklyPlanBloc>().add(
-                                        WeeklyPlanResubmitRequested(item.id),
-                                      ),
-                                  child: const Text('Resubmit Plan'),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildField(context, 'Officer Id', item.officerId),
-                          _buildField(
-                            context,
-                            'Week Start',
-                            item.weekStart.toIso8601String().split('T').first,
-                          ),
-                          _buildField(
-                            context,
-                            'Week End',
-                            item.weekEnd.toIso8601String().split('T').first,
-                          ),
-                          _buildField(
-                            context,
-                            'Planned Customer Ids',
-                            item.plannedCustomerIds?.join(', ') ?? '',
-                          ),
-                          _buildField(
-                            context,
-                            'Planned Activities',
-                            item.plannedActivities ?? '',
-                          ),
-                          _buildField(context, 'Notes', item.notes ?? ''),
-                          _buildField(context, 'Status', item.status),
-                          _buildField(
-                            context,
-                            'Submitted At',
-                            item.submittedAt != null
-                                ? item.submittedAt!
-                                      .toIso8601String()
-                                      .split('T')
-                                      .first
-                                : '',
-                          ),
-                          _buildField(
-                            context,
-                            'Reviewed At',
-                            item.reviewedAt != null
-                                ? item.reviewedAt!
-                                      .toIso8601String()
-                                      .split('T')
-                                      .first
-                                : '',
-                          ),
-                          _buildField(
-                            context,
-                            'Created At',
-                            item.createdAt.toIso8601String().split('T').first,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
+        builder: (c, s) {
+          if (s is WeeklyPlanLoading || s is WeeklyPlanInitial) return const Center(child: CircularProgressIndicator());
+          if (s is WeeklyPlanFailure) return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.error_outline, size: 48, color: scheme.error), const SizedBox(height: 16), Text(s.message),
+            const SizedBox(height: 16), FilledButton.icon(onPressed: () => c.pop(), icon: const Icon(Icons.arrow_back), label: const Text('Go Back')),
+          ]));
+          if (s is WeeklyPlanDetailLoaded) return _body(context, s.item);
           return const SizedBox.shrink();
         },
       ),
     );
   }
 
-  Widget _buildField(BuildContext context, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
-          ),
+  Widget _body(BuildContext context, WeeklyPlanEntity item) {
+    final scheme = Theme.of(context).colorScheme;
+    final st = WeeklyPlanStatusX.fromString(item.status);
+    final isWide = MediaQuery.of(context).size.width >= 600;
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(horizontal: isWide ? MediaQuery.of(context).size.width * 0.1 : 16, vertical: 16),
+      child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Header
+        Card(child: Padding(padding: const EdgeInsets.all(20), child: Row(children: [
+          CircleAvatar(radius: 28, backgroundColor: st.color.withValues(alpha: 0.15),
+            child: Icon(Icons.calendar_month, color: st.color, size: 28)),
+          const SizedBox(width: 16),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${_fmtDate(item.weekStart)} – ${_fmtDate(item.weekEnd)}',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            FutureBuilder<String>(future: _officerName(item.officerId),
+              builder: (_, s) => Text(s.data ?? '...', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.primary, fontWeight: FontWeight.w600))),
+            const SizedBox(height: 6),
+            Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: st.color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12), border: Border.all(color: st.color.withValues(alpha: 0.4))),
+              child: Text(st.displayName, style: TextStyle(color: st.color, fontSize: 12, fontWeight: FontWeight.w600))),
+          ])),
+        ]))),
+        const SizedBox(height: 12),
+
+        // Admin Actions
+        _actions(context, item, st),
+
+        // Planned Activities
+        if (item.plannedActivities != null && item.plannedActivities!.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Planned Activities', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
+            const Divider(height: 20),
+            Text(item.plannedActivities!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5)),
+          ]))),
         ],
-      ),
+
+        // Target Customers
+        if (item.plannedCustomerIds != null && item.plannedCustomerIds!.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Target Customers (${item.plannedCustomerIds!.length})', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
+            const Divider(height: 20),
+            ...item.plannedCustomerIds!.map((cId) => Padding(padding: const EdgeInsets.symmetric(vertical: 4),
+              child: FutureBuilder<String>(future: _customerName(cId),
+                builder: (_, s) => Row(children: [
+                  Icon(Icons.store, size: 18, color: scheme.onSurfaceVariant), const SizedBox(width: 10),
+                  Text(s.data ?? '...', style: Theme.of(context).textTheme.bodyMedium),
+                ])))),
+          ]))),
+        ],
+
+        // Details
+        const SizedBox(height: 12),
+        Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Plan Details', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
+          const Divider(height: 24),
+          if (item.notes != null && item.notes!.isNotEmpty) _row(context, Icons.notes, 'Notes', item.notes!),
+          if (item.submittedAt != null) _row(context, Icons.upload, 'Submitted', _fmtDate(item.submittedAt!)),
+          if (item.reviewedAt != null) _row(context, Icons.rate_review, 'Reviewed', _fmtDate(item.reviewedAt!)),
+          _row(context, Icons.calendar_today, 'Created', _fmtDate(item.createdAt)),
+          _row(context, Icons.fingerprint, 'ID', item.id),
+        ]))),
+        const SizedBox(height: 80),
+      ])),
     );
+  }
+
+  Widget _actions(BuildContext context, WeeklyPlanEntity item, WeeklyPlanStatus st) {
+    final actions = <Widget>[];
+    if (st == WeeklyPlanStatus.submitted) {
+      actions.add(_btn(context, Icons.check_circle_outline, 'Approve', Colors.green,
+        () => context.read<WeeklyPlanBloc>().add(WeeklyPlanApproveRequested(item.id))));
+      actions.add(_btn(context, Icons.cancel_outlined, 'Reject', Colors.red,
+        () => context.read<WeeklyPlanBloc>().add(WeeklyPlanRejectRequested(item.id))));
+    }
+    if (st == WeeklyPlanStatus.rejected) actions.add(_btn(context, Icons.replay, 'Resubmit', Colors.blue,
+      () => context.read<WeeklyPlanBloc>().add(WeeklyPlanResubmitRequested(item.id))));
+    if (actions.isEmpty) return const SizedBox.shrink();
+    return Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('Admin Actions', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w700)),
+      const Divider(height: 20), Wrap(spacing: 10, runSpacing: 10, children: actions),
+    ])));
+  }
+
+  Widget _btn(BuildContext c, IconData icon, String label, Color color, VoidCallback onPressed) => FilledButton.tonalIcon(
+    onPressed: onPressed, icon: Icon(icon, size: 18, color: color), label: Text(label),
+    style: FilledButton.styleFrom(minimumSize: Size.zero, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)));
+
+  Widget _row(BuildContext c, IconData icon, String label, String value) {
+    final scheme = Theme.of(c).colorScheme;
+    return Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [
+      Icon(icon, size: 20, color: scheme.onSurfaceVariant), const SizedBox(width: 12),
+      SizedBox(width: 100, child: Text(label, style: Theme.of(c).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant))),
+      Expanded(child: Text(value, style: Theme.of(c).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500))),
+    ]));
   }
 }

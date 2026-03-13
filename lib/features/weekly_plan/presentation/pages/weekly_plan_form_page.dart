@@ -5,211 +5,140 @@ import '../bloc/weekly_plan_bloc.dart';
 import '../bloc/weekly_plan_event.dart';
 import '../bloc/weekly_plan_state.dart';
 import '../../domain/usecases/create_weekly_plan_usecase.dart';
+import '../../../officer/data/datasources/officer_mock_datasource.dart';
+import '../../../officer/domain/entities/officer_entity.dart';
 
 class WeeklyPlanFormPage extends StatefulWidget {
   final WeeklyPlanFormNode mode;
   final String? id;
-
-  const WeeklyPlanFormPage({
-    super.key,
-    this.mode = WeeklyPlanFormNode.create,
-    this.id,
-  });
-
+  const WeeklyPlanFormPage({super.key, this.mode = WeeklyPlanFormNode.create, this.id});
   @override
   State<WeeklyPlanFormPage> createState() => _WeeklyPlanFormPageState();
 }
 
 class _WeeklyPlanFormPageState extends State<WeeklyPlanFormPage> {
   final _formKey = GlobalKey<FormState>();
+  String? _selectedOfficerId;
+  DateTime? _weekStart, _weekEnd;
+  final _activitiesCtl = TextEditingController();
+  final _notesCtl = TextEditingController();
+  bool _isSubmitting = false, _fieldsPopulated = false;
+  bool get _isEdit => widget.mode == WeeklyPlanFormNode.edit;
 
-  final _officerIdController = TextEditingController();
-  final _weekStartController = TextEditingController();
-  final _weekEndController = TextEditingController();
-  final _plannedCustomerIdsController = TextEditingController();
-  final _plannedActivitiesController = TextEditingController();
-  final _notesController = TextEditingController();
-
-  bool _isSubmitting = false;
+  List<OfficerEntity> _officers = [];
+  bool _loading = true;
 
   @override
-  void dispose() {
-    _officerIdController.dispose();
-    _weekStartController.dispose();
-    _weekEndController.dispose();
-    _plannedCustomerIdsController.dispose();
-    _plannedActivitiesController.dispose();
-    _notesController.dispose();
-    super.dispose();
+  void initState() { super.initState(); _loadOfficers(); }
+
+  Future<void> _loadOfficers() async {
+    try { final o = await OfficerMockDataSource().getAll(); if (mounted) setState(() { _officers = o; _loading = false; }); }
+    catch (_) { if (mounted) setState(() => _loading = false); }
   }
 
   @override
+  void dispose() { _activitiesCtl.dispose(); _notesCtl.dispose(); super.dispose(); }
+
+  void _populate(WeeklyPlanState s) {
+    if (_isEdit && !_fieldsPopulated && s is WeeklyPlanDetailLoaded) {
+      _selectedOfficerId = s.item.officerId;
+      _weekStart = s.item.weekStart; _weekEnd = s.item.weekEnd;
+      _activitiesCtl.text = s.item.plannedActivities ?? '';
+      _notesCtl.text = s.item.notes ?? '';
+      _fieldsPopulated = true;
+    }
+  }
+
+  Future<void> _pickDate(bool isStart) async {
+    final picked = await showDatePicker(context: context, initialDate: (isStart ? _weekStart : _weekEnd) ?? DateTime.now(),
+      firstDate: DateTime(2024), lastDate: DateTime(2030));
+    if (picked != null) setState(() { if (isStart) _weekStart = picked; else _weekEnd = picked; });
+  }
+
+  String _fmtDate(DateTime? d) => d != null ? '${d.day}/${d.month}/${d.year}' : 'Select date';
+
+  @override
   Widget build(BuildContext context) {
-    final isCreate = widget.mode == WeeklyPlanFormNode.create;
+    final scheme = Theme.of(context).colorScheme;
+    final isWide = MediaQuery.of(context).size.width >= 600;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(isCreate ? 'New Weekly Plans' : 'Edit Weekly Plans'),
-      ),
-      body: BlocListener<WeeklyPlanBloc, WeeklyPlanState>(
-        listener: (context, state) {
-          if (state is WeeklyPlanOperationSuccess) {
-            setState(() => _isSubmitting = false);
-            Navigator.of(context).pop(true);
-          }
-          if (state is WeeklyPlanFailure) {
-            setState(() => _isSubmitting = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: Theme.of(context).colorScheme.error,
-              ),
-            );
-          }
+      appBar: AppBar(title: Text(_isEdit ? 'Edit Plan' : 'New Weekly Plan')),
+      body: BlocConsumer<WeeklyPlanBloc, WeeklyPlanState>(
+        listener: (c, s) {
+          if (s is WeeklyPlanDetailLoaded) setState(() => _populate(s));
+          if (s is WeeklyPlanOperationSuccess) { setState(() => _isSubmitting = false); Navigator.of(c).pop(true); }
+          if (s is WeeklyPlanFailure) { setState(() => _isSubmitting = false); ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message), backgroundColor: scheme.error)); }
         },
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextFormField(
-                  controller: _officerIdController,
-                  decoration: const InputDecoration(
-                    labelText: 'Officer Id',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty)
-                      return 'Officer is required';
-                    return null;
-                  },
-                ),
+        builder: (c, s) {
+          if (_isEdit && s is WeeklyPlanLoading && !_fieldsPopulated) return const Center(child: CircularProgressIndicator());
+          if (_loading) return const Center(child: CircularProgressIndicator());
+
+          return Form(key: _formKey, child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: isWide ? MediaQuery.of(context).size.width * 0.1 : 16, vertical: 16),
+            child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              // Officer
+              DropdownButtonFormField<String>(
+                value: _selectedOfficerId,
+                decoration: const InputDecoration(labelText: 'Officer', border: OutlineInputBorder(), prefixIcon: Icon(Icons.badge_outlined)),
+                items: _officers.where((o) => o.status == 'active').map((o) => DropdownMenuItem(value: o.id, child: Text(o.name))).toList(),
+                onChanged: (v) => setState(() => _selectedOfficerId = v),
+                validator: (v) => v == null || v.isEmpty ? 'Officer is required' : null,
+              ),
+              const SizedBox(height: 16),
+
+              // Date range
+              if (isWide) Row(children: [
+                Expanded(child: _dateTile(context, 'Week Start', _weekStart, () => _pickDate(true))),
+                const SizedBox(width: 16),
+                Expanded(child: _dateTile(context, 'Week End', _weekEnd, () => _pickDate(false))),
+              ]) else ...[
+                _dateTile(context, 'Week Start', _weekStart, () => _pickDate(true)),
                 const SizedBox(height: 16),
-                GestureDetector(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2100),
-                    );
-                    if (picked != null) {
-                      _weekStartController.text = picked
-                          .toIso8601String()
-                          .split('T')
-                          .first;
-                    }
-                  },
-                  child: AbsorbPointer(
-                    child: TextFormField(
-                      controller: _weekStartController,
-                      decoration: const InputDecoration(
-                        labelText: 'Week Start',
-                        suffixIcon: Icon(Icons.calendar_today),
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                GestureDetector(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2100),
-                    );
-                    if (picked != null) {
-                      _weekEndController.text = picked
-                          .toIso8601String()
-                          .split('T')
-                          .first;
-                    }
-                  },
-                  child: AbsorbPointer(
-                    child: TextFormField(
-                      controller: _weekEndController,
-                      decoration: const InputDecoration(
-                        labelText: 'Week End',
-                        suffixIcon: Icon(Icons.calendar_today),
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _plannedCustomerIdsController,
-                  decoration: const InputDecoration(
-                    labelText: 'Planned Customer Ids',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _plannedActivitiesController,
-                  decoration: const InputDecoration(
-                    labelText: 'Planned Activities',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _notesController,
-                  decoration: const InputDecoration(
-                    labelText: 'Notes',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                ),
-                const SizedBox(height: 16),
-                const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: _isSubmitting ? null : _submit,
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(isCreate ? 'Create Weekly Plans' : 'Save Changes'),
-                ),
+                _dateTile(context, 'Week End', _weekEnd, () => _pickDate(false)),
               ],
-            ),
-          ),
-        ),
+              const SizedBox(height: 16),
+
+              TextFormField(controller: _activitiesCtl, decoration: const InputDecoration(labelText: 'Planned Activities', border: OutlineInputBorder(), prefixIcon: Icon(Icons.task_outlined)),
+                maxLines: 4, textCapitalization: TextCapitalization.sentences),
+              const SizedBox(height: 16),
+              TextFormField(controller: _notesCtl, decoration: const InputDecoration(labelText: 'Notes', border: OutlineInputBorder(), prefixIcon: Icon(Icons.notes_outlined)),
+                maxLines: 2, textCapitalization: TextCapitalization.sentences),
+              const SizedBox(height: 32),
+
+              FilledButton.icon(onPressed: _isSubmitting ? null : _submit,
+                icon: _isSubmitting ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Icon(_isEdit ? Icons.save : Icons.calendar_month),
+                label: Text(_isEdit ? 'Save Changes' : 'Create Plan')),
+              const SizedBox(height: 32),
+            ]))));
+        },
       ),
     );
+  }
+
+  Widget _dateTile(BuildContext context, String label, DateTime? value, VoidCallback onTap) {
+    return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: InputDecorator(
+      decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), prefixIcon: const Icon(Icons.date_range)),
+      child: Text(_fmtDate(value), style: value != null ? null : Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+    ));
   }
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
+    if (_weekStart == null || _weekEnd == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select week start and end dates')));
+      return;
+    }
     setState(() => _isSubmitting = true);
-
-    context.read<WeeklyPlanBloc>().add(
-      WeeklyPlanCreateRequested(
-        CreateWeeklyPlanParams(
-          officerId: _officerIdController.text,
-          weekStart:
-              DateTime.tryParse(_weekStartController.text) ?? DateTime.now(),
-          weekEnd: DateTime.tryParse(_weekEndController.text) ?? DateTime.now(),
-          plannedCustomerIds: _plannedCustomerIdsController.text.trim().isEmpty
-              ? null
-              : _plannedCustomerIdsController.text
-                    .split(',')
-                    .map((e) => e.trim())
-                    .where((e) => e.isNotEmpty)
-                    .toList(),
-          plannedActivities: _plannedActivitiesController.text,
-          notes: _notesController.text,
-        ),
-      ),
-    );
+    if (_isEdit) {
+      final s = context.read<WeeklyPlanBloc>().state;
+      if (s is WeeklyPlanDetailLoaded) context.read<WeeklyPlanBloc>().add(WeeklyPlanUpdateRequested(s.item.copyWith(
+        officerId: _selectedOfficerId, weekStart: _weekStart, weekEnd: _weekEnd,
+        plannedActivities: _activitiesCtl.text.trim(), notes: _notesCtl.text.trim())));
+    } else {
+      context.read<WeeklyPlanBloc>().add(WeeklyPlanCreateRequested(CreateWeeklyPlanParams(
+        officerId: _selectedOfficerId ?? '', weekStart: _weekStart!, weekEnd: _weekEnd!,
+        plannedActivities: _activitiesCtl.text.trim(), notes: _notesCtl.text.trim())));
+    }
   }
 }

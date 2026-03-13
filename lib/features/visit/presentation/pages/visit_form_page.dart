@@ -5,268 +5,120 @@ import '../bloc/visit_bloc.dart';
 import '../bloc/visit_event.dart';
 import '../bloc/visit_state.dart';
 import '../../domain/usecases/create_visit_usecase.dart';
+import '../../../officer/data/datasources/officer_mock_datasource.dart';
+import '../../../officer/domain/entities/officer_entity.dart';
+import '../../../customer/data/datasources/customer_mock_datasource.dart';
+import '../../../customer/domain/entities/customer_entity.dart';
 
 class VisitFormPage extends StatefulWidget {
   final VisitFormNode mode;
   final String? id;
-
   const VisitFormPage({super.key, this.mode = VisitFormNode.create, this.id});
-
   @override
   State<VisitFormPage> createState() => _VisitFormPageState();
 }
 
 class _VisitFormPageState extends State<VisitFormPage> {
   final _formKey = GlobalKey<FormState>();
+  String? _selectedOfficerId, _selectedCustomerId;
+  final _notesCtl = TextEditingController();
+  final _summaryCtl = TextEditingController();
+  bool _isSubmitting = false, _fieldsPopulated = false;
+  bool get _isEdit => widget.mode == VisitFormNode.edit;
 
-  final _customerIdController = TextEditingController();
-  final _officerIdController = TextEditingController();
-  final _visitDateController = TextEditingController();
-  final _businessNameController = TextEditingController();
-  final _ownerPhoneController = TextEditingController();
-  final _contactPersonPhoneController = TextEditingController();
-  final _businessPhoneController = TextEditingController();
-  final _notesController = TextEditingController();
-  final _gpsLatController = TextEditingController();
-  final _gpsLngController = TextEditingController();
-  final _promotedProductIdsController = TextEditingController();
-  final _discussionSummaryController = TextEditingController();
-
-  bool _isSubmitting = false;
+  List<OfficerEntity> _officers = [];
+  List<CustomerEntity> _customers = [];
+  bool _loading = true;
 
   @override
-  void dispose() {
-    _customerIdController.dispose();
-    _officerIdController.dispose();
-    _visitDateController.dispose();
-    _businessNameController.dispose();
-    _ownerPhoneController.dispose();
-    _contactPersonPhoneController.dispose();
-    _businessPhoneController.dispose();
-    _notesController.dispose();
-    _gpsLatController.dispose();
-    _gpsLngController.dispose();
-    _promotedProductIdsController.dispose();
-    _discussionSummaryController.dispose();
-    super.dispose();
+  void initState() { super.initState(); _loadData(); }
+
+  Future<void> _loadData() async {
+    try {
+      final o = await OfficerMockDataSource().getAll();
+      final c = await CustomerMockDataSource().getAll();
+      if (mounted) setState(() { _officers = o; _customers = c; _loading = false; });
+    } catch (_) { if (mounted) setState(() => _loading = false); }
+  }
+
+  @override
+  void dispose() { _notesCtl.dispose(); _summaryCtl.dispose(); super.dispose(); }
+
+  void _populate(VisitState s) {
+    if (_isEdit && !_fieldsPopulated && s is VisitDetailLoaded) {
+      _selectedOfficerId = s.item.officerId;
+      _selectedCustomerId = s.item.customerId;
+      _notesCtl.text = s.item.notes ?? '';
+      _summaryCtl.text = s.item.discussionSummary ?? '';
+      _fieldsPopulated = true;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isCreate = widget.mode == VisitFormNode.create;
+    final scheme = Theme.of(context).colorScheme;
+    final isWide = MediaQuery.of(context).size.width >= 600;
 
     return Scaffold(
-      appBar: AppBar(title: Text(isCreate ? 'New Visits' : 'Edit Visits')),
-      body: BlocListener<VisitBloc, VisitState>(
-        listener: (context, state) {
-          if (state is VisitOperationSuccess) {
-            setState(() => _isSubmitting = false);
-            Navigator.of(context).pop(true);
-          }
-          if (state is VisitFailure) {
-            setState(() => _isSubmitting = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: Theme.of(context).colorScheme.error,
-              ),
-            );
-          }
+      appBar: AppBar(title: Text(_isEdit ? 'Edit Visit' : 'Log Visit')),
+      body: BlocConsumer<VisitBloc, VisitState>(
+        listener: (c, s) {
+          if (s is VisitDetailLoaded) setState(() => _populate(s));
+          if (s is VisitOperationSuccess) { setState(() => _isSubmitting = false); Navigator.of(c).pop(true); }
+          if (s is VisitFailure) { setState(() => _isSubmitting = false); ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message), backgroundColor: scheme.error)); }
         },
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextFormField(
-                  controller: _customerIdController,
-                  decoration: const InputDecoration(
-                    labelText: 'Customer Id',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty)
-                      return 'Customer is required';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _officerIdController,
-                  decoration: const InputDecoration(
-                    labelText: 'Officer Id',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty)
-                      return 'Officer is required';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                GestureDetector(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2100),
-                    );
-                    if (picked != null) {
-                      _visitDateController.text = picked
-                          .toIso8601String()
-                          .split('T')
-                          .first;
-                    }
-                  },
-                  child: AbsorbPointer(
-                    child: TextFormField(
-                      controller: _visitDateController,
-                      decoration: const InputDecoration(
-                        labelText: 'Visit Date',
-                        suffixIcon: Icon(Icons.calendar_today),
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _businessNameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Business Name',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _ownerPhoneController,
-                  decoration: const InputDecoration(
-                    labelText: 'Owner Phone',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _contactPersonPhoneController,
-                  decoration: const InputDecoration(
-                    labelText: 'Contact Person Phone',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _businessPhoneController,
-                  decoration: const InputDecoration(
-                    labelText: 'Business Phone',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _notesController,
-                  decoration: const InputDecoration(
-                    labelText: 'Notes',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _gpsLatController,
-                  decoration: const InputDecoration(
-                    labelText: 'Gps Lat',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _gpsLngController,
-                  decoration: const InputDecoration(
-                    labelText: 'Gps Lng',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _promotedProductIdsController,
-                  decoration: const InputDecoration(
-                    labelText: 'Promoted Product Ids',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _discussionSummaryController,
-                  decoration: const InputDecoration(
-                    labelText: 'Discussion Summary',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                ),
-                const SizedBox(height: 16),
-                const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: _isSubmitting ? null : _submit,
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(isCreate ? 'Create Visits' : 'Save Changes'),
-                ),
-              ],
-            ),
-          ),
-        ),
+        builder: (c, s) {
+          if (_isEdit && s is VisitLoading && !_fieldsPopulated) return const Center(child: CircularProgressIndicator());
+          if (_loading) return const Center(child: CircularProgressIndicator());
+
+          return Form(key: _formKey, child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: isWide ? MediaQuery.of(context).size.width * 0.1 : 16, vertical: 16),
+            child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              if (isWide) Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(child: _officerDropdown()), const SizedBox(width: 16), Expanded(child: _customerDropdown()),
+              ]) else ...[_officerDropdown(), const SizedBox(height: 16), _customerDropdown()],
+              const SizedBox(height: 16),
+              TextFormField(controller: _summaryCtl, decoration: const InputDecoration(labelText: 'Discussion Summary', border: OutlineInputBorder(), prefixIcon: Icon(Icons.summarize_outlined)), maxLines: 3, textCapitalization: TextCapitalization.sentences),
+              const SizedBox(height: 16),
+              TextFormField(controller: _notesCtl, decoration: const InputDecoration(labelText: 'Notes', border: OutlineInputBorder(), prefixIcon: Icon(Icons.notes_outlined)), maxLines: 3, textCapitalization: TextCapitalization.sentences),
+              const SizedBox(height: 32),
+              FilledButton.icon(onPressed: _isSubmitting ? null : _submit,
+                icon: _isSubmitting ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Icon(_isEdit ? Icons.save : Icons.add),
+                label: Text(_isEdit ? 'Save Changes' : 'Log Visit')),
+              const SizedBox(height: 32),
+            ]))));
+        },
       ),
     );
   }
 
+  Widget _officerDropdown() => DropdownButtonFormField<String>(
+    value: _selectedOfficerId,
+    decoration: const InputDecoration(labelText: 'Officer', border: OutlineInputBorder(), prefixIcon: Icon(Icons.badge_outlined)),
+    items: _officers.where((o) => o.status == 'active').map((o) => DropdownMenuItem(value: o.id, child: Text(o.name))).toList(),
+    onChanged: (v) => setState(() => _selectedOfficerId = v),
+    validator: (v) => v == null || v.isEmpty ? 'Officer is required' : null,
+  );
+
+  Widget _customerDropdown() => DropdownButtonFormField<String>(
+    value: _selectedCustomerId,
+    decoration: const InputDecoration(labelText: 'Customer', border: OutlineInputBorder(), prefixIcon: Icon(Icons.store_outlined)),
+    items: _customers.map((c) => DropdownMenuItem(value: c.id, child: Text(c.businessName))).toList(),
+    onChanged: (v) => setState(() => _selectedCustomerId = v),
+    validator: (v) => v == null || v.isEmpty ? 'Customer is required' : null,
+  );
+
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSubmitting = true);
-
-    context.read<VisitBloc>().add(
-      VisitCreateRequested(
-        CreateVisitParams(
-          customerId: _customerIdController.text,
-          officerId: _officerIdController.text,
-          visitDate:
-              DateTime.tryParse(_visitDateController.text) ?? DateTime.now(),
-          businessName: _businessNameController.text,
-          ownerPhone: _ownerPhoneController.text,
-          contactPersonPhone: _contactPersonPhoneController.text,
-          businessPhone: _businessPhoneController.text,
-          notes: _notesController.text,
-          gpsLat: double.tryParse(_gpsLatController.text) ?? 0.0,
-          gpsLng: double.tryParse(_gpsLngController.text) ?? 0.0,
-          promotedProductIds: _promotedProductIdsController.text.trim().isEmpty
-              ? null
-              : _promotedProductIdsController.text
-                    .split(',')
-                    .map((e) => e.trim())
-                    .where((e) => e.isNotEmpty)
-                    .toList(),
-          discussionSummary: _discussionSummaryController.text,
-        ),
-      ),
-    );
+    if (_isEdit) {
+      final s = context.read<VisitBloc>().state;
+      if (s is VisitDetailLoaded) context.read<VisitBloc>().add(VisitUpdateRequested(s.item.copyWith(
+        officerId: _selectedOfficerId, customerId: _selectedCustomerId, notes: _notesCtl.text.trim(), discussionSummary: _summaryCtl.text.trim())));
+    } else {
+      context.read<VisitBloc>().add(VisitCreateRequested(CreateVisitParams(
+        officerId: _selectedOfficerId ?? '', customerId: _selectedCustomerId ?? '', visitDate: DateTime.now(),
+        notes: _notesCtl.text.trim(), discussionSummary: _summaryCtl.text.trim())));
+    }
   }
 }

@@ -1,243 +1,151 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../domain/entities/visit_entity.dart';
+import '../../domain/value_objects/visit_status.dart';
 import '../bloc/visit_bloc.dart';
 import '../bloc/visit_event.dart';
 import '../bloc/visit_state.dart';
-import '../../domain/value_objects/visit_status.dart';
-import '../widgets/visit_status_badge.dart';
+import '../../../officer/data/datasources/officer_mock_datasource.dart';
+import '../../../customer/data/datasources/customer_mock_datasource.dart';
 
 class VisitDetailPage extends StatelessWidget {
   const VisitDetailPage({super.key});
 
+  Future<String> _officerName(String id) async {
+    try { return (await OfficerMockDataSource().getById(id)).name; } catch (_) { return id; }
+  }
+  Future<String> _customerName(String id) async {
+    try { return (await CustomerMockDataSource().getById(id)).businessName; } catch (_) { return id; }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Visits Detail'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit',
-            onPressed: () {
-              final state = context.read<VisitBloc>().state;
-              if (state is VisitDetailLoaded) {
-                Navigator.of(
-                  context,
-                ).pushNamed('/visits/edit', arguments: {'id': state.item.id});
-              }
-            },
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Visit Detail')),
       body: BlocConsumer<VisitBloc, VisitState>(
-        listener: (context, state) {
-          if (state is VisitOperationSuccess) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(state.message)));
-            if (state.updatedItem != null) {
-              context.read<VisitBloc>().add(
-                VisitLoadOneRequested(state.updatedItem!.id),
-              );
-            }
+        listener: (c, s) {
+          if (s is VisitOperationSuccess) {
+            ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message)));
+            if (s.updatedItem != null) c.read<VisitBloc>().add(VisitLoadOneRequested(s.updatedItem!.id));
+            else c.pop();
           }
-          if (state is VisitFailure) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: Theme.of(context).colorScheme.error,
-              ),
-            );
-          }
+          if (s is VisitFailure) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message), backgroundColor: scheme.error));
         },
-        builder: (context, state) {
-          if (state is VisitLoading || state is VisitInitial) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (state is VisitFailure) {
-            return Center(child: Text(state.message));
-          }
-          if (state is VisitDetailLoaded) {
-            final item = state.item;
-            final statusEnum = VisitStatusX.fromString(item.status);
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.id,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .headlineSmall
-                                      ?.copyWith(fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 8),
-                                VisitStatusBadge(status: statusEnum),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Actions',
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              if ([VisitStatus.pending].contains(statusEnum))
-                                FilledButton.tonal(
-                                  onPressed: () => context
-                                      .read<VisitBloc>()
-                                      .add(VisitReviewRequested(item.id)),
-                                  child: const Text('Mark Reviewed'),
-                                ),
-                              if ([VisitStatus.reviewed].contains(statusEnum))
-                                FilledButton.tonal(
-                                  onPressed: () => context
-                                      .read<VisitBloc>()
-                                      .add(VisitFlagRequested(item.id)),
-                                  child: const Text('Flag Visit'),
-                                ),
-                              if ([VisitStatus.flagged].contains(statusEnum))
-                                FilledButton.tonal(
-                                  onPressed: () => context
-                                      .read<VisitBloc>()
-                                      .add(VisitUnflagRequested(item.id)),
-                                  child: const Text('Remove Flag'),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildField(
-                            context,
-                            'Business Name',
-                            item.businessName ?? '',
-                          ),
-                          _buildField(
-                            context,
-                            'Visit Date',
-                            item.visitDate.toIso8601String().split('T').first,
-                          ),
-                          _buildField(context, 'Customer Id', item.customerId),
-                          _buildField(context, 'Officer Id', item.officerId),
-                          _buildField(
-                            context,
-                            'Owner Phone',
-                            item.ownerPhone ?? '',
-                          ),
-                          _buildField(
-                            context,
-                            'Contact Person Phone',
-                            item.contactPersonPhone ?? '',
-                          ),
-                          _buildField(
-                            context,
-                            'Business Phone',
-                            item.businessPhone ?? '',
-                          ),
-                          _buildField(context, 'Notes', item.notes ?? ''),
-                          _buildField(
-                            context,
-                            'Gps Lat',
-                            item.gpsLat?.toStringAsFixed(2) ?? '',
-                          ),
-                          _buildField(
-                            context,
-                            'Gps Lng',
-                            item.gpsLng?.toStringAsFixed(2) ?? '',
-                          ),
-                          _buildField(
-                            context,
-                            'Image Urls',
-                            item.imageUrls?.join(', ') ?? '',
-                          ),
-                          _buildField(
-                            context,
-                            'Document Urls',
-                            item.documentUrls?.join(', ') ?? '',
-                          ),
-                          _buildField(
-                            context,
-                            'Promoted Product Ids',
-                            item.promotedProductIds?.join(', ') ?? '',
-                          ),
-                          _buildField(
-                            context,
-                            'Discussion Summary',
-                            item.discussionSummary ?? '',
-                          ),
-                          _buildField(context, 'Status', item.status),
-                          _buildField(
-                            context,
-                            'Created At',
-                            item.createdAt.toIso8601String().split('T').first,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
+        builder: (c, s) {
+          if (s is VisitLoading || s is VisitInitial) return const Center(child: CircularProgressIndicator());
+          if (s is VisitFailure) return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.error_outline, size: 48, color: scheme.error), const SizedBox(height: 16), Text(s.message),
+            const SizedBox(height: 16), FilledButton.icon(onPressed: () => c.pop(), icon: const Icon(Icons.arrow_back), label: const Text('Go Back')),
+          ]));
+          if (s is VisitDetailLoaded) return _body(context, s.item);
           return const SizedBox.shrink();
         },
       ),
     );
   }
 
-  Widget _buildField(BuildContext context, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
-          ),
+  Widget _body(BuildContext context, VisitEntity item) {
+    final scheme = Theme.of(context).colorScheme;
+    final st = VisitStatusX.fromString(item.status);
+    final isWide = MediaQuery.of(context).size.width >= 600;
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(horizontal: isWide ? MediaQuery.of(context).size.width * 0.1 : 16, vertical: 16),
+      child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Header
+        Card(child: Padding(padding: const EdgeInsets.all(20), child: Row(children: [
+          CircleAvatar(radius: 28, backgroundColor: st.color.withValues(alpha: 0.15),
+            child: Icon(Icons.location_on, color: st.color, size: 28)),
+          const SizedBox(width: 16),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(item.businessName ?? 'Unknown Business', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            FutureBuilder<String>(future: _officerName(item.officerId),
+              builder: (_, s) => Text('Visited by ${s.data ?? '...'}', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.primary, fontWeight: FontWeight.w600))),
+            const SizedBox(height: 6),
+            Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: st.color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12), border: Border.all(color: st.color.withValues(alpha: 0.4))),
+              child: Text(st.displayName, style: TextStyle(color: st.color, fontSize: 12, fontWeight: FontWeight.w600))),
+          ])),
+        ]))),
+        const SizedBox(height: 12),
+
+        // Admin Actions
+        _actions(context, item, st),
+
+        // Discussion Summary
+        if (item.discussionSummary != null && item.discussionSummary!.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Discussion Summary', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
+            const Divider(height: 20),
+            Text(item.discussionSummary!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5)),
+          ]))),
         ],
-      ),
+
+        // Visit Details
+        const SizedBox(height: 12),
+        Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Visit Information', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
+          const Divider(height: 24),
+          FutureBuilder<String>(future: _customerName(item.customerId),
+            builder: (_, s) => _row(context, Icons.store, 'Customer', s.data ?? '...')),
+          FutureBuilder<String>(future: _officerName(item.officerId),
+            builder: (_, s) => _row(context, Icons.badge, 'Officer', s.data ?? '...')),
+          _row(context, Icons.calendar_today, 'Visit Date', item.visitDate.toIso8601String().split('T').first),
+          if (item.ownerPhone != null) _row(context, Icons.phone, 'Owner Phone', item.ownerPhone!),
+          if (item.businessPhone != null) _row(context, Icons.phone_android, 'Business Phone', item.businessPhone!),
+          if (item.gpsLat != null && item.gpsLng != null) _row(context, Icons.gps_fixed, 'GPS', '${item.gpsLat!.toStringAsFixed(4)}, ${item.gpsLng!.toStringAsFixed(4)}'),
+          if (item.notes != null && item.notes!.isNotEmpty) _row(context, Icons.notes, 'Notes', item.notes!),
+          _row(context, Icons.fingerprint, 'ID', item.id),
+        ]))),
+
+        // Images
+        if (item.imageUrls != null && item.imageUrls!.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Photos (${item.imageUrls!.length})', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 12),
+            SizedBox(height: 120, child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: item.imageUrls!.length,
+              itemBuilder: (_, i) => Padding(padding: const EdgeInsets.only(right: 8),
+                child: ClipRRect(borderRadius: BorderRadius.circular(12),
+                  child: Image.network(item.imageUrls![i], width: 120, height: 120, fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(width: 120, height: 120, color: scheme.surfaceContainerHighest,
+                      child: Icon(Icons.broken_image, color: scheme.onSurfaceVariant))))))),
+          ]))),
+        ],
+        const SizedBox(height: 80),
+      ])),
     );
+  }
+
+  Widget _actions(BuildContext context, VisitEntity item, VisitStatus st) {
+    final actions = <Widget>[];
+    if (st == VisitStatus.pending) actions.add(_btn(context, Icons.check_circle_outline, 'Mark Reviewed', Colors.green,
+      () => context.read<VisitBloc>().add(VisitReviewRequested(item.id))));
+    if (st == VisitStatus.reviewed) actions.add(_btn(context, Icons.flag_outlined, 'Flag Visit', Colors.red,
+      () => context.read<VisitBloc>().add(VisitFlagRequested(item.id))));
+    if (st == VisitStatus.flagged) actions.add(_btn(context, Icons.flag, 'Remove Flag', Colors.green,
+      () => context.read<VisitBloc>().add(VisitUnflagRequested(item.id))));
+    if (actions.isEmpty) return const SizedBox.shrink();
+    return Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('Admin Actions', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w700)),
+      const Divider(height: 20), Wrap(spacing: 10, runSpacing: 10, children: actions),
+    ])));
+  }
+
+  Widget _btn(BuildContext c, IconData icon, String label, Color color, VoidCallback onPressed) => FilledButton.tonalIcon(
+    onPressed: onPressed, icon: Icon(icon, size: 18, color: color), label: Text(label),
+    style: FilledButton.styleFrom(minimumSize: Size.zero, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)));
+
+  Widget _row(BuildContext c, IconData icon, String label, String value) {
+    final scheme = Theme.of(c).colorScheme;
+    return Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [
+      Icon(icon, size: 20, color: scheme.onSurfaceVariant), const SizedBox(width: 12),
+      SizedBox(width: 100, child: Text(label, style: Theme.of(c).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant))),
+      Expanded(child: Text(value, style: Theme.of(c).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500))),
+    ]));
   }
 }
