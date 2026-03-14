@@ -266,6 +266,7 @@ import 'package:admin_panel/features/sales_dashboard/domain/providers/order_data
 import 'package:admin_panel/features/sales_dashboard/domain/providers/payment_data_provider.dart';
 import 'package:admin_panel/features/sales_dashboard/domain/providers/product_data_provider.dart';
 import 'package:admin_panel/features/notification/data/datasources/notification_mock_datasource.dart';
+import 'package:admin_panel/features/promotion/data/datasources/promotion_mock_datasource.dart';
 
 final sl = GetIt.instance;
 
@@ -517,7 +518,7 @@ Future<void> initDependencies() async {
   // ----------------------------------------------------------
 
   sl.registerLazySingleton<PromotionRemoteDataSource>(
-    () => PromotionRemoteDataSourceImpl(dio: sl()),
+    () => PromotionMockDataSource(),
   );
   sl.registerLazySingleton<PromotionRepository>(
     () => PromotionRepositoryImpl(remoteDataSource: sl()),
