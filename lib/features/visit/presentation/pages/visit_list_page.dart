@@ -8,6 +8,7 @@ import '../bloc/visit_event.dart';
 import '../bloc/visit_state.dart';
 import '../widgets/visit_card_tile.dart';
 import '../widgets/visit_list_row.dart';
+import '../widgets/visit_table_row.dart';
 
 enum _ViewMode { cards, list, details }
 

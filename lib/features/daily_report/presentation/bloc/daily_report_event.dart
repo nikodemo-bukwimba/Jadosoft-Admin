@@ -31,14 +31,19 @@ class DailyReportSubmitRequested extends DailyReportEvent {
   final String id;
   DailyReportSubmitRequested(this.id);
 }
+
 class DailyReportApproveRequested extends DailyReportEvent {
   final String id;
-  DailyReportApproveRequested(this.id);
+  final String feedback;
+  DailyReportApproveRequested(this.id, {required this.feedback});
 }
+
 class DailyReportRejectRequested extends DailyReportEvent {
   final String id;
-  DailyReportRejectRequested(this.id);
+  final String feedback;
+  DailyReportRejectRequested(this.id, {required this.feedback});
 }
+
 class DailyReportResubmitRequested extends DailyReportEvent {
   final String id;
   DailyReportResubmitRequested(this.id);

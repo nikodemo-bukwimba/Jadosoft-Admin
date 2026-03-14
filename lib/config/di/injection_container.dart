@@ -123,6 +123,7 @@ import 'package:admin_panel/features/weekly_plan/presentation/bloc/weekly_plan_b
 
 // Phase 7 · Daily Reports (L3)
 import 'package:admin_panel/features/daily_report/data/datasources/daily_report_remote_datasource.dart';
+import 'package:admin_panel/features/daily_report/data/datasources/daily_report_mock_datasource.dart';
 import 'package:admin_panel/features/daily_report/data/repositories/daily_report_repository_impl.dart';
 import 'package:admin_panel/features/daily_report/domain/repositories/daily_report_repository.dart';
 import 'package:admin_panel/features/daily_report/domain/usecases/get_all_daily_report_usecase.dart';
@@ -135,6 +136,7 @@ import 'package:admin_panel/features/daily_report/presentation/bloc/daily_report
 
 // Phase 8 · Conversations (L1)
 import 'package:admin_panel/features/conversation/data/datasources/conversation_remote_datasource.dart';
+import 'package:admin_panel/features/conversation/data/datasources/conversation_mock_datasource.dart';
 import 'package:admin_panel/features/conversation/data/repositories/conversation_repository_impl.dart';
 import 'package:admin_panel/features/conversation/domain/repositories/conversation_repository.dart';
 import 'package:admin_panel/features/conversation/domain/usecases/get_all_conversation_usecase.dart';
@@ -599,7 +601,7 @@ Future<void> initDependencies() async {
 
   // Seq 13 · Daily Reports (L3)
   sl.registerLazySingleton<DailyReportRemoteDataSource>(
-    () => DailyReportRemoteDataSourceImpl(dio: sl()),
+    () => DailyReportMockDataSource(),
   );
   sl.registerLazySingleton<DailyReportRepository>(
     () => DailyReportRepositoryImpl(remoteDataSource: sl()),
@@ -630,7 +632,7 @@ Future<void> initDependencies() async {
 
   // Seq 14 · Conversations (L1)
   sl.registerLazySingleton<ConversationRemoteDataSource>(
-    () => ConversationRemoteDataSourceImpl(dio: sl()),
+    () => ConversationMockDataSource(),
   );
   sl.registerLazySingleton<ConversationRepository>(
     () => ConversationRepositoryImpl(remoteDataSource: sl()),

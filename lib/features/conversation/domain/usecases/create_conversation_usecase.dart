@@ -5,35 +5,39 @@ import '../entities/conversation_entity.dart';
 import '../repositories/conversation_repository.dart';
 
 class CreateConversationParams {
-  final List<String> participantIds;
-  final List<String> participantRoles;
+  final List<ConversationParticipant> participants;
+  final ConversationType type;
+  final String? title;
   final String? lastMessage;
   final DateTime? lastMessageAt;
   final int unreadCount;
 
   const CreateConversationParams({
-    required this.participantIds,
-    required this.participantRoles,
+    required this.participants,
+    required this.type,
+    this.title,
     this.lastMessage,
     this.lastMessageAt,
-    required this.unreadCount,
+    this.unreadCount = 0,
   });
 }
 
-class CreateConversationUseCase implements UseCase<ConversationEntity, CreateConversationParams> {
+class CreateConversationUseCase
+    implements UseCase<ConversationEntity, CreateConversationParams> {
   final ConversationRepository repository;
   CreateConversationUseCase(this.repository);
 
   @override
-  Future<Either<Failure, ConversationEntity>> call(CreateConversationParams p) async {
-    // -- Validation gate --
-    // No validation rules configured
-
+  Future<Either<Failure, ConversationEntity>> call(
+    CreateConversationParams p,
+  ) async {
     return repository.create(
       ConversationEntity(
         id: '',
-        participantIds: p.participantIds,
-        participantRoles: p.participantRoles,
+        type: p.type,
+        status: ConversationStatus.open,
+        title: p.title,
+        participants: p.participants,
         lastMessage: p.lastMessage?.trim(),
         lastMessageAt: p.lastMessageAt,
         unreadCount: p.unreadCount,

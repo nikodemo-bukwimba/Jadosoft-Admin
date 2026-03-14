@@ -11,12 +11,12 @@ import 'daily_report_event.dart';
 import 'daily_report_state.dart';
 
 class DailyReportBloc extends Bloc<DailyReportEvent, DailyReportState> {
-  final GetAllDailyReportUseCase  getAllUseCase;
-  final GetDailyReportUseCase     getUseCase;
-  final CreateDailyReportUseCase  createUseCase;
-  final UpdateDailyReportUseCase  updateUseCase;
-  final DeleteDailyReportUseCase  deleteUseCase;
-  final DailyReportDomainService  domainService;
+  final GetAllDailyReportUseCase getAllUseCase;
+  final GetDailyReportUseCase getUseCase;
+  final CreateDailyReportUseCase createUseCase;
+  final UpdateDailyReportUseCase updateUseCase;
+  final DeleteDailyReportUseCase deleteUseCase;
+  final DailyReportDomainService domainService;
 
   DailyReportBloc({
     required this.getAllUseCase,
@@ -39,7 +39,9 @@ class DailyReportBloc extends Bloc<DailyReportEvent, DailyReportState> {
   }
 
   Future<void> _onLoadAll(
-      DailyReportLoadAllRequested event, Emitter<DailyReportState> emit) async {
+    DailyReportLoadAllRequested event,
+    Emitter<DailyReportState> emit,
+  ) async {
     emit(DailyReportLoading());
     final result = await getAllUseCase(NoParams());
     result.fold(
@@ -51,7 +53,9 @@ class DailyReportBloc extends Bloc<DailyReportEvent, DailyReportState> {
   }
 
   Future<void> _onLoadOne(
-      DailyReportLoadOneRequested event, Emitter<DailyReportState> emit) async {
+    DailyReportLoadOneRequested event,
+    Emitter<DailyReportState> emit,
+  ) async {
     emit(DailyReportLoading());
     final result = await getUseCase(GetDailyReportParams(id: event.id));
     result.fold(
@@ -61,37 +65,53 @@ class DailyReportBloc extends Bloc<DailyReportEvent, DailyReportState> {
   }
 
   Future<void> _onCreate(
-      DailyReportCreateRequested event, Emitter<DailyReportState> emit) async {
+    DailyReportCreateRequested event,
+    Emitter<DailyReportState> emit,
+  ) async {
     emit(DailyReportLoading());
     final result = await createUseCase(event.params);
     result.fold(
       (f) => emit(DailyReportFailure(f.message)),
-      (_) => emit(DailyReportOperationSuccess('DailyReport created successfully')),
+      (_) => emit(
+        DailyReportOperationSuccess('Daily report created successfully'),
+      ),
     );
   }
 
   Future<void> _onUpdate(
-      DailyReportUpdateRequested event, Emitter<DailyReportState> emit) async {
+    DailyReportUpdateRequested event,
+    Emitter<DailyReportState> emit,
+  ) async {
     emit(DailyReportLoading());
-    final result = await updateUseCase(UpdateDailyReportParams(entity: event.entity));
+    final result = await updateUseCase(
+      UpdateDailyReportParams(entity: event.entity),
+    );
     result.fold(
       (f) => emit(DailyReportFailure(f.message)),
-      (_) => emit(DailyReportOperationSuccess('DailyReport updated successfully')),
+      (_) => emit(
+        DailyReportOperationSuccess('Daily report updated successfully'),
+      ),
     );
   }
 
   Future<void> _onDelete(
-      DailyReportDeleteRequested event, Emitter<DailyReportState> emit) async {
+    DailyReportDeleteRequested event,
+    Emitter<DailyReportState> emit,
+  ) async {
     emit(DailyReportLoading());
     final result = await deleteUseCase(DeleteDailyReportParams(id: event.id));
     result.fold(
       (f) => emit(DailyReportFailure(f.message)),
-      (_) => emit(DailyReportOperationSuccess('DailyReport deleted successfully')),
+      (_) => emit(
+        DailyReportOperationSuccess('Daily report deleted successfully'),
+      ),
     );
   }
 
   Future<void> _onSubmit(
-      DailyReportSubmitRequested event, Emitter<DailyReportState> emit) async {
+    DailyReportSubmitRequested event,
+    Emitter<DailyReportState> emit,
+  ) async {
     emit(DailyReportLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -99,44 +119,108 @@ class DailyReportBloc extends Bloc<DailyReportEvent, DailyReportState> {
     );
     result.fold(
       (f) => emit(DailyReportFailure(f.message)),
-      (entity) => emit(DailyReportOperationSuccess(
-        'Submit Report successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        DailyReportOperationSuccess(
+          'Report submitted successfully',
+          updatedItem: entity,
+        ),
+      ),
     );
   }
+
   Future<void> _onApprove(
-      DailyReportApproveRequested event, Emitter<DailyReportState> emit) async {
+    DailyReportApproveRequested event,
+    Emitter<DailyReportState> emit,
+  ) async {
     emit(DailyReportLoading());
-    final result = await domainService.transition(
+
+    // Step 1: transition status
+    final transitionResult = await domainService.transition(
       id: event.id,
       targetStatus: DailyReportStatus.approved,
     );
-    result.fold(
+
+    // Extract failure or entity — no async inside fold
+    if (transitionResult.isLeft()) {
+      final failure = transitionResult.fold((f) => f, (_) => null)!;
+      emit(DailyReportFailure(failure.message));
+      return;
+    }
+
+    final entity = transitionResult.fold((_) => null, (e) => e)!;
+
+    // Step 2: persist feedback
+    final withFeedback = entity.copyWith(
+      adminFeedback: event.feedback,
+      reviewDecision: 'approved',
+      reviewedAt: DateTime.now(),
+      // TODO: replace with authenticated admin from AuthSession when real API lands
+      reviewedByName: 'Dr. Joseph Barick',
+      reviewedByRole: 'Head Marketing Officer',
+    );
+
+    final updateResult = await updateUseCase(
+      UpdateDailyReportParams(entity: withFeedback),
+    );
+
+    updateResult.fold(
       (f) => emit(DailyReportFailure(f.message)),
-      (entity) => emit(DailyReportOperationSuccess(
-        'Approve Report successful',
-        updatedItem: entity,
-      )),
+      (updated) => emit(
+        DailyReportOperationSuccess(
+          'Report approved successfully',
+          updatedItem: updated,
+        ),
+      ),
     );
   }
+
   Future<void> _onReject(
-      DailyReportRejectRequested event, Emitter<DailyReportState> emit) async {
+    DailyReportRejectRequested event,
+    Emitter<DailyReportState> emit,
+  ) async {
     emit(DailyReportLoading());
-    final result = await domainService.transition(
+
+    // Step 1: transition status
+    final transitionResult = await domainService.transition(
       id: event.id,
       targetStatus: DailyReportStatus.rejected,
     );
-    result.fold(
+
+    // Extract failure or entity — no async inside fold
+    if (transitionResult.isLeft()) {
+      final failure = transitionResult.fold((f) => f, (_) => null)!;
+      emit(DailyReportFailure(failure.message));
+      return;
+    }
+
+    final entity = transitionResult.fold((_) => null, (e) => e)!;
+
+    // Step 2: persist feedback
+    final withFeedback = entity.copyWith(
+      adminFeedback: event.feedback,
+      reviewDecision: 'rejected',
+      reviewedAt: DateTime.now(),
+      // TODO: replace with authenticated admin from AuthSession when real API lands
+      reviewedByName: 'Dr. Joseph Barick',
+      reviewedByRole: 'Head Marketing Officer',
+    );
+
+    final updateResult = await updateUseCase(
+      UpdateDailyReportParams(entity: withFeedback),
+    );
+
+    updateResult.fold(
       (f) => emit(DailyReportFailure(f.message)),
-      (entity) => emit(DailyReportOperationSuccess(
-        'Reject Report successful',
-        updatedItem: entity,
-      )),
+      (updated) => emit(
+        DailyReportOperationSuccess('Report rejected', updatedItem: updated),
+      ),
     );
   }
+
   Future<void> _onResubmit(
-      DailyReportResubmitRequested event, Emitter<DailyReportState> emit) async {
+    DailyReportResubmitRequested event,
+    Emitter<DailyReportState> emit,
+  ) async {
     emit(DailyReportLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -144,10 +228,9 @@ class DailyReportBloc extends Bloc<DailyReportEvent, DailyReportState> {
     );
     result.fold(
       (f) => emit(DailyReportFailure(f.message)),
-      (entity) => emit(DailyReportOperationSuccess(
-        'Resubmit Report successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        DailyReportOperationSuccess('Report resubmitted', updatedItem: entity),
+      ),
     );
   }
 }
