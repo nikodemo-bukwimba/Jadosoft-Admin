@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
 import '../../data/datasources/conversation_mock_datasource.dart';
 import '../../domain/entities/conversation_entity.dart';
 import '../../domain/entities/message_entity.dart';
@@ -41,9 +42,25 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
     });
   }
 
+  void _scrollToMessage(List<MessageEntity> messages, String messageId) {
+    final index = messages.indexWhere((m) => m.id == messageId);
+    if (index == -1 || !_scrollController.hasClients) return;
+    final targetOffset = (index * 70.0).clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    );
+    _scrollController.animateTo(
+      targetOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final bloc = context.read<ConversationBloc>();
+
     return BlocConsumer<ConversationBloc, ConversationState>(
       listener: (context, state) {
         if (state is ConversationChatLoaded) _scrollToBottom();
@@ -57,8 +74,14 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
           ).showSnackBar(SnackBar(content: Text(state.message)));
           context.go('/conversations');
         }
-        if (state is ConversationNewCreated)
-          context.go('/conversations/${state.conversationId}');
+        if (state is ConversationNewCreated) {
+          final newId = state.conversationId;
+          context.go('/conversations');
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (context.mounted)
+              context.go(AppRouter.conversationDetailPath(newId));
+          });
+        }
         if (state is ConversationReadReceiptsLoaded)
           _showReadReceiptsDialog(context, state.receipts);
         if (state is ConversationBroadcastSuccess)
@@ -106,6 +129,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
             return Scaffold(
               appBar: _buildAppBar(
                 context,
+                bloc,
                 conv,
                 isGroup,
                 isClosed,
@@ -114,7 +138,6 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
               ),
               body: Row(
                 children: [
-                  // ── Chat area ──
                   Expanded(
                     child: Center(
                       child: Container(
@@ -170,13 +193,9 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                                     ),
                                     if (isAdmin)
                                       TextButton.icon(
-                                        onPressed: () => context
-                                            .read<ConversationBloc>()
-                                            .add(
-                                              ConversationReopenRequested(
-                                                conv.id,
-                                              ),
-                                            ),
+                                        onPressed: () => bloc.add(
+                                          ConversationReopenRequested(conv.id),
+                                        ),
                                         icon: const Icon(
                                           Icons.lock_open,
                                           size: 16,
@@ -193,46 +212,57 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                                   ],
                                 ),
                               ),
-                            // Pinned messages bar (if any pinned exist and not on desktop panel)
                             if (!showPanel &&
                                 (state.pinnedMessages?.isNotEmpty ?? false))
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
+                              GestureDetector(
+                                onTap: () => _scrollToMessage(
+                                  msgs,
+                                  state.pinnedMessages!.first.id,
                                 ),
-                                decoration: BoxDecoration(
-                                  color: Colors.amber.withValues(alpha: 0.08),
-                                  border: Border(
-                                    bottom: BorderSide(
-                                      color: Colors.amber.withValues(
-                                        alpha: 0.3,
-                                      ),
-                                    ),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
                                   ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.push_pin,
-                                      size: 14,
-                                      color: Colors.amber.shade700,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        '${state.pinnedMessages!.length} pinned message${state.pinnedMessages!.length == 1 ? '' : 's'}',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.amber.shade800,
-                                          fontWeight: FontWeight.w500,
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber.withValues(alpha: 0.08),
+                                    border: Border(
+                                      bottom: BorderSide(
+                                        color: Colors.amber.withValues(
+                                          alpha: 0.3,
                                         ),
                                       ),
                                     ),
-                                  ],
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.push_pin,
+                                        size: 14,
+                                        color: Colors.amber.shade700,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          state.pinnedMessages!.first.content,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.amber.shade800,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                      Icon(
+                                        Icons.chevron_right,
+                                        size: 16,
+                                        color: Colors.amber.shade700,
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                            // Messages
                             Expanded(
                               child: msgs.isEmpty
                                   ? Center(
@@ -297,14 +327,12 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                                               ? _dateLabel(msg.sentAt)
                                               : null,
                                           onDelete: isAdmin && !msg.isSystem
-                                              ? (id) => ctx
-                                                    .read<ConversationBloc>()
-                                                    .add(
-                                                      ConversationDeleteMessageRequested(
-                                                        conversationId: conv.id,
-                                                        messageId: id,
-                                                      ),
-                                                    )
+                                              ? (id) => bloc.add(
+                                                  ConversationDeleteMessageRequested(
+                                                    conversationId: conv.id,
+                                                    messageId: id,
+                                                  ),
+                                                )
                                               : null,
                                           onReply:
                                               isAdmin &&
@@ -315,72 +343,64 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                                                 )
                                               : null,
                                           onReact: isAdmin && !isClosed
-                                              ? (id, emoji) => ctx
-                                                    .read<ConversationBloc>()
-                                                    .add(
-                                                      ConversationAddReactionRequested(
-                                                        conversationId: conv.id,
-                                                        messageId: id,
-                                                        emoji: emoji,
-                                                      ),
-                                                    )
+                                              ? (id, emoji) => bloc.add(
+                                                  ConversationAddReactionRequested(
+                                                    conversationId: conv.id,
+                                                    messageId: id,
+                                                    emoji: emoji,
+                                                  ),
+                                                )
                                               : null,
                                           onTogglePin: isAdmin
-                                              ? (id) => ctx
-                                                    .read<ConversationBloc>()
-                                                    .add(
-                                                      ConversationTogglePinRequested(
-                                                        conversationId: conv.id,
-                                                        messageId: id,
-                                                      ),
-                                                    )
+                                              ? (id) => bloc.add(
+                                                  ConversationTogglePinRequested(
+                                                    conversationId: conv.id,
+                                                    messageId: id,
+                                                  ),
+                                                )
                                               : null,
                                           onToggleStar: isAdmin
-                                              ? (id) => ctx
-                                                    .read<ConversationBloc>()
-                                                    .add(
-                                                      ConversationToggleStarRequested(
-                                                        conversationId: conv.id,
-                                                        messageId: id,
-                                                      ),
-                                                    )
+                                              ? (id) => bloc.add(
+                                                  ConversationToggleStarRequested(
+                                                    conversationId: conv.id,
+                                                    messageId: id,
+                                                  ),
+                                                )
                                               : null,
                                           onForward: isAdmin
-                                              ? (m) =>
-                                                    _showForwardDialog(ctx, m)
+                                              ? (m) => _showForwardDialog(
+                                                  context,
+                                                  bloc,
+                                                  m,
+                                                )
                                               : null,
                                           onEdit: isAdmin
                                               ? (m) => _showEditDialog(
-                                                  ctx,
+                                                  context,
+                                                  bloc,
                                                   m,
                                                   conv.id,
                                                 )
                                               : null,
                                           onViewReadReceipts: isAdmin && isGroup
-                                              ? (id) => ctx
-                                                    .read<ConversationBloc>()
-                                                    .add(
-                                                      ConversationViewReadReceipts(
-                                                        conversationId: conv.id,
-                                                        messageId: id,
-                                                      ),
-                                                    )
+                                              ? (id) => bloc.add(
+                                                  ConversationViewReadReceipts(
+                                                    conversationId: conv.id,
+                                                    messageId: id,
+                                                  ),
+                                                )
                                               : null,
                                           onPrivateReply:
                                               isAdmin &&
                                                   isGroup &&
                                                   !msg.isSystem
-                                              ? (
-                                                  pId,
-                                                  name,
-                                                  role,
-                                                ) => ctx.read<ConversationBloc>().add(
+                                              ? (pId, name, role) => bloc.add(
                                                   ConversationPrivateReplyRequested(
                                                     participantId: pId,
                                                     participantName: name,
                                                     participantRole: role,
                                                     message:
-                                                        'Regarding your message: "${msg.content}"',
+                                                        'Regarding: "${msg.content}"',
                                                   ),
                                                 )
                                               : null,
@@ -403,7 +423,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                                     }) {
                                       if (content.isEmpty && imageUrl == null)
                                         return;
-                                      context.read<ConversationBloc>().add(
+                                      bloc.add(
                                         ConversationSendMessageRequested(
                                           conversationId: conv.id,
                                           content: content,
@@ -458,8 +478,6 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                       ),
                     ),
                   ),
-
-                  // ── Side panel (desktop only) ──
                   if (showPanel)
                     ChatSidePanel(
                       conversation: conv,
@@ -467,40 +485,37 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                       pinnedMessages: state.pinnedMessages ?? [],
                       searchResults: state.searchResults,
                       searchQuery: state.searchQuery,
-                      onSearch: (q) => context.read<ConversationBloc>().add(
+                      onSearch: (q) => bloc.add(
                         ConversationSearchMessages(
                           conversationId: conv.id,
                           query: q,
                         ),
                       ),
-                      onClearSearch: () => context.read<ConversationBloc>().add(
-                        ConversationClearSearch(),
+                      onClearSearch: () => bloc.add(ConversationClearSearch()),
+                      onAddParticipant: (id, name, role) => bloc.add(
+                        ConversationAddParticipantRequested(
+                          conversationId: conv.id,
+                          participantId: id,
+                          name: name,
+                          role: role,
+                        ),
                       ),
-                      onAddParticipant: (id, name, role) =>
-                          context.read<ConversationBloc>().add(
-                            ConversationAddParticipantRequested(
-                              conversationId: conv.id,
-                              participantId: id,
-                              name: name,
-                              role: role,
-                            ),
-                          ),
-                      onRemoveParticipant: (id, name) =>
-                          context.read<ConversationBloc>().add(
-                            ConversationRemoveParticipantRequested(
-                              conversationId: conv.id,
-                              participantId: id,
-                              name: name,
-                            ),
-                          ),
-                      onPrivateMessage: (id, name, role) =>
-                          context.read<ConversationBloc>().add(
-                            ConversationPrivateReplyRequested(
-                              participantId: id,
-                              participantName: name,
-                              participantRole: role,
-                            ),
-                          ),
+                      onRemoveParticipant: (id, name) => bloc.add(
+                        ConversationRemoveParticipantRequested(
+                          conversationId: conv.id,
+                          participantId: id,
+                          name: name,
+                        ),
+                      ),
+                      onPrivateMessage: (id, name, role) => bloc.add(
+                        ConversationPrivateReplyRequested(
+                          participantId: id,
+                          participantName: name,
+                          participantRole: role,
+                        ),
+                      ),
+                      onScrollToMessage: (msgId) =>
+                          _scrollToMessage(msgs, msgId),
                     ),
                 ],
               ),
@@ -513,6 +528,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
 
   AppBar _buildAppBar(
     BuildContext ctx,
+    ConversationBloc bloc,
     ConversationEntity conv,
     bool isGroup,
     bool isClosed,
@@ -571,11 +587,11 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
         if (!isWide)
           IconButton(
             icon: const Icon(Icons.info_outline),
-            onPressed: () => _showMobileSidePanel(ctx, conv),
+            onPressed: () => _showMobileSidePanel(ctx, bloc, conv),
           ),
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert),
-          onSelected: (v) => _handleMenu(ctx, v, conv),
+          onSelected: (v) => _handleMenu(ctx, bloc, v, conv),
           itemBuilder: (_) => [
             if (isAdmin && isGroup && !isClosed)
               const PopupMenuItem(
@@ -612,10 +628,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                 value: 'broadcast',
                 child: ListTile(
                   leading: Icon(Icons.campaign, color: cs.primary),
-                  title: Text(
-                    'Broadcast Message',
-                    style: TextStyle(color: cs.primary),
-                  ),
+                  title: Text('Broadcast', style: TextStyle(color: cs.primary)),
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -645,10 +658,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                 value: 'delete',
                 child: ListTile(
                   leading: Icon(Icons.delete_forever, color: cs.error),
-                  title: Text(
-                    'Delete Conversation',
-                    style: TextStyle(color: cs.error),
-                  ),
+                  title: Text('Delete', style: TextStyle(color: cs.error)),
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -659,8 +669,12 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
     );
   }
 
-  void _handleMenu(BuildContext ctx, String action, ConversationEntity conv) {
-    final bloc = ctx.read<ConversationBloc>();
+  void _handleMenu(
+    BuildContext ctx,
+    ConversationBloc bloc,
+    String action,
+    ConversationEntity conv,
+  ) {
     switch (action) {
       case 'close':
         _confirm(
@@ -683,17 +697,21 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
           () => bloc.add(ConversationDeleteRequested(conv.id)),
         );
       case 'add':
-        _showAddSheet(ctx, conv);
+        _showMobileSidePanel(ctx, bloc, conv);
       case 'remove':
-        _showRemoveSheet(ctx, conv);
+        _showMobileSidePanel(ctx, bloc, conv);
       case 'members':
-        _showMembersSheet(ctx, conv);
+        _showMobileSidePanel(ctx, bloc, conv);
       case 'broadcast':
-        _showBroadcastDialog(ctx);
+        _showBroadcastDialog(ctx, bloc);
     }
   }
 
-  void _showMobileSidePanel(BuildContext ctx, ConversationEntity conv) {
+  void _showMobileSidePanel(
+    BuildContext ctx,
+    ConversationBloc bloc,
+    ConversationEntity conv,
+  ) {
     showModalBottomSheet(
       context: ctx,
       isScrollControlled: true,
@@ -703,11 +721,16 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (_) {
-        return BlocBuilder<ConversationBloc, ConversationState>(
+      builder: (_) => BlocProvider.value(
+        value: bloc,
+        child: BlocBuilder<ConversationBloc, ConversationState>(
           builder: (ctx2, state) {
-            if (state is! ConversationChatLoaded)
-              return const SizedBox.shrink();
+            if (state is! ConversationChatLoaded) {
+              return const SizedBox(
+                height: 200,
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
             return SafeArea(
               child: ChatSidePanel(
                 conversation: state.conversation,
@@ -715,15 +738,13 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                 pinnedMessages: state.pinnedMessages ?? [],
                 searchResults: state.searchResults,
                 searchQuery: state.searchQuery,
-                onSearch: (q) => ctx2.read<ConversationBloc>().add(
+                onSearch: (q) => bloc.add(
                   ConversationSearchMessages(conversationId: conv.id, query: q),
                 ),
-                onClearSearch: () => ctx2.read<ConversationBloc>().add(
-                  ConversationClearSearch(),
-                ),
+                onClearSearch: () => bloc.add(ConversationClearSearch()),
                 onAddParticipant: (id, name, role) {
                   Navigator.pop(ctx);
-                  ctx.read<ConversationBloc>().add(
+                  bloc.add(
                     ConversationAddParticipantRequested(
                       conversationId: conv.id,
                       participantId: id,
@@ -734,7 +755,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                 },
                 onRemoveParticipant: (id, name) {
                   Navigator.pop(ctx);
-                  ctx.read<ConversationBloc>().add(
+                  bloc.add(
                     ConversationRemoveParticipantRequested(
                       conversationId: conv.id,
                       participantId: id,
@@ -744,7 +765,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                 },
                 onPrivateMessage: (id, name, role) {
                   Navigator.pop(ctx);
-                  ctx.read<ConversationBloc>().add(
+                  bloc.add(
                     ConversationPrivateReplyRequested(
                       participantId: id,
                       participantName: name,
@@ -752,11 +773,15 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                     ),
                   );
                 },
+                onScrollToMessage: (msgId) {
+                  Navigator.pop(ctx);
+                  _scrollToMessage(state.messages, msgId);
+                },
               ),
             );
           },
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -795,7 +820,11 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
     );
   }
 
-  void _showForwardDialog(BuildContext ctx, MessageEntity msg) {
+  void _showForwardDialog(
+    BuildContext ctx,
+    ConversationBloc bloc,
+    MessageEntity msg,
+  ) {
     final convs = ConversationMockDataSource().getAdminConversations();
     showDialog(
       context: ctx,
@@ -815,7 +844,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                     subtitle: Text(c.id, style: const TextStyle(fontSize: 10)),
                     onTap: () {
                       Navigator.pop(d);
-                      ctx.read<ConversationBloc>().add(
+                      bloc.add(
                         ConversationForwardMessageRequested(
                           targetConversationId: c.id,
                           content: msg.content,
@@ -846,7 +875,12 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
     );
   }
 
-  void _showEditDialog(BuildContext ctx, MessageEntity msg, String convId) {
+  void _showEditDialog(
+    BuildContext ctx,
+    ConversationBloc bloc,
+    MessageEntity msg,
+    String convId,
+  ) {
     final controller = TextEditingController(text: msg.content);
     showDialog(
       context: ctx,
@@ -865,14 +899,15 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
           FilledButton(
             onPressed: () {
               Navigator.pop(d);
-              if (controller.text.trim().isNotEmpty)
-                ctx.read<ConversationBloc>().add(
+              if (controller.text.trim().isNotEmpty) {
+                bloc.add(
                   ConversationEditMessageRequested(
                     conversationId: convId,
                     messageId: msg.id,
                     newContent: controller.text.trim(),
                   ),
                 );
+              }
             },
             child: const Text('Save'),
           ),
@@ -881,18 +916,22 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
     );
   }
 
-  void _showBroadcastDialog(BuildContext ctx) {
-    final convs = ConversationMockDataSource().getAdminConversations();
+  void _showBroadcastDialog(BuildContext ctx, ConversationBloc bloc) {
+    final mockDs = ConversationMockDataSource();
+    final existingConvs = mockDs.getAdminConversations();
+    final allContacts = mockDs.getAvailableContacts();
     final selected = <String>{};
+    final newContactIds = <String>{};
     final msgController = TextEditingController();
+
     showDialog(
       context: ctx,
       builder: (d) => StatefulBuilder(
         builder: (ctx2, setState2) => AlertDialog(
           title: const Text('Broadcast Message'),
           content: SizedBox(
-            width: 350,
-            height: 400,
+            width: 380,
+            height: 450,
             child: Column(
               children: [
                 TextField(
@@ -905,15 +944,17 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Select conversations (${selected.length})',
+                  'Existing Conversations (${selected.length})',
                   style: const TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
                 ),
+                const SizedBox(height: 4),
                 Expanded(
+                  flex: 3,
                   child: ListView(
-                    children: convs
+                    children: existingConvs
                         .map(
                           (c) => CheckboxListTile(
                             dense: true,
@@ -922,11 +963,60 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                               c.displayName(kAdminId),
                               style: const TextStyle(fontSize: 13),
                             ),
+                            subtitle: Text(
+                              c.type == ConversationType.group
+                                  ? 'Group'
+                                  : 'Direct',
+                              style: const TextStyle(fontSize: 10),
+                            ),
                             onChanged: (v) => setState2(() {
                               if (v == true)
                                 selected.add(c.id);
                               else
                                 selected.remove(c.id);
+                            }),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+                const Divider(),
+                Text(
+                  'New Recipients (${newContactIds.length})',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Expanded(
+                  flex: 2,
+                  child: ListView(
+                    children: allContacts
+                        .where(
+                          (c) => !existingConvs.any(
+                            (conv) =>
+                                conv.type == ConversationType.direct &&
+                                conv.hasParticipant(c['id']!),
+                          ),
+                        )
+                        .map(
+                          (c) => CheckboxListTile(
+                            dense: true,
+                            value: newContactIds.contains(c['id']),
+                            title: Text(
+                              c['name']!,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            subtitle: Text(
+                              c['role']!.toUpperCase(),
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                            onChanged: (v) => setState2(() {
+                              if (v == true)
+                                newContactIds.add(c['id']!);
+                              else
+                                newContactIds.remove(c['id']!);
                             }),
                           ),
                         )
@@ -943,18 +1033,42 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
             ),
             FilledButton(
               onPressed:
-                  selected.isNotEmpty && msgController.text.trim().isNotEmpty
+                  (selected.isNotEmpty || newContactIds.isNotEmpty) &&
+                      msgController.text.trim().isNotEmpty
                   ? () {
                       Navigator.pop(d);
-                      ctx.read<ConversationBloc>().add(
-                        ConversationBroadcastRequested(
-                          conversationIds: selected.toList(),
-                          content: msgController.text.trim(),
-                        ),
-                      );
+                      if (selected.isNotEmpty) {
+                        bloc.add(
+                          ConversationBroadcastRequested(
+                            conversationIds: selected.toList(),
+                            content: msgController.text.trim(),
+                          ),
+                        );
+                      }
+                      for (final contactId in newContactIds) {
+                        final contact = allContacts.firstWhere(
+                          (c) => c['id'] == contactId,
+                        );
+                        bloc.add(
+                          ConversationStartNewRequested(
+                            type: 'direct',
+                            participants: [contact],
+                            firstMessage: msgController.text.trim(),
+                          ),
+                        );
+                      }
+                      if (newContactIds.isNotEmpty) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Creating ${newContactIds.length} new conversations...',
+                            ),
+                          ),
+                        );
+                      }
                     }
                   : null,
-              child: Text('Send to ${selected.length}'),
+              child: Text('Send (${selected.length + newContactIds.length})'),
             ),
           ],
         ),
@@ -985,7 +1099,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                       style: const TextStyle(fontSize: 13),
                     ),
                     trailing: Text(
-                      _fmtTime(r.readAt),
+                      '${r.readAt.hour.toString().padLeft(2, '0')}:${r.readAt.minute.toString().padLeft(2, '0')}',
                       style: const TextStyle(fontSize: 11),
                     ),
                   ),
@@ -1001,16 +1115,6 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
         ],
       ),
     );
-  }
-
-  void _showAddSheet(BuildContext ctx, ConversationEntity conv) {
-    /* handled by side panel on desktop, popup menu triggers add via side panel */
-  }
-  void _showRemoveSheet(BuildContext ctx, ConversationEntity conv) {
-    /* handled by side panel */
-  }
-  void _showMembersSheet(BuildContext ctx, ConversationEntity conv) {
-    _showMobileSidePanel(ctx, conv);
   }
 
   bool _showDateSep(List<MessageEntity> msgs, int i) {
@@ -1031,9 +1135,6 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
       return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][dt.weekday - 1];
     return '${dt.day}/${dt.month}/${dt.year}';
   }
-
-  String _fmtTime(DateTime dt) =>
-      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
 }
 
 class _Banner extends StatelessWidget {
@@ -1042,6 +1143,7 @@ class _Banner extends StatelessWidget {
   final Color color;
   final Color iconColor;
   final Color textColor;
+
   const _Banner({
     required this.icon,
     required this.text,
@@ -1049,6 +1151,7 @@ class _Banner extends StatelessWidget {
     required this.iconColor,
     required this.textColor,
   });
+
   @override
   Widget build(BuildContext context) => Container(
     width: double.infinity,
