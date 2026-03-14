@@ -3,9 +3,9 @@
 // Dependency injection setup using get_it.
 // -------------------------------------------------------------
 
-// -- GENERATOR FEATURE IMPORTS — append only ------------------
+// -- GENERATOR FEATURE IMPORTS ? append only ------------------
 
-// Actor (HMSCP core – L1)
+// Actor (HMSCP core ? L1)
 import 'package:admin_panel/features/actor/data/datasources/actor_remote_datasource.dart';
 import 'package:admin_panel/features/actor/data/datasources/actor_local_datasource.dart';
 import 'package:admin_panel/features/actor/data/repositories/actor_repository_impl.dart';
@@ -18,22 +18,22 @@ import 'package:admin_panel/features/actor/domain/usecases/delete_actor_usecase.
 import 'package:admin_panel/features/actor/presentation/bloc/actor_bloc.dart';
 import 'package:admin_panel/core/database/actor_cache_dao.dart';
 
-// Phase 3 · SMS Gateway (L5) — data/client/ (singular)
+// Phase 3 ? SMS Gateway (L5) ? data/client/ (singular)
 import 'package:admin_panel/features/sms_gateway/data/client/sms_gateway_client.dart';
 import 'package:admin_panel/features/sms_gateway/domain/services/sms_gateway_service.dart';
 import 'package:admin_panel/features/sms_gateway/presentation/cubit/sms_gateway_cubit.dart';
 
-// Phase 3 · WhatsApp (L5)
+// Phase 3 ? WhatsApp (L5)
 import 'package:admin_panel/features/whatsapp/data/client/whatsapp_client.dart';
 import 'package:admin_panel/features/whatsapp/domain/services/whatsapp_service.dart';
 import 'package:admin_panel/features/whatsapp/presentation/cubit/whatsapp_cubit.dart';
 
-// Phase 3 · Mobile Money (L5)
+// Phase 3 ? Mobile Money (L5)
 import 'package:admin_panel/features/mobile_money/data/client/mobile_money_client.dart';
 import 'package:admin_panel/features/mobile_money/domain/services/mobile_money_service.dart';
 import 'package:admin_panel/features/mobile_money/presentation/cubit/mobile_money_cubit.dart';
 
-// Phase 4 · Officers (L2) — includes DomainService
+// Phase 4 ? Officers (L2) ? includes DomainService
 import 'package:admin_panel/features/officer/data/datasources/officer_remote_datasource.dart';
 import 'package:admin_panel/features/officer/data/datasources/officer_mock_datasource.dart';
 import 'package:admin_panel/features/officer/data/repositories/officer_repository_impl.dart';
@@ -46,7 +46,7 @@ import 'package:admin_panel/features/officer/domain/usecases/delete_officer_usec
 import 'package:admin_panel/features/officer/domain/services/officer_domain_service.dart';
 import 'package:admin_panel/features/officer/presentation/bloc/officer_bloc.dart';
 
-// Phase 4 · Customers (L1)
+// Phase 4 ? Customers (L1)
 import 'package:admin_panel/features/customer/data/datasources/customer_remote_datasource.dart';
 import 'package:admin_panel/features/customer/data/datasources/customer_mock_datasource.dart';
 import 'package:admin_panel/features/customer/data/repositories/customer_repository_impl.dart';
@@ -58,7 +58,7 @@ import 'package:admin_panel/features/customer/domain/usecases/update_customer_us
 import 'package:admin_panel/features/customer/domain/usecases/delete_customer_usecase.dart';
 import 'package:admin_panel/features/customer/presentation/bloc/customer_bloc.dart';
 
-// Phase 5 · Categories (L1)
+// Phase 5 ? Categories (L1)
 import 'package:admin_panel/features/category/data/datasources/category_remote_datasource.dart';
 import 'package:admin_panel/features/category/data/datasources/category_mock_datasource.dart';
 import 'package:admin_panel/features/category/data/repositories/category_repository_impl.dart';
@@ -70,7 +70,7 @@ import 'package:admin_panel/features/category/domain/usecases/update_category_us
 import 'package:admin_panel/features/category/domain/usecases/delete_category_usecase.dart';
 import 'package:admin_panel/features/category/presentation/bloc/category_bloc.dart';
 
-// Phase 5 · Products (L2)
+// Phase 5 ? Products (L2)
 import 'package:admin_panel/features/product/data/datasources/product_remote_datasource.dart';
 import 'package:admin_panel/features/product/data/datasources/product_mock_datasource.dart';
 import 'package:admin_panel/features/product/data/repositories/product_repository_impl.dart';
@@ -83,7 +83,7 @@ import 'package:admin_panel/features/product/domain/usecases/delete_product_usec
 import 'package:admin_panel/features/product/domain/services/product_domain_service.dart';
 import 'package:admin_panel/features/product/presentation/bloc/product_bloc.dart';
 
-// Phase 6 · Promotions (L3)
+// Phase 6 ? Promotions (L3)
 import 'package:admin_panel/features/promotion/data/datasources/promotion_remote_datasource.dart';
 import 'package:admin_panel/features/promotion/data/repositories/promotion_repository_impl.dart';
 import 'package:admin_panel/features/promotion/domain/repositories/promotion_repository.dart';
@@ -95,7 +95,7 @@ import 'package:admin_panel/features/promotion/domain/usecases/delete_promotion_
 import 'package:admin_panel/features/promotion/domain/services/promotion_domain_service.dart';
 import 'package:admin_panel/features/promotion/presentation/bloc/promotion_bloc.dart';
 
-// Phase 7 · Visits (L2)
+// Phase 7 ? Visits (L2)
 import 'package:admin_panel/features/visit/data/datasources/visit_remote_datasource.dart';
 import 'package:admin_panel/features/visit/data/datasources/visit_mock_datasource.dart';
 import 'package:admin_panel/features/visit/data/repositories/visit_repository_impl.dart';
@@ -108,7 +108,7 @@ import 'package:admin_panel/features/visit/domain/usecases/delete_visit_usecase.
 import 'package:admin_panel/features/visit/domain/services/visit_domain_service.dart';
 import 'package:admin_panel/features/visit/presentation/bloc/visit_bloc.dart';
 
-// Phase 7 · Weekly Plans (L2)
+// Phase 7 ? Weekly Plans (L2)
 import 'package:admin_panel/features/weekly_plan/data/datasources/weekly_plan_remote_datasource.dart';
 import 'package:admin_panel/features/weekly_plan/data/datasources/weekly_plan_mock_datasource.dart';
 import 'package:admin_panel/features/weekly_plan/data/repositories/weekly_plan_repository_impl.dart';
@@ -121,7 +121,7 @@ import 'package:admin_panel/features/weekly_plan/domain/usecases/delete_weekly_p
 import 'package:admin_panel/features/weekly_plan/domain/services/weekly_plan_domain_service.dart';
 import 'package:admin_panel/features/weekly_plan/presentation/bloc/weekly_plan_bloc.dart';
 
-// Phase 7 · Daily Reports (L3)
+// Phase 7 ? Daily Reports (L3)
 import 'package:admin_panel/features/daily_report/data/datasources/daily_report_remote_datasource.dart';
 import 'package:admin_panel/features/daily_report/data/datasources/daily_report_mock_datasource.dart';
 import 'package:admin_panel/features/daily_report/data/repositories/daily_report_repository_impl.dart';
@@ -134,7 +134,7 @@ import 'package:admin_panel/features/daily_report/domain/usecases/delete_daily_r
 import 'package:admin_panel/features/daily_report/domain/services/daily_report_domain_service.dart';
 import 'package:admin_panel/features/daily_report/presentation/bloc/daily_report_bloc.dart';
 
-// Phase 8 · Conversations (L1)
+// Phase 8 ? Conversations (L1)
 import 'package:admin_panel/features/conversation/data/datasources/conversation_remote_datasource.dart';
 import 'package:admin_panel/features/conversation/data/datasources/conversation_mock_datasource.dart';
 import 'package:admin_panel/features/conversation/data/repositories/conversation_repository_impl.dart';
@@ -146,7 +146,7 @@ import 'package:admin_panel/features/conversation/domain/usecases/update_convers
 import 'package:admin_panel/features/conversation/domain/usecases/delete_conversation_usecase.dart';
 import 'package:admin_panel/features/conversation/presentation/bloc/conversation_bloc.dart';
 
-// Phase 8 · Orders (L3)
+// Phase 8 ? Orders (L3)
 import 'package:admin_panel/features/order/data/datasources/order_remote_datasource.dart';
 import 'package:admin_panel/features/order/data/repositories/order_repository_impl.dart';
 import 'package:admin_panel/features/order/domain/repositories/order_repository.dart';
@@ -158,7 +158,7 @@ import 'package:admin_panel/features/order/domain/usecases/delete_order_usecase.
 import 'package:admin_panel/features/order/domain/services/order_domain_service.dart';
 import 'package:admin_panel/features/order/presentation/bloc/order_bloc.dart';
 
-// Phase 8 · Payments (L1)
+// Phase 8 ? Payments (L1)
 import 'package:admin_panel/features/payment/data/datasources/payment_remote_datasource.dart';
 import 'package:admin_panel/features/payment/data/repositories/payment_repository_impl.dart';
 import 'package:admin_panel/features/payment/domain/repositories/payment_repository.dart';
@@ -169,7 +169,7 @@ import 'package:admin_panel/features/payment/domain/usecases/update_payment_usec
 import 'package:admin_panel/features/payment/domain/usecases/delete_payment_usecase.dart';
 import 'package:admin_panel/features/payment/presentation/bloc/payment_bloc.dart';
 
-// Phase 8 · Notifications (L2)
+// Phase 8 ? Notifications (L2)
 import 'package:admin_panel/features/notification/data/datasources/notification_remote_datasource.dart';
 import 'package:admin_panel/features/notification/data/repositories/notification_repository_impl.dart';
 import 'package:admin_panel/features/notification/domain/repositories/notification_repository.dart';
@@ -181,20 +181,20 @@ import 'package:admin_panel/features/notification/domain/usecases/delete_notific
 import 'package:admin_panel/features/notification/domain/services/notification_domain_service.dart';
 import 'package:admin_panel/features/notification/presentation/bloc/notification_bloc.dart';
 
-// Phase 9 · Marketing Dashboard (L4)
+// Phase 9 ? Marketing Dashboard (L4)
 import 'package:admin_panel/features/marketing_dashboard/domain/usecases/get_marketing_dashboard_usecase.dart';
 import 'package:admin_panel/features/marketing_dashboard/presentation/cubit/marketing_dashboard_cubit.dart';
 
-// Phase 9 · Sales Dashboard (L4)
+// Phase 9 ? Sales Dashboard (L4)
 import 'package:admin_panel/features/sales_dashboard/domain/usecases/get_sales_dashboard_usecase.dart';
 import 'package:admin_panel/features/sales_dashboard/presentation/cubit/sales_dashboard_cubit.dart';
 
-// Phase 9 · Report Export (L5)
+// Phase 9 ? Report Export (L5)
 import 'package:admin_panel/features/report_export/data/client/report_export_client.dart';
 import 'package:admin_panel/features/report_export/domain/services/report_export_service.dart';
 import 'package:admin_panel/features/report_export/presentation/cubit/report_export_cubit.dart';
 
-// Phase 9 · Activity Logs (L1)
+// Phase 9 ? Activity Logs (L1)
 import 'package:admin_panel/features/activity_log/data/datasources/activity_log_remote_datasource.dart';
 import 'package:admin_panel/features/activity_log/data/repositories/activity_log_repository_impl.dart';
 import 'package:admin_panel/features/activity_log/domain/repositories/activity_log_repository.dart';
@@ -239,7 +239,7 @@ import '../../features/profile/domain/repositories/profile_repository.dart';
 import '../../features/profile/domain/usecases/get_profile_usecase.dart';
 import '../../features/profile/presentation/bloc/profile_bloc.dart';
 
-// Add BEFORE each DomainService — one per feature:
+// Add BEFORE each DomainService ? one per feature:
 import 'package:admin_panel/features/officer/domain/guards/officer_transition_guard.dart';
 import 'package:admin_panel/features/product/domain/guards/product_transition_guard.dart';
 import 'package:admin_panel/features/promotion/domain/guards/promotion_transition_guard.dart';
@@ -265,6 +265,7 @@ import 'package:admin_panel/features/sales_dashboard/data/providers/product_data
 import 'package:admin_panel/features/sales_dashboard/domain/providers/order_data_provider.dart';
 import 'package:admin_panel/features/sales_dashboard/domain/providers/payment_data_provider.dart';
 import 'package:admin_panel/features/sales_dashboard/domain/providers/product_data_provider.dart';
+import 'package:admin_panel/features/notification/data/datasources/notification_mock_datasource.dart';
 
 final sl = GetIt.instance;
 
@@ -361,7 +362,7 @@ Future<void> initDependencies() async {
     () => DashboardBloc(getDashboardStats: sl<GetDashboardStatsUseCase>()),
   );
 
-  // -- 5. Actor (HMSCP core – L1) ----------------------------
+  // -- 5. Actor (HMSCP core ? L1) ----------------------------
   sl.registerLazySingleton<ActorCacheDao>(() => ActorCacheDao(sl()));
   sl.registerLazySingleton<ActorRemoteDataSource>(
     () => ActorRemoteDataSourceImpl(dio: sl()),
@@ -388,7 +389,7 @@ Future<void> initDependencies() async {
   );
 
   // ----------------------------------------------------------
-  // BARICK FEATURES — Phase 3: External Integrations (L5)
+  // BARICK FEATURES ? Phase 3: External Integrations (L5)
   // Pattern: Client ? Service ? Cubit  (cubit takes service:)
   // ----------------------------------------------------------
 
@@ -409,7 +410,7 @@ Future<void> initDependencies() async {
   // L2 repos use remoteDataSource:, blocs need domainService:
   // ----------------------------------------------------------
 
-  // Seq 6 · Officers (L2)
+  // Seq 6 ? Officers (L2)
   sl.registerLazySingleton<OfficerRemoteDataSource>(
     () => OfficerMockDataSource(),
   );
@@ -436,7 +437,7 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // Seq 7 · Customers (L1)
+  // Seq 7 ? Customers (L1)
   sl.registerLazySingleton<CustomerRemoteDataSource>(
     () => CustomerMockDataSource(),
   );
@@ -462,7 +463,7 @@ Future<void> initDependencies() async {
   // Phase 5: Product & Category (L1 / L2)
   // ----------------------------------------------------------
 
-  // Seq 8 · Categories (L1)
+  // Seq 8 ? Categories (L1)
   sl.registerLazySingleton<CategoryRemoteDataSource>(
     () => CategoryMockDataSource(),
   );
@@ -484,7 +485,7 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // Seq 9 · Products (L2)
+  // Seq 9 ? Products (L2)
   sl.registerLazySingleton<ProductRemoteDataSource>(
     () => ProductMockDataSource(),
   );
@@ -512,7 +513,7 @@ Future<void> initDependencies() async {
   );
 
   // ----------------------------------------------------------
-  // Phase 6: Promotions (L3) — domainService required
+  // Phase 6: Promotions (L3) ? domainService required
   // ----------------------------------------------------------
 
   sl.registerLazySingleton<PromotionRemoteDataSource>(
@@ -545,10 +546,8 @@ Future<void> initDependencies() async {
   // Phase 7: Field Operations (L2 / L3)
   // ----------------------------------------------------------
 
-  // Seq 11 · Visits (L2)
-  sl.registerLazySingleton<VisitRemoteDataSource>(
-    () => VisitMockDataSource(),
-  );
+  // Seq 11 ? Visits (L2)
+  sl.registerLazySingleton<VisitRemoteDataSource>(() => VisitMockDataSource());
   sl.registerLazySingleton<VisitRepository>(
     () => VisitRepositoryImpl(remoteDataSource: sl()),
   );
@@ -572,7 +571,7 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // Seq 12 · Weekly Plans (L2)
+  // Seq 12 ? Weekly Plans (L2)
   sl.registerLazySingleton<WeeklyPlanRemoteDataSource>(
     () => WeeklyPlanMockDataSource(),
   );
@@ -599,7 +598,7 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // Seq 13 · Daily Reports (L3)
+  // Seq 13 ? Daily Reports (L3)
   sl.registerLazySingleton<DailyReportRemoteDataSource>(
     () => DailyReportMockDataSource(),
   );
@@ -630,7 +629,7 @@ Future<void> initDependencies() async {
   // Phase 8: Communication & Commerce
   // ----------------------------------------------------------
 
-  // Seq 14 · Conversations (L1)
+  // Seq 14 ? Conversations (L1)
   sl.registerLazySingleton<ConversationRemoteDataSource>(
     () => ConversationMockDataSource(),
   );
@@ -652,7 +651,7 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // Seq 15 · Orders (L3)
+  // Seq 15 ? Orders (L3)
   sl.registerLazySingleton<OrderRemoteDataSource>(
     () => OrderRemoteDataSourceImpl(dio: sl()),
   );
@@ -679,7 +678,7 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // Seq 16 · Payments (L1)
+  // Seq 16 ? Payments (L1)
   sl.registerLazySingleton<PaymentRemoteDataSource>(
     () => PaymentRemoteDataSourceImpl(dio: sl()),
   );
@@ -701,9 +700,9 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // Seq 17 · Notifications (L2)
+  // Seq 17 ? Notifications (L2)
   sl.registerLazySingleton<NotificationRemoteDataSource>(
-    () => NotificationRemoteDataSourceImpl(dio: sl()),
+    () => NotificationMockDataSource(),
   );
   sl.registerLazySingleton<NotificationRepository>(
     () => NotificationRepositoryImpl(remoteDataSource: sl()),
@@ -733,7 +732,7 @@ Future<void> initDependencies() async {
   // L4 cubits use getProjection:, L5 cubits use service:
   // ----------------------------------------------------------
 
-  // Seq 18 · Marketing Dashboard (L4)
+  // Seq 18 ? Marketing Dashboard (L4)
   sl.registerLazySingleton<VisitDataProvider>(
     () => VisitDataProviderImpl(repository: sl()),
   );
@@ -762,7 +761,7 @@ Future<void> initDependencies() async {
     () => MarketingDashboardCubit(getProjection: sl()),
   );
 
-  // Seq 19 · Sales Dashboard (L4)
+  // Seq 19 ? Sales Dashboard (L4)
   sl.registerLazySingleton<OrderDataProvider>(
     () => OrderDataProviderImpl(repository: sl()),
   );
@@ -783,13 +782,13 @@ Future<void> initDependencies() async {
     () => SalesDashboardCubit(getProjection: sl()),
   );
 
-  // Seq 20 · Report Export (L5)
+  // Seq 20 ? Report Export (L5)
   sl.registerLazySingleton(() => ReportExportClient(dio: sl()));
   sl.registerLazySingleton(() => ReportExportService(client: sl()));
 
   sl.registerFactory<ReportExportCubit>(() => ReportExportCubit(service: sl()));
 
-  // Seq 21 · Activity Logs (L1)
+  // Seq 21 ? Activity Logs (L1)
   sl.registerLazySingleton<ActivityLogRemoteDataSource>(
     () => ActivityLogRemoteDataSourceImpl(dio: sl()),
   );

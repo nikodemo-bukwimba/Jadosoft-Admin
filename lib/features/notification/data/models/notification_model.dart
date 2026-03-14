@@ -17,21 +17,23 @@ class NotificationModel extends NotificationEntity {
 
   factory NotificationModel.fromJson(Map<String, dynamic> json) {
     return NotificationModel(
-      id: json['id'] as String,
-      recipientId: json['recipient_id'] as String,
-      recipientType: json['recipient_type'] as String,
-      channel: json['channel'] as String,
-      content: json['content'] as String,
+      id: json['id'] as String? ?? '',
+      recipientId: json['recipient_id'] as String? ?? '',
+      recipientType: json['recipient_type'] as String? ?? 'officer',
+      channel: json['channel'] as String? ?? 'in_app',
+      content: json['content'] as String? ?? '',
       templateId: json['template_id'] as String?,
-      status: json['status'] as String,
+      status: json['status'] as String? ?? 'queued',
       sentAt: json['sent_at'] != null
-          ? DateTime.parse(json['sent_at'] as String)
+          ? DateTime.tryParse(json['sent_at'] as String)
           : null,
       deliveredAt: json['delivered_at'] != null
-          ? DateTime.parse(json['delivered_at'] as String)
+          ? DateTime.tryParse(json['delivered_at'] as String)
           : null,
       failureReason: json['failure_reason'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'] as String) ?? DateTime.now()
+          : DateTime.now(),
     );
   }
 
@@ -49,19 +51,18 @@ class NotificationModel extends NotificationEntity {
     'created_at': createdAt.toIso8601String(),
   };
 
-  factory NotificationModel.fromEntity(NotificationEntity entity) {
-    return NotificationModel(
-      id: entity.id,
-      recipientId: entity.recipientId,
-      recipientType: entity.recipientType,
-      channel: entity.channel,
-      content: entity.content,
-      templateId: entity.templateId,
-      status: entity.status,
-      sentAt: entity.sentAt,
-      deliveredAt: entity.deliveredAt,
-      failureReason: entity.failureReason,
-      createdAt: entity.createdAt,
-    );
-  }
+  static NotificationModel fromEntity(NotificationEntity e) =>
+      NotificationModel(
+        id: e.id,
+        recipientId: e.recipientId,
+        recipientType: e.recipientType,
+        channel: e.channel,
+        content: e.content,
+        templateId: e.templateId,
+        status: e.status,
+        sentAt: e.sentAt,
+        deliveredAt: e.deliveredAt,
+        failureReason: e.failureReason,
+        createdAt: e.createdAt,
+      );
 }
