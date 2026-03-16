@@ -976,7 +976,7 @@ class AppRouter {
                   create: (_) =>
                       sl<ActivityLogBloc>()
                         ..add(ActivityLogLoadOneRequested(id)),
-                  child: const ActivityLogDetailPage(),
+                  child: ActivityLogDetailPage(id: id),
                 );
               },
             ),

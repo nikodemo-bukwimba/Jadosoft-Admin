@@ -9,9 +9,9 @@ class ActivityLogModel extends ActivityLogEntity {
     required super.action,
     required super.entityType,
     required super.entityId,
-    required super.entitySnapshot,
-    required super.ipAddress,
-    required super.userAgent,
+    super.entitySnapshot,
+    super.ipAddress,
+    super.userAgent,
     required super.occurredAt,
   });
 
@@ -24,7 +24,7 @@ class ActivityLogModel extends ActivityLogEntity {
       action: json['action'] as String,
       entityType: json['entity_type'] as String,
       entityId: json['entity_id'] as String,
-      entitySnapshot: json['entity_snapshot'],
+      entitySnapshot: json['entity_snapshot'] as Map<String, dynamic>?,
       ipAddress: json['ip_address'] as String?,
       userAgent: json['user_agent'] as String?,
       occurredAt: DateTime.parse(json['occurred_at'] as String),
@@ -32,18 +32,18 @@ class ActivityLogModel extends ActivityLogEntity {
   }
 
   Map<String, dynamic> toJson() => {
-      'id': id,
-      'actor_id': actorId,
-      'actor_name': actorName,
-      'actor_role': actorRole,
-      'action': action,
-      'entity_type': entityType,
-      'entity_id': entityId,
-      'entity_snapshot': entitySnapshot,
-      'ip_address': ipAddress,
-      'user_agent': userAgent,
-      'occurred_at': occurredAt.toIso8601String(),
-  };
+        'id': id,
+        'actor_id': actorId,
+        'actor_name': actorName,
+        'actor_role': actorRole,
+        'action': action,
+        'entity_type': entityType,
+        'entity_id': entityId,
+        'entity_snapshot': entitySnapshot,
+        'ip_address': ipAddress,
+        'user_agent': userAgent,
+        'occurred_at': occurredAt.toIso8601String(),
+      };
 
   factory ActivityLogModel.fromEntity(ActivityLogEntity entity) {
     return ActivityLogModel(

@@ -8,11 +8,11 @@ class PaymentModel extends PaymentEntity {
     required super.amount,
     required super.currency,
     required super.provider,
-    required super.transactionRef,
+    super.transactionRef,
     required super.status,
     required super.initiatedAt,
-    required super.confirmedAt,
-    required super.failureReason,
+    super.confirmedAt,
+    super.failureReason,
   });
 
   factory PaymentModel.fromJson(Map<String, dynamic> json) {
@@ -26,24 +26,26 @@ class PaymentModel extends PaymentEntity {
       transactionRef: json['transaction_ref'] as String?,
       status: json['status'] as String,
       initiatedAt: DateTime.parse(json['initiated_at'] as String),
-      confirmedAt: json['confirmed_at'] != null ? DateTime.parse(json['confirmed_at'] as String) : null,
+      confirmedAt: json['confirmed_at'] != null
+          ? DateTime.parse(json['confirmed_at'] as String)
+          : null,
       failureReason: json['failure_reason'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() => {
-      'id': id,
-      'order_id': orderId,
-      'customer_id': customerId,
-      'amount': amount,
-      'currency': currency,
-      'provider': provider,
-      'transaction_ref': transactionRef,
-      'status': status,
-      'initiated_at': initiatedAt.toIso8601String(),
-      'confirmed_at': confirmedAt?.toIso8601String(),
-      'failure_reason': failureReason,
-  };
+        'id': id,
+        'order_id': orderId,
+        'customer_id': customerId,
+        'amount': amount,
+        'currency': currency,
+        'provider': provider,
+        'transaction_ref': transactionRef,
+        'status': status,
+        'initiated_at': initiatedAt.toIso8601String(),
+        'confirmed_at': confirmedAt?.toIso8601String(),
+        'failure_reason': failureReason,
+      };
 
   factory PaymentModel.fromEntity(PaymentEntity entity) {
     return PaymentModel(

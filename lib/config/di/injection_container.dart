@@ -1,4 +1,4 @@
-// injection_container.dart
+﻿// injection_container.dart
 // -------------------------------------------------------------
 // Dependency injection setup using get_it.
 // -------------------------------------------------------------
@@ -267,6 +267,9 @@ import 'package:admin_panel/features/sales_dashboard/domain/providers/payment_da
 import 'package:admin_panel/features/sales_dashboard/domain/providers/product_data_provider.dart';
 import 'package:admin_panel/features/notification/data/datasources/notification_mock_datasource.dart';
 import 'package:admin_panel/features/promotion/data/datasources/promotion_mock_datasource.dart';
+import 'package:admin_panel/features/order/data/datasources/order_mock_datasource.dart';
+import 'package:admin_panel/features/payment/data/datasources/payment_mock_datasource.dart';
+import 'package:admin_panel/features/activity_log/data/datasources/activity_log_mock_datasource.dart';
 
 final sl = GetIt.instance;
 
@@ -653,9 +656,7 @@ Future<void> initDependencies() async {
   );
 
   // Seq 15 ? Orders (L3)
-  sl.registerLazySingleton<OrderRemoteDataSource>(
-    () => OrderRemoteDataSourceImpl(dio: sl()),
-  );
+  sl.registerLazySingleton<OrderRemoteDataSource>(() => OrderMockDataSource());
   sl.registerLazySingleton<OrderRepository>(
     () => OrderRepositoryImpl(remoteDataSource: sl()),
   );
@@ -681,7 +682,7 @@ Future<void> initDependencies() async {
 
   // Seq 16 ? Payments (L1)
   sl.registerLazySingleton<PaymentRemoteDataSource>(
-    () => PaymentRemoteDataSourceImpl(dio: sl()),
+    () => PaymentMockDataSource(),
   );
   sl.registerLazySingleton<PaymentRepository>(
     () => PaymentRepositoryImpl(remoteDataSource: sl()),
@@ -790,8 +791,11 @@ Future<void> initDependencies() async {
   sl.registerFactory<ReportExportCubit>(() => ReportExportCubit(service: sl()));
 
   // Seq 21 ? Activity Logs (L1)
+  // sl.registerLazySingleton<ActivityLogRemoteDataSource>(
+  //   () => ActivityLogRemoteDataSourceImpl(dio: sl()),
+  // );
   sl.registerLazySingleton<ActivityLogRemoteDataSource>(
-    () => ActivityLogRemoteDataSourceImpl(dio: sl()),
+    () => ActivityLogMockDataSource(),
   );
   sl.registerLazySingleton<ActivityLogRepository>(
     () => ActivityLogRepositoryImpl(remoteDataSource: sl()),
