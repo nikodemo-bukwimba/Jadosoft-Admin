@@ -2,172 +2,159 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../cubit/sales_dashboard_cubit.dart';
 import '../cubit/sales_dashboard_state.dart';
-import '../widgets/sales_dashboard_metric_card.dart';
+import '../widgets/sales_kpi_row.dart';
+import '../widgets/sales_revenue_chart.dart';
+import '../widgets/sales_charts.dart';
 
-class SalesDashboardDashboardPage extends StatelessWidget {
+class SalesDashboardDashboardPage extends StatefulWidget {
   const SalesDashboardDashboardPage({super.key});
+  @override
+  State<SalesDashboardDashboardPage> createState() => _SalesDashboardDashboardPageState();
+}
+
+class _SalesDashboardDashboardPageState extends State<SalesDashboardDashboardPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<SalesDashboardCubit>().load();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.of(context).size.width >= 840;
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sales Dashboard'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
-            onPressed: () => context.read<SalesDashboardCubit>().refresh(),
-          ),
-        ],
-      ),
+      backgroundColor: cs.surfaceContainerLowest,
       body: BlocBuilder<SalesDashboardCubit, SalesDashboardState>(
         builder: (context, state) {
-          if (state is SalesDashboardLoading || state is SalesDashboardInitial) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (state is SalesDashboardError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.error_outline, size: 48, color: Theme.of(context).colorScheme.error),
-                  const SizedBox(height: 16),
-                  Text(state.message),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: () => context.read<SalesDashboardCubit>().refresh(),
-                    child: const Text('Retry'),
+          return NestedScrollView(
+            headerSliverBuilder: (context, _) => [
+              SliverAppBar(
+                pinned: true,
+                floating: true,
+                expandedHeight: 64,
+                backgroundColor: cs.surface,
+                surfaceTintColor: cs.surfaceTint,
+                title: Row(children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [Colors.green.shade600, Colors.green.shade400]),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.point_of_sale, size: 18, color: Colors.white),
                   ),
+                  const SizedBox(width: 12),
+                  const Text('Sales Dashboard', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: -0.3)),
+                ]),
+                actions: [
+                  IconButton(icon: const Icon(Icons.refresh_outlined), tooltip: 'Refresh',
+                    onPressed: () => context.read<SalesDashboardCubit>().refresh()),
+                  const SizedBox(width: 8),
                 ],
               ),
-            );
-          }
-          if (state is SalesDashboardLoaded) {
-            final projection = state.projection;
-            return RefreshIndicator(
-              onRefresh: () => context.read<SalesDashboardCubit>().refresh(),
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                  GridView.count(
-                    crossAxisCount: 2,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 1.4,
-                    children: [
-                SalesDashboardMetricCard(
-                  title: 'Total Orders',
-                  value: projection.totalOrders.toString(),
-                  icon: Icons.shopping_cart,
-                  color: Colors.blue,
-                ),
-                SalesDashboardMetricCard(
-                  title: 'Total Revenue',
-                  value: projection.totalRevenue.toStringAsFixed(2),
-                  icon: Icons.attach_money,
-                  color: Colors.green,
-                ),
-                SalesDashboardMetricCard(
-                  title: 'Avg Order Value',
-                  value: projection.averageOrderValue.toStringAsFixed(1),
-                  icon: Icons.trending_up,
-                  color: Colors.orange,
-                ),
-                SalesDashboardMetricCard(
-                  title: 'Orders by Status',
-                  value: projection.ordersByStatus.length.toString() + ' groups',
-                  icon: Icons.list_alt,
-                  color: Colors.purple,
-                ),
-                SalesDashboardMetricCard(
-                  title: 'Confirmed Payments',
-                  value: projection.confirmedPayments.toString(),
-                  icon: Icons.verified,
-                  color: Colors.red,
-                ),
-                SalesDashboardMetricCard(
-                  title: 'Recent Orders',
-                  value: projection.recentOrders.length.toString() + ' items',
-                  icon: Icons.bar_chart,
-                  color: Colors.teal,
-                ),
-                SalesDashboardMetricCard(
-                  title: 'Total Products',
-                  value: projection.productCount.toString(),
-                  icon: Icons.inventory_2,
-                  color: Colors.amber,
-                ),
-                SalesDashboardMetricCard(
-                  title: 'Featured Products',
-                  value: projection.featuredProductCount.toString(),
-                  icon: Icons.star,
-                  color: Colors.indigo,
-                ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 24),
-                  Text('Breakdown', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  ...projection.ordersByStatus.entries.map((entry) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            entry.key,
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primaryContainer,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            entry.value.toString(),
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )),
-
-                  const SizedBox(height: 24),
-                  Text('Recent Orders', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  ...projection.recentOrders.map((item) => Card(
-                    child: ListTile(
-                      title: Text(item.customerId),
-                      dense: true,
-                    ),
-                  )),
-
-                  const SizedBox(height: 16),
-                  Center(
-                    child: Text(
-                      'Updated: ' + projection.generatedAt.toIso8601String().split('T').first,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.outlineVariant,
-                      ),
-                    ),
-                  ),
-                  ],
-                ),
-              ),
-            );
-          }
-          return const SizedBox.shrink();
+            ],
+            body: _buildBody(context, state, isDesktop),
+          );
         },
       ),
     );
   }
+
+  Widget _buildBody(BuildContext context, SalesDashboardState state, bool isDesktop) {
+    final cs = Theme.of(context).colorScheme;
+
+    if (state is SalesDashboardLoading || state is SalesDashboardInitial) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (state is SalesDashboardError) {
+      return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.error_outline, size: 48, color: cs.error), const SizedBox(height: 12),
+        Text(state.message), const SizedBox(height: 16),
+        FilledButton.icon(onPressed: () => context.read<SalesDashboardCubit>().refresh(),
+          icon: const Icon(Icons.refresh), label: const Text('Retry')),
+      ]));
+    }
+    if (state is SalesDashboardLoaded) {
+      final p = state.projection;
+      return RefreshIndicator(
+        onRefresh: () => context.read<SalesDashboardCubit>().refresh(),
+        child: isDesktop ? _DesktopLayout(projection: p) : _PhoneLayout(projection: p),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+}
+
+class _DesktopLayout extends StatelessWidget {
+  final dynamic projection;
+  const _DesktopLayout({required this.projection});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SalesKpiRow(projection: projection),
+        const SizedBox(height: 20),
+        // Revenue chart + Orders ring
+        IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(flex: 3, child: SalesRevenueChart(projection: projection)),
+          const SizedBox(width: 16),
+          Expanded(flex: 2, child: SalesOrdersRing(projection: projection)),
+        ])),
+        const SizedBox(height: 20),
+        // Recent orders + Payment summary
+        IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(flex: 3, child: SalesRecentOrders(projection: projection)),
+          const SizedBox(width: 16),
+          Expanded(flex: 2, child: SalesPaymentSummary(projection: projection)),
+        ])),
+        const SizedBox(height: 20),
+        // Product performance full width
+        SalesProductPerformance(projection: projection),
+        const SizedBox(height: 16),
+        _Footer(generatedAt: projection.generatedAt),
+      ]),
+    );
+  }
+}
+
+class _PhoneLayout extends StatelessWidget {
+  final dynamic projection;
+  const _PhoneLayout({required this.projection});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SalesKpiRow(projection: projection),
+        const SizedBox(height: 16),
+        SalesRevenueChart(projection: projection),
+        const SizedBox(height: 16),
+        SalesOrdersRing(projection: projection),
+        const SizedBox(height: 16),
+        SalesRecentOrders(projection: projection),
+        const SizedBox(height: 16),
+        SalesPaymentSummary(projection: projection),
+        const SizedBox(height: 16),
+        SalesProductPerformance(projection: projection),
+        const SizedBox(height: 16),
+        _Footer(generatedAt: projection.generatedAt),
+      ]),
+    );
+  }
+}
+
+class _Footer extends StatelessWidget {
+  final DateTime generatedAt;
+  const _Footer({required this.generatedAt});
+  @override
+  Widget build(BuildContext context) => Center(child: Text(
+    'Last updated: ${generatedAt.toIso8601String().replaceFirst('T', ' ').substring(0, 16)}',
+    style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6))));
 }

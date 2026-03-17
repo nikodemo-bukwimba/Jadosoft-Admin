@@ -271,6 +271,12 @@ import 'package:admin_panel/features/order/data/datasources/order_mock_datasourc
 import 'package:admin_panel/features/payment/data/datasources/payment_mock_datasource.dart';
 import 'package:admin_panel/features/activity_log/data/datasources/activity_log_mock_datasource.dart';
 
+import 'package:admin_panel/features/report_export/data/client/report_export_client.dart';
+import 'package:admin_panel/features/report_export/data/client/report_export_client_impl.dart';
+import 'package:admin_panel/features/report_export/data/client/report_export_mock_client.dart';
+import 'package:admin_panel/features/report_export/domain/services/report_export_service.dart';
+import 'package:admin_panel/features/report_export/presentation/cubit/report_export_cubit.dart';
+
 final sl = GetIt.instance;
 
 Future<void> initDependencies() async {
@@ -785,10 +791,15 @@ Future<void> initDependencies() async {
   );
 
   // Seq 20 ? Report Export (L5)
-  sl.registerLazySingleton(() => ReportExportClient(dio: sl()));
-  sl.registerLazySingleton(() => ReportExportService(client: sl()));
-
-  sl.registerFactory<ReportExportCubit>(() => ReportExportCubit(service: sl()));
+  //     sl.registerLazySingleton<ReportExportClient>(
+  //       () => ReportExportClientImpl(dio: sl()));
+  sl.registerLazySingleton<ReportExportClient>(() => ReportExportMockClient());
+  sl.registerLazySingleton<ReportExportService>(
+    () => ReportExportService(client: sl<ReportExportClient>()),
+  );
+  sl.registerFactory<ReportExportCubit>(
+    () => ReportExportCubit(service: sl<ReportExportService>()),
+  );
 
   // Seq 21 ? Activity Logs (L1)
   // sl.registerLazySingleton<ActivityLogRemoteDataSource>(

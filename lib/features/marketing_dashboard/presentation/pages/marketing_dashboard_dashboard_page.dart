@@ -2,197 +2,248 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../cubit/marketing_dashboard_cubit.dart';
 import '../cubit/marketing_dashboard_state.dart';
-import '../widgets/marketing_dashboard_metric_card.dart';
+import '../widgets/mkt_charts.dart';
+import '../widgets/mkt_tables.dart';
 
-class MarketingDashboardDashboardPage extends StatelessWidget {
+class MarketingDashboardDashboardPage extends StatefulWidget {
   const MarketingDashboardDashboardPage({super.key});
+  @override
+  State<MarketingDashboardDashboardPage> createState() =>
+      _MarketingDashboardDashboardPageState();
+}
+
+class _MarketingDashboardDashboardPageState
+    extends State<MarketingDashboardDashboardPage> {
+  String _period = 'This Week';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<MarketingDashboardCubit>().load();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.of(context).size.width >= 840;
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Marketing Dashboard'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
-            onPressed: () => context.read<MarketingDashboardCubit>().refresh(),
-          ),
-        ],
-      ),
+      backgroundColor: cs.surfaceContainerLowest,
       body: BlocBuilder<MarketingDashboardCubit, MarketingDashboardState>(
         builder: (context, state) {
-          if (state is MarketingDashboardLoading ||
-              state is MarketingDashboardInitial) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (state is MarketingDashboardError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 48,
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(state.message),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: () =>
-                        context.read<MarketingDashboardCubit>().refresh(),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            );
-          }
-          if (state is MarketingDashboardLoaded) {
-            final projection = state.projection;
-            return RefreshIndicator(
-              onRefresh: () =>
-                  context.read<MarketingDashboardCubit>().refresh(),
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          return NestedScrollView(
+            headerSliverBuilder: (context, _) => [
+              SliverAppBar(
+                pinned: true,
+                floating: true,
+                backgroundColor: cs.surface,
+                surfaceTintColor: cs.surfaceTint,
+                title: Row(
                   children: [
-                    GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 12,
-                      childAspectRatio: 1.4,
-                      children: [
-                        MarketingDashboardMetricCard(
-                          title: 'Total Visits',
-                          value: projection.totalVisits.toString(),
-                          icon: Icons.place,
-                          color: Colors.blue,
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.blue.shade600, Colors.blue.shade400],
                         ),
-                        MarketingDashboardMetricCard(
-                          title: 'Visits by Officer',
-                          value: '${projection.visitsByOfficer.length} groups',
-                          icon: Icons.attach_money,
-                          color: Colors.green,
-                        ),
-                        MarketingDashboardMetricCard(
-                          title: 'Plan Compliance Rate',
-                          value: projection.planComplianceRate.toStringAsFixed(
-                            1,
-                          ),
-                          icon: Icons.check_circle,
-                          color: Colors.orange,
-                        ),
-                        MarketingDashboardMetricCard(
-                          title: 'Reports Submitted',
-                          value: projection.dailyReportSubmissionRate
-                              .toString(),
-                          icon: Icons.summarize,
-                          color: Colors.purple,
-                        ),
-                        MarketingDashboardMetricCard(
-                          title: 'Total Customers',
-                          value: projection.totalCustomers.toString(),
-                          icon: Icons.store,
-                          color: Colors.red,
-                        ),
-                        MarketingDashboardMetricCard(
-                          title: 'Customers Visited This Month',
-                          value: projection.customersVisitedThisMonth
-                              .toString(),
-                          icon: Icons.calendar_today,
-                          color: Colors.teal,
-                        ),
-                        MarketingDashboardMetricCard(
-                          title: 'Recent Visits',
-                          value: '${projection.recentVisits.length} items',
-                          icon: Icons.show_chart,
-                          color: Colors.amber,
-                        ),
-                        MarketingDashboardMetricCard(
-                          title: 'Active Officers',
-                          value: projection.activeOfficers.toString(),
-                          icon: Icons.badge,
-                          color: Colors.indigo,
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 24),
-                    Text(
-                      'Breakdown',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 12),
-                    ...projection.visitsByOfficer.entries.map(
-                      (entry) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                entry.key,
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.primaryContainer,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                entry.value.toString(),
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ],
-                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.campaign,
+                        size: 18,
+                        color: Colors.white,
                       ),
                     ),
-
-                    const SizedBox(height: 24),
-                    Text(
-                      'Recent Visits',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 12),
-                    ...projection.recentVisits.map(
-                      (item) => Card(
-                        child: ListTile(
-                          title: Text(item.businessName ?? ''),
-                          dense: true,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-                    Center(
-                      child: Text(
-                        'Updated: ${projection.generatedAt.toIso8601String().split('T').first}',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.outlineVariant,
-                        ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Marketing Dashboard',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
                       ),
                     ),
                   ],
                 ),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.refresh_outlined),
+                    tooltip: 'Refresh',
+                    onPressed: () =>
+                        context.read<MarketingDashboardCubit>().refresh(),
+                  ),
+                  const SizedBox(width: 8),
+                ],
               ),
-            );
-          }
-          return const SizedBox.shrink();
+            ],
+            body: _buildBody(context, state, isDesktop),
+          );
         },
       ),
     );
   }
+
+  Widget _buildBody(
+    BuildContext context,
+    MarketingDashboardState state,
+    bool isDesktop,
+  ) {
+    final cs = Theme.of(context).colorScheme;
+    if (state is MarketingDashboardLoading ||
+        state is MarketingDashboardInitial) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (state is MarketingDashboardError) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: cs.error),
+            const SizedBox(height: 12),
+            Text(state.message),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () =>
+                  context.read<MarketingDashboardCubit>().refresh(),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (state is MarketingDashboardLoaded) {
+      final p = state.projection;
+      return RefreshIndicator(
+        onRefresh: () => context.read<MarketingDashboardCubit>().refresh(),
+        child: isDesktop
+            ? _DesktopLayout(projection: p, period: _period)
+            : _PhoneLayout(projection: p, period: _period),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+}
+
+class _DesktopLayout extends StatelessWidget {
+  final dynamic projection;
+  final String period;
+  const _DesktopLayout({required this.projection, required this.period});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MktKpiRow(projection: projection),
+          const SizedBox(height: 20),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: MktVisitsChart(projection: projection, period: period),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 2,
+                  child: MktComplianceRing(projection: projection),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: MktOfficerLeaderboard(projection: projection),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 2,
+                  child: MktTopCustomers(projection: projection),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: MktActivityHeatmap(projection: projection),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 2,
+                  child: MktActivityFeed(projection: projection),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _Footer(generatedAt: projection.generatedAt),
+        ],
+      ),
+    );
+  }
+}
+
+class _PhoneLayout extends StatelessWidget {
+  final dynamic projection;
+  final String period;
+  const _PhoneLayout({required this.projection, required this.period});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MktKpiRow(projection: projection),
+          const SizedBox(height: 16),
+          MktVisitsChart(projection: projection, period: period),
+          const SizedBox(height: 16),
+          MktComplianceRing(projection: projection),
+          const SizedBox(height: 16),
+          MktOfficerLeaderboard(projection: projection),
+          const SizedBox(height: 16),
+          MktTopCustomers(projection: projection),
+          const SizedBox(height: 16),
+          MktActivityHeatmap(projection: projection),
+          const SizedBox(height: 16),
+          MktActivityFeed(projection: projection),
+          const SizedBox(height: 16),
+          _Footer(generatedAt: projection.generatedAt),
+        ],
+      ),
+    );
+  }
+}
+
+class _Footer extends StatelessWidget {
+  final DateTime generatedAt;
+  const _Footer({required this.generatedAt});
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Text(
+      'Last updated: ${generatedAt.toIso8601String().replaceFirst('T', ' ').substring(0, 16)}',
+      style: TextStyle(
+        fontSize: 11,
+        color: Theme.of(
+          context,
+        ).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+      ),
+    ),
+  );
 }

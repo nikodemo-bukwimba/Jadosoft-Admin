@@ -14,6 +14,7 @@ class MarketingDashboardProjection extends Equatable {
   final int customersVisitedThisMonth;
   final List<VisitEntity> recentVisits;
   final int activeOfficers;
+  final List<OfficerEntity> allOfficers;
   final DateTime generatedAt;
 
   const MarketingDashboardProjection({
@@ -25,9 +26,21 @@ class MarketingDashboardProjection extends Equatable {
     required this.customersVisitedThisMonth,
     required this.recentVisits,
     required this.activeOfficers,
+    required this.allOfficers,
     required this.generatedAt,
   });
 
   @override
-  List<Object?> get props => [totalVisits, visitsByOfficer, planComplianceRate, dailyReportSubmissionRate, totalCustomers, customersVisitedThisMonth, recentVisits, activeOfficers, generatedAt];
+  List<Object?> get props => [
+    totalVisits,
+    visitsByOfficer,
+    planComplianceRate,
+    dailyReportSubmissionRate,
+    totalCustomers,
+    customersVisitedThisMonth,
+    recentVisits,
+    activeOfficers,
+    allOfficers,
+    generatedAt,
+  ];
 }

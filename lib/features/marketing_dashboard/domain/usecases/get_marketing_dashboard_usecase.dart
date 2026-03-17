@@ -107,6 +107,7 @@ class GetMarketingDashboardUseCase {
         customersVisitedThisMonth: customersVisitedThisMonth,
         recentVisits: recentVisits,
         activeOfficers: activeOfficers,
+        allOfficers: List.from(officerList),
         generatedAt: DateTime.now(),
       ),
     );

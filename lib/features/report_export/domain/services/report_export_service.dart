@@ -1,4 +1,5 @@
-﻿import 'package:dartz/dartz.dart';
+﻿// report_export_service.dart
+import 'package:dartz/dartz.dart';
 import 'package:dio/dio.dart';
 import '../../../../core/error/failures.dart';
 import '../../data/client/report_export_client.dart';
@@ -14,30 +15,29 @@ class ReportExportService {
 
   Future<Either<Failure, RequestExportResponse>> requestExport(RequestExportRequest request) async {
     try {
-      final result = await _client.requestExport(request);
-      return Right(result);
+      return Right(await _client.requestExport(request));
     } on DioException catch (e) {
-      return Left(ServerFailure(e.response?.data?.toString() ?? e.message ?? 'Unknown error'));
+      return Left(ServerFailure(e.response?.data?.toString() ?? e.message ?? 'Export request failed'));
     } catch (e) {
       return Left(ServerFailure(e.toString()));
     }
   }
+
   Future<Either<Failure, GetExportStatusResponse>> getExportStatus(String exportId) async {
     try {
-      final result = await _client.getExportStatus(exportId);
-      return Right(result);
+      return Right(await _client.getExportStatus(exportId));
     } on DioException catch (e) {
-      return Left(ServerFailure(e.response?.data?.toString() ?? e.message ?? 'Unknown error'));
+      return Left(ServerFailure(e.response?.data?.toString() ?? e.message ?? 'Status check failed'));
     } catch (e) {
       return Left(ServerFailure(e.toString()));
     }
   }
+
   Future<Either<Failure, DownloadExportResponse>> downloadExport(String exportId) async {
     try {
-      final result = await _client.downloadExport(exportId);
-      return Right(result);
+      return Right(await _client.downloadExport(exportId));
     } on DioException catch (e) {
-      return Left(ServerFailure(e.response?.data?.toString() ?? e.message ?? 'Unknown error'));
+      return Left(ServerFailure(e.response?.data?.toString() ?? e.message ?? 'Download failed'));
     } catch (e) {
       return Left(ServerFailure(e.toString()));
     }
