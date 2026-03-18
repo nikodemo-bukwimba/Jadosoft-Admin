@@ -7,8 +7,10 @@ class WhatsappState extends Equatable {
   final DateTime? lastSyncAt;
   final bool isSendTemplateLoading;
   final String? sendTemplateError;
+  final String? lastSentMessageId;
   final bool isSendMediaLoading;
   final String? sendMediaError;
+  final String? lastSentMediaId;
   final bool isGetMessageStatusLoading;
   final String? getMessageStatusError;
   final GetMessageStatusResponse? getMessageStatusResult;
@@ -19,8 +21,10 @@ class WhatsappState extends Equatable {
     this.lastSyncAt,
     this.isSendTemplateLoading = false,
     this.sendTemplateError,
+    this.lastSentMessageId,
     this.isSendMediaLoading = false,
     this.sendMediaError,
+    this.lastSentMediaId,
     this.isGetMessageStatusLoading = false,
     this.getMessageStatusError,
     this.getMessageStatusResult,
@@ -32,8 +36,10 @@ class WhatsappState extends Equatable {
     DateTime? lastSyncAt,
     bool? isSendTemplateLoading,
     String? sendTemplateError,
+    String? lastSentMessageId,
     bool? isSendMediaLoading,
     String? sendMediaError,
+    String? lastSentMediaId,
     bool? isGetMessageStatusLoading,
     String? getMessageStatusError,
     GetMessageStatusResponse? getMessageStatusResult,
@@ -42,16 +48,35 @@ class WhatsappState extends Equatable {
       isLoading: isLoading ?? this.isLoading,
       errorMessage: errorMessage ?? this.errorMessage,
       lastSyncAt: lastSyncAt ?? this.lastSyncAt,
-      isSendTemplateLoading: isSendTemplateLoading ?? this.isSendTemplateLoading,
+      isSendTemplateLoading:
+          isSendTemplateLoading ?? this.isSendTemplateLoading,
       sendTemplateError: sendTemplateError ?? this.sendTemplateError,
+      lastSentMessageId: lastSentMessageId ?? this.lastSentMessageId,
       isSendMediaLoading: isSendMediaLoading ?? this.isSendMediaLoading,
       sendMediaError: sendMediaError ?? this.sendMediaError,
-      isGetMessageStatusLoading: isGetMessageStatusLoading ?? this.isGetMessageStatusLoading,
-      getMessageStatusError: getMessageStatusError ?? this.getMessageStatusError,
-      getMessageStatusResult: getMessageStatusResult ?? this.getMessageStatusResult,
+      lastSentMediaId: lastSentMediaId ?? this.lastSentMediaId,
+      isGetMessageStatusLoading:
+          isGetMessageStatusLoading ?? this.isGetMessageStatusLoading,
+      getMessageStatusError:
+          getMessageStatusError ?? this.getMessageStatusError,
+      getMessageStatusResult:
+          getMessageStatusResult ?? this.getMessageStatusResult,
     );
   }
 
   @override
-  List<Object?> get props => [isLoading, errorMessage, lastSyncAt, isSendTemplateLoading, sendTemplateError, isSendMediaLoading, sendMediaError, isGetMessageStatusLoading, getMessageStatusError, getMessageStatusResult];
+  List<Object?> get props => [
+        isLoading,
+        errorMessage,
+        lastSyncAt,
+        isSendTemplateLoading,
+        sendTemplateError,
+        lastSentMessageId,
+        isSendMediaLoading,
+        sendMediaError,
+        lastSentMediaId,
+        isGetMessageStatusLoading,
+        getMessageStatusError,
+        getMessageStatusResult,
+      ];
 }

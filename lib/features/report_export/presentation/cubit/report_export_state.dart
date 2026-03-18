@@ -70,6 +70,8 @@ class ReportExportState extends Equatable {
   final DownloadExportResponse? downloadExportResult;
   final String?
   lastDownloadedFileName; // set after successful download — triggers snackbar
+  final String?
+  lastSavedPath; // set after desktop save — shows path in snackbar
 
   const ReportExportState({
     this.isLoading = false,
@@ -95,6 +97,7 @@ class ReportExportState extends Equatable {
     this.downloadExportError,
     this.downloadExportResult,
     this.lastDownloadedFileName,
+    this.lastSavedPath,
   });
 
   ReportExportState copyWith({
@@ -121,6 +124,7 @@ class ReportExportState extends Equatable {
     String? downloadExportError,
     DownloadExportResponse? downloadExportResult,
     String? lastDownloadedFileName,
+    String? lastSavedPath,
   }) {
     return ReportExportState(
       isLoading: isLoading ?? this.isLoading,
@@ -155,6 +159,7 @@ class ReportExportState extends Equatable {
       downloadExportResult: downloadExportResult ?? this.downloadExportResult,
       lastDownloadedFileName:
           lastDownloadedFileName ?? this.lastDownloadedFileName,
+      lastSavedPath: lastSavedPath ?? this.lastSavedPath,
     );
   }
 
@@ -183,5 +188,6 @@ class ReportExportState extends Equatable {
     downloadExportError,
     downloadExportResult,
     lastDownloadedFileName,
+    lastSavedPath,
   ];
 }

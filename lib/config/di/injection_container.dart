@@ -277,6 +277,21 @@ import 'package:admin_panel/features/report_export/data/client/report_export_moc
 import 'package:admin_panel/features/report_export/domain/services/report_export_service.dart';
 import 'package:admin_panel/features/report_export/presentation/cubit/report_export_cubit.dart';
 
+// SMS Gateway
+import 'package:admin_panel/features/sms_gateway/data/client/sms_gateway_client.dart';
+import 'package:admin_panel/features/sms_gateway/data/client/sms_gateway_client_impl.dart';
+import 'package:admin_panel/features/sms_gateway/data/client/sms_gateway_mock_client.dart';
+
+// WhatsApp
+import 'package:admin_panel/features/whatsapp/data/client/whatsapp_client.dart';
+import 'package:admin_panel/features/whatsapp/data/client/whatsapp_client_impl.dart';
+import 'package:admin_panel/features/whatsapp/data/client/whatsapp_mock_client.dart';
+
+// Mobile Money
+import 'package:admin_panel/features/mobile_money/data/client/mobile_money_client.dart';
+import 'package:admin_panel/features/mobile_money/data/client/mobile_money_client_impl.dart';
+import 'package:admin_panel/features/mobile_money/data/client/mobile_money_mock_client.dart';
+
 final sl = GetIt.instance;
 
 Future<void> initDependencies() async {
@@ -402,16 +417,30 @@ Future<void> initDependencies() async {
   // BARICK FEATURES ? Phase 3: External Integrations (L5)
   // Pattern: Client ? Service ? Cubit  (cubit takes service:)
   // ----------------------------------------------------------
+  // ── SMS Gateway ──────────────────────────────────────────────
+  // DEVELOPMENT (mock — active now):
+  sl.registerLazySingleton<SmsGatewayClient>(() => SmsGatewayMockClient());
+  // PRODUCTION (real — swap when Laravel API is ready):
+  // sl.registerLazySingleton<SmsGatewayClient>(() => SmsGatewayClientImpl(dio: sl()));
 
-  sl.registerLazySingleton(() => SmsGatewayClient(dio: sl()));
   sl.registerLazySingleton(() => SmsGatewayService(client: sl()));
   sl.registerFactory<SmsGatewayCubit>(() => SmsGatewayCubit(service: sl()));
 
-  sl.registerLazySingleton(() => WhatsappClient(dio: sl()));
+  // ── WhatsApp ─────────────────────────────────────────────────
+  // DEVELOPMENT (mock — active now):
+  sl.registerLazySingleton<WhatsappClient>(() => WhatsappMockClient());
+  // PRODUCTION (real — swap when Laravel API is ready):
+  // sl.registerLazySingleton<WhatsappClient>(() => WhatsappClientImpl(dio: sl()));
+
   sl.registerLazySingleton(() => WhatsappService(client: sl()));
   sl.registerFactory<WhatsappCubit>(() => WhatsappCubit(service: sl()));
 
-  sl.registerLazySingleton(() => MobileMoneyClient(dio: sl()));
+  // ── Mobile Money ─────────────────────────────────────────────
+  // DEVELOPMENT (mock — active now):
+  sl.registerLazySingleton<MobileMoneyClient>(() => MobileMoneyMockClient());
+  // PRODUCTION (real — swap when Laravel API is ready):
+  // sl.registerLazySingleton<MobileMoneyClient>(() => MobileMoneyClientImpl(dio: sl()));
+
   sl.registerLazySingleton(() => MobileMoneyService(client: sl()));
   sl.registerFactory<MobileMoneyCubit>(() => MobileMoneyCubit(service: sl()));
 

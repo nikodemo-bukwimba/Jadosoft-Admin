@@ -11,23 +11,33 @@ class SmsGatewayCubit extends Cubit<SmsGatewayState> {
         super(const SmsGatewayState());
 
   Future<void> sendSms(SendSmsRequest request) async {
-    emit(state.copyWith(isSendSmsLoading: true, sendSmsError: null));
+    emit(state.copyWith(
+        isSendSmsLoading: true, sendSmsError: null, lastSentMessageId: null));
     final result = await _service.sendSms(request);
     result.fold(
-      (failure) => emit(state.copyWith(isSendSmsLoading: false, sendSmsError: failure.toString())),
-      (result) {
-        emit(state.copyWith(isSendSmsLoading: false, lastSyncAt: DateTime.now()));
-      },
+      (failure) => emit(state.copyWith(
+          isSendSmsLoading: false, sendSmsError: failure.toString())),
+      (response) => emit(state.copyWith(
+        isSendSmsLoading: false,
+        lastSentMessageId: response.messageId,
+        lastSyncAt: DateTime.now(),
+      )),
     );
   }
+
   Future<void> getDeliveryStatus(String messageId) async {
-    emit(state.copyWith(isGetDeliveryStatusLoading: true, getDeliveryStatusError: null));
+    emit(state.copyWith(
+        isGetDeliveryStatusLoading: true, getDeliveryStatusError: null));
     final result = await _service.getDeliveryStatus(messageId);
     result.fold(
-      (failure) => emit(state.copyWith(isGetDeliveryStatusLoading: false, getDeliveryStatusError: failure.toString())),
-      (result) {
-        emit(state.copyWith(isGetDeliveryStatusLoading: false, getDeliveryStatusResult: result, lastSyncAt: DateTime.now()));
-      },
+      (failure) => emit(state.copyWith(
+          isGetDeliveryStatusLoading: false,
+          getDeliveryStatusError: failure.toString())),
+      (response) => emit(state.copyWith(
+        isGetDeliveryStatusLoading: false,
+        getDeliveryStatusResult: response,
+        lastSyncAt: DateTime.now(),
+      )),
     );
   }
 }

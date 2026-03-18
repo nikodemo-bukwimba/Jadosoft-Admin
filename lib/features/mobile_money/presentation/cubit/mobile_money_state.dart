@@ -7,6 +7,7 @@ class MobileMoneyState extends Equatable {
   final DateTime? lastSyncAt;
   final bool isInitiatePaymentLoading;
   final String? initiatePaymentError;
+  final String? lastTransactionId;
   final bool isQueryPaymentStatusLoading;
   final String? queryPaymentStatusError;
   final QueryPaymentStatusResponse? queryPaymentStatusResult;
@@ -17,6 +18,7 @@ class MobileMoneyState extends Equatable {
     this.lastSyncAt,
     this.isInitiatePaymentLoading = false,
     this.initiatePaymentError,
+    this.lastTransactionId,
     this.isQueryPaymentStatusLoading = false,
     this.queryPaymentStatusError,
     this.queryPaymentStatusResult,
@@ -28,6 +30,7 @@ class MobileMoneyState extends Equatable {
     DateTime? lastSyncAt,
     bool? isInitiatePaymentLoading,
     String? initiatePaymentError,
+    String? lastTransactionId,
     bool? isQueryPaymentStatusLoading,
     String? queryPaymentStatusError,
     QueryPaymentStatusResponse? queryPaymentStatusResult,
@@ -36,14 +39,29 @@ class MobileMoneyState extends Equatable {
       isLoading: isLoading ?? this.isLoading,
       errorMessage: errorMessage ?? this.errorMessage,
       lastSyncAt: lastSyncAt ?? this.lastSyncAt,
-      isInitiatePaymentLoading: isInitiatePaymentLoading ?? this.isInitiatePaymentLoading,
+      isInitiatePaymentLoading:
+          isInitiatePaymentLoading ?? this.isInitiatePaymentLoading,
       initiatePaymentError: initiatePaymentError ?? this.initiatePaymentError,
-      isQueryPaymentStatusLoading: isQueryPaymentStatusLoading ?? this.isQueryPaymentStatusLoading,
-      queryPaymentStatusError: queryPaymentStatusError ?? this.queryPaymentStatusError,
-      queryPaymentStatusResult: queryPaymentStatusResult ?? this.queryPaymentStatusResult,
+      lastTransactionId: lastTransactionId ?? this.lastTransactionId,
+      isQueryPaymentStatusLoading:
+          isQueryPaymentStatusLoading ?? this.isQueryPaymentStatusLoading,
+      queryPaymentStatusError:
+          queryPaymentStatusError ?? this.queryPaymentStatusError,
+      queryPaymentStatusResult:
+          queryPaymentStatusResult ?? this.queryPaymentStatusResult,
     );
   }
 
   @override
-  List<Object?> get props => [isLoading, errorMessage, lastSyncAt, isInitiatePaymentLoading, initiatePaymentError, isQueryPaymentStatusLoading, queryPaymentStatusError, queryPaymentStatusResult];
+  List<Object?> get props => [
+        isLoading,
+        errorMessage,
+        lastSyncAt,
+        isInitiatePaymentLoading,
+        initiatePaymentError,
+        lastTransactionId,
+        isQueryPaymentStatusLoading,
+        queryPaymentStatusError,
+        queryPaymentStatusResult,
+      ];
 }

@@ -100,20 +100,29 @@ class _ReportExportPageState extends State<ReportExportPage> {
               ),
             );
           }
-          // Download completed — show snackbar (especially useful for mock:// URLs
-          // which can't be launched, so user knows it would download in production)
+          // Download completed
           if (state.lastDownloadedFileName != null) {
-            final isMock =
-                state.downloadExportResult?.fileUrl.startsWith('mock') ?? false;
             ScaffoldMessenger.of(ctx).showSnackBar(
               SnackBar(
-                content: Text(
-                  isMock
-                      ? 'Mock mode — in production "${state.lastDownloadedFileName}" would download automatically'
-                      : 'Downloading ${state.lastDownloadedFileName}…',
-                ),
+                content: Text('Opening ${state.lastDownloadedFileName}…'),
                 behavior: SnackBarBehavior.floating,
-                duration: Duration(seconds: isMock ? 4 : 2),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+          // Desktop save completed — show exact path
+          if (state.lastSavedPath != null) {
+            ScaffoldMessenger.of(ctx).showSnackBar(
+              SnackBar(
+                content: Text('Saved to ${state.lastSavedPath}'),
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 4),
+                action: SnackBarAction(
+                  label: 'Open',
+                  onPressed: () => context
+                      .read<ReportExportCubit>()
+                      .downloadExport(state.exportHistory.first.exportId),
+                ),
               ),
             );
           }

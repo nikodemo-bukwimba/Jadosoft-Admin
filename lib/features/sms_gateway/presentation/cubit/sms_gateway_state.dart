@@ -7,6 +7,7 @@ class SmsGatewayState extends Equatable {
   final DateTime? lastSyncAt;
   final bool isSendSmsLoading;
   final String? sendSmsError;
+  final String? lastSentMessageId;
   final bool isGetDeliveryStatusLoading;
   final String? getDeliveryStatusError;
   final GetDeliveryStatusResponse? getDeliveryStatusResult;
@@ -17,6 +18,7 @@ class SmsGatewayState extends Equatable {
     this.lastSyncAt,
     this.isSendSmsLoading = false,
     this.sendSmsError,
+    this.lastSentMessageId,
     this.isGetDeliveryStatusLoading = false,
     this.getDeliveryStatusError,
     this.getDeliveryStatusResult,
@@ -28,6 +30,7 @@ class SmsGatewayState extends Equatable {
     DateTime? lastSyncAt,
     bool? isSendSmsLoading,
     String? sendSmsError,
+    String? lastSentMessageId,
     bool? isGetDeliveryStatusLoading,
     String? getDeliveryStatusError,
     GetDeliveryStatusResponse? getDeliveryStatusResult,
@@ -38,12 +41,26 @@ class SmsGatewayState extends Equatable {
       lastSyncAt: lastSyncAt ?? this.lastSyncAt,
       isSendSmsLoading: isSendSmsLoading ?? this.isSendSmsLoading,
       sendSmsError: sendSmsError ?? this.sendSmsError,
-      isGetDeliveryStatusLoading: isGetDeliveryStatusLoading ?? this.isGetDeliveryStatusLoading,
-      getDeliveryStatusError: getDeliveryStatusError ?? this.getDeliveryStatusError,
-      getDeliveryStatusResult: getDeliveryStatusResult ?? this.getDeliveryStatusResult,
+      lastSentMessageId: lastSentMessageId ?? this.lastSentMessageId,
+      isGetDeliveryStatusLoading:
+          isGetDeliveryStatusLoading ?? this.isGetDeliveryStatusLoading,
+      getDeliveryStatusError:
+          getDeliveryStatusError ?? this.getDeliveryStatusError,
+      getDeliveryStatusResult:
+          getDeliveryStatusResult ?? this.getDeliveryStatusResult,
     );
   }
 
   @override
-  List<Object?> get props => [isLoading, errorMessage, lastSyncAt, isSendSmsLoading, sendSmsError, isGetDeliveryStatusLoading, getDeliveryStatusError, getDeliveryStatusResult];
+  List<Object?> get props => [
+        isLoading,
+        errorMessage,
+        lastSyncAt,
+        isSendSmsLoading,
+        sendSmsError,
+        lastSentMessageId,
+        isGetDeliveryStatusLoading,
+        getDeliveryStatusError,
+        getDeliveryStatusResult,
+      ];
 }

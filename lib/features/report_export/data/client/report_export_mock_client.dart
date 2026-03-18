@@ -1,13 +1,10 @@
 // report_export_mock_client.dart
 // ─────────────────────────────────────────────────────────────────────────────
-// In-memory mock implementation of ReportExportClient.
-// Simulates async export flow: pending → processing → ready.
-// Generates realistic export records for all 6 report types:
-//   marketing_summary, sales_summary, customer_list,
-//   customer_individual, product_list, invoice
+// Development client that generates REAL PDF files on-device from mock data.
+// Uses ReportPdfGenerator to produce actual formatted PDFs that can be opened.
 //
-// No real files are generated — downloadUrl is a placeholder that the
-// real client impl will replace with an actual signed URL from Laravel.
+// When the Laravel API is ready, swap this for ReportExportClientImpl —
+// one line change in injection_container.dart.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'report_export_client.dart';
@@ -15,20 +12,42 @@ import '../../domain/models/request_export_request.dart';
 import '../../domain/models/request_export_response.dart';
 import '../../domain/models/get_export_status_response.dart';
 import '../../domain/models/download_export_response.dart';
+import '../../domain/services/report_pdf_generator.dart';
 
 class ReportExportMockClient implements ReportExportClient {
-  // Track in-progress jobs: exportId → status
   final Map<String, _MockJob> _jobs = {};
 
   @override
-  Future<RequestExportResponse> requestExport(RequestExportRequest request) async {
-    await Future.delayed(const Duration(milliseconds: 500));
+  Future<RequestExportResponse> requestExport(
+    RequestExportRequest request,
+  ) async {
+    await Future.delayed(const Duration(milliseconds: 300));
     final id = 'exp-${DateTime.now().millisecondsSinceEpoch}';
-    _jobs[id] = _MockJob(
+    final job = _MockJob(
       reportType: request.reportType,
       format: request.format,
+      referenceId: request.referenceId,
+      dateFrom: request.dateRange?['from'],
+      dateTo: request.dateRange?['to'],
       createdAt: DateTime.now(),
     );
+    // Kick off real PDF generation immediately
+    job.generateFuture =
+        ReportPdfGenerator.generate(
+              reportType: request.reportType,
+              referenceId: request.referenceId,
+              dateFrom: request.dateRange?['from'],
+              dateTo: request.dateRange?['to'],
+            )
+            .then((file) {
+              job.file = file;
+              return file;
+            })
+            .catchError((e) {
+              job.failed = true;
+              job.error = e.toString();
+            });
+    _jobs[id] = job;
     return RequestExportResponse(
       exportId: id,
       status: 'pending',
@@ -38,7 +57,7 @@ class ReportExportMockClient implements ReportExportClient {
 
   @override
   Future<GetExportStatusResponse> getExportStatus(String exportId) async {
-    await Future.delayed(const Duration(milliseconds: 800));
+    await Future.delayed(const Duration(milliseconds: 400));
     final job = _jobs[exportId];
     if (job == null) {
       return GetExportStatusResponse(
@@ -48,54 +67,70 @@ class ReportExportMockClient implements ReportExportClient {
         error: 'Export job not found',
       );
     }
-    // Simulate progression: pending → processing → ready
-    final elapsed = DateTime.now().difference(job.createdAt).inSeconds;
-    if (elapsed < 2) {
-      return GetExportStatusResponse(exportId: exportId, status: 'pending', progress: 10);
-    } else if (elapsed < 4) {
-      return GetExportStatusResponse(exportId: exportId, status: 'processing', progress: 60);
-    } else {
-      job.ready = true;
+    if (job.file != null) {
       return GetExportStatusResponse(
         exportId: exportId,
         status: 'ready',
         progress: 100,
-        downloadUrl: 'mock://exports/$exportId/download',
+        downloadUrl: job.file!.path,
       );
     }
+    if (job.failed) {
+      return GetExportStatusResponse(
+        exportId: exportId,
+        status: 'failed',
+        progress: 0,
+        error: job.error ?? 'Generation failed',
+      );
+    }
+    // Still generating — show progress
+    final elapsed = DateTime.now().difference(job.createdAt).inMilliseconds;
+    final progress = (elapsed / 3000 * 80).clamp(10, 80).toInt();
+    return GetExportStatusResponse(
+      exportId: exportId,
+      status: 'processing',
+      progress: progress,
+    );
   }
 
   @override
   Future<DownloadExportResponse> downloadExport(String exportId) async {
-    await Future.delayed(const Duration(milliseconds: 400));
     final job = _jobs[exportId];
-    if (job == null || !job.ready) {
-      throw Exception('Export not ready or not found');
+    if (job == null || job.file == null) {
+      throw Exception('Export not ready — poll getExportStatus first');
     }
-    final ext = job.format == 'excel' ? 'xlsx' : 'pdf';
-    final name = '${job.reportType}_${_dateStamp()}_barick.$ext';
-    final size = job.format == 'excel' ? 48320 : 123456;
-    final mime = job.format == 'excel'
-        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        : 'application/pdf';
+    final n = DateTime.now();
+    final stamp =
+        '${n.year}${n.month.toString().padLeft(2, '0')}${n.day.toString().padLeft(2, '0')}';
+    final name = '${job.reportType}_barick_$stamp.pdf';
+    final size = await job.file!.length();
     return DownloadExportResponse(
-      fileUrl: 'mock://exports/$exportId/download',
+      fileUrl: job.file!.path,
       fileName: name,
-      contentType: mime,
+      contentType: 'application/pdf',
       fileSize: size,
     );
-  }
-
-  String _dateStamp() {
-    final n = DateTime.now();
-    return '${n.year}${n.month.toString().padLeft(2, '0')}${n.day.toString().padLeft(2, '0')}';
   }
 }
 
 class _MockJob {
   final String reportType;
   final String format;
+  final String? referenceId;
+  final String? dateFrom;
+  final String? dateTo;
   final DateTime createdAt;
-  bool ready = false;
-  _MockJob({required this.reportType, required this.format, required this.createdAt});
+  Future<dynamic>? generateFuture;
+  dynamic file; // dart:io File once ready
+  bool failed = false;
+  String? error;
+
+  _MockJob({
+    required this.reportType,
+    required this.format,
+    this.referenceId,
+    this.dateFrom,
+    this.dateTo,
+    required this.createdAt,
+  });
 }
