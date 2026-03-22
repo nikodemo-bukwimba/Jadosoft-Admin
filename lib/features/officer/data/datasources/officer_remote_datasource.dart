@@ -1,4 +1,4 @@
-﻿// officer_remote_datasource.dart
+// officer_remote_datasource.dart
 // ─────────────────────────────────────────────────────────────
 // Real API datasource for officer management.
 //
@@ -81,8 +81,8 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
   OfficerRemoteDataSourceImpl({
     required Dio dio,
     required OrgContext orgContext,
-  }) : _orgContext = orgContext,
-       super(dio: dio);
+  })  : _orgContext = orgContext,
+        super(dio: dio);
 
   // ── LIST ─────────────────────────────────────────────────
 
@@ -200,7 +200,10 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     // This re-adds the existing user to the new branch org.
     await dio.post(
       '${ApiPaths.orgs.members(toBranchId)}/invite',
-      data: {'user_id': userId, 'org_role_id': orgRoleId},
+      data: {
+        'user_id': userId,
+        'org_role_id': orgRoleId,
+      },
     );
   }
 

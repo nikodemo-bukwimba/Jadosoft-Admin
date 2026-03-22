@@ -49,6 +49,7 @@ import 'package:admin_panel/features/officer/presentation/bloc/officer_bloc.dart
 // Phase 4 ? Customers (L1)
 import 'package:admin_panel/features/customer/data/datasources/customer_remote_datasource.dart';
 import 'package:admin_panel/features/customer/data/datasources/customer_mock_datasource.dart';
+import 'package:admin_panel/features/customer/data/datasources/customer_remote_datasource.dart';
 import 'package:admin_panel/features/customer/data/repositories/customer_repository_impl.dart';
 import 'package:admin_panel/features/customer/domain/repositories/customer_repository.dart';
 import 'package:admin_panel/features/customer/domain/usecases/get_all_customer_usecase.dart';
@@ -483,9 +484,15 @@ Future<void> initDependencies() async {
   );
 
   // Seq 7 ? Customers (L1)
+  // sl.registerLazySingleton<CustomerRemoteDataSource>(
+  //   () => CustomerMockDataSource(),
+  // );
   sl.registerLazySingleton<CustomerRemoteDataSource>(
-    () => CustomerMockDataSource(),
-  );
+  () => CustomerRemoteDataSourceImpl(
+    dio: sl<Dio>(),
+    orgContext: sl<OrgContext>(),
+  ),
+);
   sl.registerLazySingleton<CustomerRepository>(
     () => CustomerRepositoryImpl(remoteDataSource: sl()),
   );
