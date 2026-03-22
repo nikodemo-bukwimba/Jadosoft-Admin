@@ -43,10 +43,10 @@ class _OfficerFormPageState extends State<OfficerFormPage> {
 
   void _populateFields(OfficerState state) {
     if (_isEdit && !_fieldsPopulated && state is OfficerDetailLoaded) {
-      _nameController.text = state.item.name;
+      _nameController.text = state.item.displayName;
       _emailController.text = state.item.email;
       _phoneController.text = state.item.phone;
-      _selectedRole = _roles.contains(state.item.role) ? state.item.role : null;
+      _selectedRole = _roles.contains(state.item.orgRoleName ?? '') ? state.item.orgRoleName ?? '' : null;
       _fieldsPopulated = true;
     }
   }

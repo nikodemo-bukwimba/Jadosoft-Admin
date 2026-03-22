@@ -292,6 +292,8 @@ import 'package:admin_panel/features/mobile_money/data/client/mobile_money_clien
 import 'package:admin_panel/features/mobile_money/data/client/mobile_money_client_impl.dart';
 import 'package:admin_panel/features/mobile_money/data/client/mobile_money_mock_client.dart';
 
+import '../../core/context/org_context.dart';
+
 final sl = GetIt.instance;
 
 Future<void> initDependencies() async {
@@ -301,6 +303,9 @@ Future<void> initDependencies() async {
   );
   sl.registerLazySingleton<SecureStorageService>(
     () => SecureStorageService(sl<FlutterSecureStorage>()),
+  );
+  sl.registerLazySingleton<OrgContext>(
+    () => OrgContext(storage: sl<SecureStorageService>()),
   );
   sl.registerLazySingleton<TokenRefreshConfig>(
     () => const TokenRefreshConfig.disabled(),
@@ -335,6 +340,7 @@ Future<void> initDependencies() async {
     () => AuthRepositoryImpl(
       remote: sl<AuthRemoteDataSource>(),
       local: sl<AuthLocalDataSource>(),
+      orgContext: sl<OrgContext>(),
     ),
   );
   sl.registerLazySingleton(() => LoginUseCase(sl<AuthRepository>()));

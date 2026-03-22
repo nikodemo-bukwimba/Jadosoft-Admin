@@ -20,16 +20,20 @@ import '../datasources/auth_local_datasource.dart';
 import '../datasources/auth_remote_datasource.dart';
 import '../models/account_session_model.dart';
 import '../models/user_model.dart';
+import '../../../../core/context/org_context.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDataSource _remote;
   final AuthLocalDataSource _local;
+  final OrgContext _orgContext;
 
   AuthRepositoryImpl({
     required AuthRemoteDataSource remote,
     required AuthLocalDataSource local,
+    required OrgContext orgContext,
   }) : _remote = remote,
-       _local = local;
+       _local = local,
+       _orgContext = orgContext;
 
   // ── login ─────────────────────────────────────────────────
   @override
@@ -67,6 +71,12 @@ class AuthRepositoryImpl implements AuthRepository {
       );
       await _local.saveSession(finalSession);
       await _local.setActiveAccount(meResponse.user.email);
+      //     // ── Step 5: Set org context ──────────────────────────
+      //     // TODO: When API adds org memberships to /auth/me response,
+      //     // parse the user's org membership here and call:
+      //     //   _orgContext.setRootOrg(id: orgId, name: orgName, role: OrgRole.orgAdmin);
+      //     // For now, restore from last saved context:
+      await _orgContext.restore();
 
       return Right(finalSession);
     } on AuthException catch (e) {
@@ -156,6 +166,8 @@ class AuthRepositoryImpl implements AuthRepository {
       if (activeEmail != null) {
         await _local.removeSession(activeEmail);
       }
+      await _orgContext.clear();
+
       return const Right(null);
     } on CacheException catch (e) {
       return Left(CacheFailure(e.message));

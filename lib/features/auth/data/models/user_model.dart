@@ -81,7 +81,7 @@ class UserModel extends UserEntity {
       // ULID — always a String, never cast to int
       id: json['id'].toString(),
 
-      name: json['name'] as String? ?? '',
+      name: json['name'] as String? ?? json['username'] as String? ?? '',
       email: json['email'] as String,
       phone: json['phone'] as String?,
 

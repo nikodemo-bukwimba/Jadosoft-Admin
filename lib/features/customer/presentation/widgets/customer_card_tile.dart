@@ -20,7 +20,7 @@ class CustomerCardTile extends StatelessWidget {
     try {
       final ds = OfficerMockDataSource();
       final officer = await ds.getById(item.assignedOfficerId);
-      return officer.name;
+      return officer.userId;
     } catch (_) {
       return item.assignedOfficerId;
     }

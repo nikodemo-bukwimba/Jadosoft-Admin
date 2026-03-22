@@ -1,56 +1,70 @@
-﻿import 'package:dartz/dartz.dart';
+﻿// create_officer_usecase.dart
+// ─────────────────────────────────────────────────────────────
+// Creates (invites) a new officer into a specific branch.
+//
+// Replaces the old CreateOfficerParams that had no branch or role ID.
+// Now requires branchId and orgRoleId to properly place the officer
+// within the org hierarchy.
+// ─────────────────────────────────────────────────────────────
+
+import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../entities/officer_entity.dart';
 import '../repositories/officer_repository.dart';
 
 class CreateOfficerParams {
-  final String name;
+  /// Officer's email (used for invite and login).
   final String email;
-  final String phone;
-  final String role;
+
+  /// Optional username (if not provided, API may derive from email).
+  final String? username;
+
+  /// Phone number.
+  final String? phone;
+
+  /// The branch (org) to assign this officer to.
+  final String branchId;
+
+  /// The org role to assign (e.g., Field Officer role ID).
+  final String orgRoleId;
 
   const CreateOfficerParams({
-    required this.name,
     required this.email,
-    required this.phone,
-    required this.role,
+    this.username,
+    this.phone,
+    required this.branchId,
+    required this.orgRoleId,
   });
 }
 
-class CreateOfficerUseCase implements UseCase<OfficerEntity, CreateOfficerParams> {
+class CreateOfficerUseCase
+    implements UseCase<OfficerEntity, CreateOfficerParams> {
   final OfficerRepository repository;
   CreateOfficerUseCase(this.repository);
 
   @override
   Future<Either<Failure, OfficerEntity>> call(CreateOfficerParams p) async {
-    // -- Validation gate --
-    if (p.name.trim().isEmpty) {
-      return const Left(ValidationFailure('Officer name is required'));
-    }
-    if (p.name.trim().length < 2) {
-      return const Left(ValidationFailure('Name must be at least 2 characters'));
-    }
+    // ── Validation ─────────────────────────────────────────
     if (p.email.trim().isEmpty) {
       return const Left(ValidationFailure('Email is required'));
     }
-    if (p.phone.trim().isEmpty) {
-      return const Left(ValidationFailure('Phone number is required'));
+    if (!p.email.contains('@')) {
+      return const Left(ValidationFailure('Enter a valid email'));
     }
-    if (p.role.trim().isEmpty) {
-      return const Left(ValidationFailure('Role is required'));
+    if (p.branchId.trim().isEmpty) {
+      return const Left(ValidationFailure('Branch assignment is required'));
+    }
+    if (p.orgRoleId.trim().isEmpty) {
+      return const Left(ValidationFailure('Role assignment is required'));
     }
 
-    return repository.create(
-      OfficerEntity(
-        id: '',
-        name: p.name.trim(),
-        email: p.email.trim(),
-        phone: p.phone.trim(),
-        role: p.role.trim(),
-        status: '',
-        createdAt: DateTime.now(),
-      ),
+    return repository.invite(
+      email: p.email.trim(),
+      username: p.username?.trim(),
+      phone: p.phone?.trim(),
+      branchId: p.branchId,
+      orgRoleId: p.orgRoleId,
     );
   }
 }

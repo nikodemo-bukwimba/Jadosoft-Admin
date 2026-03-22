@@ -16,7 +16,7 @@ class CustomerDetailPage extends StatelessWidget {
     try {
       final ds = OfficerMockDataSource();
       final officer = await ds.getById(officerId);
-      return officer.name;
+      return officer.displayName;
     } catch (_) {
       return officerId;
     }

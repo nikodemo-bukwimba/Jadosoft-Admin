@@ -14,9 +14,11 @@ import 'package:flutter/material.dart';
 
 import 'app/app.dart';
 import 'config/di/injection_container.dart';
+import 'core/context/org_context.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initDependencies();
+    await sl<OrgContext>().restore();
   runApp(const HMSCPPD());
 }

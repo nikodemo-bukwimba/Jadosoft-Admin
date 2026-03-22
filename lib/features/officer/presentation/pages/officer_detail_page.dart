@@ -30,12 +30,12 @@ class OfficerDetailPage extends StatelessWidget {
                     IconButton(
                       icon: const Icon(Icons.edit_outlined),
                       tooltip: 'Edit',
-                      onPressed: () => context.push(AppRouter.officerEditPath(state.item.id)),
+                      onPressed: () => context.push(AppRouter.officerEditPath(state.item.userId)),
                     ),
                     IconButton(
                       icon: Icon(Icons.delete_outline, color: scheme.error),
                       tooltip: 'Delete',
-                      onPressed: () => _confirmDelete(context, state.item.id, state.item.name),
+                      onPressed: () => _confirmDelete(context, state.item.userId, state.item.displayName),
                     ),
                   ],
                 );
@@ -52,7 +52,7 @@ class OfficerDetailPage extends StatelessWidget {
               SnackBar(content: Text(state.message)),
             );
             if (state.updatedItem != null) {
-              context.read<OfficerBloc>().add(OfficerLoadOneRequested(state.updatedItem!.id));
+              context.read<OfficerBloc>().add(OfficerLoadOneRequested(state.updatedItem!.userId));
             } else {
               context.pop();
             }
@@ -96,7 +96,7 @@ class OfficerDetailPage extends StatelessWidget {
 
   Widget _buildContent(BuildContext context, OfficerEntity item) {
     final scheme = Theme.of(context).colorScheme;
-    final statusEnum = OfficerStatusX.fromString(item.status);
+    final statusEnum = OfficerStatusX.fromString(item.effectiveStatus);
     final isWide = MediaQuery.of(context).size.width >= 600;
 
     return SingleChildScrollView(
@@ -115,21 +115,21 @@ class OfficerDetailPage extends StatelessWidget {
                 padding: const EdgeInsets.all(24),
                 child: Row(
                   children: [
-                    OfficerAvatar(name: item.name, status: item.status, radius: 36),
+                    OfficerAvatar(name: item.displayName, status: item.effectiveStatus, radius: 36),
                     const SizedBox(width: 20),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            item.name,
+                            item.displayName,
                             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.w800,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            item.role,
+                            item.orgRoleName ?? '',
                             style: Theme.of(context).textTheme.titleSmall?.copyWith(
                               color: scheme.primary,
                               fontWeight: FontWeight.w600,
@@ -163,10 +163,10 @@ class OfficerDetailPage extends StatelessWidget {
                     const Divider(height: 24),
                     _contactRow(context, Icons.email_outlined, 'Email', item.email),
                     _contactRow(context, Icons.phone_outlined, 'Phone', item.phone),
-                    _contactRow(context, Icons.badge_outlined, 'Role', item.role),
+                    _contactRow(context, Icons.badge_outlined, 'Role', item.orgRoleName ?? ''),
                     _contactRow(context, Icons.calendar_today_outlined, 'Joined',
                         item.createdAt.toIso8601String().split('T').first),
-                    _contactRow(context, Icons.fingerprint, 'ID', item.id),
+                    _contactRow(context, Icons.fingerprint, 'ID', item.userId),
                   ],
                 ),
               ),
@@ -185,19 +185,19 @@ class OfficerDetailPage extends StatelessWidget {
     if (statusEnum == OfficerStatus.suspended) {
       actions.add(_actionButton(context,
           icon: Icons.check_circle_outline, label: 'Activate', color: Colors.green,
-          onPressed: () => context.read<OfficerBloc>().add(OfficerActivateRequested(item.id))));
+          onPressed: () => context.read<OfficerBloc>().add(OfficerActivateRequested(item.userId))));
     }
     // active → suspended
     if (statusEnum == OfficerStatus.active) {
       actions.add(_actionButton(context,
           icon: Icons.pause_circle_outline, label: 'Suspend', color: Colors.orange,
-          onPressed: () => context.read<OfficerBloc>().add(OfficerSuspendRequested(item.id))));
+          onPressed: () => context.read<OfficerBloc>().add(OfficerSuspendRequested(item.userId))));
     }
     // active/suspended → deactivated
     if (statusEnum == OfficerStatus.active || statusEnum == OfficerStatus.suspended) {
       actions.add(_actionButton(context,
           icon: Icons.cancel_outlined, label: 'Deactivate', color: Colors.grey,
-          onPressed: () => context.read<OfficerBloc>().add(OfficerDeactivateRequested(item.id))));
+          onPressed: () => context.read<OfficerBloc>().add(OfficerDeactivateRequested(item.userId))));
     }
 
     if (actions.isEmpty) return const SizedBox.shrink();

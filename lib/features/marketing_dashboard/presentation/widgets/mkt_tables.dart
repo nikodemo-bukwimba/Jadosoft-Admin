@@ -14,7 +14,7 @@ class MktOfficerLeaderboard extends StatelessWidget {
     // Build name lookup
     final nameMap = <String, String>{};
     for (final o in projection.allOfficers) {
-      nameMap[o.id] = o.name;
+      nameMap[o.userId] = o.displayName;
     }
     final entries = projection.visitsByOfficer.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
@@ -270,7 +270,7 @@ class MktActivityHeatmap extends StatelessWidget {
     // Build name lookup from allOfficers
     final nameMap = <String, String>{};
     for (final o in projection.allOfficers) {
-      nameMap[o.id] = o.name;
+      nameMap[o.userId] = o.displayName;
     }
     final officers = projection.visitsByOfficer.keys.toList();
     final Map<String, Map<String, int>> matrix = {};
@@ -419,7 +419,7 @@ class MktActivityFeed extends StatelessWidget {
     // Name lookup
     final nameMap = <String, String>{};
     for (final o in projection.allOfficers) {
-      nameMap[o.id] = o.name;
+      nameMap[o.userId] = o.displayName;
     }
 
     return DashCard(

@@ -14,5 +14,5 @@ class DeleteOfficerUseCase implements UseCase<void, DeleteOfficerParams> {
 
   @override
   Future<Either<Failure, void>> call(DeleteOfficerParams p) =>
-      repository.delete(p.id);
+      repository.remove(p);
 }

@@ -170,8 +170,8 @@ class _OfficerListPageState extends State<OfficerListPage> {
         itemCount: items.length,
         itemBuilder: (_, i) => OfficerCardTile(
           item: items[i],
-          onTap: () => _navigateToDetail(items[i].id),
-          onDelete: () => _deleteOfficer(items[i].id, items[i].name),
+          onTap: () => _navigateToDetail(items[i].userId),
+          onDelete: () => _deleteOfficer(items[i].userId, items[i].displayName),
         ),
       );
     }

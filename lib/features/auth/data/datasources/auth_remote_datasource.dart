@@ -89,7 +89,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       final response = await _dio.post(
         '/auth/register',
         data: {
-          'name': name,
+          'username': name,
           'email': email,
           'password': password,
           'password_confirmation': passwordConfirmation,

@@ -9,12 +9,17 @@ class UpdateOfficerParams {
   const UpdateOfficerParams({required this.entity});
 }
 
-class UpdateOfficerUseCase implements UseCase<OfficerEntity, UpdateOfficerParams> {
+class UpdateOfficerUseCase
+    implements UseCase<OfficerEntity, UpdateOfficerParams> {
   final OfficerRepository repository;
   UpdateOfficerUseCase(this.repository);
 
   @override
-  Future<Either<Failure, OfficerEntity>> call(UpdateOfficerParams p) async {
-    return repository.update(p.entity);
+  Future<Either<Failure, OfficerEntity>> call(OfficerEntity p) async {
+    return repository.updateMembership(
+      p.userId,
+      orgRoleId: p.orgRoleId,
+      status: p.membershipStatus,
+    );
   }
 }

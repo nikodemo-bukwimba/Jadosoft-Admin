@@ -456,12 +456,12 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                               prefixIcon: Icon(Icons.badge_outlined),
                             ),
                             items: _officers
-                                .where((o) => o.status == 'active')
+                                .where((o) => o.effectiveStatus == 'active')
                                 .map(
                                   (o) => DropdownMenuItem(
-                                    value: o.id,
+                                    value: o.userId,
                                     child: Text(
-                                      '${o.name} (${o.role})',
+                                      '${o.displayName} (${o.orgRoleName ?? ''})',
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
