@@ -1,76 +1,39 @@
-﻿import 'package:dio/dio.dart';
-import '../../../../core/error/exceptions.dart';
+import 'package:dio/dio.dart';
+import '../../../../core/context/org_context.dart';
+import '../../../../core/network/api_paths.dart';
+import '../../../../core/network/base_remote_datasource.dart';
+import '../../../../core/network/paginated_response.dart';
 import '../models/customer_model.dart';
 
 abstract class CustomerRemoteDataSource {
-  Future<List<CustomerModel>> getAll();
-  Future<CustomerModel>       getById(String id);
-  Future<CustomerModel>       create(Map<String, dynamic> data);
-  Future<CustomerModel>       update(String id, Map<String, dynamic> data);
-  Future<void>                delete(String id);
+  Future<PaginatedResponse<CustomerModel>> getAll({String? customerType, String? status, String? category, String? tier, String? officerId, String? search, int? perPage, int? page});
+  Future<CustomerModel> getById(String id);
+  Future<CustomerModel> create(Map<String, dynamic> data);
+  Future<CustomerModel> update(String id, Map<String, dynamic> data);
+  Future<void> delete(String id);
+  Future<CustomerModel> assignOfficer(String customerId, String officerActorId);
+  Future<CustomerContactModel> addContact(String customerId, Map<String, dynamic> data);
+  Future<CustomerContactModel> updateContact(String contactId, Map<String, dynamic> data);
+  Future<void> deleteContact(String contactId);
 }
 
-class CustomerRemoteDataSourceImpl implements CustomerRemoteDataSource {
-  final Dio _dio;
-  CustomerRemoteDataSourceImpl({required Dio dio}) : _dio = dio;
+class CustomerRemoteDataSourceImpl extends BaseRemoteDataSource implements CustomerRemoteDataSource {
+  final OrgContext _orgContext;
+  CustomerRemoteDataSourceImpl({required Dio dio, required OrgContext orgContext}) : _orgContext = orgContext, super(dio: dio);
 
-  @override
-  Future<List<CustomerModel>> getAll() async {
-    try {
-      final response = await _dio.get('');
-      final data = response.data as List;
-      return data
-          .map((e) => CustomerModel.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } on DioException catch (e) {
-      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
-    }
+  @override Future<PaginatedResponse<CustomerModel>> getAll({String? customerType, String? status, String? category, String? tier, String? officerId, String? search, int? perPage, int? page}) {
+    final orgId = _orgContext.effectiveOrgId;
+    final p = <String, dynamic>{if (customerType != null) 'customer_type': customerType, if (status != null) 'status': status,
+      if (category != null) 'category': category, if (tier != null) 'tier': tier, if (officerId != null) 'officer_id': officerId,
+      if (search != null) 'search': search, if (perPage != null) 'per_page': perPage, if (page != null) 'page': page};
+    return fetchPaginatedList(ApiPaths.pharma.customers(orgId), CustomerModel.fromJson, queryParams: p.isNotEmpty ? p : null);
   }
-
-  @override
-  Future<CustomerModel> getById(String id) async {
-    try {
-      final response = await _dio.get('/$id');
-      return CustomerModel.fromJson(response.data as Map<String, dynamic>);
-    } on DioException catch (e) {
-      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
-    }
-  }
-
-  @override
-  Future<CustomerModel> create(Map<String, dynamic> data) async {
-    try {
-      final response = await _dio.post('', data: data);
-      return CustomerModel.fromJson(response.data as Map<String, dynamic>);
-    } on DioException catch (e) {
-      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
-    }
-  }
-
-  @override
-  Future<CustomerModel> update(String id, Map<String, dynamic> data) async {
-    try {
-      final response = await _dio.put('/$id', data: data);
-      return CustomerModel.fromJson(response.data as Map<String, dynamic>);
-    } on DioException catch (e) {
-      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
-    }
-  }
-
-  @override
-  Future<void> delete(String id) async {
-    try {
-      await _dio.delete('/$id');
-    } on DioException catch (e) {
-      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
-    }
-  }
-
-  String _msg(DioException e) {
-    final data = e.response?.data;
-    if (data is Map<String, dynamic> && data['message'] is String) {
-      return data['message'] as String;
-    }
-    return 'An error occurred. Please try again.';
-  }
+  @override Future<CustomerModel> getById(String id) => fetchSingle(ApiPaths.pharma.customer(id), CustomerModel.fromJson, dataKey: 'customer');
+  @override Future<CustomerModel> create(Map<String, dynamic> data) => postAndParse(ApiPaths.pharma.customers(_orgContext.effectiveOrgId), data, CustomerModel.fromJson, dataKey: 'customer');
+  @override Future<CustomerModel> update(String id, Map<String, dynamic> data) => patchAndParse(ApiPaths.pharma.customer(id), data, CustomerModel.fromJson, dataKey: 'customer');
+  @override Future<void> delete(String id) => deleteResource(ApiPaths.pharma.customer(id));
+  @override Future<CustomerModel> assignOfficer(String customerId, String officerActorId) => postAction('${ApiPaths.pharma.customer(customerId)}/assign', CustomerModel.fromJson, data: {'officer_actor_id': officerActorId}, dataKey: 'customer');
+  @override Future<CustomerContactModel> addContact(String customerId, Map<String, dynamic> data) => postAndParse(ApiPaths.pharma.customerContacts(customerId), data, CustomerContactModel.fromJson, dataKey: 'contact');
+  @override Future<CustomerContactModel> updateContact(String contactId, Map<String, dynamic> data) => patchAndParse(ApiPaths.pharma.contact(contactId), data, CustomerContactModel.fromJson, dataKey: 'contact');
+  @override Future<void> deleteContact(String contactId) => deleteResource(ApiPaths.pharma.contact(contactId));
 }
