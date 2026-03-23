@@ -1,64 +1,86 @@
 import 'package:flutter/material.dart';
 
-/// View modes — mirrors File Explorer: Cards, Grid (Small Icons), List, Details.
-enum ProductViewMode { cards, grid, list, details }
+/// The four display modes for the product list.
+enum ProductViewMode {
+  grid,
+  card,
+  list,
+  table;
 
-extension ProductViewModeX on ProductViewMode {
-  String get label => switch (this) {
-    ProductViewMode.cards   => 'Cards',
-    ProductViewMode.grid    => 'Grid',
-    ProductViewMode.list    => 'List',
-    ProductViewMode.details => 'Details',
-  };
+  IconData get icon {
+    switch (this) {
+      case ProductViewMode.grid:
+        return Icons.grid_view_rounded;
+      case ProductViewMode.card:
+        return Icons.view_agenda_rounded;
+      case ProductViewMode.list:
+        return Icons.view_list_rounded;
+      case ProductViewMode.table:
+        return Icons.table_rows_rounded;
+    }
+  }
 
-  IconData get icon => switch (this) {
-    ProductViewMode.cards   => Icons.dashboard_outlined,
-    ProductViewMode.grid    => Icons.grid_view_rounded,
-    ProductViewMode.list    => Icons.view_list_outlined,
-    ProductViewMode.details => Icons.table_rows_outlined,
-  };
+  String get tooltip {
+    switch (this) {
+      case ProductViewMode.grid:
+        return 'Grid View';
+      case ProductViewMode.card:
+        return 'Card View';
+      case ProductViewMode.list:
+        return 'List View';
+      case ProductViewMode.table:
+        return 'Table View';
+    }
+  }
 }
 
-/// Compact toggle bar for switching between view modes. Sits in the AppBar.
+/// A segmented toggle for switching between product view modes.
 class ViewModeToggle extends StatelessWidget {
-  final ProductViewMode current;
-  final ValueChanged<ProductViewMode> onChanged;
+  final ProductViewMode currentMode;
+  final ValueChanged<ProductViewMode> onModeChanged;
 
   const ViewModeToggle({
     super.key,
-    required this.current,
-    required this.onChanged,
+    required this.currentMode,
+    required this.onModeChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
+        color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
       ),
       padding: const EdgeInsets.all(2),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: ProductViewMode.values.map((mode) {
-          final selected = mode == current;
+          final isSelected = mode == currentMode;
           return Tooltip(
-            message: mode.label,
-            child: GestureDetector(
-              onTap: () => onChanged(mode),
+            message: mode.tooltip,
+            child: InkWell(
+              onTap: () => onModeChanged(mode),
+              borderRadius: BorderRadius.circular(6),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
-                  color: selected ? scheme.primary : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
+                  color: isSelected
+                      ? colorScheme.primaryContainer
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
                 ),
                 child: Icon(
                   mode.icon,
                   size: 18,
-                  color: selected ? scheme.onPrimary : scheme.onSurfaceVariant,
+                  color: isSelected
+                      ? colorScheme.onPrimaryContainer
+                      : colorScheme.onSurfaceVariant,
                 ),
               ),
             ),

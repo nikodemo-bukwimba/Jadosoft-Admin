@@ -1,163 +1,136 @@
 import 'package:flutter/material.dart';
+
 import '../../domain/entities/product_entity.dart';
-import '../../domain/value_objects/product_status.dart';
 import 'product_image.dart';
 import 'product_status_badge.dart';
 
-/// Cards view tile — full-width image banner with overlays.
+/// Wide card layout for [ProductViewMode.card].
+///
+/// Horizontal layout: image on the left, product info on the right.
+/// Shows name, description, price, category, status badge, overlay tags.
 class ProductCardTile extends StatelessWidget {
-  final ProductEntity item;
-  final String Function(double) formatPrice;
-  final VoidCallback onTap;
-  final VoidCallback onDelete;
+  final ProductEntity product;
+  final VoidCallback? onTap;
 
   const ProductCardTile({
     super.key,
-    required this.item,
-    required this.formatPrice,
-    required this.onTap,
-    required this.onDelete,
+    required this.product,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final statusEnum = ProductStatusX.fromString(item.status);
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
       clipBehavior: Clip.antiAlias,
+      elevation: 0,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withOpacity(0.5),
+        ),
+      ),
       child: InkWell(
         onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // ── Image Banner ──
-            Stack(
-              children: [
-                ProductImage(
-                  imageUrl: item.imageUrl,
-                  width: double.infinity,
-                  height: 160,
-                  borderRadius: 0,
+        child: SizedBox(
+          height: 120,
+          child: Row(
+            children: [
+              // Image
+              SizedBox(
+                width: 120,
+                child: ProductImage(
+                  product: product,
+                  borderRadius: BorderRadius.zero,
+                  showOverlayTags: true,
                 ),
-                Positioned(
-                  top: 10,
-                  left: 10,
-                  child: ProductStatusBadge(status: statusEnum),
-                ),
-                Positioned(
-                  top: 10,
-                  right: 10,
-                  child: Row(
+              ),
+
+              // Info
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (item.isNew) _tag('NEW', Colors.blue),
-                      if (item.isFeatured) ...[
-                        if (item.isNew) const SizedBox(width: 6),
-                        _tag('FEATURED', Colors.amber.shade800),
-                      ],
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              product.name,
+                              style: textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          ProductStatusBadge(status: product.status),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      if (product.description != null &&
+                          product.description!.isNotEmpty)
+                        Text(
+                          product.description!,
+                          style: textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      const Spacer(),
+                      Row(
+                        children: [
+                          Text(
+                            product.formattedPrice,
+                            style: textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: colorScheme.primary,
+                            ),
+                          ),
+                          if (product.categoryName != null) ...[
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colorScheme.secondaryContainer
+                                    .withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                product.categoryName!,
+                                style: textTheme.labelSmall?.copyWith(
+                                  color: colorScheme.onSecondaryContainer,
+                                ),
+                              ),
+                            ),
+                          ],
+                          if (product.sku != null) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              product.sku!,
+                              style: textTheme.labelSmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant
+                                    .withOpacity(0.6),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ],
                   ),
                 ),
-                if (!item.isAvailable)
-                  Positioned.fill(
-                    child: Container(
-                      color: Colors.black.withValues(alpha: 0.45),
-                      alignment: Alignment.center,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black87,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Text(
-                          'UNAVAILABLE',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            // ── Content ──
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.name,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        if (item.description != null &&
-                            item.description!.isNotEmpty)
-                          Text(
-                            item.description!,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: scheme.onSurfaceVariant),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        const SizedBox(height: 6),
-                        Text(
-                          formatPrice(item.price),
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(
-                                color: scheme.primary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      Icons.delete_outline,
-                      color: scheme.error,
-                      size: 20,
-                    ),
-                    tooltip: 'Delete',
-                    onPressed: onDelete,
-                  ),
-                ],
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _tag(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          color: Colors.white,
-          letterSpacing: 0.5,
+            ],
+          ),
         ),
       ),
     );

@@ -72,6 +72,19 @@ import 'package:admin_panel/features/category/domain/usecases/delete_category_us
 import 'package:admin_panel/features/category/presentation/bloc/category_bloc.dart';
 
 // Phase 5 ? Products (L2)
+import '../../features/product/data/datasources/product_mock_datasource.dart';
+import '../../features/product/data/datasources/product_remote_datasource.dart';
+import '../../features/product/data/repositories/product_repository_impl.dart';
+import '../../features/product/domain/guards/product_transition_guard.dart';
+import '../../features/product/domain/services/product_domain_service.dart';
+import '../../features/product/domain/usecases/create_product_usecase.dart';
+import '../../features/product/domain/usecases/delete_product_usecase.dart';
+import '../../features/product/domain/usecases/get_all_product_usecase.dart';
+import '../../features/product/domain/usecases/get_product_usecase.dart';
+import '../../features/product/domain/usecases/update_product_usecase.dart';
+import '../../features/product/presentation/bloc/product_bloc.dart';
+
+//To be deleted
 import 'package:admin_panel/features/product/data/datasources/product_remote_datasource.dart';
 import 'package:admin_panel/features/product/data/datasources/product_mock_datasource.dart';
 import 'package:admin_panel/features/product/data/repositories/product_repository_impl.dart';
@@ -488,11 +501,11 @@ Future<void> initDependencies() async {
   //   () => CustomerMockDataSource(),
   // );
   sl.registerLazySingleton<CustomerRemoteDataSource>(
-  () => CustomerRemoteDataSourceImpl(
-    dio: sl<Dio>(),
-    orgContext: sl<OrgContext>(),
-  ),
-);
+    () => CustomerRemoteDataSourceImpl(
+      dio: sl<Dio>(),
+      orgContext: sl<OrgContext>(),
+    ),
+  );
   sl.registerLazySingleton<CustomerRepository>(
     () => CustomerRepositoryImpl(remoteDataSource: sl()),
   );
@@ -538,31 +551,67 @@ Future<void> initDependencies() async {
   );
 
   // Seq 9 ? Products (L2)
-  sl.registerLazySingleton<ProductRemoteDataSource>(
-    () => ProductMockDataSource(),
+  // Datasource (swap for mock in dev)
+  sl.registerLazySingleton<ProductRemoteDatasource>(
+    () => ProductRemoteDatasourceImpl(dio: sl()),
   );
-  sl.registerLazySingleton<ProductRepository>(
-    () => ProductRepositoryImpl(remoteDataSource: sl()),
+
+  // Repository — orgId from OrgContext
+  sl.registerFactory<ProductRepository>(
+    () => ProductRepositoryImpl(
+      remoteDatasource: sl(),
+      orgId: sl<String>(instanceName: 'currentOrgId'),
+    ),
   );
-  sl.registerLazySingleton(() => ProductTransitionGuard());
-  sl.registerLazySingleton(
-    () => ProductDomainService(repository: sl(), guard: sl()),
-  );
-  sl.registerLazySingleton(() => GetAllProductUseCase(sl()));
-  sl.registerLazySingleton(() => GetProductUseCase(sl()));
-  sl.registerLazySingleton(() => CreateProductUseCase(sl()));
-  sl.registerLazySingleton(() => UpdateProductUseCase(sl()));
-  sl.registerLazySingleton(() => DeleteProductUseCase(sl()));
-  sl.registerFactory<ProductBloc>(
+
+  // Guard + Domain Service
+  sl.registerLazySingleton(() => const ProductTransitionGuard());
+  sl.registerFactory(() => ProductDomainService(repository: sl(), guard: sl()));
+
+  // Use Cases
+  sl.registerFactory(() => GetAllProductUsecase(sl()));
+  sl.registerFactory(() => GetProductUsecase(sl()));
+  sl.registerFactory(() => CreateProductUsecase(sl()));
+  sl.registerFactory(() => UpdateProductUsecase(sl()));
+  sl.registerFactory(() => DeleteProductUsecase(sl()));
+
+  // BLoC
+  sl.registerFactory(
     () => ProductBloc(
-      getAllUseCase: sl(),
-      getUseCase: sl(),
-      createUseCase: sl(),
-      updateUseCase: sl(),
-      deleteUseCase: sl(),
+      getAllProducts: sl(),
+      getProduct: sl(),
+      createProduct: sl(),
+      updateProduct: sl(),
+      deleteProduct: sl(),
       domainService: sl(),
     ),
   );
+
+  // sl.registerLazySingleton<ProductRemoteDataSource>(
+  //   () => ProductMockDataSource(),
+  // );
+  // sl.registerLazySingleton<ProductRepository>(
+  //   () => ProductRepositoryImpl(remoteDataSource: sl()),
+  // );
+  // sl.registerLazySingleton(() => ProductTransitionGuard());
+  // sl.registerLazySingleton(
+  //   () => ProductDomainService(repository: sl(), guard: sl()),
+  // );
+  // sl.registerLazySingleton(() => GetAllProductUseCase(sl()));
+  // sl.registerLazySingleton(() => GetProductUseCase(sl()));
+  // sl.registerLazySingleton(() => CreateProductUseCase(sl()));
+  // sl.registerLazySingleton(() => UpdateProductUseCase(sl()));
+  // sl.registerLazySingleton(() => DeleteProductUseCase(sl()));
+  // sl.registerFactory<ProductBloc>(
+  //   () => ProductBloc(
+  //     getAllUseCase: sl(),
+  //     getUseCase: sl(),
+  //     createUseCase: sl(),
+  //     updateUseCase: sl(),
+  //     deleteUseCase: sl(),
+  //     domainService: sl(),
+  //   ),
+  // );
 
   // ----------------------------------------------------------
   // Phase 6: Promotions (L3) ? domainService required

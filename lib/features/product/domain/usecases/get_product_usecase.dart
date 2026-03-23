@@ -1,19 +1,17 @@
-﻿import 'package:dartz/dartz.dart';
+import 'package:dartz/dartz.dart';
+
 import '../../../../core/error/failures.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../entities/product_entity.dart';
 import '../repositories/product_repository.dart';
 
-class GetProductParams {
-  final String id;
-  const GetProductParams({required this.id});
-}
-
-class GetProductUseCase implements UseCase<ProductEntity, GetProductParams> {
+class GetProductUsecase implements UseCase<ProductEntity, String> {
   final ProductRepository repository;
-  GetProductUseCase(this.repository);
+
+  const GetProductUsecase(this.repository);
 
   @override
-  Future<Either<Failure, ProductEntity>> call(GetProductParams p) =>
-      repository.getById(p.id);
+  Future<Either<Failure, ProductEntity>> call(String id) {
+    return repository.getById(id);
+  }
 }

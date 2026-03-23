@@ -1,42 +1,51 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
+/// Product lifecycle statuses matching the Nexora Commerce API.
+///
+/// Status machine: draft → active → archived
+/// Note: "featured" is a client-side boolean flag, NOT a status.
 enum ProductStatus {
   draft,
   active,
-  featured,
-  archived,
-}
+  archived;
 
-extension ProductStatusX on ProductStatus {
-  static const Map<ProductStatus, Set<ProductStatus>> _transitions = {
-    ProductStatus.draft:    {ProductStatus.active},
-    ProductStatus.active:   {ProductStatus.featured, ProductStatus.archived},
-    ProductStatus.featured: {ProductStatus.active, ProductStatus.archived},
-    ProductStatus.archived: {},
-  };
+  String get label {
+    switch (this) {
+      case ProductStatus.draft:
+        return 'Draft';
+      case ProductStatus.active:
+        return 'Active';
+      case ProductStatus.archived:
+        return 'Archived';
+    }
+  }
 
-  static const ProductStatus initial = ProductStatus.draft;
+  Color get color {
+    switch (this) {
+      case ProductStatus.draft:
+        return Colors.grey;
+      case ProductStatus.active:
+        return Colors.blue;
+      case ProductStatus.archived:
+        return Colors.red;
+    }
+  }
 
-  bool canTransitionTo(ProductStatus target) =>
-      _transitions[this]?.contains(target) ?? false;
+  IconData get icon {
+    switch (this) {
+      case ProductStatus.draft:
+        return Icons.edit_outlined;
+      case ProductStatus.active:
+        return Icons.check_circle_outline;
+      case ProductStatus.archived:
+        return Icons.archive_outlined;
+    }
+  }
 
-  String get displayName => switch (this) {
-    ProductStatus.draft    => 'Draft',
-    ProductStatus.active   => 'Active',
-    ProductStatus.featured => 'Featured',
-    ProductStatus.archived => 'Archived',
-  };
-
-  Color get color => switch (this) {
-    ProductStatus.draft    => Colors.grey,
-    ProductStatus.active   => Colors.green,
-    ProductStatus.featured => Colors.amber,
-    ProductStatus.archived => Colors.blueGrey,
-  };
-
-  static ProductStatus fromString(String? value) =>
-      ProductStatus.values.firstWhere(
-        (e) => e.name == value,
-        orElse: () => ProductStatus.draft,
-      );
+  static ProductStatus fromString(String value) {
+    return ProductStatus.values.firstWhere(
+      (s) => s.name == value.toLowerCase(),
+      orElse: () => ProductStatus.draft,
+    );
+  }
 }
