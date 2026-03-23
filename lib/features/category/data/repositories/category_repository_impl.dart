@@ -1,79 +1,30 @@
-﻿import 'package:dartz/dartz.dart';
+import 'package:dartz/dartz.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
+import '../../../../core/network/paginated_response.dart';
 import '../../domain/entities/category_entity.dart';
 import '../../domain/repositories/category_repository.dart';
 import '../models/category_model.dart';
 import '../datasources/category_remote_datasource.dart';
 
 class CategoryRepositoryImpl implements CategoryRepository {
-  final CategoryRemoteDataSource _remoteDataSource;
+  final CategoryRemoteDataSource _remote;
+  CategoryRepositoryImpl({required CategoryRemoteDataSource remoteDataSource}) : _remote = remoteDataSource;
 
-  CategoryRepositoryImpl({
-    required CategoryRemoteDataSource remoteDataSource,
-  })  :         _remoteDataSource = remoteDataSource;
-
-  @override
-  Future<Either<Failure, List<CategoryEntity>>> getAll() async {
-    try {
-      final result = await _remoteDataSource.getAll();
-      return Right(result);
-    } on ServerException catch (e) {
-      return Left(ServerFailure(e.message));
-    } on NetworkException catch (e) {
-      return Left(NetworkFailure(e.message));
-    } catch (e) {
-      return Left(GenericFailure(e.toString()));
-    }
+  Future<Either<Failure, T>> _guard<T>(Future<T> Function() call) async {
+    try { return Right(await call());
+    } on AuthException catch (e) { return Left(AuthFailure(e.message));
+    } on ServerException catch (e) { return Left(ServerFailure(e.message));
+    } on NetworkException catch (e) { return Left(NetworkFailure(e.message));
+    } catch (e) { return Left(GenericFailure(e.toString())); }
   }
 
-  @override
-  Future<Either<Failure, CategoryEntity>> getById(String id) async {
-    try {
-      final result = await _remoteDataSource.getById(id);
-      return Right(result);
-    } on ServerException catch (e) {
-      return Left(ServerFailure(e.message));
-    } catch (e) {
-      return Left(GenericFailure(e.toString()));
-    }
-  }
-
-  @override
-  Future<Either<Failure, CategoryEntity>> create(CategoryEntity entity) async {
-    try {
-      final model = CategoryModel.fromEntity(entity);
-      final result = await _remoteDataSource.create(model.toJson());
-      return Right(result);
-    } on ServerException catch (e) {
-      return Left(ServerFailure(e.message));
-    } catch (e) {
-      return Left(GenericFailure(e.toString()));
-    }
-  }
-
-  @override
-  Future<Either<Failure, CategoryEntity>> update(CategoryEntity entity) async {
-    try {
-      final model = CategoryModel.fromEntity(entity);
-      final result = await _remoteDataSource.update(entity.id, model.toJson());
-      return Right(result);
-    } on ServerException catch (e) {
-      return Left(ServerFailure(e.message));
-    } catch (e) {
-      return Left(GenericFailure(e.toString()));
-    }
-  }
-
-  @override
-  Future<Either<Failure, void>> delete(String id) async {
-    try {
-      await _remoteDataSource.delete(id);
-      return const Right(null);
-    } on ServerException catch (e) {
-      return Left(ServerFailure(e.message));
-    } catch (e) {
-      return Left(GenericFailure(e.toString()));
-    }
-  }
+  @override Future<Either<Failure, PaginatedResponse<CategoryEntity>>> getAll({String? search, int? perPage, int? page}) =>
+    _guard(() => _remote.getAll(search: search, perPage: perPage, page: page));
+  @override Future<Either<Failure, CategoryEntity>> getById(String id) => _guard(() => _remote.getById(id));
+  @override Future<Either<Failure, CategoryEntity>> create(CategoryEntity entity) =>
+    _guard(() => _remote.create(CategoryModel.fromEntity(entity).toJson()));
+  @override Future<Either<Failure, CategoryEntity>> update(CategoryEntity entity) =>
+    _guard(() => _remote.update(entity.id, CategoryModel.fromEntity(entity).toJson()));
+  @override Future<Either<Failure, void>> delete(String id) => _guard(() => _remote.delete(id));
 }
