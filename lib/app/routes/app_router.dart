@@ -77,7 +77,8 @@ import '../../features/promotion/presentation/bloc/promotion_event.dart';
 import '../../features/promotion/presentation/pages/promotion_list_page.dart';
 import '../../features/promotion/presentation/pages/promotion_detail_page.dart';
 import '../../features/promotion/presentation/pages/promotion_form_page.dart';
-import '../../features/promotion/domain/entities/promotion_entity.dart';
+import '../../features/promotion/presentation/enums/promotion_form_node.dart'
+    show PromotionFormNode;
 
 // Phase 7 — Field Operations
 import '../../features/visit/presentation/bloc/visit_bloc.dart';
@@ -145,7 +146,6 @@ import '../../features/customer/presentation/pages/customer_form_page.dart'
 import '../../features/category/presentation/pages/category_form_page.dart'
     show CategoryFormMode;
 import '../../features/product/presentation/enums/product_form_node.dart';
-// promotion_form_node.dart import removed — using PromotionFormMode from form page
 import '../../features/visit/presentation/enums/visit_form_node.dart';
 import '../../features/weekly_plan/presentation/enums/weekly_plan_form_node.dart';
 import '../../features/daily_report/presentation/enums/daily_report_form_node.dart';
@@ -559,7 +559,7 @@ class AppRouter {
               path: productList,
               builder: (_, _) => BlocProvider(
                 create: (_) =>
-                    sl<ProductBloc>()..add(const ProductLoadAllRequested()),
+                    sl<ProductBloc>()..add(ProductLoadAllRequested()),
                 child: const ProductListPage(),
               ),
             ),
@@ -570,7 +570,7 @@ class AppRouter {
                   BlocProvider(create: (_) => sl<ProductBloc>()),
                   BlocProvider(create: (_) => sl<CategoryBloc>()),
                 ],
-                child: const ProductFormPage(mode: FormMode.create),
+                child: ProductFormPage(mode: ProductFormNode.create),
               ),
             ),
             GoRoute(
@@ -580,15 +580,15 @@ class AppRouter {
                 return BlocProvider(
                   create: (_) =>
                       sl<ProductBloc>()..add(ProductLoadOneRequested(id)),
-                  child: ProductDetailPage(productId: id),
+                  child:
+                      const ProductDetailPage(),
                 );
               },
             ),
-            GoRoute(
+GoRoute(
               path: productEdit,
               builder: (_, s) {
                 final id = s.pathParameters['id'] ?? '';
-                final product = s.extra as ProductEntity?;
                 return MultiBlocProvider(
                   providers: [
                     BlocProvider(
@@ -598,8 +598,8 @@ class AppRouter {
                     BlocProvider(create: (_) => sl<CategoryBloc>()),
                   ],
                   child: ProductFormPage(
-                    mode: FormMode.edit,
-                    product: product,
+                    mode: ProductFormNode.edit,  
+                    id: id,
                   ),
                 );
               },
@@ -610,7 +610,7 @@ class AppRouter {
               path: promotionList,
               builder: (_, _) => BlocProvider(
                 create: (_) =>
-                    sl<PromotionBloc>()..add(const PromotionLoadAllRequested()),
+                    sl<PromotionBloc>()..add(PromotionLoadAllRequested()),
                 child: const PromotionListPage(),
               ),
             ),
@@ -618,7 +618,7 @@ class AppRouter {
               path: promotionCreate,
               builder: (_, _) => BlocProvider(
                 create: (_) => sl<PromotionBloc>(),
-                child: const PromotionFormPage(mode: PromotionFormMode.create),
+                child: const PromotionFormPage(mode: PromotionFormNode.create),
               ),
             ),
             GoRoute(
@@ -628,7 +628,7 @@ class AppRouter {
                 return BlocProvider(
                   create: (_) =>
                       sl<PromotionBloc>()..add(PromotionLoadOneRequested(id)),
-                  child: PromotionDetailPage(promotionId: id),
+                  child: const PromotionDetailPage(),
                 );
               },
             ),
@@ -636,13 +636,12 @@ class AppRouter {
               path: promotionEdit,
               builder: (_, s) {
                 final id = s.pathParameters['id'] ?? '';
-                final promotion = s.extra as PromotionEntity?;
                 return BlocProvider(
                   create: (_) =>
                       sl<PromotionBloc>()..add(PromotionLoadOneRequested(id)),
                   child: PromotionFormPage(
-                    mode: PromotionFormMode.edit,
-                    promotion: promotion,
+                    mode: PromotionFormNode.edit,
+                    id: id,
                   ),
                 );
               },
@@ -652,7 +651,8 @@ class AppRouter {
             GoRoute(
               path: visitList,
               builder: (_, _) => BlocProvider(
-                create: (_) => sl<VisitBloc>()..add(const VisitLoadAllRequested()),
+                create: (_) =>
+                    sl<VisitBloc>()..add(VisitLoadAllRequested()),
                 child: const VisitListPage(),
               ),
             ),

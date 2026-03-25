@@ -11,7 +11,7 @@ class WeeklyPlanCardTile extends StatelessWidget {
   const WeeklyPlanCardTile({super.key, required this.item, required this.onTap});
 
   Future<String> _officerName() async {
-    try { return (await OfficerMockDataSource().getById(item.officerId)).name; } catch (_) { return item.officerId; }
+    try { return (await OfficerMockDataSource().getById(item.officerId)).displayName; } catch (_) { return item.officerId; }
   }
 
   @override

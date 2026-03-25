@@ -27,7 +27,7 @@ import '../../../officer/data/datasources/officer_mock_datasource.dart';
 import '../../../weekly_plan/data/datasources/weekly_plan_mock_datasource.dart';
 
 // ── Colour palette ────────────────────────────────────────────────────────────
-const _primary = PdfColor.fromInt(0xFF1A6B4A); // Barick green
+const _primary = PdfColor.fromInt(0xFF1A6B4A);
 const _secondary = PdfColor.fromInt(0xFF2E7D32);
 const _accent = PdfColor.fromInt(0xFF4CAF50);
 const _grey = PdfColor.fromInt(0xFF757575);
@@ -244,7 +244,6 @@ class ReportPdfGenerator {
       columnWidths: {for (int i = 0; i < cols.length; i++) i: cols[i]},
       border: pw.TableBorder.all(color: _lightGrey),
       children: [
-        // Header row
         pw.TableRow(
           decoration: const pw.BoxDecoration(color: _primary),
           children: headers
@@ -266,7 +265,6 @@ class ReportPdfGenerator {
               )
               .toList(),
         ),
-        // Data rows
         ...rows.asMap().entries.map((e) {
           final isEven = e.key % 2 == 0;
           return pw.TableRow(
@@ -303,15 +301,14 @@ class ReportPdfGenerator {
     final planDs = WeeklyPlanMockDataSource();
 
     final visits = await visitDs.getAll();
-    final officers = await officerDs.getAll();
+    final officers = (await officerDs.getAll()).items;
     final plans = await planDs.getAll();
 
     final reviewed = visits.where((v) => v.status == 'reviewed').length;
     final approved = plans.where((p) => p.status == 'approved').length;
     final compliance = plans.isEmpty ? 0.0 : (approved / plans.length * 100);
-    final activeOfficers = officers.where((o) => o.status == 'active').length;
+    final activeOfficers = officers.where((o) => o.isActive).length;
 
-    // Visits per officer
     final visitsByOfficer = <String, int>{};
     for (final v in visits) {
       visitsByOfficer[v.officerId] = (visitsByOfficer[v.officerId] ?? 0) + 1;
@@ -354,8 +351,13 @@ class ReportPdfGenerator {
                     const pw.FlexColumnWidth(1),
                   ],
                   rows: officers.map((o) {
-                    final count = visitsByOfficer[o.id] ?? 0;
-                    return [o.id, o.name, '$count', o.status.toUpperCase()];
+                    final count = visitsByOfficer[o.userId] ?? 0;
+                    return [
+                      o.userId,
+                      o.displayName,
+                      '$count',
+                      o.effectiveStatus.toUpperCase(),
+                    ];
                   }).toList(),
                 ),
                 _sectionTitle('WEEKLY PLAN STATUS'),
@@ -581,7 +583,7 @@ class ReportPdfGenerator {
 
   static Future<void> _buildCustomerList(pw.Document pdf) async {
     final ds = CustomerMockDataSource();
-    final customers = await ds.getAll();
+    final customers = (await ds.getAll()).items;
 
     pdf.addPage(
       pw.MultiPage(
@@ -602,12 +604,11 @@ class ReportPdfGenerator {
                   {'value': '${customers.length}', 'label': 'Total Customers'},
                   {
                     'value':
-                        '${customers.where((c) => c.contactPerson != null).length}',
+                        '${customers.where((c) => c.primaryContact != null).length}',
                     'label': 'With Contact Person',
                   },
                   {
-                    'value':
-                        '${customers.where((c) => c.gpsLat != null).length}',
+                    'value': '${customers.where((c) => c.hasGps).length}',
                     'label': 'GPS Captured',
                   },
                 ]),
@@ -616,29 +617,29 @@ class ReportPdfGenerator {
                 _table(
                   headers: [
                     'ID',
-                    'Business Name',
-                    'Owner',
+                    'Name',
+                    'Type',
                     'Phone',
-                    'Address',
+                    'City',
                     'Officer ID',
                   ],
                   widths: [
                     const pw.FlexColumnWidth(0.8),
                     const pw.FlexColumnWidth(2),
+                    const pw.FlexColumnWidth(1),
                     const pw.FlexColumnWidth(1.5),
                     const pw.FlexColumnWidth(1.5),
-                    const pw.FlexColumnWidth(2),
                     const pw.FlexColumnWidth(1),
                   ],
                   rows: customers
                       .map(
                         (c) => [
                           c.id,
-                          c.businessName,
-                          c.ownerName,
-                          c.officialPhone,
-                          c.officeAddress ?? '—',
-                          c.assignedOfficerId,
+                          c.name,
+                          c.customerType.toUpperCase(),
+                          c.phone ?? '—',
+                          c.city ?? '—',
+                          c.assignedOfficerId ?? '—',
                         ],
                       )
                       .toList(),
@@ -647,19 +648,19 @@ class ReportPdfGenerator {
                 _sectionTitle('CONTACT PERSONS'),
                 pw.SizedBox(height: 4),
                 _table(
-                  headers: ['Business Name', 'Contact Person', 'Contact Phone'],
+                  headers: ['Customer Name', 'Contact Person', 'Contact Phone'],
                   widths: [
                     const pw.FlexColumnWidth(2.5),
                     const pw.FlexColumnWidth(2),
                     const pw.FlexColumnWidth(1.5),
                   ],
                   rows: customers
-                      .where((c) => c.contactPerson != null)
+                      .where((c) => c.primaryContact != null)
                       .map(
                         (c) => [
-                          c.businessName,
-                          c.contactPerson!,
-                          c.contactPersonPhone ?? '—',
+                          c.name,
+                          c.primaryContact!.name,
+                          c.primaryContact!.phone ?? '—',
                         ],
                       )
                       .toList(),
@@ -681,7 +682,7 @@ class ReportPdfGenerator {
     final customerDs = CustomerMockDataSource();
     final visitDs = VisitMockDataSource();
 
-    final customers = await customerDs.getAll();
+    final customers = (await customerDs.getAll()).items;
     final customer = customers.firstWhere(
       (c) => c.id == customerId,
       orElse: () => customers.first,
@@ -694,7 +695,7 @@ class ReportPdfGenerator {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: pw.EdgeInsets.zero,
-        header: (_) => _header('Customer Profile', customer.businessName),
+        header: (_) => _header('Customer Profile', customer.name),
         footer: _footer,
         build: (ctx) => [
           pw.Padding(
@@ -702,25 +703,44 @@ class ReportPdfGenerator {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                _sectionTitle('BUSINESS INFORMATION'),
+                _sectionTitle('CUSTOMER INFORMATION'),
                 pw.SizedBox(height: 8),
                 _infoGrid([
-                  ['Business Name', customer.businessName],
-                  ['Full Office Name', customer.fullOfficeName ?? '—'],
-                  ['Owner Name', customer.ownerName],
-                  ['Official Phone', customer.officialPhone],
-                  ['Contact Person', customer.contactPerson ?? '—'],
-                  ['Contact Phone', customer.contactPersonPhone ?? '—'],
-                  ['Office Address', customer.officeAddress ?? '—'],
-                  ['Assigned Officer', customer.assignedOfficerId],
+                  ['Name', customer.name],
+                  ['Customer Type', customer.customerType.toUpperCase()],
+                  ['Tier', customer.tier],
+                  ['Status', customer.status.toUpperCase()],
+                  ['Phone', customer.phone ?? '—'],
+                  ['Alt Phone', customer.altPhone ?? '—'],
+                  ['Email', customer.email ?? '—'],
+                  ['WhatsApp', customer.whatsappNumber ?? '—'],
+                  ['Address', customer.address ?? '—'],
+                  ['City', customer.city ?? '—'],
+                  ['County', customer.county ?? '—'],
+                  ['Assigned Officer', customer.assignedOfficerId ?? '—'],
                   [
                     'GPS Coordinates',
-                    customer.gpsLat != null
-                        ? '${customer.gpsLat}, ${customer.gpsLng}'
+                    customer.hasGps
+                        ? '${customer.latitude}, ${customer.longitude}'
                         : '—',
                   ],
-                  ['Registration Date', _fmtDate(customer.registrationDate)],
+                  [
+                    'Created',
+                    customer.createdAt != null
+                        ? _fmtDate(customer.createdAt!)
+                        : '—',
+                  ],
                 ]),
+                if (customer.primaryContact != null) ...[
+                  _sectionTitle('PRIMARY CONTACT'),
+                  pw.SizedBox(height: 4),
+                  _infoGrid([
+                    ['Name', customer.primaryContact!.name],
+                    ['Role', customer.primaryContact!.role ?? '—'],
+                    ['Phone', customer.primaryContact!.phone ?? '—'],
+                    ['Email', customer.primaryContact!.email ?? '—'],
+                  ]),
+                ],
                 _sectionTitle('VISIT HISTORY (${visits.length} visits)'),
                 pw.SizedBox(height: 4),
                 if (visits.isEmpty)
@@ -851,7 +871,7 @@ class ReportPdfGenerator {
       (o) => o.id == orderId,
       orElse: () => orders.first,
     );
-    final customers = await customerDs.getAll();
+    final customers = (await customerDs.getAll()).items;
     final customer = customers.firstWhere(
       (c) => c.id == order.customerId,
       orElse: () => customers.first,
@@ -868,7 +888,6 @@ class ReportPdfGenerator {
         build: (ctx) => pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            // Header
             pw.Container(
               width: double.infinity,
               padding: const pw.EdgeInsets.all(24),
@@ -944,7 +963,6 @@ class ReportPdfGenerator {
               ),
             ),
 
-            // Billing info
             pw.Padding(
               padding: const pw.EdgeInsets.all(24),
               child: pw.Column(
@@ -967,23 +985,24 @@ class ReportPdfGenerator {
                             ),
                             pw.SizedBox(height: 4),
                             pw.Text(
-                              customer.businessName,
+                              customer.name,
                               style: pw.TextStyle(
                                 fontSize: 12,
                                 fontWeight: pw.FontWeight.bold,
                               ),
                             ),
-                            pw.Text(
-                              customer.ownerName,
-                              style: pw.TextStyle(fontSize: 9),
-                            ),
-                            pw.Text(
-                              customer.officialPhone,
-                              style: pw.TextStyle(fontSize: 9),
-                            ),
-                            if (customer.officeAddress != null)
+                            if (customer.primaryContact != null)
                               pw.Text(
-                                customer.officeAddress!,
+                                customer.primaryContact!.name,
+                                style: pw.TextStyle(fontSize: 9),
+                              ),
+                            pw.Text(
+                              customer.phone ?? '—',
+                              style: pw.TextStyle(fontSize: 9),
+                            ),
+                            if (customer.address != null)
+                              pw.Text(
+                                customer.address!,
                                 style: pw.TextStyle(fontSize: 9),
                               ),
                           ],
@@ -1015,7 +1034,6 @@ class ReportPdfGenerator {
 
                   pw.SizedBox(height: 20),
 
-                  // Items table
                   pw.Table(
                     columnWidths: {
                       0: const pw.FlexColumnWidth(3),
@@ -1105,7 +1123,6 @@ class ReportPdfGenerator {
 
                   pw.SizedBox(height: 8),
 
-                  // Total row
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.end,
                     children: [
@@ -1154,7 +1171,6 @@ class ReportPdfGenerator {
 
                   pw.SizedBox(height: 24),
 
-                  // Footer note
                   pw.Container(
                     width: double.infinity,
                     padding: const pw.EdgeInsets.all(12),
@@ -1173,7 +1189,6 @@ class ReportPdfGenerator {
               ),
             ),
 
-            // Page footer
             pw.Expanded(child: pw.SizedBox()),
             _footer(ctx),
           ],

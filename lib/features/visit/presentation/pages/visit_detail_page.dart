@@ -9,7 +9,12 @@ import '../bloc/visit_state.dart';
 import '../../../../core/utils/map_launcher.dart';
 
 class VisitDetailPage extends StatelessWidget {
-  const VisitDetailPage({super.key});
+  final String visitId;
+
+  const VisitDetailPage({
+    super.key,
+    required this.visitId,
+  });
 
   @override
   Widget build(BuildContext context) {

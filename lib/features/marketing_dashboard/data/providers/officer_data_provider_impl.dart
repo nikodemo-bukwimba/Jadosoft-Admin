@@ -1,4 +1,5 @@
-﻿import 'package:dartz/dartz.dart';
+﻿// officer_data_provider_impl.dart
+import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../features/officer/domain/entities/officer_entity.dart';
 import '../../../../features/officer/domain/repositories/officer_repository.dart';
@@ -11,6 +12,11 @@ class OfficerDataProviderImpl implements OfficerDataProvider {
       : _repository = repository;
 
   @override
-  Future<Either<Failure, List<OfficerEntity>>> getAll() =>
-      _repository.getAll();
+  Future<Either<Failure, List<OfficerEntity>>> getAll() async {
+    final result = await _repository.getAll();
+    return result.fold(
+      Left.new,
+      (paginated) => Right(paginated.items),
+    );
+  }
 }
