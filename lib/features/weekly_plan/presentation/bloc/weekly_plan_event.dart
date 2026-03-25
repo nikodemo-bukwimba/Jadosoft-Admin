@@ -29,11 +29,13 @@ class WeeklyPlanFormReset extends WeeklyPlanEvent {}
 
 class WeeklyPlanApproveRequested extends WeeklyPlanEvent {
   final String id;
-  WeeklyPlanApproveRequested(this.id);
+  final String? notes;
+  WeeklyPlanApproveRequested(this.id, {this.notes});
 }
 class WeeklyPlanRejectRequested extends WeeklyPlanEvent {
   final String id;
-  WeeklyPlanRejectRequested(this.id);
+  final String notes;
+  WeeklyPlanRejectRequested(this.id, {required this.notes});
 }
 class WeeklyPlanResubmitRequested extends WeeklyPlanEvent {
   final String id;

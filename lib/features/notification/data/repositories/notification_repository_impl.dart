@@ -76,4 +76,15 @@ class NotificationRepositoryImpl implements NotificationRepository {
       return Left(GenericFailure(e.toString()));
     }
   }
+
+  @override
+  Future<Either<Failure, NotificationEntity>> retry(String id) async {
+    try {
+      return Right(await _remoteDataSource.retry(id));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
 }

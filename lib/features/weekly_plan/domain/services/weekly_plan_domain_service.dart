@@ -1,41 +1,36 @@
 ﻿import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../entities/weekly_plan_entity.dart';
-import '../guards/weekly_plan_transition_guard.dart';
 import '../repositories/weekly_plan_repository.dart';
 import '../value_objects/weekly_plan_status.dart';
 
 class WeeklyPlanDomainService {
   final WeeklyPlanRepository repository;
-  final WeeklyPlanTransitionGuard guard;
 
-  WeeklyPlanDomainService({
-    required this.repository,
-    required this.guard,
-  });
+  WeeklyPlanDomainService({required this.repository});
 
-  /// Performs a status transition: load, guard, apply, persist.
   Future<Either<Failure, WeeklyPlanEntity>> transition({
     required String id,
     required WeeklyPlanStatus targetStatus,
+    String? notes,
   }) async {
-    // 1. Load
-    final loadResult = await repository.getById(id);
-    if (loadResult.isLeft()) return loadResult;
-    final entity = loadResult.getOrElse(() => throw StateError('unreachable'));
-
-    // 2. Guard
-final guardResult = guard.validate(
-  current: WeeklyPlanStatusX.fromString(entity.status),
-  target:  targetStatus,
-);
-    if (guardResult.isLeft()) {
-      return guardResult.fold((f) => Left(f), (_) => throw StateError('unreachable'));
+    switch (targetStatus) {
+      case WeeklyPlanStatus.approved:
+        return repository.approve(id, notes: notes);
+      case WeeklyPlanStatus.rejected:
+        if (notes == null || notes.trim().isEmpty) {
+          return const Left(ValidationFailure('Rejection reason is required'));
+        }
+        return repository.reject(id, notes: notes);
+      case WeeklyPlanStatus.submitted:
+        // Resubmit: update status to submitted via update
+        final loadResult = await repository.getById(id);
+        return loadResult.fold(
+          Left.new,
+          (entity) => repository.update(entity.copyWith(status: 'submitted')),
+        );
+      default:
+        return const Left(ValidationFailure('Transition not supported'));
     }
-    final validTarget = guardResult.getOrElse(() => throw StateError('unreachable'));
-
-    // 3. Apply + Persist
-    final updated = entity.copyWith(status: validTarget.name);
-    return repository.update(updated);
   }
 }

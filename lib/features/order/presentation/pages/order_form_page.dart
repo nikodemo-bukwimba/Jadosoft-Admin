@@ -44,11 +44,11 @@ class _OrderFormPageState extends State<OrderFormPage> {
   }
 
   Future<void> _loadLookupData() async {
-    final customers = await CustomerMockDataSource().getAll();
+    final customerResponse = await CustomerMockDataSource().getAll();
     final products = await ProductMockDataSource().getAll();
     if (mounted) {
       setState(() {
-        _customers = customers.cast<CustomerModel>();
+        _customers = customerResponse.items.cast<CustomerModel>();
         _products = products
             .cast<ProductModel>()
             .where((p) => p.isAvailable && p.status != 'archived')
@@ -216,13 +216,14 @@ class _OrderFormPageState extends State<OrderFormPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          _selectedCustomer!.businessName,
+                          _selectedCustomer!.name, // was: businessName
                           style: theme.textTheme.bodyLarge?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                         Text(
-                          _selectedCustomer!.officeAddress ?? '',
+                          _selectedCustomer!.address ??
+                              '', // was: officeAddress
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -698,9 +699,10 @@ class _CustomerListSheetState extends State<_CustomerListSheet> {
     final theme = Theme.of(context);
     final filtered = widget.customers.where((c) {
       final q = _search.toLowerCase();
-      return c.businessName.toLowerCase().contains(q) ||
-          (c.ownerName?.toLowerCase().contains(q) ?? false) ||
-          (c.officeAddress?.toLowerCase().contains(q) ?? false);
+      return c.name.toLowerCase().contains(q) || // was: businessName
+          (c.phone?.toLowerCase().contains(q) ??
+              false) || // was: ownerName (no ownerName exists)
+          (c.address?.toLowerCase().contains(q) ?? false); // was: officeAddress
     }).toList();
 
     return DraggableScrollableSheet(
@@ -753,16 +755,16 @@ class _CustomerListSheetState extends State<_CustomerListSheet> {
                   leading: CircleAvatar(
                     backgroundColor: theme.colorScheme.primaryContainer,
                     child: Text(
-                      c.businessName[0].toUpperCase(),
+                      c.name[0].toUpperCase(), // was: businessName
                       style: TextStyle(
                         color: theme.colorScheme.onPrimaryContainer,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
-                  title: Text(c.businessName),
+                  title: Text(c.name), // was: businessName
                   subtitle: Text(
-                    '${c.ownerName ?? ''} · ${c.officeAddress ?? ''}',
+                    '${c.phone ?? ''} · ${c.address ?? ''}', // was: ownerName · officeAddress
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

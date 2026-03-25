@@ -9,33 +9,23 @@ class OrderDomainService {
   final OrderRepository repository;
   final OrderTransitionGuard guard;
 
-  OrderDomainService({
-    required this.repository,
-    required this.guard,
-  });
+  OrderDomainService({required this.repository, required this.guard});
 
-  /// Performs a status transition: load, guard, apply, persist.
   Future<Either<Failure, OrderEntity>> transition({
     required String id,
     required OrderStatus targetStatus,
   }) async {
-    // 1. Load
-    final loadResult = await repository.getById(id);
-    if (loadResult.isLeft()) return loadResult;
-    final entity = loadResult.getOrElse(() => throw StateError('unreachable'));
-
-    // 2. Guard
-final guardResult = guard.validate(
-  current: OrderStatusX.fromString(entity.status),
-  target:  targetStatus,
-);
-    if (guardResult.isLeft()) {
-      return guardResult.fold((f) => Left(f), (_) => throw StateError('unreachable'));
+    switch (targetStatus) {
+      case OrderStatus.confirmed:
+        return repository.confirm(id);
+      case OrderStatus.shipped:
+        return repository.ship(id);
+      case OrderStatus.delivered:
+        return repository.deliver(id);
+      case OrderStatus.cancelled:
+        return repository.cancel(id);
+      default:
+        return const Left(ValidationFailure('Transition not supported'));
     }
-    final validTarget = guardResult.getOrElse(() => throw StateError('unreachable'));
-
-    // 3. Apply + Persist
-    final updated = entity.copyWith(status: validTarget.name);
-    return repository.update(updated);
   }
 }

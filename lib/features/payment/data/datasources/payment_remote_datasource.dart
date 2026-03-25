@@ -1,5 +1,6 @@
 ﻿import 'package:dio/dio.dart';
 import '../../../../core/error/exceptions.dart';
+import '../../../../core/context/org_context.dart';
 import '../models/payment_model.dart';
 
 abstract class PaymentRemoteDataSource {
@@ -7,18 +8,26 @@ abstract class PaymentRemoteDataSource {
   Future<PaymentModel>       getById(String id);
   Future<PaymentModel>       create(Map<String, dynamic> data);
   Future<PaymentModel>       update(String id, Map<String, dynamic> data);
-  Future<void>                delete(String id);
+  Future<void>               delete(String id);
 }
 
 class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
   final Dio _dio;
-  PaymentRemoteDataSourceImpl({required Dio dio}) : _dio = dio;
+  final OrgContext _orgContext;
+
+  PaymentRemoteDataSourceImpl({
+    required Dio dio,
+    required OrgContext orgContext,
+  })  : _dio = dio,
+        _orgContext = orgContext;
+
+  String get _base => '/commerce/${_orgContext.effectiveOrgId}/payments';
 
   @override
   Future<List<PaymentModel>> getAll() async {
     try {
-      final response = await _dio.get('');
-      final data = response.data as List;
+      final response = await _dio.get(_base);
+      final data = (response.data['data'] ?? response.data) as List;
       return data
           .map((e) => PaymentModel.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -30,8 +39,9 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
   @override
   Future<PaymentModel> getById(String id) async {
     try {
-      final response = await _dio.get('/$id');
-      return PaymentModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.get('$_base/$id');
+      final data = response.data['data'] ?? response.data;
+      return PaymentModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -40,8 +50,9 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
   @override
   Future<PaymentModel> create(Map<String, dynamic> data) async {
     try {
-      final response = await _dio.post('', data: data);
-      return PaymentModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.post(_base, data: data);
+      final body = response.data['data'] ?? response.data;
+      return PaymentModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -50,8 +61,9 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
   @override
   Future<PaymentModel> update(String id, Map<String, dynamic> data) async {
     try {
-      final response = await _dio.put('/$id', data: data);
-      return PaymentModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.put('$_base/$id', data: data);
+      final body = response.data['data'] ?? response.data;
+      return PaymentModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -60,7 +72,7 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
   @override
   Future<void> delete(String id) async {
     try {
-      await _dio.delete('/$id');
+      await _dio.delete('$_base/$id');
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }

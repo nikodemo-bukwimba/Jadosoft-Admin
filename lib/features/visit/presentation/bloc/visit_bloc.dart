@@ -1,4 +1,4 @@
-﻿import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../../domain/services/visit_domain_service.dart';
 import '../../domain/usecases/create_visit_usecase.dart';
@@ -37,20 +37,16 @@ class VisitBloc extends Bloc<VisitEvent, VisitState> {
     on<VisitUnflagRequested>(_onUnflag);
   }
 
-  Future<void> _onLoadAll(
-      VisitLoadAllRequested event, Emitter<VisitState> emit) async {
+  Future<void> _onLoadAll(VisitLoadAllRequested event, Emitter<VisitState> emit) async {
     emit(VisitLoading());
     final result = await getAllUseCase(NoParams());
     result.fold(
       (f) => emit(VisitFailure(f.message)),
-      (items) => items.isEmpty
-          ? emit(VisitEmpty())
-          : emit(VisitListLoaded(items)),
+      (items) => items.isEmpty ? emit(VisitEmpty()) : emit(VisitListLoaded(items)),
     );
   }
 
-  Future<void> _onLoadOne(
-      VisitLoadOneRequested event, Emitter<VisitState> emit) async {
+  Future<void> _onLoadOne(VisitLoadOneRequested event, Emitter<VisitState> emit) async {
     emit(VisitLoading());
     final result = await getUseCase(GetVisitParams(id: event.id));
     result.fold(
@@ -59,8 +55,7 @@ class VisitBloc extends Bloc<VisitEvent, VisitState> {
     );
   }
 
-  Future<void> _onCreate(
-      VisitCreateRequested event, Emitter<VisitState> emit) async {
+  Future<void> _onCreate(VisitCreateRequested event, Emitter<VisitState> emit) async {
     emit(VisitLoading());
     final result = await createUseCase(event.params);
     result.fold(
@@ -69,8 +64,7 @@ class VisitBloc extends Bloc<VisitEvent, VisitState> {
     );
   }
 
-  Future<void> _onUpdate(
-      VisitUpdateRequested event, Emitter<VisitState> emit) async {
+  Future<void> _onUpdate(VisitUpdateRequested event, Emitter<VisitState> emit) async {
     emit(VisitLoading());
     final result = await updateUseCase(UpdateVisitParams(entity: event.entity));
     result.fold(
@@ -79,8 +73,7 @@ class VisitBloc extends Bloc<VisitEvent, VisitState> {
     );
   }
 
-  Future<void> _onDelete(
-      VisitDeleteRequested event, Emitter<VisitState> emit) async {
+  Future<void> _onDelete(VisitDeleteRequested event, Emitter<VisitState> emit) async {
     emit(VisitLoading());
     final result = await deleteUseCase(DeleteVisitParams(id: event.id));
     result.fold(
@@ -89,49 +82,36 @@ class VisitBloc extends Bloc<VisitEvent, VisitState> {
     );
   }
 
-  Future<void> _onReview(
-      VisitReviewRequested event, Emitter<VisitState> emit) async {
+  /// Accept visit with optional comment.
+  Future<void> _onReview(VisitReviewRequested event, Emitter<VisitState> emit) async {
     emit(VisitLoading());
-    final result = await domainService.transition(
-      id: event.id,
-      targetStatus: VisitStatus.reviewed,
+    final result = await domainService.reviewWithComment(
+      id: event.id, comment: event.comment,
     );
     result.fold(
       (f) => emit(VisitFailure(f.message)),
-      (entity) => emit(VisitOperationSuccess(
-        'Mark Reviewed successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(VisitOperationSuccess('Visit accepted', updatedItem: entity)),
     );
   }
-  Future<void> _onFlag(
-      VisitFlagRequested event, Emitter<VisitState> emit) async {
+
+  /// Flag visit with required comment.
+  Future<void> _onFlag(VisitFlagRequested event, Emitter<VisitState> emit) async {
     emit(VisitLoading());
-    final result = await domainService.transition(
-      id: event.id,
-      targetStatus: VisitStatus.flagged,
+    final result = await domainService.flagWithComment(
+      id: event.id, comment: event.comment,
     );
     result.fold(
       (f) => emit(VisitFailure(f.message)),
-      (entity) => emit(VisitOperationSuccess(
-        'Flag Visit successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(VisitOperationSuccess('Visit flagged', updatedItem: entity)),
     );
   }
-  Future<void> _onUnflag(
-      VisitUnflagRequested event, Emitter<VisitState> emit) async {
+
+  Future<void> _onUnflag(VisitUnflagRequested event, Emitter<VisitState> emit) async {
     emit(VisitLoading());
-    final result = await domainService.transition(
-      id: event.id,
-      targetStatus: VisitStatus.reviewed,
-    );
+    final result = await domainService.unflagVisit(id: event.id);
     result.fold(
       (f) => emit(VisitFailure(f.message)),
-      (entity) => emit(VisitOperationSuccess(
-        'Remove Flag successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(VisitOperationSuccess('Flag removed', updatedItem: entity)),
     );
   }
 }

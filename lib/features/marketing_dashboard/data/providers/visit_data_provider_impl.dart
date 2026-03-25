@@ -1,7 +1,7 @@
 ﻿import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
-import '../../../../features/visit/domain/entities/visit_entity.dart';
-import '../../../../features/visit/domain/repositories/visit_repository.dart';
+import '../../../visit/domain/entities/visit_entity.dart';
+import '../../../visit/domain/repositories/visit_repository.dart';
 import '../../domain/providers/visit_data_provider.dart';
 
 class VisitDataProviderImpl implements VisitDataProvider {

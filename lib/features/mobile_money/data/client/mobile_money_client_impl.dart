@@ -1,22 +1,31 @@
 import 'package:dio/dio.dart';
+import '../../../../core/context/org_context.dart';
 import '../../domain/models/initiate_payment_request.dart';
 import '../../domain/models/initiate_payment_response.dart';
 import '../../domain/models/query_payment_status_response.dart';
 import 'mobile_money_client.dart';
 
-/// Real implementation — calls M-Pesa / Airtel Money via Laravel API.
+/// Real implementation — calls M-Pesa / Airtel Money via Laravel/Nexora API.
 /// Swap in DI when backend is ready:
-///   sl.registerLazySingleton<MobileMoneyClient>(() => MobileMoneyClientImpl(dio: sl()));
+///   sl.registerLazySingleton<MobileMoneyClient>(
+///     () => MobileMoneyClientImpl(dio: sl(), orgContext: sl()));
 class MobileMoneyClientImpl implements MobileMoneyClient {
   final Dio _dio;
+  final OrgContext _orgContext;
+
   static const int _maxRetries = 3;
   static const int _backoffMs = 1000;
 
-  MobileMoneyClientImpl({required Dio dio}) : _dio = dio {
-    // Payments need longer timeout
+  MobileMoneyClientImpl({
+    required Dio dio,
+    required OrgContext orgContext,
+  })  : _dio = dio,
+        _orgContext = orgContext {
     _dio.options.connectTimeout = const Duration(seconds: 60);
     _dio.options.receiveTimeout = const Duration(seconds: 60);
   }
+
+  String get _base => '/commerce/${_orgContext.effectiveOrgId}/payments';
 
   Future<Response> _requestWithRetry(
     Future<Response> Function() request, {
@@ -49,20 +58,20 @@ class MobileMoneyClientImpl implements MobileMoneyClient {
   Future<InitiatePaymentResponse> initiatePayment(
       InitiatePaymentRequest request) async {
     final response = await _requestWithRetry(
-      () => _dio.post('/api/payments/initiate', data: request.toJson()),
+      () => _dio.post('$_base/initiate', data: request.toJson()),
       isPaymentInitiation: true,
     );
-    return InitiatePaymentResponse.fromJson(
-        response.data as Map<String, dynamic>);
+    final body = response.data['data'] ?? response.data;
+    return InitiatePaymentResponse.fromJson(body as Map<String, dynamic>);
   }
 
   @override
   Future<QueryPaymentStatusResponse> queryPaymentStatus(
       String transactionId) async {
     final response = await _requestWithRetry(
-      () => _dio.get('/api/payments/$transactionId'),
+      () => _dio.get('$_base/$transactionId'),
     );
-    return QueryPaymentStatusResponse.fromJson(
-        response.data as Map<String, dynamic>);
+    final body = response.data['data'] ?? response.data;
+    return QueryPaymentStatusResponse.fromJson(body as Map<String, dynamic>);
   }
 }

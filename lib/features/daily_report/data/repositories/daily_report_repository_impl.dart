@@ -76,4 +76,26 @@ class DailyReportRepositoryImpl implements DailyReportRepository {
       return Left(GenericFailure(e.toString()));
     }
   }
+
+  @override
+  Future<Either<Failure, DailyReportEntity>> approve(String id, {required String feedback}) async {
+    try {
+      return Right(await _remoteDataSource.approve(id, feedback: feedback));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, DailyReportEntity>> reject(String id, {required String feedback}) async {
+    try {
+      return Right(await _remoteDataSource.reject(id, feedback: feedback));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
 }

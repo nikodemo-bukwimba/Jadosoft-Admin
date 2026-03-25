@@ -106,7 +106,8 @@ class DailyReportMockDataSource implements DailyReportRemoteDataSource {
       'key_outcomes': 'Addressed customer complaint. Relationship maintained.',
       'challenges_faced':
           'Customer was unhappy about previous delivery. Required extended conversation to resolve.',
-      'next_day_plan': 'Follow up with logistics on Lipa Dawa delivery complaint resolution.',
+      'next_day_plan':
+          'Follow up with logistics on Lipa Dawa delivery complaint resolution.',
       'custom_body': null,
       'is_customized': false,
       'reviewed_by_name': 'Dr. Joseph Barick',
@@ -144,7 +145,7 @@ class DailyReportMockDataSource implements DailyReportRemoteDataSource {
           'promotedProducts': [
             'Amoxicillin 250mg',
             'Metformin 500mg',
-            'Vitamin C 1000mg'
+            'Vitamin C 1000mg',
           ],
           'discussionSummary':
               'Introduced 3 new products. Customer agreed to trial order of 50 units each.',
@@ -164,7 +165,8 @@ class DailyReportMockDataSource implements DailyReportRemoteDataSource {
           'customerGpsLng': '33.4400',
           'visitTime': '11:30',
           'promotedProducts': ['Paracetamol 500mg'],
-          'discussionSummary': 'Routine check-in. Reordering Paracetamol stock.',
+          'discussionSummary':
+              'Routine check-in. Reordering Paracetamol stock.',
           'visitNotes': 'Standard reorder — process this week.',
           'visitImageUrls': [],
           'visitDocumentUrls': [],
@@ -241,7 +243,8 @@ class DailyReportMockDataSource implements DailyReportRemoteDataSource {
           'visitDocumentUrls': [],
         },
       ],
-      'key_outcomes': 'Positive reception of pain management range in Uyole area.',
+      'key_outcomes':
+          'Positive reception of pain management range in Uyole area.',
       'challenges_faced': 'Customer requested competitor comparison data.',
       'next_day_plan': 'Prepare competitor comparison document and revisit.',
       'custom_body':
@@ -287,10 +290,10 @@ class DailyReportMockDataSource implements DailyReportRemoteDataSource {
       'officer_phone': data['officer_phone'],
       'officer_role': data['officer_role'],
       'officer_status': data['officer_status'],
-      'report_number':
-          'RPT-2026-${_idCounter.toString().padLeft(3, '0')}',
+      'report_number': 'RPT-2026-${_idCounter.toString().padLeft(3, '0')}',
       'report_date':
-          data['report_date'] ?? DateTime.now().toIso8601String().substring(0, 10),
+          data['report_date'] ??
+          DateTime.now().toIso8601String().substring(0, 10),
       'submitted_at': null,
       'reviewed_at': null,
       'visited_customers': data['visited_customers'] ?? [],
@@ -323,5 +326,42 @@ class DailyReportMockDataSource implements DailyReportRemoteDataSource {
   Future<void> delete(String id) async {
     await _delay();
     _store.removeWhere((e) => e['id'] == id);
+  }
+
+  @override
+  Future<DailyReportModel> approve(
+    String id, {
+    required String feedback,
+  }) async {
+    await _delay();
+    final index = _store.indexWhere((e) => e['id'] == id);
+    if (index == -1) throw Exception('DailyReport not found');
+    _store[index] = {
+      ..._store[index],
+      'status': 'approved',
+      'review_decision': 'approved',
+      'admin_feedback': feedback,
+      'reviewed_at': DateTime.now().toIso8601String(),
+      'reviewed_by_name': 'Dr. Joseph Barick',
+      'reviewed_by_role': 'Head Marketing Officer',
+    };
+    return DailyReportModel.fromJson(Map.from(_store[index]));
+  }
+
+  @override
+  Future<DailyReportModel> reject(String id, {required String feedback}) async {
+    await _delay();
+    final index = _store.indexWhere((e) => e['id'] == id);
+    if (index == -1) throw Exception('DailyReport not found');
+    _store[index] = {
+      ..._store[index],
+      'status': 'rejected',
+      'review_decision': 'rejected',
+      'admin_feedback': feedback,
+      'reviewed_at': DateTime.now().toIso8601String(),
+      'reviewed_by_name': 'Dr. Joseph Barick',
+      'reviewed_by_role': 'Head Marketing Officer',
+    };
+    return DailyReportModel.fromJson(Map.from(_store[index]));
   }
 }

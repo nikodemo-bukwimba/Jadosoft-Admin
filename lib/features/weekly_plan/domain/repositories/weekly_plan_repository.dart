@@ -7,5 +7,7 @@ abstract class WeeklyPlanRepository {
   Future<Either<Failure, WeeklyPlanEntity>>       getById(String id);
   Future<Either<Failure, WeeklyPlanEntity>>       create(WeeklyPlanEntity entity);
   Future<Either<Failure, WeeklyPlanEntity>>       update(WeeklyPlanEntity entity);
-  Future<Either<Failure, void>>                 delete(String id);
+  Future<Either<Failure, void>>                   delete(String id);
+  Future<Either<Failure, WeeklyPlanEntity>>       approve(String id, {String? notes});
+  Future<Either<Failure, WeeklyPlanEntity>>       reject(String id, {required String notes});
 }

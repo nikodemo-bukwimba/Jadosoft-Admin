@@ -373,17 +373,4 @@ class ActivityLogMockDataSource implements ActivityLogRemoteDataSource {
       orElse: () => throw Exception('Activity log not found'),
     );
   }
-
-  // Read-only — these should never be called from the admin app
-  @override
-  Future<ActivityLogModel> create(Map<String, dynamic> data) async =>
-      throw UnimplementedError('Activity logs are written by the backend only');
-
-  @override
-  Future<ActivityLogModel> update(String id, Map<String, dynamic> data) async =>
-      throw UnimplementedError('Activity logs are immutable');
-
-  @override
-  Future<void> delete(String id) async =>
-      throw UnimplementedError('Activity logs cannot be deleted');
 }

@@ -1,4 +1,4 @@
-﻿import '../../domain/entities/visit_entity.dart';
+import '../../domain/entities/visit_entity.dart';
 import '../../domain/usecases/create_visit_usecase.dart';
 
 abstract class VisitEvent {}
@@ -27,14 +27,20 @@ class VisitDeleteRequested extends VisitEvent {
 
 class VisitFormReset extends VisitEvent {}
 
+/// Accept visit — comment is OPTIONAL feedback to officer.
 class VisitReviewRequested extends VisitEvent {
   final String id;
-  VisitReviewRequested(this.id);
+  final String? comment;
+  VisitReviewRequested(this.id, {this.comment});
 }
+
+/// Flag/reject visit — comment is REQUIRED (explains the issue).
 class VisitFlagRequested extends VisitEvent {
   final String id;
-  VisitFlagRequested(this.id);
+  final String comment;
+  VisitFlagRequested(this.id, {required this.comment});
 }
+
 class VisitUnflagRequested extends VisitEvent {
   final String id;
   VisitUnflagRequested(this.id);

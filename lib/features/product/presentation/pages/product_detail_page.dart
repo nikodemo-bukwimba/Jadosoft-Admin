@@ -1,541 +1,432 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-
-import '../../../../core/enums/form_mode.dart';
-import '../../domain/entities/product_entity.dart';
-import '../../domain/value_objects/product_status.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
 import '../bloc/product_bloc.dart';
 import '../bloc/product_event.dart';
 import '../bloc/product_state.dart';
+import '../../domain/entities/product_entity.dart';
+import '../../domain/value_objects/product_status.dart';
 import '../widgets/product_image.dart';
 import '../widgets/product_status_badge.dart';
-import 'product_form_page.dart';
+import '../../../category/data/datasources/category_mock_datasource.dart';
 
-/// Product detail page with collapsing image app bar.
-///
-/// Features:
-///   - SliverAppBar with product image that collapses on scroll
-///   - Status transition buttons (Publish / Archive) based on guard
-///   - Featured toggle (client-side boolean)
-///   - NEW / FEATURED / UNAVAILABLE overlay tags
-///   - Edit and delete actions
-class ProductDetailPage extends StatefulWidget {
-  final String productId;
+class ProductDetailPage extends StatelessWidget {
+  const ProductDetailPage({super.key});
 
-  const ProductDetailPage({super.key, required this.productId});
-
-  @override
-  State<ProductDetailPage> createState() => _ProductDetailPageState();
-}
-
-class _ProductDetailPageState extends State<ProductDetailPage> {
-  @override
-  void initState() {
-    super.initState();
-    context.read<ProductBloc>().add(ProductLoadOneRequested(widget.productId));
+  Future<String> _getCategoryName(String categoryId) async {
+    try {
+      final ds = CategoryMockDataSource();
+      final cat = await ds.getById(categoryId);
+      return cat.name;
+    } catch (_) {
+      return categoryId;
+    }
   }
 
-  void _navigateToEdit(ProductEntity product) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BlocProvider.value(
-          value: context.read<ProductBloc>(),
-          child: ProductFormPage(
-            mode: FormMode.edit,
-            product: product,
+  String _formatPrice(double price) {
+    final formatted = price.toStringAsFixed(0);
+    final buffer = StringBuffer();
+    for (int i = 0; i < formatted.length; i++) {
+      if (i > 0 && (formatted.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(formatted[i]);
+    }
+    return 'TZS $buffer';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      body: BlocConsumer<ProductBloc, ProductState>(
+        listener: (context, state) {
+          if (state is ProductOperationSuccess) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+            if (state.updatedItem != null) {
+              context.read<ProductBloc>().add(
+                ProductLoadOneRequested(state.updatedItem!.id),
+              );
+            } else {
+              context.pop();
+            }
+          }
+          if (state is ProductFailure) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: scheme.error,
+              ),
+            );
+          }
+        },
+        builder: (context, state) {
+          if (state is ProductLoading || state is ProductInitial) {
+            return Scaffold(
+              appBar: AppBar(),
+              body: const Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (state is ProductFailure) {
+            return Scaffold(
+              appBar: AppBar(),
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline, size: 48, color: scheme.error),
+                    const SizedBox(height: 16),
+                    Text(state.message),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: () => context.pop(),
+                      icon: const Icon(Icons.arrow_back),
+                      label: const Text('Go Back'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+          if (state is ProductDetailLoaded) {
+            return _buildDetail(context, state.item);
+          }
+          return Scaffold(appBar: AppBar());
+        },
+      ),
+    );
+  }
+
+  Widget _buildDetail(BuildContext context, ProductEntity item) {
+    final scheme = Theme.of(context).colorScheme;
+    final statusEnum = ProductStatusX.fromString(item.status);
+
+    return CustomScrollView(
+      slivers: [
+        // ── Collapsing Image AppBar ──
+        SliverAppBar(
+          expandedHeight: 280,
+          pinned: true,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Edit',
+              onPressed: () => context.push(AppRouter.productEditPath(item.id)),
+            ),
+            IconButton(
+              icon: Icon(Icons.delete_outline, color: scheme.error),
+              tooltip: 'Delete',
+              onPressed: () => _confirmDelete(context, item.id, item.name),
+            ),
+          ],
+          flexibleSpace: FlexibleSpaceBar(
+            background: Stack(
+              fit: StackFit.expand,
+              children: [
+                ProductImage(
+                  imageUrl: item.imageUrl,
+                  borderRadius: 0,
+                  fit: BoxFit.cover,
+                ),
+                // Gradient scrim for readability
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Colors.black54],
+                    ),
+                  ),
+                ),
+                // Tags on image
+                Positioned(
+                  bottom: 16,
+                  left: 16,
+                  right: 16,
+                  child: Row(
+                    children: [
+                      ProductStatusBadge(status: statusEnum),
+                      const SizedBox(width: 8),
+                      if (item.isNew) _overlayTag('NEW', Colors.blue),
+                      if (item.isFeatured) ...[
+                        const SizedBox(width: 6),
+                        _overlayTag('FEATURED', Colors.amber.shade800),
+                      ],
+                      if (!item.isAvailable) ...[
+                        const SizedBox(width: 6),
+                        _overlayTag('UNAVAILABLE', Colors.red),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
+        ),
+
+        // ── Body ──
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Name + Price ──
+                Text(
+                  item.name,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _formatPrice(item.price),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ── Description ──
+                if (item.description != null &&
+                    item.description!.isNotEmpty) ...[
+                  Text(
+                    item.description!,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+
+                // ── State Machine Actions ──
+                _buildActions(context, item, statusEnum),
+
+                // ── Details Card ──
+                const SizedBox(height: 16),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Product Information',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(
+                                color: scheme.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        const Divider(height: 24),
+                        FutureBuilder<String>(
+                          future: _getCategoryName(item.categoryId),
+                          builder: (_, snap) =>
+                              _field(context, 'Category', snap.data ?? '...'),
+                        ),
+                        _field(
+                          context,
+                          'Available',
+                          item.isAvailable ? 'Yes' : 'No',
+                        ),
+                        _field(
+                          context,
+                          'Featured',
+                          item.isFeatured ? 'Yes' : 'No',
+                        ),
+                        _field(
+                          context,
+                          'New Product',
+                          item.isNew ? 'Yes' : 'No',
+                        ),
+                        _field(context, 'Status', statusEnum.displayName),
+                        _field(
+                          context,
+                          'Created',
+                          item.createdAt.toIso8601String().split('T').first,
+                        ),
+                        _field(context, 'ID', item.id),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 80), // FAB clearance
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActions(
+    BuildContext context,
+    ProductEntity item,
+    ProductStatus statusEnum,
+  ) {
+    final actions = <Widget>[];
+
+    if (statusEnum == ProductStatus.draft) {
+      actions.add(
+        _actionButton(
+          context,
+          icon: Icons.publish,
+          label: 'Publish',
+          color: Colors.green,
+          onPressed: () =>
+              context.read<ProductBloc>().add(ProductPublishRequested(item.id)),
+        ),
+      );
+    }
+    if (statusEnum == ProductStatus.active) {
+      actions.add(
+        _actionButton(
+          context,
+          icon: Icons.star_outline,
+          label: 'Mark Featured',
+          color: Colors.amber.shade800,
+          onPressed: () =>
+              context.read<ProductBloc>().add(ProductFeatureRequested(item.id)),
+        ),
+      );
+    }
+    if (statusEnum == ProductStatus.featured) {
+      actions.add(
+        _actionButton(
+          context,
+          icon: Icons.star_border,
+          label: 'Remove Featured',
+          color: Colors.grey,
+          onPressed: () => context.read<ProductBloc>().add(
+            ProductUnfeatureRequested(item.id),
+          ),
+        ),
+      );
+    }
+    if (statusEnum == ProductStatus.active ||
+        statusEnum == ProductStatus.featured) {
+      actions.add(
+        _actionButton(
+          context,
+          icon: Icons.archive_outlined,
+          label: 'Archive',
+          color: Colors.blueGrey,
+          onPressed: () =>
+              context.read<ProductBloc>().add(ProductArchiveRequested(item.id)),
+        ),
+      );
+    }
+
+    if (actions.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Actions',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: Theme.of(context).colorScheme.primary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(spacing: 10, runSpacing: 10, children: actions),
+        const SizedBox(height: 4),
+      ],
+    );
+  }
+
+  Widget _actionButton(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return FilledButton.tonalIcon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18, color: color),
+      label: Text(label),
+      style: FilledButton.styleFrom(
+        minimumSize: Size.zero,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      ),
+    );
+  }
+
+  Widget _overlayTag(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: Colors.white,
+          letterSpacing: 0.5,
         ),
       ),
     );
   }
 
-  void _confirmDelete(ProductEntity product) {
-    showDialog(
+  Widget _field(BuildContext context, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    String id,
+    String name,
+  ) async {
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Product'),
-        content: Text('Are you sure you want to delete "${product.name}"?'),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Product?'),
+        content: Text('Remove "$name"? This cannot be undone.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              context
-                  .read<ProductBloc>()
-                  .add(ProductDeleteRequested(product.id));
-            },
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Delete'),
           ),
         ],
       ),
     );
-  }
-
-  void _confirmTransition(
-    ProductEntity product,
-    String action,
-    String description,
-  ) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('${action[0].toUpperCase()}${action.substring(1)} Product'),
-        content: Text(description),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              if (action == 'publish') {
-                context
-                    .read<ProductBloc>()
-                    .add(ProductPublishRequested(product));
-              } else if (action == 'archive') {
-                context
-                    .read<ProductBloc>()
-                    .add(ProductArchiveRequested(product));
-              }
-            },
-            child: Text(action[0].toUpperCase() + action.substring(1)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return BlocConsumer<ProductBloc, ProductState>(
-      listener: (context, state) {
-        if (state is ProductOperationSuccess) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.message)),
-          );
-          if (state.product != null) {
-            // Reload detail with updated product
-            context
-                .read<ProductBloc>()
-                .add(ProductLoadOneRequested(widget.productId));
-          } else {
-            // Deleted — go back
-            Navigator.of(context).pop();
-          }
-        }
-        if (state is ProductError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-          );
-        }
-      },
-      builder: (context, state) {
-        if (state is ProductDetailLoading ||
-            state is ProductOperationInProgress) {
-          return Scaffold(
-            appBar: AppBar(),
-            body: const Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (state is ProductDetailLoaded) {
-          return _buildDetail(context, state.product);
-        }
-        if (state is ProductError) {
-          return Scaffold(
-            appBar: AppBar(),
-            body: Center(child: Text(state.message)),
-          );
-        }
-        return Scaffold(appBar: AppBar());
-      },
-    );
-  }
-
-  Widget _buildDetail(BuildContext context, ProductEntity product) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
-    return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          // ── Collapsing Image App Bar ──────────────────────────────
-          SliverAppBar(
-            expandedHeight: 260,
-            pinned: true,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ProductImage(
-                    product: product,
-                    borderRadius: BorderRadius.zero,
-                    showOverlayTags: true,
-                  ),
-                  // Gradient overlay for readability
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      height: 80,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withOpacity(0.5),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              title: Text(
-                product.name,
-                style: const TextStyle(fontSize: 16),
-              ),
-              titlePadding: const EdgeInsets.only(left: 56, bottom: 14),
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.edit_outlined),
-                tooltip: 'Edit',
-                onPressed: () => _navigateToEdit(product),
-              ),
-              PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'delete') _confirmDelete(product);
-                },
-                itemBuilder: (_) => [
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete_outline, size: 18),
-                        SizedBox(width: 8),
-                        Text('Delete'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-
-          // ── Content ─────────────────────────────────────────────
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Status + Price row
-                  Row(
-                    children: [
-                      ProductStatusBadge(status: product.status),
-                      const SizedBox(width: 12),
-                      Text(
-                        product.formattedPrice,
-                        style: textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: colorScheme.primary,
-                        ),
-                      ),
-                      const Spacer(),
-                      // Featured toggle
-                      _FeaturedToggle(
-                        isFeatured: product.isFeatured,
-                        onToggle: () {
-                          context.read<ProductBloc>().add(
-                                ProductToggleFeaturedRequested(product),
-                              );
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Info sections
-                  _InfoSection(
-                    children: [
-                      _InfoRow('Type', product.type.label),
-                      if (product.categoryName != null)
-                        _InfoRow('Category', product.categoryName!),
-                      if (product.sku != null)
-                        _InfoRow('SKU', product.sku!),
-                      _InfoRow('Currency', product.currency),
-                      _InfoRow(
-                        'Track Inventory',
-                        product.trackInventory ? 'Yes' : 'No',
-                      ),
-                      _InfoRow(
-                        'Requires Confirmation',
-                        product.requiresConfirmation ? 'Yes' : 'No',
-                      ),
-                      _InfoRow(
-                        'Available',
-                        product.isAvailable ? 'Yes' : 'No',
-                      ),
-                    ],
-                  ),
-
-                  if (product.description != null &&
-                      product.description!.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'Description',
-                      style: textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      product.description!,
-                      style: textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                        height: 1.5,
-                      ),
-                    ),
-                  ],
-
-                  // Timestamps
-                  if (product.createdAt != null ||
-                      product.updatedAt != null) ...[
-                    const SizedBox(height: 16),
-                    _InfoSection(
-                      children: [
-                        if (product.createdAt != null)
-                          _InfoRow(
-                            'Created',
-                            _formatDate(product.createdAt!),
-                          ),
-                        if (product.updatedAt != null)
-                          _InfoRow(
-                            'Updated',
-                            _formatDate(product.updatedAt!),
-                          ),
-                      ],
-                    ),
-                  ],
-
-                  const SizedBox(height: 24),
-
-                  // ── Status Transition Buttons ────────────────────
-                  _TransitionButtons(
-                    product: product,
-                    onPublish: () => _confirmTransition(
-                      product,
-                      'publish',
-                      'This will make the product visible to buyers. '
-                          'At least one active variant is required.',
-                    ),
-                    onArchive: () => _confirmTransition(
-                      product,
-                      'archive',
-                      'This will hide the product from buyers. '
-                          'It can still be viewed in the admin panel.',
-                    ),
-                  ),
-
-                  const SizedBox(height: 40),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatDate(DateTime dt) {
-    return '${dt.day.toString().padLeft(2, '0')}/'
-        '${dt.month.toString().padLeft(2, '0')}/'
-        '${dt.year} '
-        '${dt.hour.toString().padLeft(2, '0')}:'
-        '${dt.minute.toString().padLeft(2, '0')}';
-  }
-}
-
-// ── Status Transition Buttons ──────────────────────────────────────────
-
-class _TransitionButtons extends StatelessWidget {
-  final ProductEntity product;
-  final VoidCallback onPublish;
-  final VoidCallback onArchive;
-
-  const _TransitionButtons({
-    required this.product,
-    required this.onPublish,
-    required this.onArchive,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final buttons = <Widget>[];
-
-    if (product.canPublish) {
-      buttons.add(
-        FilledButton.icon(
-          onPressed: onPublish,
-          icon: const Icon(Icons.publish, size: 18),
-          label: const Text('Publish'),
-          style: FilledButton.styleFrom(
-            backgroundColor: Colors.blue,
-            foregroundColor: Colors.white,
-            minimumSize: const Size(140, 44),
-          ),
-        ),
-      );
+    if (confirmed == true && context.mounted) {
+      context.read<ProductBloc>().add(ProductDeleteRequested(id));
     }
-
-    if (product.canArchive) {
-      buttons.add(
-        OutlinedButton.icon(
-          onPressed: onArchive,
-          icon: Icon(Icons.archive_outlined,
-              size: 18, color: colorScheme.error),
-          label: Text('Archive',
-              style: TextStyle(color: colorScheme.error)),
-          style: OutlinedButton.styleFrom(
-            side: BorderSide(color: colorScheme.error),
-            minimumSize: const Size(140, 44),
-          ),
-        ),
-      );
-    }
-
-    if (buttons.isEmpty) return const SizedBox.shrink();
-
-    return Row(
-      children: buttons
-          .expand((b) => [b, const SizedBox(width: 12)])
-          .toList()
-        ..removeLast(),
-    );
-  }
-}
-
-// ── Featured Toggle ────────────────────────────────────────────────────
-
-class _FeaturedToggle extends StatelessWidget {
-  final bool isFeatured;
-  final VoidCallback onToggle;
-
-  const _FeaturedToggle({
-    required this.isFeatured,
-    required this.onToggle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onToggle,
-      borderRadius: BorderRadius.circular(20),
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isFeatured ? Icons.star : Icons.star_border,
-              size: 22,
-              color: isFeatured ? Colors.amber.shade700 : Colors.grey,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              isFeatured ? 'Featured' : 'Feature',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: isFeatured ? Colors.amber.shade700 : Colors.grey,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Info Helpers ──────────────────────────────────────────────────────
-
-class _InfoSection extends StatelessWidget {
-  final List<Widget> children;
-
-  const _InfoSection({required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: children
-            .expand((c) => [
-                  c,
-                  Divider(
-                    height: 1,
-                    color: colorScheme.outlineVariant.withOpacity(0.3),
-                  ),
-                ])
-            .toList()
-          ..removeLast(),
-      ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _InfoRow(this.label, this.value);
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 150,
-            child: Text(
-              label,
-              style: textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

@@ -7,5 +7,6 @@ abstract class NotificationRepository {
   Future<Either<Failure, NotificationEntity>>       getById(String id);
   Future<Either<Failure, NotificationEntity>>       create(NotificationEntity entity);
   Future<Either<Failure, NotificationEntity>>       update(NotificationEntity entity);
-  Future<Either<Failure, void>>                 delete(String id);
+  Future<Either<Failure, void>>                     delete(String id);
+  Future<Either<Failure, NotificationEntity>>       retry(String id);
 }

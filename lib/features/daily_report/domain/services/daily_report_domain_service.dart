@@ -11,35 +11,33 @@ class DailyReportDomainService {
 
   DailyReportDomainService({required this.repository, required this.guard});
 
-  /// Performs a status transition: load, guard, apply, persist.
   Future<Either<Failure, DailyReportEntity>> transition({
     required String id,
     required DailyReportStatus targetStatus,
+    String? feedback,
   }) async {
-    // 1. Load
-    final loadResult = await repository.getById(id);
-    if (loadResult.isLeft()) return loadResult;
-    final entity = loadResult.getOrElse(() => throw StateError('unreachable'));
+    switch (targetStatus) {
+      case DailyReportStatus.approved:
+        if (feedback == null || feedback.trim().isEmpty) {
+          return const Left(ValidationFailure('Feedback is required'));
+        }
+        return repository.approve(id, feedback: feedback);
 
-    // 2. Guard
-    final guardResult = guard.validate(
-      current: DailyReportStatusX.fromString(
-        entity.status,
-      ), // was: entity.status
-      target: targetStatus,
-    );
-    if (guardResult.isLeft()) {
-      return guardResult.fold(
-        (f) => Left(f),
-        (_) => throw StateError('unreachable'),
-      );
+      case DailyReportStatus.rejected:
+        if (feedback == null || feedback.trim().isEmpty) {
+          return const Left(ValidationFailure('Feedback is required'));
+        }
+        return repository.reject(id, feedback: feedback);
+
+      case DailyReportStatus.submitted:
+        final loadResult = await repository.getById(id);
+        return loadResult.fold(
+          Left.new,
+          (entity) => repository.update(entity.copyWith(status: 'submitted')),
+        );
+
+      default:
+        return const Left(ValidationFailure('Transition not supported'));
     }
-    final validTarget = guardResult.getOrElse(
-      () => throw StateError('unreachable'),
-    );
-
-    // 3. Apply + Persist
-    final updated = entity.copyWith(status: validTarget.name);
-    return repository.update(updated);
   }
 }

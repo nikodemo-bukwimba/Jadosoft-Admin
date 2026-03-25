@@ -189,4 +189,24 @@ class PromotionMockDataSource implements PromotionRemoteDataSource {
     await _delay();
     _store.removeWhere((e) => e['id'] == id);
   }
+
+    @override
+  Future<PromotionModel> publish(String id) async {
+    await _delay();
+    final index = _store.indexWhere((e) => e['id'] == id);
+    if (index == -1) throw Exception('Promotion not found');
+ 
+    final broadcast = _simulateBroadcast(
+      List<String>.from(_store[index]['channels'] as List? ?? []),
+      List<String>.from(_store[index]['product_ids'] as List? ?? []),
+    );
+ 
+    _store[index] = {
+      ..._store[index],
+      'status': 'active',
+      'target_count': broadcast['target_count'],
+      'broadcast_sent_at': broadcast['broadcast_sent_at'],
+    };
+    return PromotionModel.fromJson(Map.from(_store[index]));
+  }
 }

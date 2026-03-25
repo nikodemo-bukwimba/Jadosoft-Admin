@@ -43,7 +43,8 @@ class NotificationMockDataSource implements NotificationRemoteDataSource {
       'status': 'failed',
       'sent_at': null,
       'delivered_at': null,
-      'failure_reason': 'Carrier error: number temporarily unreachable (Airtel TZ)',
+      'failure_reason':
+          'Carrier error: number temporarily unreachable (Airtel TZ)',
       'created_at': '2025-10-13T17:10:00.000Z',
     },
     {
@@ -141,7 +142,8 @@ class NotificationMockDataSource implements NotificationRemoteDataSource {
       'status': 'failed',
       'sent_at': null,
       'delivered_at': null,
-      'failure_reason': 'WhatsApp Business API: Template not approved for this recipient region',
+      'failure_reason':
+          'WhatsApp Business API: Template not approved for this recipient region',
       'created_at': '2025-10-09T15:45:00.000Z',
     },
   ];
@@ -154,8 +156,10 @@ class NotificationMockDataSource implements NotificationRemoteDataSource {
   Future<List<NotificationModel>> getAll() async {
     await _delay();
     final sorted = List<Map<String, dynamic>>.from(_store)
-      ..sort((a, b) => (b['created_at'] as String)
-          .compareTo(a['created_at'] as String));
+      ..sort(
+        (a, b) =>
+            (b['created_at'] as String).compareTo(a['created_at'] as String),
+      );
     return sorted.map(NotificationModel.fromJson).toList();
   }
 
@@ -192,8 +196,7 @@ class NotificationMockDataSource implements NotificationRemoteDataSource {
   }
 
   @override
-  Future<NotificationModel> update(
-      String id, Map<String, dynamic> data) async {
+  Future<NotificationModel> update(String id, Map<String, dynamic> data) async {
     await _delay();
     final index = _store.indexWhere((e) => e['id'] == id);
     if (index == -1) throw Exception('Notification not found');
@@ -205,5 +208,20 @@ class NotificationMockDataSource implements NotificationRemoteDataSource {
   Future<void> delete(String id) async {
     await _delay();
     _store.removeWhere((e) => e['id'] == id);
+  }
+
+  @override
+  Future<NotificationModel> retry(String id) async {
+    await _delay();
+    final index = _store.indexWhere((e) => e['id'] == id);
+    if (index == -1) throw Exception('Notification not found');
+    _store[index] = {
+      ..._store[index],
+      'status': 'queued',
+      'sent_at': null,
+      'delivered_at': null,
+      'failure_reason': null,
+    };
+    return NotificationModel.fromJson(_store[index]);
   }
 }

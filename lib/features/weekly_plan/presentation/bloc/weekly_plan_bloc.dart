@@ -11,12 +11,12 @@ import 'weekly_plan_event.dart';
 import 'weekly_plan_state.dart';
 
 class WeeklyPlanBloc extends Bloc<WeeklyPlanEvent, WeeklyPlanState> {
-  final GetAllWeeklyPlanUseCase  getAllUseCase;
-  final GetWeeklyPlanUseCase     getUseCase;
-  final CreateWeeklyPlanUseCase  createUseCase;
-  final UpdateWeeklyPlanUseCase  updateUseCase;
-  final DeleteWeeklyPlanUseCase  deleteUseCase;
-  final WeeklyPlanDomainService  domainService;
+  final GetAllWeeklyPlanUseCase getAllUseCase;
+  final GetWeeklyPlanUseCase getUseCase;
+  final CreateWeeklyPlanUseCase createUseCase;
+  final UpdateWeeklyPlanUseCase updateUseCase;
+  final DeleteWeeklyPlanUseCase deleteUseCase;
+  final WeeklyPlanDomainService domainService;
 
   WeeklyPlanBloc({
     required this.getAllUseCase,
@@ -38,7 +38,9 @@ class WeeklyPlanBloc extends Bloc<WeeklyPlanEvent, WeeklyPlanState> {
   }
 
   Future<void> _onLoadAll(
-      WeeklyPlanLoadAllRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanLoadAllRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
     final result = await getAllUseCase(NoParams());
     result.fold(
@@ -50,7 +52,9 @@ class WeeklyPlanBloc extends Bloc<WeeklyPlanEvent, WeeklyPlanState> {
   }
 
   Future<void> _onLoadOne(
-      WeeklyPlanLoadOneRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanLoadOneRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
     final result = await getUseCase(GetWeeklyPlanParams(id: event.id));
     result.fold(
@@ -60,67 +64,89 @@ class WeeklyPlanBloc extends Bloc<WeeklyPlanEvent, WeeklyPlanState> {
   }
 
   Future<void> _onCreate(
-      WeeklyPlanCreateRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanCreateRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
     final result = await createUseCase(event.params);
     result.fold(
       (f) => emit(WeeklyPlanFailure(f.message)),
-      (_) => emit(WeeklyPlanOperationSuccess('WeeklyPlan created successfully')),
+      (_) =>
+          emit(WeeklyPlanOperationSuccess('WeeklyPlan created successfully')),
     );
   }
 
   Future<void> _onUpdate(
-      WeeklyPlanUpdateRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanUpdateRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
-    final result = await updateUseCase(UpdateWeeklyPlanParams(entity: event.entity));
+    final result = await updateUseCase(
+      UpdateWeeklyPlanParams(entity: event.entity),
+    );
     result.fold(
       (f) => emit(WeeklyPlanFailure(f.message)),
-      (_) => emit(WeeklyPlanOperationSuccess('WeeklyPlan updated successfully')),
+      (_) =>
+          emit(WeeklyPlanOperationSuccess('WeeklyPlan updated successfully')),
     );
   }
 
   Future<void> _onDelete(
-      WeeklyPlanDeleteRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanDeleteRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
     final result = await deleteUseCase(DeleteWeeklyPlanParams(id: event.id));
     result.fold(
       (f) => emit(WeeklyPlanFailure(f.message)),
-      (_) => emit(WeeklyPlanOperationSuccess('WeeklyPlan deleted successfully')),
+      (_) =>
+          emit(WeeklyPlanOperationSuccess('WeeklyPlan deleted successfully')),
     );
   }
 
   Future<void> _onApprove(
-      WeeklyPlanApproveRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanApproveRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
     final result = await domainService.transition(
       id: event.id,
       targetStatus: WeeklyPlanStatus.approved,
+      notes: event.notes,
     );
     result.fold(
       (f) => emit(WeeklyPlanFailure(f.message)),
-      (entity) => emit(WeeklyPlanOperationSuccess(
-        'Approve Plan successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        WeeklyPlanOperationSuccess(
+          'Plan approved successfully',
+          updatedItem: entity,
+        ),
+      ),
     );
   }
+
   Future<void> _onReject(
-      WeeklyPlanRejectRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanRejectRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
     final result = await domainService.transition(
       id: event.id,
       targetStatus: WeeklyPlanStatus.rejected,
+      notes: event.notes,
     );
     result.fold(
       (f) => emit(WeeklyPlanFailure(f.message)),
-      (entity) => emit(WeeklyPlanOperationSuccess(
-        'Reject Plan successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        WeeklyPlanOperationSuccess('Plan rejected', updatedItem: entity),
+      ),
     );
   }
+
   Future<void> _onResubmit(
-      WeeklyPlanResubmitRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanResubmitRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -128,10 +154,12 @@ class WeeklyPlanBloc extends Bloc<WeeklyPlanEvent, WeeklyPlanState> {
     );
     result.fold(
       (f) => emit(WeeklyPlanFailure(f.message)),
-      (entity) => emit(WeeklyPlanOperationSuccess(
-        'Resubmit Plan successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        WeeklyPlanOperationSuccess(
+          'Resubmit Plan successful',
+          updatedItem: entity,
+        ),
+      ),
     );
   }
 }

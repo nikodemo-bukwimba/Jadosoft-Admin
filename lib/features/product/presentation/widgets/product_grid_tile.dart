@@ -1,95 +1,95 @@
 import 'package:flutter/material.dart';
-
 import '../../domain/entities/product_entity.dart';
+import '../../domain/value_objects/product_status.dart';
 import 'product_image.dart';
 import 'product_status_badge.dart';
 
-/// Compact grid tile used in [ProductViewMode.grid].
-///
-/// Shows product image with overlay tags, name, price, and status badge.
+/// Grid view tile — compact thumbnail with name, price, status.
 class ProductGridTile extends StatelessWidget {
-  final ProductEntity product;
-  final VoidCallback? onTap;
+  final ProductEntity item;
+  final String Function(double) formatPrice;
+  final VoidCallback onTap;
 
   const ProductGridTile({
     super.key,
-    required this.product,
-    this.onTap,
+    required this.item,
+    required this.formatPrice,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    final statusEnum = ProductStatusX.fromString(item.status);
 
     return Card(
       clipBehavior: Clip.antiAlias,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: colorScheme.outlineVariant.withOpacity(0.5),
-        ),
-      ),
       child: InkWell(
         onTap: onTap,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image section
+            // ── Thumbnail ──
             Expanded(
               flex: 3,
-              child: ProductImage(
-                product: product,
-                borderRadius: BorderRadius.zero,
-                showOverlayTags: true,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ProductImage(
+                    imageUrl: item.imageUrl,
+                    borderRadius: 0,
+                    fit: BoxFit.cover,
+                  ),
+                  if (!item.isAvailable)
+                    Container(color: Colors.black.withValues(alpha: 0.4)),
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (item.isNew) _miniTag('N', Colors.blue),
+                        if (item.isFeatured)
+                          _miniTag('F', Colors.amber.shade800),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-
-            // Info section
+            // ── Info ──
             Expanded(
               flex: 2,
               child: Padding(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      product.name,
-                      style: textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
+                      item.name,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      product.formattedPrice,
-                      style: textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: colorScheme.primary,
-                      ),
                     ),
                     const Spacer(),
                     Row(
                       children: [
-                        ProductStatusBadge(
-                          status: product.status,
-                          fontSize: 10,
-                        ),
-                        if (product.categoryName != null) ...[
-                          const Spacer(),
-                          Flexible(
-                            child: Text(
-                              product.categoryName!,
-                              style: textTheme.labelSmall?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                        Expanded(
+                          child: Text(
+                            formatPrice(item.price),
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color: scheme.primary,
+                                  fontWeight: FontWeight.w700,
+                                ),
                           ),
-                        ],
+                        ),
+                        ProductStatusBadge(status: statusEnum, compact: true),
                       ],
                     ),
                   ],
@@ -97,6 +97,27 @@ class ProductGridTile extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _miniTag(String letter, Color color) {
+    return Container(
+      margin: const EdgeInsets.only(left: 3),
+      width: 20,
+      height: 20,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        letter,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: Colors.white,
         ),
       ),
     );

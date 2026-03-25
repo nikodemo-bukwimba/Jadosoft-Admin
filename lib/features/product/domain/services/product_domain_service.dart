@@ -1,40 +1,43 @@
-import 'package:dartz/dartz.dart';
-
+﻿import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../entities/product_entity.dart';
 import '../guards/product_transition_guard.dart';
 import '../repositories/product_repository.dart';
+import '../value_objects/product_status.dart';
 
-/// Domain service that wraps guard logic around product transitions.
 class ProductDomainService {
-  final ProductRepository _repository;
-  final ProductTransitionGuard _guard;
+  final ProductRepository repository;
+  final ProductTransitionGuard guard;
 
-  const ProductDomainService({
-    required ProductRepository repository,
-    ProductTransitionGuard guard = const ProductTransitionGuard(),
-  })  : _repository = repository,
-        _guard = guard;
+  ProductDomainService({required this.repository, required this.guard});
 
-  /// Attempts to publish a draft product.
-  /// Returns [Failure] if the transition is not allowed.
-  Future<Either<Failure, ProductEntity>> publish(ProductEntity product) async {
-    if (!_guard.canTransition(product, 'publish')) {
-      return Left(ValidationFailure(
-        'Cannot publish: product must be in draft status.',
-      ));
+  /// Performs a status transition: load, guard, apply, persist.
+  Future<Either<Failure, ProductEntity>> transition({
+    required String id,
+    required ProductStatus targetStatus,
+  }) async {
+    // 1. Load
+    final loadResult = await repository.getById(id);
+    if (loadResult.isLeft()) return loadResult;
+    final entity = loadResult.getOrElse(() => throw StateError('unreachable'));
+
+    // 2. Guard
+    final guardResult = guard.validate(
+      current: ProductStatusX.fromString(entity.status),
+      target: targetStatus,
+    );
+    if (guardResult.isLeft()) {
+      return guardResult.fold(
+        (f) => Left(f),
+        (_) => throw StateError('unreachable'),
+      );
     }
-    return _repository.publish(product.id);
-  }
+    final validTarget = guardResult.getOrElse(
+      () => throw StateError('unreachable'),
+    );
 
-  /// Attempts to archive an active product.
-  /// Returns [Failure] if the transition is not allowed.
-  Future<Either<Failure, ProductEntity>> archive(ProductEntity product) async {
-    if (!_guard.canTransition(product, 'archive')) {
-      return Left(ValidationFailure(
-        'Cannot archive: product must be in active status.',
-      ));
-    }
-    return _repository.archive(product.id);
+    // 3. Apply + Persist
+    final updated = entity.copyWith(status: validTarget.name);
+    return repository.update(updated);
   }
 }

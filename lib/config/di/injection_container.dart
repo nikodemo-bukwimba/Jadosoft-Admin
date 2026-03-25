@@ -71,30 +71,19 @@ import 'package:admin_panel/features/category/domain/usecases/update_category_us
 import 'package:admin_panel/features/category/domain/usecases/delete_category_usecase.dart';
 import 'package:admin_panel/features/category/presentation/bloc/category_bloc.dart';
 
-// Phase 5 ? Products (L2)
-import '../../features/product/data/datasources/product_mock_datasource.dart';
-import '../../features/product/data/datasources/product_remote_datasource.dart';
-import '../../features/product/data/repositories/product_repository_impl.dart';
-import '../../features/product/domain/guards/product_transition_guard.dart';
-import '../../features/product/domain/services/product_domain_service.dart';
-import '../../features/product/domain/usecases/create_product_usecase.dart';
-import '../../features/product/domain/usecases/delete_product_usecase.dart';
-import '../../features/product/domain/usecases/get_all_product_usecase.dart';
-import '../../features/product/domain/usecases/get_product_usecase.dart';
-import '../../features/product/domain/usecases/update_product_usecase.dart';
-import '../../features/product/presentation/bloc/product_bloc.dart';
-
-//To be deleted
-import 'package:admin_panel/features/product/data/datasources/product_remote_datasource.dart';
+// Phase 5 — Products (L2)
 import 'package:admin_panel/features/product/data/datasources/product_mock_datasource.dart';
+import 'package:admin_panel/features/product/data/datasources/product_remote_datasource.dart';
+import 'package:admin_panel/features/product/data/datasources/product_api_datasource.dart';
 import 'package:admin_panel/features/product/data/repositories/product_repository_impl.dart';
 import 'package:admin_panel/features/product/domain/repositories/product_repository.dart';
+import 'package:admin_panel/features/product/domain/guards/product_transition_guard.dart';
+import 'package:admin_panel/features/product/domain/services/product_domain_service.dart';
+import 'package:admin_panel/features/product/domain/usecases/create_product_usecase.dart';
+import 'package:admin_panel/features/product/domain/usecases/delete_product_usecase.dart';
 import 'package:admin_panel/features/product/domain/usecases/get_all_product_usecase.dart';
 import 'package:admin_panel/features/product/domain/usecases/get_product_usecase.dart';
-import 'package:admin_panel/features/product/domain/usecases/create_product_usecase.dart';
 import 'package:admin_panel/features/product/domain/usecases/update_product_usecase.dart';
-import 'package:admin_panel/features/product/domain/usecases/delete_product_usecase.dart';
-import 'package:admin_panel/features/product/domain/services/product_domain_service.dart';
 import 'package:admin_panel/features/product/presentation/bloc/product_bloc.dart';
 
 // Phase 6 ? Promotions (L3)
@@ -441,7 +430,8 @@ Future<void> initDependencies() async {
   // DEVELOPMENT (mock — active now):
   sl.registerLazySingleton<SmsGatewayClient>(() => SmsGatewayMockClient());
   // PRODUCTION (real — swap when Laravel API is ready):
-  // sl.registerLazySingleton<SmsGatewayClient>(() => SmsGatewayClientImpl(dio: sl()));
+  // sl.registerLazySingleton<SmsGatewayClient>(
+  //   () => SmsGatewayClientImpl(dio: sl(), orgContext: sl()));
 
   sl.registerLazySingleton(() => SmsGatewayService(client: sl()));
   sl.registerFactory<SmsGatewayCubit>(() => SmsGatewayCubit(service: sl()));
@@ -450,7 +440,8 @@ Future<void> initDependencies() async {
   // DEVELOPMENT (mock — active now):
   sl.registerLazySingleton<WhatsappClient>(() => WhatsappMockClient());
   // PRODUCTION (real — swap when Laravel API is ready):
-  // sl.registerLazySingleton<WhatsappClient>(() => WhatsappClientImpl(dio: sl()));
+  // sl.registerLazySingleton<WhatsappClient>(
+  //   () => WhatsappClientImpl(dio: sl(), orgContext: sl()));
 
   sl.registerLazySingleton(() => WhatsappService(client: sl()));
   sl.registerFactory<WhatsappCubit>(() => WhatsappCubit(service: sl()));
@@ -459,7 +450,8 @@ Future<void> initDependencies() async {
   // DEVELOPMENT (mock — active now):
   sl.registerLazySingleton<MobileMoneyClient>(() => MobileMoneyMockClient());
   // PRODUCTION (real — swap when Laravel API is ready):
-  // sl.registerLazySingleton<MobileMoneyClient>(() => MobileMoneyClientImpl(dio: sl()));
+  // sl.registerLazySingleton<MobileMoneyClient>(
+  //   () => MobileMoneyClientImpl(dio: sl(), orgContext: sl()));
 
   sl.registerLazySingleton(() => MobileMoneyService(client: sl()));
   sl.registerFactory<MobileMoneyCubit>(() => MobileMoneyCubit(service: sl()));
@@ -550,75 +542,49 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // Seq 9 ? Products (L2)
-  // Datasource (swap for mock in dev)
-  sl.registerLazySingleton<ProductRemoteDatasource>(
-    () => ProductRemoteDatasourceImpl(dio: sl()),
+  // Seq 9 — Products (L2) — using mock until API is ready
+
+  //comment/delete this on real api
+  sl.registerLazySingleton<ProductRemoteDataSource>(
+    () => ProductMockDataSource(),
   );
+  //uncomment this on real api
+  // sl.registerLazySingleton<ProductRemoteDataSource>(
+  //   () => ProductApiDataSource(dio: sl(), orgContext: sl()),,
+  // );
 
-  // Repository — orgId from OrgContext
-  sl.registerFactory<ProductRepository>(
-    () => ProductRepositoryImpl(
-      remoteDatasource: sl(),
-      orgId: sl<String>(instanceName: 'currentOrgId'),
-    ),
+  sl.registerLazySingleton<ProductRepository>(
+    () => ProductRepositoryImpl(remoteDataSource: sl()),
   );
-
-  // Guard + Domain Service
-  sl.registerLazySingleton(() => const ProductTransitionGuard());
-  sl.registerFactory(() => ProductDomainService(repository: sl(), guard: sl()));
-
-  // Use Cases
-  sl.registerFactory(() => GetAllProductUsecase(sl()));
-  sl.registerFactory(() => GetProductUsecase(sl()));
-  sl.registerFactory(() => CreateProductUsecase(sl()));
-  sl.registerFactory(() => UpdateProductUsecase(sl()));
-  sl.registerFactory(() => DeleteProductUsecase(sl()));
-
-  // BLoC
-  sl.registerFactory(
+  sl.registerLazySingleton(() => ProductTransitionGuard());
+  sl.registerLazySingleton(
+    () => ProductDomainService(repository: sl(), guard: sl()),
+  );
+  sl.registerLazySingleton(() => GetAllProductUseCase(sl()));
+  sl.registerLazySingleton(() => GetProductUseCase(sl()));
+  sl.registerLazySingleton(() => CreateProductUseCase(sl()));
+  sl.registerLazySingleton(() => UpdateProductUseCase(sl()));
+  sl.registerLazySingleton(() => DeleteProductUseCase(sl()));
+  sl.registerFactory<ProductBloc>(
     () => ProductBloc(
-      getAllProducts: sl(),
-      getProduct: sl(),
-      createProduct: sl(),
-      updateProduct: sl(),
-      deleteProduct: sl(),
+      getAllUseCase: sl(),
+      getUseCase: sl(),
+      createUseCase: sl(),
+      updateUseCase: sl(),
+      deleteUseCase: sl(),
       domainService: sl(),
     ),
   );
-
-  // sl.registerLazySingleton<ProductRemoteDataSource>(
-  //   () => ProductMockDataSource(),
-  // );
-  // sl.registerLazySingleton<ProductRepository>(
-  //   () => ProductRepositoryImpl(remoteDataSource: sl()),
-  // );
-  // sl.registerLazySingleton(() => ProductTransitionGuard());
-  // sl.registerLazySingleton(
-  //   () => ProductDomainService(repository: sl(), guard: sl()),
-  // );
-  // sl.registerLazySingleton(() => GetAllProductUseCase(sl()));
-  // sl.registerLazySingleton(() => GetProductUseCase(sl()));
-  // sl.registerLazySingleton(() => CreateProductUseCase(sl()));
-  // sl.registerLazySingleton(() => UpdateProductUseCase(sl()));
-  // sl.registerLazySingleton(() => DeleteProductUseCase(sl()));
-  // sl.registerFactory<ProductBloc>(
-  //   () => ProductBloc(
-  //     getAllUseCase: sl(),
-  //     getUseCase: sl(),
-  //     createUseCase: sl(),
-  //     updateUseCase: sl(),
-  //     deleteUseCase: sl(),
-  //     domainService: sl(),
-  //   ),
-  // );
 
   // ----------------------------------------------------------
   // Phase 6: Promotions (L3) ? domainService required
   // ----------------------------------------------------------
 
   sl.registerLazySingleton<PromotionRemoteDataSource>(
+    // DEVELOPMENT (mock — active now):
     () => PromotionMockDataSource(),
+    // PRODUCTION (real — swap when Laravel API is ready):
+    // () => PromotionRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
   );
   sl.registerLazySingleton<PromotionRepository>(
     () => PromotionRepositoryImpl(remoteDataSource: sl()),
@@ -672,17 +638,20 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // Seq 12 ? Weekly Plans (L2)
+  // Seq 12 — Weekly Plans (L2)
+  // DEVELOPMENT (mock — active now):
   sl.registerLazySingleton<WeeklyPlanRemoteDataSource>(
     () => WeeklyPlanMockDataSource(),
   );
+  // PRODUCTION (real — swap when Laravel API is ready):
+  // sl.registerLazySingleton<WeeklyPlanRemoteDataSource>(
+  //   () => WeeklyPlanRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
+  // );
   sl.registerLazySingleton<WeeklyPlanRepository>(
     () => WeeklyPlanRepositoryImpl(remoteDataSource: sl()),
   );
   sl.registerLazySingleton(() => WeeklyPlanTransitionGuard());
-  sl.registerLazySingleton(
-    () => WeeklyPlanDomainService(repository: sl(), guard: sl()),
-  );
+  sl.registerLazySingleton(() => WeeklyPlanDomainService(repository: sl()));
   sl.registerLazySingleton(() => GetAllWeeklyPlanUseCase(sl()));
   sl.registerLazySingleton(() => GetWeeklyPlanUseCase(sl()));
   sl.registerLazySingleton(() => CreateWeeklyPlanUseCase(sl()));
@@ -699,10 +668,15 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // Seq 13 ? Daily Reports (L3)
+  // Seq 13 — Daily Reports (L3)
+  // DEVELOPMENT (mock — active now):
   sl.registerLazySingleton<DailyReportRemoteDataSource>(
     () => DailyReportMockDataSource(),
   );
+  // PRODUCTION (real — swap when Laravel API is ready):
+  // sl.registerLazySingleton<DailyReportRemoteDataSource>(
+  //   () => DailyReportRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
+  // );
   sl.registerLazySingleton<DailyReportRepository>(
     () => DailyReportRepositoryImpl(remoteDataSource: sl()),
   );
@@ -752,8 +726,13 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // Seq 15 ? Orders (L3)
+  // Seq 15 — Orders (L3)
+  // DEVELOPMENT (mock — active now):
   sl.registerLazySingleton<OrderRemoteDataSource>(() => OrderMockDataSource());
+  // PRODUCTION (real — swap when Laravel API is ready):
+  // sl.registerLazySingleton<OrderRemoteDataSource>(
+  //   () => OrderRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
+  // );
   sl.registerLazySingleton<OrderRepository>(
     () => OrderRepositoryImpl(remoteDataSource: sl()),
   );
@@ -777,10 +756,15 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // Seq 16 ? Payments (L1)
+  // Seq 16 — Payments (L1)
+  // DEVELOPMENT (mock — active now):
   sl.registerLazySingleton<PaymentRemoteDataSource>(
     () => PaymentMockDataSource(),
   );
+  // PRODUCTION (real — swap when Laravel API is ready):
+  // sl.registerLazySingleton<PaymentRemoteDataSource>(
+  //   () => PaymentRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
+  // );
   sl.registerLazySingleton<PaymentRepository>(
     () => PaymentRepositoryImpl(remoteDataSource: sl()),
   );
@@ -799,10 +783,15 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // Seq 17 ? Notifications (L2)
+  // Seq 17 — Notifications (L2)
+  // DEVELOPMENT (mock — active now):
   sl.registerLazySingleton<NotificationRemoteDataSource>(
     () => NotificationMockDataSource(),
   );
+  // PRODUCTION (real — swap when Laravel API is ready):
+  // sl.registerLazySingleton<NotificationRemoteDataSource>(
+  //   () => NotificationRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
+  // );
   sl.registerLazySingleton<NotificationRepository>(
     () => NotificationRepositoryImpl(remoteDataSource: sl()),
   );
@@ -892,13 +881,15 @@ Future<void> initDependencies() async {
     () => ReportExportCubit(service: sl<ReportExportService>()),
   );
 
-  // Seq 21 ? Activity Logs (L1)
-  // sl.registerLazySingleton<ActivityLogRemoteDataSource>(
-  //   () => ActivityLogRemoteDataSourceImpl(dio: sl()),
-  // );
+  // Seq 21 — Activity Logs (L1)
+  // DEVELOPMENT (mock — active now):
   sl.registerLazySingleton<ActivityLogRemoteDataSource>(
     () => ActivityLogMockDataSource(),
   );
+  // PRODUCTION (real — swap when Laravel API is ready):
+  // sl.registerLazySingleton<ActivityLogRemoteDataSource>(
+  //   () => ActivityLogRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
+  // );
   sl.registerLazySingleton<ActivityLogRepository>(
     () => ActivityLogRepositoryImpl(remoteDataSource: sl()),
   );

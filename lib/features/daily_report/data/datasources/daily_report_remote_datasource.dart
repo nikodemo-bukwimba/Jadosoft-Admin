@@ -1,24 +1,35 @@
 ﻿import 'package:dio/dio.dart';
 import '../../../../core/error/exceptions.dart';
+import '../../../../core/context/org_context.dart';
 import '../models/daily_report_model.dart';
 
 abstract class DailyReportRemoteDataSource {
   Future<List<DailyReportModel>> getAll();
-  Future<DailyReportModel>       getById(String id);
-  Future<DailyReportModel>       create(Map<String, dynamic> data);
-  Future<DailyReportModel>       update(String id, Map<String, dynamic> data);
-  Future<void>                delete(String id);
+  Future<DailyReportModel> getById(String id);
+  Future<DailyReportModel> create(Map<String, dynamic> data);
+  Future<DailyReportModel> update(String id, Map<String, dynamic> data);
+  Future<void> delete(String id);
+  Future<DailyReportModel> approve(String id, {required String feedback});
+  Future<DailyReportModel> reject(String id, {required String feedback});
 }
 
 class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   final Dio _dio;
-  DailyReportRemoteDataSourceImpl({required Dio dio}) : _dio = dio;
+  final OrgContext _orgContext;
+
+  DailyReportRemoteDataSourceImpl({
+    required Dio dio,
+    required OrgContext orgContext,
+  }) : _dio = dio,
+       _orgContext = orgContext;
+
+  String get _base => '/pharma/${_orgContext.effectiveOrgId}/reports';
 
   @override
   Future<List<DailyReportModel>> getAll() async {
     try {
-      final response = await _dio.get('/daily-reports');
-      final data = response.data as List;
+      final response = await _dio.get(_base);
+      final data = (response.data['data'] ?? response.data) as List;
       return data
           .map((e) => DailyReportModel.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -30,8 +41,9 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   @override
   Future<DailyReportModel> getById(String id) async {
     try {
-      final response = await _dio.get('/daily-reports/$id');
-      return DailyReportModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.get('$_base/$id');
+      final data = response.data['data'] ?? response.data;
+      return DailyReportModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -40,8 +52,9 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   @override
   Future<DailyReportModel> create(Map<String, dynamic> data) async {
     try {
-      final response = await _dio.post('/daily-reports', data: data);
-      return DailyReportModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.post(_base, data: data);
+      final body = response.data['data'] ?? response.data;
+      return DailyReportModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -50,8 +63,9 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   @override
   Future<DailyReportModel> update(String id, Map<String, dynamic> data) async {
     try {
-      final response = await _dio.put('/daily-reports/$id', data: data);
-      return DailyReportModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.put('$_base/$id', data: data);
+      final body = response.data['data'] ?? response.data;
+      return DailyReportModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -60,7 +74,38 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   @override
   Future<void> delete(String id) async {
     try {
-      await _dio.delete('/daily-reports/$id');
+      await _dio.delete('$_base/$id');
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<DailyReportModel> approve(
+    String id, {
+    required String feedback,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '$_base/$id/approve',
+        data: {'feedback': feedback},
+      );
+      final body = response.data['data'] ?? response.data;
+      return DailyReportModel.fromJson(body as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<DailyReportModel> reject(String id, {required String feedback}) async {
+    try {
+      final response = await _dio.post(
+        '$_base/$id/reject',
+        data: {'feedback': feedback},
+      );
+      final body = response.data['data'] ?? response.data;
+      return DailyReportModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }

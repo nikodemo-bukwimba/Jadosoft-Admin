@@ -9,9 +9,8 @@ import '../datasources/order_remote_datasource.dart';
 class OrderRepositoryImpl implements OrderRepository {
   final OrderRemoteDataSource _remoteDataSource;
 
-  OrderRepositoryImpl({
-    required OrderRemoteDataSource remoteDataSource,
-  })  :         _remoteDataSource = remoteDataSource;
+  OrderRepositoryImpl({required OrderRemoteDataSource remoteDataSource})
+    : _remoteDataSource = remoteDataSource;
 
   @override
   Future<Either<Failure, List<OrderEntity>>> getAll() async {
@@ -70,6 +69,50 @@ class OrderRepositoryImpl implements OrderRepository {
     try {
       await _remoteDataSource.delete(id);
       return const Right(null);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, OrderEntity>> confirm(String id) async {
+    try {
+      return Right(await _remoteDataSource.confirm(id));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, OrderEntity>> ship(String id) async {
+    try {
+      return Right(await _remoteDataSource.ship(id));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, OrderEntity>> deliver(String id) async {
+    try {
+      return Right(await _remoteDataSource.deliver(id));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, OrderEntity>> cancel(String id) async {
+    try {
+      return Right(await _remoteDataSource.cancel(id));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {

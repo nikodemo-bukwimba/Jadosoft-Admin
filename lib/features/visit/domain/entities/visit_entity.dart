@@ -1,6 +1,16 @@
-﻿import 'package:equatable/equatable.dart';
+import 'package:equatable/equatable.dart';
+
+/// Admin comment left during review or flag.
+class VisitAdminComment {
+  final String id;
+  final String authorName;
+  final String comment;
+  final DateTime createdAt;
+  const VisitAdminComment({required this.id, required this.authorName, required this.comment, required this.createdAt});
+}
 
 class VisitEntity extends Equatable {
+  // ── Original Maishell fields (unchanged) ────────────────────
   final String id;
   final String customerId;
   final String officerId;
@@ -16,8 +26,19 @@ class VisitEntity extends Equatable {
   final List<String>? documentUrls;
   final List<String>? promotedProductIds;
   final String? discussionSummary;
-  final String status;
+  final String status;        // pending | reviewed | flagged
   final DateTime createdAt;
+
+  // ── Nexora extension fields ─────────────────────────────────
+  final String? visitType;    // routine | follow_up | promotional | collection | urgent
+  final String? objective;
+  final String? outcome;
+  final String? outcomeStatus; // positive | neutral | negative | follow_up_needed
+  final int? durationMinutes;
+  final String? customerName;  // denormalized from customer for display
+  final String? officerName;   // denormalized from officer for display
+  final String? flagReason;    // why admin flagged this visit
+  final List<VisitAdminComment> adminComments;
 
   const VisitEntity({
     required this.id, required this.customerId, required this.officerId,
@@ -26,6 +47,10 @@ class VisitEntity extends Equatable {
     this.gpsLat, this.gpsLng, this.imageUrls, this.documentUrls,
     this.promotedProductIds, this.discussionSummary,
     required this.status, required this.createdAt,
+    // Nexora extensions
+    this.visitType, this.objective, this.outcome, this.outcomeStatus,
+    this.durationMinutes, this.customerName, this.officerName,
+    this.flagReason, this.adminComments = const [],
   });
 
   VisitEntity copyWith({
@@ -35,6 +60,9 @@ class VisitEntity extends Equatable {
     List<String>? imageUrls, List<String>? documentUrls,
     List<String>? promotedProductIds, String? discussionSummary,
     String? status, DateTime? createdAt,
+    String? visitType, String? objective, String? outcome, String? outcomeStatus,
+    int? durationMinutes, String? customerName, String? officerName,
+    String? flagReason, List<VisitAdminComment>? adminComments,
   }) {
     return VisitEntity(
       id: id ?? this.id, customerId: customerId ?? this.customerId,
@@ -47,9 +75,14 @@ class VisitEntity extends Equatable {
       promotedProductIds: promotedProductIds ?? this.promotedProductIds,
       discussionSummary: discussionSummary ?? this.discussionSummary,
       status: status ?? this.status, createdAt: createdAt ?? this.createdAt,
+      visitType: visitType ?? this.visitType, objective: objective ?? this.objective,
+      outcome: outcome ?? this.outcome, outcomeStatus: outcomeStatus ?? this.outcomeStatus,
+      durationMinutes: durationMinutes ?? this.durationMinutes,
+      customerName: customerName ?? this.customerName, officerName: officerName ?? this.officerName,
+      flagReason: flagReason ?? this.flagReason, adminComments: adminComments ?? this.adminComments,
     );
   }
 
   @override
-  List<Object?> get props => [id, customerId, officerId, visitDate, businessName, status, createdAt];
+  List<Object?> get props => [id, customerId, officerId, visitDate, businessName, status, createdAt, adminComments, flagReason];
 }

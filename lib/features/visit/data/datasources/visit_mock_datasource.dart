@@ -14,6 +14,10 @@ class VisitMockDataSource implements VisitRemoteDataSource {
       'document_urls': <String>[], 'promoted_product_ids': ['prod-001', 'prod-003'],
       'discussion_summary': 'Reviewed new Vitamin C line. Owner placed tentative order for 50 units.',
       'status': 'pending', 'created_at': '2026-03-10T09:30:00.000Z',
+      'visit_type': 'promotional', 'objective': 'Promote Vitamin C line',
+      'outcome': 'Trial order placed', 'outcome_status': 'positive',
+      'duration_minutes': 45, 'customer_name': 'Mbeya City Pharmacy',
+      'officer_name': 'John Mwangi', 'flag_reason': null, 'admin_comments': <Map<String, dynamic>>[],
     },
     {
       'id': 'vis-002', 'customer_id': 'cust-002', 'officer_id': 'off-002',
@@ -24,6 +28,13 @@ class VisitMockDataSource implements VisitRemoteDataSource {
       'image_urls': <String>[], 'document_urls': <String>[], 'promoted_product_ids': ['prod-002'],
       'discussion_summary': 'Presented Amoxicillin restock offer. Owner will confirm next week.',
       'status': 'reviewed', 'created_at': '2026-03-09T14:00:00.000Z',
+      'visit_type': 'routine', 'objective': null,
+      'outcome': 'Follow-up needed', 'outcome_status': 'follow_up_needed',
+      'duration_minutes': 30, 'customer_name': 'Uyole Medical Supplies',
+      'officer_name': 'Sarah Kimaro', 'flag_reason': null,
+      'admin_comments': [
+        {'id': 'cmt-001', 'author_name': 'Head Officer', 'comment': 'Good follow-through. Confirm restock by Friday.', 'created_at': '2026-03-09T18:00:00.000Z'},
+      ],
     },
     {
       'id': 'vis-003', 'customer_id': 'cust-003', 'officer_id': 'off-001',
@@ -35,6 +46,14 @@ class VisitMockDataSource implements VisitRemoteDataSource {
       'image_urls': <String>[], 'document_urls': <String>[], 'promoted_product_ids': <String>[],
       'discussion_summary': 'Brief visit. Contact person was absent.',
       'status': 'flagged', 'created_at': '2026-03-08T10:00:00.000Z',
+      'visit_type': 'follow_up', 'objective': 'Follow up on previous order',
+      'outcome': 'Customer not available', 'outcome_status': 'negative',
+      'duration_minutes': 15, 'customer_name': 'Tukuyu Health Store',
+      'officer_name': 'John Mwangi',
+      'flag_reason': 'GPS location mismatch. Officer logged from 15km away.',
+      'admin_comments': [
+        {'id': 'cmt-002', 'author_name': 'Head Officer', 'comment': 'GPS location mismatch. Officer logged from 15km away. Please verify visit.', 'created_at': '2026-03-08T16:00:00.000Z'},
+      ],
     },
     {
       'id': 'vis-004', 'customer_id': 'cust-004', 'officer_id': 'off-003',
@@ -47,6 +66,10 @@ class VisitMockDataSource implements VisitRemoteDataSource {
       'document_urls': <String>[], 'promoted_product_ids': ['prod-006', 'prod-005'],
       'discussion_summary': 'Owner ordered 20 units. Delivery requested by Friday.',
       'status': 'pending', 'created_at': '2026-03-11T08:15:00.000Z',
+      'visit_type': 'promotional', 'objective': 'Demo Hydrocortisone cream',
+      'outcome': 'Order placed', 'outcome_status': 'positive',
+      'duration_minutes': 60, 'customer_name': 'Forest Hill Pharmacy',
+      'officer_name': 'Grace Njoroge', 'flag_reason': null, 'admin_comments': <Map<String, dynamic>>[],
     },
     {
       'id': 'vis-005', 'customer_id': 'cust-006', 'officer_id': 'off-006',
@@ -57,6 +80,10 @@ class VisitMockDataSource implements VisitRemoteDataSource {
       'image_urls': <String>[], 'document_urls': <String>[], 'promoted_product_ids': ['prod-008'],
       'discussion_summary': 'Collected payment receipt. Discussed Omeprazole restocking.',
       'status': 'reviewed', 'created_at': '2026-03-07T11:45:00.000Z',
+      'visit_type': 'collection', 'objective': 'Collect payment',
+      'outcome': 'Payment received', 'outcome_status': 'positive',
+      'duration_minutes': 25, 'customer_name': 'Soweto Health Point',
+      'officer_name': 'Peter Kato', 'flag_reason': null, 'admin_comments': <Map<String, dynamic>>[],
     },
   ];
 
@@ -77,7 +104,7 @@ class VisitMockDataSource implements VisitRemoteDataSource {
   Future<VisitModel> create(Map<String, dynamic> data) async {
     await _simulateDelay();
     final id = _idCounter++;
-    final n = {'id': 'vis-${id.toString().padLeft(3, '0')}', ...data, 'status': 'pending', 'created_at': DateTime.now().toIso8601String()};
+    final n = {'id': 'vis-${id.toString().padLeft(3, '0')}', ...data, 'status': 'pending', 'created_at': DateTime.now().toIso8601String(), 'admin_comments': <Map<String, dynamic>>[]};
     _store.add(n);
     return VisitModel.fromJson(n);
   }

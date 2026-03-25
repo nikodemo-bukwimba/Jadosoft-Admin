@@ -130,4 +130,44 @@ class OrderMockDataSource implements OrderRemoteDataSource {
     await Future.delayed(const Duration(milliseconds: 200));
     _orders.removeWhere((o) => o.id == id);
   }
+
+  @override
+  Future<OrderModel> confirm(String id) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return _updateStatus(id, 'confirmed');
+  }
+
+  @override
+  Future<OrderModel> ship(String id) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return _updateStatus(id, 'shipped');
+  }
+
+  @override
+  Future<OrderModel> deliver(String id) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return _updateStatus(id, 'delivered');
+  }
+
+  @override
+  Future<OrderModel> cancel(String id) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return _updateStatus(id, 'cancelled');
+  }
+
+  OrderModel _updateStatus(String id, String status) {
+    final index = _orders.indexWhere((o) => o.id == id);
+    if (index == -1) throw Exception('Order not found');
+    final updated = OrderModel(
+      id: _orders[index].id,
+      customerId: _orders[index].customerId,
+      items: _orders[index].items,
+      total: _orders[index].total,
+      paymentRef: _orders[index].paymentRef,
+      status: status,
+      createdAt: _orders[index].createdAt,
+    );
+    _orders[index] = updated;
+    return updated;
+  }
 }

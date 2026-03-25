@@ -1,20 +1,17 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
 import '../../domain/entities/product_entity.dart';
-import '../../domain/value_objects/product_status.dart';
 import '../bloc/product_bloc.dart';
 import '../bloc/product_event.dart';
 import '../bloc/product_state.dart';
+import '../widgets/view_mode_toggle.dart';
 import '../widgets/product_card_tile.dart';
 import '../widgets/product_grid_tile.dart';
 import '../widgets/product_list_row.dart';
 import '../widgets/product_table_row.dart';
-import '../widgets/view_mode_toggle.dart';
-import 'product_detail_page.dart';
-import 'product_form_page.dart';
 
-/// Main product list page with 4 view modes, search, and status filter.
 class ProductListPage extends StatefulWidget {
   const ProductListPage({super.key});
 
@@ -23,338 +20,307 @@ class ProductListPage extends StatefulWidget {
 }
 
 class _ProductListPageState extends State<ProductListPage> {
-  ProductViewMode _viewMode = ProductViewMode.card;
-  final _searchController = TextEditingController();
-  String? _statusFilter;
+  ProductViewMode _viewMode = ProductViewMode.cards;
 
   @override
   void initState() {
     super.initState();
-    _loadProducts();
+    context.read<ProductBloc>().add(ProductLoadAllRequested());
   }
 
-  void _loadProducts() {
-    context.read<ProductBloc>().add(ProductLoadAllRequested(
-          search: _searchController.text.isEmpty
-              ? null
-              : _searchController.text,
-          status: _statusFilter,
-        ));
-  }
+  void _navigateToDetail(String id) =>
+      context.push(AppRouter.productDetailPath(id));
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _navigateToDetail(ProductEntity product) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BlocProvider.value(
-          value: context.read<ProductBloc>(),
-          child: ProductDetailPage(productId: product.id),
-        ),
+  void _deleteProduct(String id, String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Product?'),
+        content: Text('Remove "$name"? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
       ),
     );
+    if (confirmed == true && mounted) {
+      context.read<ProductBloc>().add(ProductDeleteRequested(id));
+    }
   }
 
-  void _navigateToCreate() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BlocProvider.value(
-          value: context.read<ProductBloc>(),
-          child: const ProductFormPage(),
-        ),
-      ),
-    );
+  String _formatPrice(double price) {
+    final formatted = price.toStringAsFixed(0);
+    final buffer = StringBuffer();
+    for (int i = 0; i < formatted.length; i++) {
+      if (i > 0 && (formatted.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(formatted[i]);
+    }
+    return 'TZS $buffer';
+  }
+
+  /// Responsive grid column count based on screen width.
+  int _gridColumns(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    if (width >= 1200) return 5;
+    if (width >= 1024) return 4;
+    if (width >= 600) return 3;
+    return 2;
   }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Products'),
         actions: [
           ViewModeToggle(
-            currentMode: _viewMode,
-            onModeChanged: (mode) => setState(() => _viewMode = mode),
+            current: _viewMode,
+            onChanged: (mode) => setState(() => _viewMode = mode),
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
-        children: [
-          // Search + filter bar
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search products...',
-                      prefixIcon: const Icon(Icons.search, size: 20),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: colorScheme.outlineVariant,
-                        ),
-                      ),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                _loadProducts();
-                              },
-                            )
-                          : null,
-                    ),
-                    onSubmitted: (_) => _loadProducts(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _StatusFilterChip(
-                  selectedStatus: _statusFilter,
-                  onChanged: (status) {
-                    setState(() => _statusFilter = status);
-                    _loadProducts();
-                  },
-                ),
-              ],
-            ),
-          ),
-
-          // Content
-          Expanded(
-            child: BlocConsumer<ProductBloc, ProductState>(
-              listener: (context, state) {
-                if (state is ProductOperationSuccess) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(state.message)),
-                  );
-                  _loadProducts();
-                }
-              },
-              builder: (context, state) {
-                if (state is ProductListLoading) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (state is ProductError) {
-                  return Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.error_outline,
-                            size: 48,
-                            color: colorScheme.error),
-                        const SizedBox(height: 12),
-                        Text(state.message,
-                            textAlign: TextAlign.center),
-                        const SizedBox(height: 12),
-                        FilledButton.tonal(
-                          onPressed: _loadProducts,
-                          child: const Text('Retry'),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-                if (state is ProductListLoaded) {
-                  if (state.products.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.inventory_2_outlined,
-                              size: 64,
-                              color: colorScheme.onSurfaceVariant
-                                  .withOpacity(0.3)),
-                          const SizedBox(height: 12),
-                          Text(
-                            'No products found',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-                  return RefreshIndicator(
-                    onRefresh: () async => _loadProducts(),
-                    child: _buildListView(state.products),
-                  );
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-          ),
-        ],
-      ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _navigateToCreate,
+        onPressed: () => context.push(AppRouter.productCreate),
         child: const Icon(Icons.add),
+      ),
+      body: BlocConsumer<ProductBloc, ProductState>(
+        listener: (context, state) {
+          if (state is ProductOperationSuccess) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+            context.read<ProductBloc>().add(ProductLoadAllRequested());
+          }
+          if (state is ProductFailure) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: scheme.error,
+              ),
+            );
+          }
+        },
+        builder: (context, state) {
+          if (state is ProductLoading || state is ProductInitial) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (state is ProductEmpty) {
+            return _buildEmpty(context, scheme);
+          }
+          if (state is ProductFailure) {
+            return _buildError(context, scheme, state.message);
+          }
+          if (state is ProductListLoaded) {
+            return RefreshIndicator(
+              onRefresh: () async =>
+                  context.read<ProductBloc>().add(ProductLoadAllRequested()),
+              child: _buildView(state.items),
+            );
+          }
+          return const SizedBox.shrink();
+        },
       ),
     );
   }
 
-  Widget _buildListView(List<ProductEntity> products) {
-    switch (_viewMode) {
-      case ProductViewMode.grid:
-        return GridView.builder(
-          padding: const EdgeInsets.all(16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 0.72,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-          ),
-          itemCount: products.length,
-          itemBuilder: (_, i) => ProductGridTile(
-            product: products[i],
-            onTap: () => _navigateToDetail(products[i]),
-          ),
-        );
+  // ─── View Router ───────────────────────────────────────────
 
-      case ProductViewMode.card:
-        return ListView.builder(
-          padding: const EdgeInsets.only(top: 8, bottom: 80),
-          itemCount: products.length,
-          itemBuilder: (_, i) => ProductCardTile(
-            product: products[i],
-            onTap: () => _navigateToDetail(products[i]),
-          ),
-        );
-
-      case ProductViewMode.list:
-        return ListView.separated(
-          padding: const EdgeInsets.only(top: 4, bottom: 80),
-          itemCount: products.length,
-          separatorBuilder: (_, __) => Divider(
-            height: 1,
-            indent: 64,
-            color: Theme.of(context)
-                .colorScheme
-                .outlineVariant
-                .withOpacity(0.3),
-          ),
-          itemBuilder: (_, i) => ProductListRow(
-            product: products[i],
-            onTap: () => _navigateToDetail(products[i]),
-          ),
-        );
-
-      case ProductViewMode.table:
-        return SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 80),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              showCheckboxColumn: false,
-              headingRowHeight: 44,
-              dataRowMinHeight: 44,
-              dataRowMaxHeight: 56,
-              columns: ProductTableRow.columns(context),
-              rows: products
-                  .map((p) => ProductTableRow.row(
-                        context: context,
-                        product: p,
-                        onTap: () => _navigateToDetail(p),
-                      ))
-                  .toList(),
-            ),
-          ),
-        );
-    }
+  Widget _buildView(List<ProductEntity> items) {
+    return switch (_viewMode) {
+      ProductViewMode.cards => _buildCardsView(items),
+      ProductViewMode.grid => _buildGridView(items),
+      ProductViewMode.list => _buildListView(items),
+      ProductViewMode.details => _buildDetailsView(items),
+    };
   }
-}
 
-// ── Status filter dropdown ────────────────────────────────────────────
+  // ── 1. Cards ───────────────────────────────────────────────
 
-class _StatusFilterChip extends StatelessWidget {
-  final String? selectedStatus;
-  final ValueChanged<String?> onChanged;
+  Widget _buildCardsView(List<ProductEntity> items) {
+    final width = MediaQuery.of(context).size.width;
 
-  const _StatusFilterChip({
-    required this.selectedStatus,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return PopupMenuButton<String?>(
-      tooltip: 'Filter by status',
-      onSelected: onChanged,
-      offset: const Offset(0, 40),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: selectedStatus != null
-                ? colorScheme.primary
-                : colorScheme.outlineVariant,
-          ),
-          borderRadius: BorderRadius.circular(10),
-          color: selectedStatus != null
-              ? colorScheme.primaryContainer.withOpacity(0.3)
-              : null,
+    // On wide screens, show cards in a grid instead of single column
+    if (width >= 1024) {
+      final columns = width >= 1200 ? 3 : 2;
+      return GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          mainAxisExtent: 280,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.filter_list,
-              size: 18,
-              color: selectedStatus != null
-                  ? colorScheme.primary
-                  : colorScheme.onSurfaceVariant,
-            ),
-            if (selectedStatus != null) ...[
-              const SizedBox(width: 4),
-              Text(
-                ProductStatus.fromString(selectedStatus!).label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ],
+        itemCount: items.length,
+        itemBuilder: (_, i) => ProductCardTile(
+          item: items[i],
+          formatPrice: _formatPrice,
+          onTap: () => _navigateToDetail(items[i].id),
+          onDelete: () => _deleteProduct(items[i].id, items[i].name),
         ),
+      );
+    }
+
+    // Mobile/tablet: single column list
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: items.length,
+      itemBuilder: (_, i) => ProductCardTile(
+        item: items[i],
+        formatPrice: _formatPrice,
+        onTap: () => _navigateToDetail(items[i].id),
+        onDelete: () => _deleteProduct(items[i].id, items[i].name),
       ),
-      itemBuilder: (_) => [
-        const PopupMenuItem<String?>(
-          value: null,
-          child: Text('All Statuses'),
-        ),
-        ...ProductStatus.values.map((s) => PopupMenuItem<String?>(
-              value: s.name,
-              child: Row(
-                children: [
-                  Icon(s.icon, size: 16, color: s.color),
-                  const SizedBox(width: 8),
-                  Text(s.label),
-                ],
+    );
+  }
+
+  // ── 2. Grid ────────────────────────────────────────────────
+
+  Widget _buildGridView(List<ProductEntity> items) {
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 420,
+        mainAxisExtent: 280,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+      ),
+      itemCount: items.length,
+      itemBuilder: (_, i) => ProductGridTile(
+        item: items[i],
+        formatPrice: _formatPrice,
+        onTap: () => _navigateToDetail(items[i].id),
+      ),
+    );
+  }
+
+  // ── 3. List ────────────────────────────────────────────────
+
+  Widget _buildListView(List<ProductEntity> items) {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: items.length,
+      itemBuilder: (_, i) => ProductListRow(
+        item: items[i],
+        formatPrice: _formatPrice,
+        onTap: () => _navigateToDetail(items[i].id),
+        onDelete: () => _deleteProduct(items[i].id, items[i].name),
+      ),
+    );
+  }
+
+  // ── 4. Details ─────────────────────────────────────────────
+
+  Widget _buildDetailsView(List<ProductEntity> items) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          // Table header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
               ),
-            )),
-      ],
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 44),
+                const SizedBox(width: 12),
+                Expanded(flex: 3, child: Text('Name', style: _headerStyle)),
+                Expanded(flex: 2, child: Text('Price', style: _headerStyle)),
+                Expanded(flex: 2, child: Text('Status', style: _headerStyle)),
+                const SizedBox(width: 48),
+              ],
+            ),
+          ),
+          // Table rows
+          ...items.asMap().entries.map((entry) {
+            final i = entry.key;
+            final item = entry.value;
+            return ProductTableRow(
+              item: item,
+              formatPrice: _formatPrice,
+              isLast: i == items.length - 1,
+              onTap: () => _navigateToDetail(item.id),
+              onDelete: () => _deleteProduct(item.id, item.name),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  TextStyle get _headerStyle => TextStyle(
+    fontSize: 11,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 0.5,
+    color: Theme.of(context).colorScheme.onSurfaceVariant,
+  );
+
+  // ─── Empty / Error ─────────────────────────────────────────
+
+  Widget _buildEmpty(BuildContext context, ColorScheme scheme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.inventory_2_outlined,
+            size: 64,
+            color: scheme.outlineVariant,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No products yet.',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Tap + to add your first product.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildError(BuildContext context, ColorScheme scheme, String msg) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error_outline, size: 48, color: scheme.error),
+          const SizedBox(height: 16),
+          Text(msg, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: () =>
+                context.read<ProductBloc>().add(ProductLoadAllRequested()),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+          ),
+        ],
+      ),
     );
   }
 }

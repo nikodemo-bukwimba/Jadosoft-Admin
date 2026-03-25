@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import '../../../../core/context/org_context.dart';
 import '../../domain/models/send_template_request.dart';
 import '../../domain/models/send_template_response.dart';
 import '../../domain/models/send_media_request.dart';
@@ -8,16 +9,23 @@ import 'whatsapp_client.dart';
 
 /// Real implementation — calls WhatsApp Business API via Laravel proxy.
 /// Swap in DI when backend is ready:
-///   sl.registerLazySingleton<WhatsappClient>(() => WhatsappClientImpl(dio: sl()));
+///   sl.registerLazySingleton<WhatsappClient>(
+///     () => WhatsappClientImpl(dio: sl(), orgContext: sl()));
 class WhatsappClientImpl implements WhatsappClient {
   final Dio _dio;
+  final OrgContext _orgContext;
+
   static const int _maxRetries = 3;
   static const int _backoffMs = 1000;
 
-  WhatsappClientImpl({required Dio dio}) : _dio = dio {
+  WhatsappClientImpl({required Dio dio, required OrgContext orgContext})
+    : _dio = dio,
+      _orgContext = orgContext {
     _dio.options.connectTimeout = const Duration(seconds: 30);
     _dio.options.receiveTimeout = const Duration(seconds: 30);
   }
+
+  String get _base => '/communications/${_orgContext.effectiveOrgId}/whatsapp';
 
   Future<Response> _requestWithRetry(
     Future<Response> Function() request,
@@ -29,7 +37,8 @@ class WhatsappClientImpl implements WhatsappClient {
         return await request();
       } on DioException catch (e) {
         final status = e.response?.statusCode;
-        final isRetryable = e.type == DioExceptionType.connectionTimeout ||
+        final isRetryable =
+            e.type == DioExceptionType.connectionTimeout ||
             e.type == DioExceptionType.receiveTimeout ||
             e.type == DioExceptionType.connectionError ||
             (status != null && status >= 500);
@@ -44,31 +53,34 @@ class WhatsappClientImpl implements WhatsappClient {
 
   @override
   Future<SendTemplateResponse> sendTemplate(
-      String phoneNumberId, SendTemplateRequest request) async {
+    String phoneNumberId,
+    SendTemplateRequest request,
+  ) async {
     final response = await _requestWithRetry(
-      () => _dio.post('/api/whatsapp/$phoneNumberId/messages',
-          data: request.toJson()),
+      () => _dio.post('$_base/$phoneNumberId/messages', data: request.toJson()),
     );
-    return SendTemplateResponse.fromJson(
-        response.data as Map<String, dynamic>);
+    final body = response.data['data'] ?? response.data;
+    return SendTemplateResponse.fromJson(body as Map<String, dynamic>);
   }
 
   @override
   Future<SendMediaResponse> sendMedia(
-      String phoneNumberId, SendMediaRequest request) async {
+    String phoneNumberId,
+    SendMediaRequest request,
+  ) async {
     final response = await _requestWithRetry(
-      () => _dio.post('/api/whatsapp/$phoneNumberId/media',
-          data: request.toJson()),
+      () => _dio.post('$_base/$phoneNumberId/media', data: request.toJson()),
     );
-    return SendMediaResponse.fromJson(response.data as Map<String, dynamic>);
+    final body = response.data['data'] ?? response.data;
+    return SendMediaResponse.fromJson(body as Map<String, dynamic>);
   }
 
   @override
   Future<GetMessageStatusResponse> getMessageStatus(String messageId) async {
     final response = await _requestWithRetry(
-      () => _dio.get('/api/whatsapp/messages/$messageId'),
+      () => _dio.get('$_base/messages/$messageId'),
     );
-    return GetMessageStatusResponse.fromJson(
-        response.data as Map<String, dynamic>);
+    final body = response.data['data'] ?? response.data;
+    return GetMessageStatusResponse.fromJson(body as Map<String, dynamic>);
   }
 }

@@ -133,42 +133,17 @@ class DailyReportBloc extends Bloc<DailyReportEvent, DailyReportState> {
     Emitter<DailyReportState> emit,
   ) async {
     emit(DailyReportLoading());
-
-    // Step 1: transition status
-    final transitionResult = await domainService.transition(
+    final result = await domainService.transition(
       id: event.id,
       targetStatus: DailyReportStatus.approved,
+      feedback: event.feedback,
     );
-
-    // Extract failure or entity — no async inside fold
-    if (transitionResult.isLeft()) {
-      final failure = transitionResult.fold((f) => f, (_) => null)!;
-      emit(DailyReportFailure(failure.message));
-      return;
-    }
-
-    final entity = transitionResult.fold((_) => null, (e) => e)!;
-
-    // Step 2: persist feedback
-    final withFeedback = entity.copyWith(
-      adminFeedback: event.feedback,
-      reviewDecision: 'approved',
-      reviewedAt: DateTime.now(),
-      // TODO: replace with authenticated admin from AuthSession when real API lands
-      reviewedByName: 'Dr. Joseph Barick',
-      reviewedByRole: 'Head Marketing Officer',
-    );
-
-    final updateResult = await updateUseCase(
-      UpdateDailyReportParams(entity: withFeedback),
-    );
-
-    updateResult.fold(
+    result.fold(
       (f) => emit(DailyReportFailure(f.message)),
-      (updated) => emit(
+      (entity) => emit(
         DailyReportOperationSuccess(
           'Report approved successfully',
-          updatedItem: updated,
+          updatedItem: entity,
         ),
       ),
     );
@@ -179,40 +154,15 @@ class DailyReportBloc extends Bloc<DailyReportEvent, DailyReportState> {
     Emitter<DailyReportState> emit,
   ) async {
     emit(DailyReportLoading());
-
-    // Step 1: transition status
-    final transitionResult = await domainService.transition(
+    final result = await domainService.transition(
       id: event.id,
       targetStatus: DailyReportStatus.rejected,
+      feedback: event.feedback,
     );
-
-    // Extract failure or entity — no async inside fold
-    if (transitionResult.isLeft()) {
-      final failure = transitionResult.fold((f) => f, (_) => null)!;
-      emit(DailyReportFailure(failure.message));
-      return;
-    }
-
-    final entity = transitionResult.fold((_) => null, (e) => e)!;
-
-    // Step 2: persist feedback
-    final withFeedback = entity.copyWith(
-      adminFeedback: event.feedback,
-      reviewDecision: 'rejected',
-      reviewedAt: DateTime.now(),
-      // TODO: replace with authenticated admin from AuthSession when real API lands
-      reviewedByName: 'Dr. Joseph Barick',
-      reviewedByRole: 'Head Marketing Officer',
-    );
-
-    final updateResult = await updateUseCase(
-      UpdateDailyReportParams(entity: withFeedback),
-    );
-
-    updateResult.fold(
+    result.fold(
       (f) => emit(DailyReportFailure(f.message)),
-      (updated) => emit(
-        DailyReportOperationSuccess('Report rejected', updatedItem: updated),
+      (entity) => emit(
+        DailyReportOperationSuccess('Report rejected', updatedItem: entity),
       ),
     );
   }

@@ -27,7 +27,7 @@ class ActivityLogCard extends StatelessWidget {
             fontWeight: FontWeight.w600,
           ),
         ),
-        subtitle: Text(item.actorName?.toString() ?? ''),        trailing: IconButton(
+        subtitle: Text(item.actorName.toString()),        trailing: IconButton(
           icon: Icon(Icons.delete_outline, color: scheme.error),
           tooltip: 'Delete',
           onPressed: () => _confirmDelete(context),

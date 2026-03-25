@@ -76,4 +76,16 @@ class PromotionRepositoryImpl implements PromotionRepository {
       return Left(GenericFailure(e.toString()));
     }
   }
+
+    @override
+  Future<Either<Failure, PromotionEntity>> publish(String id) async {
+    try {
+      final result = await _remoteDataSource.publish(id);
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
 }

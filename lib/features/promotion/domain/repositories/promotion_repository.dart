@@ -7,5 +7,6 @@ abstract class PromotionRepository {
   Future<Either<Failure, PromotionEntity>>       getById(String id);
   Future<Either<Failure, PromotionEntity>>       create(PromotionEntity entity);
   Future<Either<Failure, PromotionEntity>>       update(PromotionEntity entity);
-  Future<Either<Failure, void>>                 delete(String id);
+  Future<Either<Failure, void>>                  delete(String id);
+  Future<Either<Failure, PromotionEntity>>       publish(String id);
 }

@@ -714,11 +714,29 @@ class ConversationMockDataSource implements ConversationRemoteDataSource {
     _messages.remove(id);
   }
 
-  Future<List<MessageModel>> getMessages(String convId) async {
+  @override
+  Future<List<MessageModel>> getMessages(
+    String convId, {
+    int perPage = 50,
+  }) async {
     await _simulateDelay();
     return (_messages[convId] ?? [])
         .map((m) => MessageModel.fromJson(m))
         .toList();
+  }
+
+  @override
+  Future<void> markAsRead(String convId) async {
+    await _simulateDelay();
+    // Mock: mark all messages as read
+    final msgs = _messages[convId];
+    if (msgs != null) {
+      for (final m in msgs) {
+        if (m['sender_id'] != kAdminId) {
+          m['delivery_status'] = 'read';
+        }
+      }
+    }
   }
 
   Future<MessageModel> sendMessage({

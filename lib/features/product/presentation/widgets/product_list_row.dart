@@ -1,156 +1,115 @@
 import 'package:flutter/material.dart';
-
 import '../../domain/entities/product_entity.dart';
+import '../../domain/value_objects/product_status.dart';
+import 'product_image.dart';
 import 'product_status_badge.dart';
 
-/// Compact single-line row for [ProductViewMode.list].
-///
-/// Shows small avatar, name, price, category, and status in a dense row.
+/// List view row — dense, small thumbnail on the left.
 class ProductListRow extends StatelessWidget {
-  final ProductEntity product;
-  final VoidCallback? onTap;
+  final ProductEntity item;
+  final String Function(double) formatPrice;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
 
   const ProductListRow({
     super.key,
-    required this.product,
-    this.onTap,
+    required this.item,
+    required this.formatPrice,
+    required this.onTap,
+    required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    final statusEnum = ProductStatusX.fromString(item.status);
 
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(
-          children: [
-            // Small avatar
-            CircleAvatar(
-              radius: 18,
-              backgroundColor:
-                  colorScheme.primaryContainer.withOpacity(0.5),
-              backgroundImage: product.imageUrl != null
-                  ? NetworkImage(product.imageUrl!)
-                  : null,
-              child: product.imageUrl == null
-                  ? Icon(
-                      Icons.medication_outlined,
-                      size: 16,
-                      color: colorScheme.onPrimaryContainer,
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 12),
-
-            // Name
-            Expanded(
-              flex: 3,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    product.name,
-                    style: textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (product.categoryName != null)
-                    Text(
-                      product.categoryName!,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                      maxLines: 1,
-                    ),
-                ],
-              ),
-            ),
-
-            // Overlay tags
-            if (product.overlayTags.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              ...product.overlayTags.take(2).map((tag) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 4),
-                  child: _MiniTag(tag: tag),
-                );
-              }),
-            ],
-
-            const SizedBox(width: 8),
-
-            // Price
-            SizedBox(
-              width: 100,
-              child: Text(
-                product.formattedPrice,
-                style: textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: colorScheme.primary,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            child: Row(
+              children: [
+                // Thumbnail
+                ProductImage(
+                  imageUrl: item.imageUrl,
+                  width: 44,
+                  height: 44,
+                  borderRadius: 8,
                 ),
-                textAlign: TextAlign.end,
-              ),
+                const SizedBox(width: 12),
+                // Name + price
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              item.name,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (item.isNew) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'NEW',
+                                style: TextStyle(
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.blue,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        formatPrice(item.price),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: scheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Status
+                ProductStatusBadge(status: statusEnum, compact: true),
+                const SizedBox(width: 4),
+                // Delete
+                SizedBox(
+                  width: 36,
+                  child: IconButton(
+                    icon: Icon(Icons.delete_outline,
+                        color: scheme.error, size: 18),
+                    onPressed: onDelete,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-
-            // Status
-            ProductStatusBadge(
-              status: product.status,
-              fontSize: 10,
-            ),
-
-            const SizedBox(width: 4),
-            Icon(
-              Icons.chevron_right,
-              size: 18,
-              color: colorScheme.onSurfaceVariant.withOpacity(0.4),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MiniTag extends StatelessWidget {
-  final String tag;
-
-  const _MiniTag({required this.tag});
-
-  Color get _color {
-    switch (tag) {
-      case 'NEW':
-        return Colors.green;
-      case 'FEATURED':
-        return Colors.amber.shade700;
-      case 'UNAVAILABLE':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-      decoration: BoxDecoration(
-        color: _color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(3),
-      ),
-      child: Text(
-        tag,
-        style: TextStyle(
-          fontSize: 8,
-          fontWeight: FontWeight.w700,
-          color: _color,
-          letterSpacing: 0.5,
+          ),
         ),
       ),
     );

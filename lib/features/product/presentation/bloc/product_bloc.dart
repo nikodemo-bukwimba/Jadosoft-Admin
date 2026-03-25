@@ -1,172 +1,153 @@
-import 'package:flutter_bloc/flutter_bloc.dart';
-
+﻿import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/usecase/usecase.dart';
 import '../../domain/services/product_domain_service.dart';
 import '../../domain/usecases/create_product_usecase.dart';
 import '../../domain/usecases/delete_product_usecase.dart';
-import '../../domain/usecases/get_all_product_usecase.dart';
 import '../../domain/usecases/get_product_usecase.dart';
+import '../../domain/usecases/get_all_product_usecase.dart';
 import '../../domain/usecases/update_product_usecase.dart';
+import '../../domain/value_objects/product_status.dart';
 import 'product_event.dart';
 import 'product_state.dart';
 
-/// BLoC for the product feature.
-///
-/// Handles CRUD operations and Level 2 status transitions
-/// (publish, archive) via [ProductDomainService].
 class ProductBloc extends Bloc<ProductEvent, ProductState> {
-  final GetAllProductUsecase _getAllProducts;
-  final GetProductUsecase _getProduct;
-  final CreateProductUsecase _createProduct;
-  final UpdateProductUsecase _updateProduct;
-  final DeleteProductUsecase _deleteProduct;
-  final ProductDomainService _domainService;
+  final GetAllProductUseCase  getAllUseCase;
+  final GetProductUseCase     getUseCase;
+  final CreateProductUseCase  createUseCase;
+  final UpdateProductUseCase  updateUseCase;
+  final DeleteProductUseCase  deleteUseCase;
+  final ProductDomainService  domainService;
 
   ProductBloc({
-    required GetAllProductUsecase getAllProducts,
-    required GetProductUsecase getProduct,
-    required CreateProductUsecase createProduct,
-    required UpdateProductUsecase updateProduct,
-    required DeleteProductUsecase deleteProduct,
-    required ProductDomainService domainService,
-  })  : _getAllProducts = getAllProducts,
-        _getProduct = getProduct,
-        _createProduct = createProduct,
-        _updateProduct = updateProduct,
-        _deleteProduct = deleteProduct,
-        _domainService = domainService,
-        super(const ProductInitial()) {
+    required this.getAllUseCase,
+    required this.getUseCase,
+    required this.createUseCase,
+    required this.updateUseCase,
+    required this.deleteUseCase,
+    required this.domainService,
+  }) : super(ProductInitial()) {
     on<ProductLoadAllRequested>(_onLoadAll);
     on<ProductLoadOneRequested>(_onLoadOne);
     on<ProductCreateRequested>(_onCreate);
     on<ProductUpdateRequested>(_onUpdate);
     on<ProductDeleteRequested>(_onDelete);
+    on<ProductFormReset>((_, emit) => emit(ProductInitial()));
     on<ProductPublishRequested>(_onPublish);
+    on<ProductFeatureRequested>(_onFeature);
+    on<ProductUnfeatureRequested>(_onUnfeature);
     on<ProductArchiveRequested>(_onArchive);
-    on<ProductToggleFeaturedRequested>(_onToggleFeatured);
   }
 
   Future<void> _onLoadAll(
-    ProductLoadAllRequested event,
-    Emitter<ProductState> emit,
-  ) async {
-    emit(const ProductListLoading());
-    final result = await _getAllProducts(GetAllProductParams(
-      page: event.page,
-      perPage: event.perPage,
-      status: event.status,
-      type: event.type,
-      search: event.search,
-    ));
+      ProductLoadAllRequested event, Emitter<ProductState> emit) async {
+    emit(ProductLoading());
+    final result = await getAllUseCase(NoParams());
     result.fold(
-      (failure) => emit(ProductError(failure.message)),
-      (products) => emit(ProductListLoaded(
-        products: products,
-        currentPage: event.page,
-        hasMore: products.length >= event.perPage,
-      )),
+      (f) => emit(ProductFailure(f.message)),
+      (items) => items.isEmpty
+          ? emit(ProductEmpty())
+          : emit(ProductListLoaded(items)),
     );
   }
 
   Future<void> _onLoadOne(
-    ProductLoadOneRequested event,
-    Emitter<ProductState> emit,
-  ) async {
-    emit(const ProductDetailLoading());
-    final result = await _getProduct(event.id);
+      ProductLoadOneRequested event, Emitter<ProductState> emit) async {
+    emit(ProductLoading());
+    final result = await getUseCase(GetProductParams(id: event.id));
     result.fold(
-      (failure) => emit(ProductError(failure.message)),
-      (product) => emit(ProductDetailLoaded(product)),
+      (f) => emit(ProductFailure(f.message)),
+      (item) => emit(ProductDetailLoaded(item)),
     );
   }
 
   Future<void> _onCreate(
-    ProductCreateRequested event,
-    Emitter<ProductState> emit,
-  ) async {
-    emit(const ProductOperationInProgress(message: 'Creating product...'));
-    final result = await _createProduct(event.product);
+      ProductCreateRequested event, Emitter<ProductState> emit) async {
+    emit(ProductLoading());
+    final result = await createUseCase(event.params);
     result.fold(
-      (failure) => emit(ProductError(failure.message)),
-      (product) => emit(ProductOperationSuccess(
-        message: 'Product created successfully.',
-        product: product,
-      )),
+      (f) => emit(ProductFailure(f.message)),
+      (_) => emit(ProductOperationSuccess('Product created successfully')),
     );
   }
 
   Future<void> _onUpdate(
-    ProductUpdateRequested event,
-    Emitter<ProductState> emit,
-  ) async {
-    emit(const ProductOperationInProgress(message: 'Updating product...'));
-    final result = await _updateProduct(event.product);
+      ProductUpdateRequested event, Emitter<ProductState> emit) async {
+    emit(ProductLoading());
+    final result = await updateUseCase(UpdateProductParams(entity: event.entity));
     result.fold(
-      (failure) => emit(ProductError(failure.message)),
-      (product) => emit(ProductOperationSuccess(
-        message: 'Product updated successfully.',
-        product: product,
-      )),
+      (f) => emit(ProductFailure(f.message)),
+      (_) => emit(ProductOperationSuccess('Product updated successfully')),
     );
   }
 
   Future<void> _onDelete(
-    ProductDeleteRequested event,
-    Emitter<ProductState> emit,
-  ) async {
-    emit(const ProductOperationInProgress(message: 'Deleting product...'));
-    final result = await _deleteProduct(event.id);
+      ProductDeleteRequested event, Emitter<ProductState> emit) async {
+    emit(ProductLoading());
+    final result = await deleteUseCase(DeleteProductParams(id: event.id));
     result.fold(
-      (failure) => emit(ProductError(failure.message)),
-      (_) => emit(const ProductOperationSuccess(
-        message: 'Product deleted successfully.',
-      )),
+      (f) => emit(ProductFailure(f.message)),
+      (_) => emit(ProductOperationSuccess('Product deleted successfully')),
     );
   }
-
-  // ── Level 2 Transition Handlers ──────────────────────────────────
 
   Future<void> _onPublish(
-    ProductPublishRequested event,
-    Emitter<ProductState> emit,
-  ) async {
-    emit(const ProductOperationInProgress(message: 'Publishing product...'));
-    final result = await _domainService.publish(event.product);
+      ProductPublishRequested event, Emitter<ProductState> emit) async {
+    emit(ProductLoading());
+    final result = await domainService.transition(
+      id: event.id,
+      targetStatus: ProductStatus.active,
+    );
     result.fold(
-      (failure) => emit(ProductError(failure.message)),
-      (product) => emit(ProductOperationSuccess(
-        message: 'Product published successfully.',
-        product: product,
+      (f) => emit(ProductFailure(f.message)),
+      (entity) => emit(ProductOperationSuccess(
+        'Publish successful',
+        updatedItem: entity,
       )),
     );
   }
-
+  Future<void> _onFeature(
+      ProductFeatureRequested event, Emitter<ProductState> emit) async {
+    emit(ProductLoading());
+    final result = await domainService.transition(
+      id: event.id,
+      targetStatus: ProductStatus.featured,
+    );
+    result.fold(
+      (f) => emit(ProductFailure(f.message)),
+      (entity) => emit(ProductOperationSuccess(
+        'Mark Featured successful',
+        updatedItem: entity,
+      )),
+    );
+  }
+  Future<void> _onUnfeature(
+      ProductUnfeatureRequested event, Emitter<ProductState> emit) async {
+    emit(ProductLoading());
+    final result = await domainService.transition(
+      id: event.id,
+      targetStatus: ProductStatus.active,
+    );
+    result.fold(
+      (f) => emit(ProductFailure(f.message)),
+      (entity) => emit(ProductOperationSuccess(
+        'Remove Featured successful',
+        updatedItem: entity,
+      )),
+    );
+  }
   Future<void> _onArchive(
-    ProductArchiveRequested event,
-    Emitter<ProductState> emit,
-  ) async {
-    emit(const ProductOperationInProgress(message: 'Archiving product...'));
-    final result = await _domainService.archive(event.product);
+      ProductArchiveRequested event, Emitter<ProductState> emit) async {
+    emit(ProductLoading());
+    final result = await domainService.transition(
+      id: event.id,
+      targetStatus: ProductStatus.archived,
+    );
     result.fold(
-      (failure) => emit(ProductError(failure.message)),
-      (product) => emit(ProductOperationSuccess(
-        message: 'Product archived successfully.',
-        product: product,
+      (f) => emit(ProductFailure(f.message)),
+      (entity) => emit(ProductOperationSuccess(
+        'Archive successful',
+        updatedItem: entity,
       )),
     );
-  }
-
-  // ── Client-side Toggle ───────────────────────────────────────────
-
-  Future<void> _onToggleFeatured(
-    ProductToggleFeaturedRequested event,
-    Emitter<ProductState> emit,
-  ) async {
-    // Toggle isFeatured locally — this is a client-side boolean,
-    // not a status transition. In the future this could call an API
-    // endpoint for persisting the flag.
-    final toggled = event.product.copyWith(
-      isFeatured: !event.product.isFeatured,
-    );
-    emit(ProductDetailLoaded(toggled));
   }
 }
