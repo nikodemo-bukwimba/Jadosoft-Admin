@@ -157,6 +157,11 @@ import '../../features/payment/presentation/pages/payment_form_page.dart'
 import '../../features/notification/presentation/enums/notification_form_node.dart';
 
 import '../../config/di/injection_container.dart';
+
+import '../../features/organization/presentation/bloc/organization_bloc.dart';
+import '../../features/organization/presentation/bloc/organization_event.dart';
+import '../../features/organization/presentation/pages/organization_hub_page.dart';
+
 // -- END GENERATOR FEATURE PAGE IMPORTS --------------------------------
 
 class AppRouter {
@@ -168,6 +173,7 @@ class AppRouter {
   static const String home = '/home';
   static const String dashboard = '/dashboard';
   static const String profile = '/profile';
+  static const String orgHub = '/organization';
 
   // -- GENERATOR ROUTE CONSTANTS — append only -----------------
 
@@ -439,6 +445,13 @@ class AppRouter {
 
             // --- Phase 4 — Officers (L2) --------------------
             GoRoute(
+              path: orgHub,
+              builder: (_, _) => BlocProvider(
+                create: (_) => sl<OrganizationBloc>()..add(OrgLoadRequested()),
+                child: const OrganizationHubPage(),
+              ),
+            ),
+            GoRoute(
               path: officerList,
               builder: (_, _) => BlocProvider(
                 create: (_) =>
@@ -580,27 +593,23 @@ class AppRouter {
                 return BlocProvider(
                   create: (_) =>
                       sl<ProductBloc>()..add(ProductLoadOneRequested(id)),
-                  child:
-                      const ProductDetailPage(),
+                  child: const ProductDetailPage(),
                 );
               },
             ),
-GoRoute(
+            GoRoute(
               path: productEdit,
               builder: (_, s) {
                 final id = s.pathParameters['id'] ?? '';
                 return MultiBlocProvider(
                   providers: [
                     BlocProvider(
-                      create: (_) => sl<ProductBloc>()
-                        ..add(ProductLoadOneRequested(id)),
+                      create: (_) =>
+                          sl<ProductBloc>()..add(ProductLoadOneRequested(id)),
                     ),
                     BlocProvider(create: (_) => sl<CategoryBloc>()),
                   ],
-                  child: ProductFormPage(
-                    mode: ProductFormNode.edit,  
-                    id: id,
-                  ),
+                  child: ProductFormPage(mode: ProductFormNode.edit, id: id),
                 );
               },
             ),
@@ -651,8 +660,7 @@ GoRoute(
             GoRoute(
               path: visitList,
               builder: (_, _) => BlocProvider(
-                create: (_) =>
-                    sl<VisitBloc>()..add(VisitLoadAllRequested()),
+                create: (_) => sl<VisitBloc>()..add(VisitLoadAllRequested()),
                 child: const VisitListPage(),
               ),
             ),

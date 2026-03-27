@@ -226,6 +226,7 @@ import '../../features/auth/data/datasources/auth_remote_datasource.dart';
 import '../../features/auth/data/repositories/auth_repository_impl.dart';
 import '../../features/auth/domain/repositories/auth_repository.dart';
 import '../../features/auth/domain/usecases/auth_usecases.dart';
+import 'package:admin_panel/core/context/org_context.dart';
 import '../../features/auth/domain/usecases/login_usecase.dart';
 import '../../features/auth/domain/usecases/logout_usecase.dart';
 import '../../features/auth/domain/usecases/register_usecase.dart';
@@ -294,6 +295,12 @@ import 'package:admin_panel/features/whatsapp/data/client/whatsapp_mock_client.d
 import 'package:admin_panel/features/mobile_money/data/client/mobile_money_client.dart';
 import 'package:admin_panel/features/mobile_money/data/client/mobile_money_client_impl.dart';
 import 'package:admin_panel/features/mobile_money/data/client/mobile_money_mock_client.dart';
+
+//Organization
+import 'package:admin_panel/features/organization/data/datasources/organization_remote_datasource.dart';
+import 'package:admin_panel/features/organization/data/repositories/organization_repository_impl.dart';
+import 'package:admin_panel/features/organization/domain/repositories/organization_repository.dart';
+import 'package:admin_panel/features/organization/presentation/bloc/organization_bloc.dart';
 
 import '../../core/context/org_context.dart';
 
@@ -364,6 +371,7 @@ Future<void> initDependencies() async {
       getActiveSession: sl<GetActiveSessionUseCase>(),
       getSavedAccounts: sl<GetSavedAccountsUseCase>(),
       refreshSession: sl<RefreshSessionUseCase>(),
+      orgContext: sl<OrgContext>(), // FIX: added
     ),
   );
 
@@ -486,6 +494,17 @@ Future<void> initDependencies() async {
       deleteUseCase: sl(),
       domainService: sl(),
     ),
+  );
+
+  // Seq 6b — Organization Management
+  sl.registerLazySingleton<OrganizationRemoteDataSource>(
+    () => OrganizationRemoteDataSource(dio: sl(), orgContext: sl()),
+  );
+  sl.registerLazySingleton<OrganizationRepository>(
+    () => OrganizationRepositoryImpl(remote: sl()),
+  );
+  sl.registerFactory<OrganizationBloc>(
+    () => OrganizationBloc(repository: sl(), orgContext: sl()),
   );
 
   // Seq 7 ? Customers (L1)

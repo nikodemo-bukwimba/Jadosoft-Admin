@@ -1,0 +1,1801 @@
+﻿// ================================================================
+// features_organization_source.txt
+// Generated : 2026-03-26 22:42:01
+// Files     : 32
+// Usage     : Upload to Claude Project documents as reference.
+// ================================================================
+
+// === FILE: lib/features/organization/data/datasources/organization_remote_datasource.dart ===
+import 'package:dio/dio.dart';
+import '../../../../core/context/org_context.dart';
+import '../../../../core/network/api_paths.dart';
+import '../../../../core/network/base_remote_datasource.dart';
+import '../models/organization_model.dart';
+import '../models/branch_model.dart';
+import '../models/org_role_model.dart';
+import '../models/org_member_model.dart';
+import '../models/delegation_model.dart';
+import '../models/permission_request_model.dart';
+import '../models/org_tree_model.dart';
+
+class OrganizationRemoteDataSource extends BaseRemoteDataSource {
+  final OrgContext _orgContext;
+
+  OrganizationRemoteDataSource({
+    required Dio dio,
+    required OrgContext orgContext,
+  }) : _orgContext = orgContext,
+       super(dio: dio);
+
+  // ── Organization ──────────────────────────────────────────
+
+  Future<OrganizationModel> createOrg(Map<String, dynamic> data) =>
+      postAndParse(
+        ApiPaths.orgs.create,
+        data,
+        OrganizationModel.fromJson,
+        dataKey: 'organization',
+      );
+
+  Future<OrganizationModel> getOrg(String id) => fetchSingle(
+    '/orgs/$id',
+    OrganizationModel.fromJson,
+    dataKey: 'organization',
+  );
+
+  Future<OrgTreeNodeModel> getOrgTree(String orgId) async {
+    try {
+      final response = await dio.get('/orgs/$orgId/tree');
+      final data = response.data is Map<String, dynamic>
+          ? (response.data['tree'] ?? response.data['data'] ?? response.data)
+                as Map<String, dynamic>
+          : response.data as Map<String, dynamic>;
+      return OrgTreeNodeModel.fromJson(data);
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
+  // ── Branches ──────────────────────────────────────────────
+
+  Future<List<BranchModel>> getBranches(String orgId) async {
+    try {
+      final response = await dio.get(ApiPaths.orgs.branches(orgId));
+      final data = response.data;
+      final List<dynamic> items = data is Map<String, dynamic>
+          ? (data['data'] as List<dynamic>? ??
+                data['branches'] as List<dynamic>? ??
+                [])
+          : (data as List<dynamic>? ?? []);
+      return items
+          .map((e) => BranchModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
+  Future<BranchModel> createBranch(String orgId, Map<String, dynamic> data) =>
+      postAndParse(
+        ApiPaths.orgs.branches(orgId),
+        data,
+        BranchModel.fromJson,
+        dataKey: 'branch',
+      );
+
+  // ── Roles ─────────────────────────────────────────────────
+
+  Future<List<OrgRoleModel>> getRoles(String orgId) async {
+    try {
+      final response = await dio.get(ApiPaths.orgs.roles(orgId));
+      final data = response.data;
+      final List<dynamic> items = data is Map<String, dynamic>
+          ? (data['data'] as List<dynamic>? ??
+                data['roles'] as List<dynamic>? ??
+                [])
+          : (data as List<dynamic>? ?? []);
+      return items
+          .map((e) => OrgRoleModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
+  Future<OrgRoleModel> createRole(String orgId, Map<String, dynamic> data) =>
+      postAndParse(
+        ApiPaths.orgs.roles(orgId),
+        data,
+        OrgRoleModel.fromJson,
+        dataKey: 'role',
+      );
+
+  Future<void> syncRolePermissions(
+    String orgId,
+    String roleId,
+    List<String> slugs,
+  ) async {
+    try {
+      await dio.post(
+        ApiPaths.orgs.rolePermissions(orgId, roleId),
+        data: {'permissions': slugs},
+      );
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
+  // ── Members ───────────────────────────────────────────────
+
+  Future<List<OrgMemberModel>> getMembers(String orgId) async {
+    try {
+      final response = await dio.get(ApiPaths.orgs.members(orgId));
+      final data = response.data;
+      final List<dynamic> items = data is Map<String, dynamic>
+          ? (data['data'] as List<dynamic>? ??
+                data['members'] as List<dynamic>? ??
+                [])
+          : (data as List<dynamic>? ?? []);
+      return items
+          .map((e) => OrgMemberModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
+  Future<OrgMemberModel> inviteMember(
+    String orgId,
+    Map<String, dynamic> data,
+  ) => postAndParse(
+    '${ApiPaths.orgs.members(orgId)}/invite',
+    data,
+    OrgMemberModel.fromJson,
+    dataKey: 'member',
+  );
+
+  Future<OrgMemberModel> updateMember(
+    String orgId,
+    String userId,
+    Map<String, dynamic> data,
+  ) => patchAndParse(
+    ApiPaths.orgs.member(orgId, userId),
+    data,
+    OrgMemberModel.fromJson,
+    dataKey: 'member',
+  );
+
+  Future<void> removeMember(String orgId, String userId) =>
+      deleteResource(ApiPaths.orgs.member(orgId, userId));
+
+  // ── Delegations ───────────────────────────────────────────
+
+  Future<List<DelegationModel>> getDelegations(String orgId) async {
+    try {
+      final response = await dio.get(ApiPaths.orgs.delegations(orgId));
+      final data = response.data;
+      final List<dynamic> items = data is Map<String, dynamic>
+          ? (data['data'] as List<dynamic>? ??
+                data['delegations'] as List<dynamic>? ??
+                [])
+          : (data as List<dynamic>? ?? []);
+      return items
+          .map((e) => DelegationModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
+  Future<DelegationModel> createDelegation(
+    String orgId,
+    Map<String, dynamic> data,
+  ) => postAndParse(
+    ApiPaths.orgs.delegations(orgId),
+    data,
+    DelegationModel.fromJson,
+    dataKey: 'delegation',
+  );
+
+  Future<void> revokeDelegation(String orgId, String delegationId) =>
+      deleteResource('${ApiPaths.orgs.delegations(orgId)}/$delegationId');
+
+  // ── Permission Requests ───────────────────────────────────
+
+  Future<List<PermissionRequestModel>> getPermissionRequests(
+    String orgId,
+  ) async {
+    try {
+      final response = await dio.get('/orgs/$orgId/permission-requests');
+      final data = response.data;
+      final List<dynamic> items = data is Map<String, dynamic>
+          ? (data['data'] as List<dynamic>? ?? [])
+          : (data as List<dynamic>? ?? []);
+      return items
+          .map(
+            (e) => PermissionRequestModel.fromJson(e as Map<String, dynamic>),
+          )
+          .toList();
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
+  Future<PermissionRequestModel> approvePermissionRequest(
+    String orgId,
+    String id,
+  ) => postAction(
+    '/orgs/$orgId/permission-requests/$id/approve',
+    PermissionRequestModel.fromJson,
+    dataKey: 'request',
+  );
+
+  Future<PermissionRequestModel> denyPermissionRequest(
+    String orgId,
+    String id,
+  ) => postAction(
+    '/orgs/$orgId/permission-requests/$id/deny',
+    PermissionRequestModel.fromJson,
+    dataKey: 'request',
+  );
+}
+
+
+// === FILE: lib/features/organization/data/models/branch_model.dart ===
+import '../../domain/entities/branch_entity.dart';
+
+class BranchModel extends BranchEntity {
+  const BranchModel({
+    required super.id,
+    required super.name,
+    super.description,
+    required super.parentOrgId,
+    super.address,
+    super.phone,
+    super.memberCount,
+    required super.createdAt,
+  });
+
+  factory BranchModel.fromJson(Map<String, dynamic> json) {
+    return BranchModel(
+      id: json['id']?.toString() ?? json['actor_id']?.toString() ?? '',
+      name: json['name'] as String? ?? '',
+      description: json['description'] as String?,
+      parentOrgId: json['parent_id']?.toString() ?? '',
+      address: json['address'] as String?,
+      phone: json['phone'] as String?,
+      memberCount: json['member_count'] as int? ?? json['memberships_count'] as int? ?? 0,
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'].toString()) : DateTime.now(),
+    );
+  }
+}
+
+
+// === FILE: lib/features/organization/data/models/delegation_model.dart ===
+import '../../domain/entities/delegation_entity.dart';
+
+class DelegationModel extends DelegationEntity {
+  const DelegationModel({
+    required super.id,
+    required super.parentOrgId,
+    required super.childOrgId,
+    required super.childOrgName,
+    required super.roleName,
+    super.permissionSlugs,
+    required super.createdAt,
+  });
+
+  factory DelegationModel.fromJson(Map<String, dynamic> json) {
+    final perms = (json['permissions'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+    return DelegationModel(
+      id: json['id']?.toString() ?? '',
+      parentOrgId: json['parent_org_id']?.toString() ?? '',
+      childOrgId: json['child_org_id']?.toString() ?? '',
+      childOrgName: json['child_org']?['name'] as String? ?? json['child_org_name'] as String? ?? '',
+      roleName: json['role']?['name'] as String? ?? json['role_name'] as String? ?? '',
+      permissionSlugs: perms,
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'].toString()) : DateTime.now(),
+    );
+  }
+}
+
+
+// === FILE: lib/features/organization/data/models/org_member_model.dart ===
+import '../../domain/entities/org_member_entity.dart';
+
+class OrgMemberModel extends OrgMemberEntity {
+  const OrgMemberModel({
+    required super.userId,
+    required super.name,
+    required super.email,
+    super.phone,
+    required super.roleName,
+    super.roleId,
+    super.authorityLevel,
+    required super.status,
+    required super.joinedAt,
+  });
+
+  factory OrgMemberModel.fromJson(Map<String, dynamic> json) {
+    final user = json['user'] as Map<String, dynamic>?;
+    return OrgMemberModel(
+      userId: json['user_id']?.toString() ?? user?['id']?.toString() ?? '',
+      name: user?['name'] as String? ?? json['name'] as String? ?? '',
+      email: user?['email'] as String? ?? json['email'] as String? ?? '',
+      phone: user?['phone'] as String? ?? json['phone'] as String?,
+      roleName: json['role_name'] as String? ?? json['role']?['name'] as String? ?? 'member',
+      roleId: json['org_role_id']?.toString(),
+      authorityLevel: json['level'] as int? ?? 0,
+      status: _parseStatus(json['status'] as String?),
+      joinedAt: json['joined_at'] != null ? DateTime.parse(json['joined_at'].toString())
+          : json['created_at'] != null ? DateTime.parse(json['created_at'].toString())
+          : DateTime.now(),
+    );
+  }
+
+  static MemberStatus _parseStatus(String? s) => switch (s) {
+    'active' => MemberStatus.active,
+    'suspended' => MemberStatus.suspended,
+    'invited' => MemberStatus.invited,
+    _ => MemberStatus.active,
+  };
+}
+
+
+// === FILE: lib/features/organization/data/models/org_role_model.dart ===
+import '../../domain/entities/org_role_entity.dart';
+
+class OrgRoleModel extends OrgRoleEntity {
+  const OrgRoleModel({
+    required super.id,
+    required super.name,
+    super.description,
+    super.permissions,
+    super.memberCount,
+    super.isDefault,
+    required super.createdAt,
+  });
+
+  factory OrgRoleModel.fromJson(Map<String, dynamic> json) {
+    final permList = (json['permissions'] as List<dynamic>?)?.map((p) {
+      final pm = p as Map<String, dynamic>;
+      return OrgPermissionEntity(
+        id: pm['id'] as int? ?? 0,
+        name: pm['name'] as String? ?? '',
+        slug: pm['slug'] as String? ?? '',
+        group: pm['group'] as String?,
+      );
+    }).toList() ?? [];
+
+    return OrgRoleModel(
+      id: json['id']?.toString() ?? '',
+      name: json['name'] as String? ?? '',
+      description: json['description'] as String?,
+      permissions: permList,
+      memberCount: json['member_count'] as int? ?? json['users_count'] as int? ?? 0,
+      isDefault: json['is_default'] as bool? ?? false,
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'].toString()) : DateTime.now(),
+    );
+  }
+}
+
+
+// === FILE: lib/features/organization/data/models/org_tree_model.dart ===
+import '../../domain/entities/org_tree_entity.dart';
+
+class OrgTreeNodeModel extends OrgTreeNode {
+  const OrgTreeNodeModel({
+    required super.id,
+    required super.name,
+    super.type,
+    super.memberCount,
+    super.children,
+  });
+
+  factory OrgTreeNodeModel.fromJson(Map<String, dynamic> json) {
+    final childrenJson = json['children'] as List<dynamic>? ?? [];
+    return OrgTreeNodeModel(
+      id: json['id']?.toString() ?? json['actor_id']?.toString() ?? '',
+      name: json['name'] as String? ?? '',
+      type: json['type'] as String?,
+      memberCount: json['memberships_count'] as int? ?? json['member_count'] as int? ?? 0,
+      children: childrenJson.map((c) => OrgTreeNodeModel.fromJson(c as Map<String, dynamic>)).toList(),
+    );
+  }
+}
+
+
+// === FILE: lib/features/organization/data/models/organization_model.dart ===
+import '../../domain/entities/organization_entity.dart';
+
+class OrganizationModel extends OrganizationEntity {
+  const OrganizationModel({
+    required super.id,
+    required super.name,
+    super.description,
+    required super.type,
+    super.parentId,
+    required super.status,
+    super.website,
+    super.phone,
+    super.address,
+    super.logoUrl,
+    super.approvedBy,
+    super.approvedAt,
+    super.rejectionReason,
+    required super.createdAt,
+  });
+
+  factory OrganizationModel.fromJson(Map<String, dynamic> json) {
+    return OrganizationModel(
+      id: json['id']?.toString() ?? json['actor_id']?.toString() ?? '',
+      name: json['name'] as String? ?? '',
+      description: json['description'] as String?,
+      type: json['type'] as String? ?? 'company',
+      parentId: json['parent_id']?.toString(),
+      status: _parseStatus(json['status'] as String?),
+      website: json['website'] as String?,
+      phone: json['phone'] as String?,
+      address: json['address'] as String?,
+      logoUrl: json['logo_url'] as String?,
+      approvedBy: json['approved_by']?.toString(),
+      approvedAt: json['approved_at'] != null ? DateTime.tryParse(json['approved_at'].toString()) : null,
+      rejectionReason: json['rejection_reason'] as String?,
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'].toString()) : DateTime.now(),
+    );
+  }
+
+  static OrgStatus _parseStatus(String? s) => switch (s) {
+    'active' => OrgStatus.active,
+    'suspended' => OrgStatus.suspended,
+    'rejected' => OrgStatus.rejected,
+    _ => OrgStatus.pending,
+  };
+}
+
+
+// === FILE: lib/features/organization/data/models/permission_request_model.dart ===
+import '../../domain/entities/permission_request_entity.dart';
+
+class PermissionRequestModel extends PermissionRequestEntity {
+  const PermissionRequestModel({
+    required super.id,
+    required super.orgId,
+    required super.orgName,
+    required super.requestedBy,
+    super.permissionSlugs,
+    required super.reason,
+    required super.status,
+    super.reviewedBy,
+    super.reviewNotes,
+    super.reviewedAt,
+    required super.createdAt,
+  });
+
+  factory PermissionRequestModel.fromJson(Map<String, dynamic> json) {
+    final perms = (json['requested_permissions'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+    return PermissionRequestModel(
+      id: json['id']?.toString() ?? '',
+      orgId: json['org_id']?.toString() ?? '',
+      orgName: json['org']?['name'] as String? ?? '',
+      requestedBy: json['requested_by']?.toString() ?? '',
+      permissionSlugs: perms,
+      reason: json['reason'] as String? ?? '',
+      status: _parse(json['status'] as String?),
+      reviewedBy: json['reviewed_by']?.toString(),
+      reviewNotes: json['review_notes'] as String?,
+      reviewedAt: json['reviewed_at'] != null ? DateTime.tryParse(json['reviewed_at'].toString()) : null,
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'].toString()) : DateTime.now(),
+    );
+  }
+
+  static PermissionRequestStatus _parse(String? s) => switch (s) {
+    'approved' => PermissionRequestStatus.approved,
+    'denied' => PermissionRequestStatus.denied,
+    _ => PermissionRequestStatus.pending,
+  };
+}
+
+
+// === FILE: lib/features/organization/data/repositories/organization_repository_impl.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/exceptions.dart';
+import '../../../../core/error/failures.dart';
+import '../../domain/entities/organization_entity.dart';
+import '../../domain/entities/branch_entity.dart';
+import '../../domain/entities/org_role_entity.dart';
+import '../../domain/entities/org_member_entity.dart';
+import '../../domain/entities/delegation_entity.dart';
+import '../../domain/entities/permission_request_entity.dart';
+import '../../domain/entities/org_tree_entity.dart';
+import '../../domain/repositories/organization_repository.dart';
+import '../datasources/organization_remote_datasource.dart';
+
+class OrganizationRepositoryImpl implements OrganizationRepository {
+  final OrganizationRemoteDataSource _remote;
+  OrganizationRepositoryImpl({required OrganizationRemoteDataSource remote}) : _remote = remote;
+
+  Future<Either<Failure, T>> _guard<T>(Future<T> Function() fn) async {
+    try {
+      return Right(await fn());
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on AuthException catch (e) {
+      return Left(AuthFailure(e.message));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override Future<Either<Failure, OrganizationEntity>> createOrg(Map<String, dynamic> data) => _guard(() => _remote.createOrg(data));
+  @override Future<Either<Failure, OrganizationEntity>> getOrg(String id) => _guard(() => _remote.getOrg(id));
+  @override Future<Either<Failure, OrgTreeNode>> getOrgTree(String orgId) => _guard(() => _remote.getOrgTree(orgId));
+  @override Future<Either<Failure, List<BranchEntity>>> getBranches(String orgId) => _guard(() async => await _remote.getBranches(orgId));
+  @override Future<Either<Failure, BranchEntity>> createBranch(String orgId, Map<String, dynamic> data) => _guard(() => _remote.createBranch(orgId, data));
+  @override Future<Either<Failure, List<OrgRoleEntity>>> getRoles(String orgId) => _guard(() async => await _remote.getRoles(orgId));
+  @override Future<Either<Failure, OrgRoleEntity>> createRole(String orgId, Map<String, dynamic> data) => _guard(() => _remote.createRole(orgId, data));
+  @override Future<Either<Failure, void>> syncRolePermissions(String orgId, String roleId, List<String> slugs) => _guard(() => _remote.syncRolePermissions(orgId, roleId, slugs));
+  @override Future<Either<Failure, List<OrgMemberEntity>>> getMembers(String orgId) => _guard(() async => await _remote.getMembers(orgId));
+  @override Future<Either<Failure, OrgMemberEntity>> inviteMember(String orgId, Map<String, dynamic> data) => _guard(() => _remote.inviteMember(orgId, data));
+  @override Future<Either<Failure, OrgMemberEntity>> updateMember(String orgId, String userId, Map<String, dynamic> data) => _guard(() => _remote.updateMember(orgId, userId, data));
+  @override Future<Either<Failure, void>> removeMember(String orgId, String userId) => _guard(() => _remote.removeMember(orgId, userId));
+  @override Future<Either<Failure, List<DelegationEntity>>> getDelegations(String orgId) => _guard(() async => await _remote.getDelegations(orgId));
+  @override Future<Either<Failure, DelegationEntity>> createDelegation(String orgId, Map<String, dynamic> data) => _guard(() => _remote.createDelegation(orgId, data));
+  @override Future<Either<Failure, void>> revokeDelegation(String orgId, String delegationId) => _guard(() => _remote.revokeDelegation(orgId, delegationId));
+  @override Future<Either<Failure, List<PermissionRequestEntity>>> getPermissionRequests(String orgId) => _guard(() async => await _remote.getPermissionRequests(orgId));
+  @override Future<Either<Failure, PermissionRequestEntity>> approvePermissionRequest(String orgId, String id) => _guard(() => _remote.approvePermissionRequest(orgId, id));
+  @override Future<Either<Failure, PermissionRequestEntity>> denyPermissionRequest(String orgId, String id) => _guard(() => _remote.denyPermissionRequest(orgId, id));
+}
+
+
+// === FILE: lib/features/organization/domain/entities/branch_entity.dart ===
+import 'package:equatable/equatable.dart';
+
+class BranchEntity extends Equatable {
+  final String id;
+  final String name;
+  final String? description;
+  final String parentOrgId;
+  final String? address;
+  final String? phone;
+  final int memberCount;
+  final DateTime createdAt;
+
+  const BranchEntity({
+    required this.id,
+    required this.name,
+    this.description,
+    required this.parentOrgId,
+    this.address,
+    this.phone,
+    this.memberCount = 0,
+    required this.createdAt,
+  });
+
+  @override
+  List<Object?> get props => [id, name, parentOrgId, createdAt];
+}
+
+
+// === FILE: lib/features/organization/domain/entities/delegation_entity.dart ===
+import 'package:equatable/equatable.dart';
+
+class DelegationEntity extends Equatable {
+  final String id;
+  final String parentOrgId;
+  final String childOrgId;
+  final String childOrgName;
+  final String roleName;
+  final List<String> permissionSlugs;
+  final DateTime createdAt;
+
+  const DelegationEntity({
+    required this.id,
+    required this.parentOrgId,
+    required this.childOrgId,
+    required this.childOrgName,
+    required this.roleName,
+    this.permissionSlugs = const [],
+    required this.createdAt,
+  });
+
+  @override
+  List<Object?> get props => [id, parentOrgId, childOrgId, createdAt];
+}
+
+
+// === FILE: lib/features/organization/domain/entities/org_member_entity.dart ===
+import 'package:equatable/equatable.dart';
+
+enum MemberStatus { active, suspended, invited }
+
+class OrgMemberEntity extends Equatable {
+  final String userId;
+  final String name;
+  final String email;
+  final String? phone;
+  final String roleName;
+  final String? roleId;
+  final int authorityLevel; // 0-100
+  final MemberStatus status;
+  final DateTime joinedAt;
+
+  const OrgMemberEntity({
+    required this.userId,
+    required this.name,
+    required this.email,
+    this.phone,
+    required this.roleName,
+    this.roleId,
+    this.authorityLevel = 0,
+    required this.status,
+    required this.joinedAt,
+  });
+
+  bool get isActive => status == MemberStatus.active;
+  bool get isSuspended => status == MemberStatus.suspended;
+  bool get isInvited => status == MemberStatus.invited;
+
+  @override
+  List<Object?> get props => [userId, email, roleName, status, joinedAt];
+}
+
+
+// === FILE: lib/features/organization/domain/entities/org_role_entity.dart ===
+import 'package:equatable/equatable.dart';
+
+class OrgPermissionEntity extends Equatable {
+  final int id;
+  final String name;
+  final String slug;
+  final String? group;
+
+  const OrgPermissionEntity({
+    required this.id,
+    required this.name,
+    required this.slug,
+    this.group,
+  });
+
+  @override
+  List<Object?> get props => [id, slug];
+}
+
+class OrgRoleEntity extends Equatable {
+  final String id;
+  final String name;
+  final String? description;
+  final List<OrgPermissionEntity> permissions;
+  final int memberCount;
+  final bool isDefault;
+  final DateTime createdAt;
+
+  const OrgRoleEntity({
+    required this.id,
+    required this.name,
+    this.description,
+    this.permissions = const [],
+    this.memberCount = 0,
+    this.isDefault = false,
+    required this.createdAt,
+  });
+
+  @override
+  List<Object?> get props => [id, name, permissions.length, createdAt];
+}
+
+
+// === FILE: lib/features/organization/domain/entities/org_tree_entity.dart ===
+import 'package:equatable/equatable.dart';
+
+class OrgTreeNode extends Equatable {
+  final String id;
+  final String name;
+  final String? type;
+  final int memberCount;
+  final List<OrgTreeNode> children;
+
+  const OrgTreeNode({
+    required this.id,
+    required this.name,
+    this.type,
+    this.memberCount = 0,
+    this.children = const [],
+  });
+
+  @override
+  List<Object?> get props => [id, name, children.length];
+}
+
+
+// === FILE: lib/features/organization/domain/entities/organization_entity.dart ===
+import 'package:equatable/equatable.dart';
+
+enum OrgStatus { pending, active, suspended, rejected }
+
+class OrganizationEntity extends Equatable {
+  final String id;
+  final String name;
+  final String? description;
+  final String type; // company, ngo, government, individual
+  final String? parentId;
+  final OrgStatus status;
+  final String? website;
+  final String? phone;
+  final String? address;
+  final String? logoUrl;
+  final String? approvedBy;
+  final DateTime? approvedAt;
+  final String? rejectionReason;
+  final DateTime createdAt;
+
+  const OrganizationEntity({
+    required this.id,
+    required this.name,
+    this.description,
+    required this.type,
+    this.parentId,
+    required this.status,
+    this.website,
+    this.phone,
+    this.address,
+    this.logoUrl,
+    this.approvedBy,
+    this.approvedAt,
+    this.rejectionReason,
+    required this.createdAt,
+  });
+
+  bool get isPending => status == OrgStatus.pending;
+  bool get isActive => status == OrgStatus.active;
+  bool get isSuspended => status == OrgStatus.suspended;
+  bool get isRejected => status == OrgStatus.rejected;
+  bool get isRoot => parentId == null;
+
+  @override
+  List<Object?> get props => [id, name, status, parentId, createdAt];
+}
+
+
+// === FILE: lib/features/organization/domain/entities/permission_request_entity.dart ===
+import 'package:equatable/equatable.dart';
+
+enum PermissionRequestStatus { pending, approved, denied }
+
+class PermissionRequestEntity extends Equatable {
+  final String id;
+  final String orgId;
+  final String orgName;
+  final String requestedBy;
+  final List<String> permissionSlugs;
+  final String reason;
+  final PermissionRequestStatus status;
+  final String? reviewedBy;
+  final String? reviewNotes;
+  final DateTime? reviewedAt;
+  final DateTime createdAt;
+
+  const PermissionRequestEntity({
+    required this.id,
+    required this.orgId,
+    required this.orgName,
+    required this.requestedBy,
+    this.permissionSlugs = const [],
+    required this.reason,
+    required this.status,
+    this.reviewedBy,
+    this.reviewNotes,
+    this.reviewedAt,
+    required this.createdAt,
+  });
+
+  bool get isPending => status == PermissionRequestStatus.pending;
+
+  @override
+  List<Object?> get props => [id, orgId, status, createdAt];
+}
+
+
+// === FILE: lib/features/organization/domain/repositories/organization_repository.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../entities/organization_entity.dart';
+import '../entities/branch_entity.dart';
+import '../entities/org_role_entity.dart';
+import '../entities/org_member_entity.dart';
+import '../entities/delegation_entity.dart';
+import '../entities/permission_request_entity.dart';
+import '../entities/org_tree_entity.dart';
+
+abstract class OrganizationRepository {
+  // ── Organization ──────────────────────────────────────────
+  Future<Either<Failure, OrganizationEntity>> createOrg(Map<String, dynamic> data);
+  Future<Either<Failure, OrganizationEntity>> getOrg(String id);
+  Future<Either<Failure, OrgTreeNode>> getOrgTree(String orgId);
+
+  // ── Branches ──────────────────────────────────────────────
+  Future<Either<Failure, List<BranchEntity>>> getBranches(String orgId);
+  Future<Either<Failure, BranchEntity>> createBranch(String orgId, Map<String, dynamic> data);
+
+  // ── Roles ─────────────────────────────────────────────────
+  Future<Either<Failure, List<OrgRoleEntity>>> getRoles(String orgId);
+  Future<Either<Failure, OrgRoleEntity>> createRole(String orgId, Map<String, dynamic> data);
+  Future<Either<Failure, void>> syncRolePermissions(String orgId, String roleId, List<String> permissionSlugs);
+
+  // ── Members ───────────────────────────────────────────────
+  Future<Either<Failure, List<OrgMemberEntity>>> getMembers(String orgId);
+  Future<Either<Failure, OrgMemberEntity>> inviteMember(String orgId, Map<String, dynamic> data);
+  Future<Either<Failure, OrgMemberEntity>> updateMember(String orgId, String userId, Map<String, dynamic> data);
+  Future<Either<Failure, void>> removeMember(String orgId, String userId);
+
+  // ── Delegations ───────────────────────────────────────────
+  Future<Either<Failure, List<DelegationEntity>>> getDelegations(String orgId);
+  Future<Either<Failure, DelegationEntity>> createDelegation(String orgId, Map<String, dynamic> data);
+  Future<Either<Failure, void>> revokeDelegation(String orgId, String delegationId);
+
+  // ── Permission Requests ───────────────────────────────────
+  Future<Either<Failure, List<PermissionRequestEntity>>> getPermissionRequests(String orgId);
+  Future<Either<Failure, PermissionRequestEntity>> approvePermissionRequest(String orgId, String requestId);
+  Future<Either<Failure, PermissionRequestEntity>> denyPermissionRequest(String orgId, String requestId);
+}
+
+
+// === FILE: lib/features/organization/organization_wiring.dart ===
+// ============================================================================
+// ORGANIZATION FEATURE — DI REGISTRATION
+// ============================================================================
+//
+// Add to injection_container.dart imports:
+//   import 'package:admin_panel/features/organization/data/datasources/organization_remote_datasource.dart';
+//   import 'package:admin_panel/features/organization/data/repositories/organization_repository_impl.dart';
+//   import 'package:admin_panel/features/organization/domain/repositories/organization_repository.dart';
+//   import 'package:admin_panel/features/organization/presentation/bloc/organization_bloc.dart';
+//
+// Add to initDependencies() body:
+//
+//   // Seq 6b — Organization Management
+//   sl.registerLazySingleton<OrganizationRemoteDataSource>(
+//     () => OrganizationRemoteDataSource(dio: sl(), orgContext: sl()),
+//   );
+//   sl.registerLazySingleton<OrganizationRepository>(
+//     () => OrganizationRepositoryImpl(remote: sl()),
+//   );
+//   sl.registerFactory<OrganizationBloc>(
+//     () => OrganizationBloc(repository: sl(), orgContext: sl()),
+//   );
+//
+// Add to app_router.dart:
+//   import '../../features/organization/presentation/bloc/organization_bloc.dart';
+//   import '../../features/organization/presentation/bloc/organization_event.dart';
+//   import '../../features/organization/presentation/pages/organization_hub_page.dart';
+//
+//   // Route constants:
+//   static const String orgHub = '/organization';
+//
+//   // Route definition inside ShellRoute:
+//   GoRoute(
+//     path: orgHub,
+//     builder: (_, _) => BlocProvider(
+//       create: (_) => sl<OrganizationBloc>()..add(OrgLoadRequested()),
+//       child: const OrganizationHubPage(),
+//     ),
+//   ),
+//
+// Add to shell_nav_items.dart:
+//   if (auth.can('org.manage'))
+//     NavItem(
+//       id: 'organization',
+//       label: 'Organization',
+//       icon: Icons.business_outlined,
+//       path: AppRouter.orgHub,
+//     ),
+// ============================================================================
+
+
+// === FILE: lib/features/organization/presentation/bloc/organization_bloc.dart ===
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/context/org_context.dart';
+import '../../domain/repositories/organization_repository.dart';
+import 'organization_event.dart';
+import 'organization_state.dart';
+
+class OrganizationBloc extends Bloc<OrganizationEvent, OrganizationState> {
+  final OrganizationRepository repository;
+  final OrgContext orgContext;
+
+  OrganizationBloc({required this.repository, required this.orgContext}) : super(OrganizationInitial()) {
+    on<OrgLoadRequested>(_onLoadOrg);
+    on<OrgCreateRequested>(_onCreateOrg);
+    on<OrgTreeLoadRequested>(_onLoadTree);
+    on<BranchesLoadRequested>(_onLoadBranches);
+    on<BranchCreateRequested>(_onCreateBranch);
+    on<RolesLoadRequested>(_onLoadRoles);
+    on<RoleCreateRequested>(_onCreateRole);
+    on<RolePermissionsSyncRequested>(_onSyncPermissions);
+    on<MembersLoadRequested>(_onLoadMembers);
+    on<MemberInviteRequested>(_onInviteMember);
+    on<MemberUpdateRequested>(_onUpdateMember);
+    on<MemberRemoveRequested>(_onRemoveMember);
+    on<DelegationsLoadRequested>(_onLoadDelegations);
+    on<DelegationCreateRequested>(_onCreateDelegation);
+    on<DelegationRevokeRequested>(_onRevokeDelegation);
+    on<PermissionRequestsLoadRequested>(_onLoadPermRequests);
+    on<PermissionRequestApproveRequested>(_onApprovePermRequest);
+    on<PermissionRequestDenyRequested>(_onDenyPermRequest);
+  }
+
+  String get _orgId => orgContext.requireRootOrgId();
+  String _resolveOrgId(String? override) => override ?? orgContext.effectiveOrgId;
+
+  // ── Organization ──────────────────────────────────────────
+
+  Future<void> _onLoadOrg(OrgLoadRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final result = await repository.getOrg(_orgId);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (org) => emit(OrgLoaded(org)));
+  }
+
+  Future<void> _onCreateOrg(OrgCreateRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final result = await repository.createOrg(e.data);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (org) => emit(OrganizationOperationSuccess('Organization created. Awaiting approval.')));
+  }
+
+  Future<void> _onLoadTree(OrgTreeLoadRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final result = await repository.getOrgTree(_orgId);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (tree) => emit(OrgTreeLoaded(tree)));
+  }
+
+  // ── Branches ──────────────────────────────────────────────
+
+  Future<void> _onLoadBranches(BranchesLoadRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final result = await repository.getBranches(_orgId);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (b) => emit(BranchesLoaded(b)));
+  }
+
+  Future<void> _onCreateBranch(BranchCreateRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final result = await repository.createBranch(_orgId, e.data);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Branch created')));
+  }
+
+  // ── Roles ─────────────────────────────────────────────────
+
+  Future<void> _onLoadRoles(RolesLoadRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final result = await repository.getRoles(_orgId);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (r) => emit(RolesLoaded(r)));
+  }
+
+  Future<void> _onCreateRole(RoleCreateRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final result = await repository.createRole(_orgId, e.data);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Role created')));
+  }
+
+  Future<void> _onSyncPermissions(RolePermissionsSyncRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final result = await repository.syncRolePermissions(_orgId, e.roleId, e.permissionSlugs);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Permissions updated')));
+  }
+
+  // ── Members ───────────────────────────────────────────────
+
+  Future<void> _onLoadMembers(MembersLoadRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final oid = _resolveOrgId(e.orgId);
+    final result = await repository.getMembers(oid);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (m) => emit(MembersLoaded(m)));
+  }
+
+  Future<void> _onInviteMember(MemberInviteRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final oid = _resolveOrgId(e.orgId);
+    final result = await repository.inviteMember(oid, e.data);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Invitation sent')));
+  }
+
+  Future<void> _onUpdateMember(MemberUpdateRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final oid = _resolveOrgId(e.orgId);
+    final result = await repository.updateMember(oid, e.userId, e.data);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Member updated')));
+  }
+
+  Future<void> _onRemoveMember(MemberRemoveRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final oid = _resolveOrgId(e.orgId);
+    final result = await repository.removeMember(oid, e.userId);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Member removed')));
+  }
+
+  // ── Delegations ───────────────────────────────────────────
+
+  Future<void> _onLoadDelegations(DelegationsLoadRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final result = await repository.getDelegations(_orgId);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (d) => emit(DelegationsLoaded(d)));
+  }
+
+  Future<void> _onCreateDelegation(DelegationCreateRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final result = await repository.createDelegation(_orgId, e.data);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Delegation granted')));
+  }
+
+  Future<void> _onRevokeDelegation(DelegationRevokeRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final result = await repository.revokeDelegation(_orgId, e.delegationId);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Delegation revoked')));
+  }
+
+  // ── Permission Requests ───────────────────────────────────
+
+  Future<void> _onLoadPermRequests(PermissionRequestsLoadRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final result = await repository.getPermissionRequests(_orgId);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (r) => emit(PermissionRequestsLoaded(r)));
+  }
+
+  Future<void> _onApprovePermRequest(PermissionRequestApproveRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final result = await repository.approvePermissionRequest(_orgId, e.requestId);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Request approved')));
+  }
+
+  Future<void> _onDenyPermRequest(PermissionRequestDenyRequested e, Emitter<OrganizationState> emit) async {
+    emit(OrganizationLoading());
+    final result = await repository.denyPermissionRequest(_orgId, e.requestId);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Request denied')));
+  }
+}
+
+
+// === FILE: lib/features/organization/presentation/bloc/organization_event.dart ===
+import '../../domain/entities/org_role_entity.dart';
+
+abstract class OrganizationEvent {}
+
+// ── Organization ────────────────────────────────────────────
+class OrgLoadRequested extends OrganizationEvent {}
+class OrgCreateRequested extends OrganizationEvent {
+  final Map<String, dynamic> data;
+  OrgCreateRequested(this.data);
+}
+class OrgTreeLoadRequested extends OrganizationEvent {}
+
+// ── Branches ────────────────────────────────────────────────
+class BranchesLoadRequested extends OrganizationEvent {}
+class BranchCreateRequested extends OrganizationEvent {
+  final Map<String, dynamic> data;
+  BranchCreateRequested(this.data);
+}
+
+// ── Roles ───────────────────────────────────────────────────
+class RolesLoadRequested extends OrganizationEvent {}
+class RoleCreateRequested extends OrganizationEvent {
+  final Map<String, dynamic> data;
+  RoleCreateRequested(this.data);
+}
+class RolePermissionsSyncRequested extends OrganizationEvent {
+  final String roleId;
+  final List<String> permissionSlugs;
+  RolePermissionsSyncRequested({required this.roleId, required this.permissionSlugs});
+}
+
+// ── Members ─────────────────────────────────────────────────
+class MembersLoadRequested extends OrganizationEvent {
+  final String? orgId; // null = use effectiveOrgId
+  MembersLoadRequested({this.orgId});
+}
+class MemberInviteRequested extends OrganizationEvent {
+  final String? orgId;
+  final Map<String, dynamic> data;
+  MemberInviteRequested({this.orgId, required this.data});
+}
+class MemberUpdateRequested extends OrganizationEvent {
+  final String? orgId;
+  final String userId;
+  final Map<String, dynamic> data;
+  MemberUpdateRequested({this.orgId, required this.userId, required this.data});
+}
+class MemberRemoveRequested extends OrganizationEvent {
+  final String? orgId;
+  final String userId;
+  MemberRemoveRequested({this.orgId, required this.userId});
+}
+
+// ── Delegations ─────────────────────────────────────────────
+class DelegationsLoadRequested extends OrganizationEvent {}
+class DelegationCreateRequested extends OrganizationEvent {
+  final Map<String, dynamic> data;
+  DelegationCreateRequested(this.data);
+}
+class DelegationRevokeRequested extends OrganizationEvent {
+  final String delegationId;
+  DelegationRevokeRequested(this.delegationId);
+}
+
+// ── Permission Requests ─────────────────────────────────────
+class PermissionRequestsLoadRequested extends OrganizationEvent {}
+class PermissionRequestApproveRequested extends OrganizationEvent {
+  final String requestId;
+  PermissionRequestApproveRequested(this.requestId);
+}
+class PermissionRequestDenyRequested extends OrganizationEvent {
+  final String requestId;
+  PermissionRequestDenyRequested(this.requestId);
+}
+
+
+// === FILE: lib/features/organization/presentation/bloc/organization_state.dart ===
+import '../../domain/entities/organization_entity.dart';
+import '../../domain/entities/branch_entity.dart';
+import '../../domain/entities/org_role_entity.dart';
+import '../../domain/entities/org_member_entity.dart';
+import '../../domain/entities/delegation_entity.dart';
+import '../../domain/entities/permission_request_entity.dart';
+import '../../domain/entities/org_tree_entity.dart';
+
+abstract class OrganizationState {}
+
+class OrganizationInitial extends OrganizationState {}
+class OrganizationLoading extends OrganizationState {}
+
+class OrganizationFailure extends OrganizationState {
+  final String message;
+  OrganizationFailure(this.message);
+}
+
+class OrganizationOperationSuccess extends OrganizationState {
+  final String message;
+  OrganizationOperationSuccess(this.message);
+}
+
+// ── Org ─────────────────────────────────────────────────────
+class OrgLoaded extends OrganizationState {
+  final OrganizationEntity org;
+  OrgLoaded(this.org);
+}
+
+class OrgTreeLoaded extends OrganizationState {
+  final OrgTreeNode tree;
+  OrgTreeLoaded(this.tree);
+}
+
+// ── Branches ────────────────────────────────────────────────
+class BranchesLoaded extends OrganizationState {
+  final List<BranchEntity> branches;
+  BranchesLoaded(this.branches);
+}
+
+// ── Roles ───────────────────────────────────────────────────
+class RolesLoaded extends OrganizationState {
+  final List<OrgRoleEntity> roles;
+  RolesLoaded(this.roles);
+}
+
+// ── Members ─────────────────────────────────────────────────
+class MembersLoaded extends OrganizationState {
+  final List<OrgMemberEntity> members;
+  MembersLoaded(this.members);
+}
+
+// ── Delegations ─────────────────────────────────────────────
+class DelegationsLoaded extends OrganizationState {
+  final List<DelegationEntity> delegations;
+  DelegationsLoaded(this.delegations);
+}
+
+// ── Permission Requests ─────────────────────────────────────
+class PermissionRequestsLoaded extends OrganizationState {
+  final List<PermissionRequestEntity> requests;
+  PermissionRequestsLoaded(this.requests);
+}
+
+
+// === FILE: lib/features/organization/presentation/pages/branch_tab.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../bloc/organization_bloc.dart';
+import '../bloc/organization_event.dart';
+import '../bloc/organization_state.dart';
+import '../widgets/branch_card_tile.dart';
+
+class BranchTab extends StatelessWidget {
+  const BranchTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<OrganizationBloc, OrganizationState>(
+      buildWhen: (_, s) => s is BranchesLoaded || s is OrganizationLoading || s is OrganizationFailure,
+      builder: (c, s) {
+        if (s is OrganizationLoading) return const Center(child: CircularProgressIndicator());
+        if (s is BranchesLoaded) {
+          if (s.branches.isEmpty) {
+            return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.store_outlined, size: 48, color: Theme.of(c).colorScheme.onSurfaceVariant.withValues(alpha: 0.3)),
+              const SizedBox(height: 12),
+              const Text('No branches yet'),
+              const SizedBox(height: 16),
+              FilledButton.icon(onPressed: () => _showCreateDialog(c), icon: const Icon(Icons.add), label: const Text('Create Branch')),
+            ]));
+          }
+          return Stack(children: [
+            RefreshIndicator(
+              onRefresh: () async => c.read<OrganizationBloc>().add(BranchesLoadRequested()),
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: s.branches.length,
+                itemBuilder: (_, i) => BranchCardTile(branch: s.branches[i]),
+              ),
+            ),
+            Positioned(right: 16, bottom: 16, child: FloatingActionButton(
+              onPressed: () => _showCreateDialog(c),
+              child: const Icon(Icons.add),
+            )),
+          ]);
+        }
+        return Center(child: FilledButton(onPressed: () => c.read<OrganizationBloc>().add(BranchesLoadRequested()), child: const Text('Load Branches')));
+      },
+    );
+  }
+
+  void _showCreateDialog(BuildContext context) {
+    final nameCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    final addrCtrl = TextEditingController();
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Create Branch'),
+      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Branch Name *', hintText: 'e.g. Mbeya Branch')),
+        const SizedBox(height: 12),
+        TextField(controller: descCtrl, decoration: const InputDecoration(labelText: 'Description'), maxLines: 2),
+        const SizedBox(height: 12),
+        TextField(controller: addrCtrl, decoration: const InputDecoration(labelText: 'Address')),
+      ])),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        FilledButton(onPressed: () {
+          if (nameCtrl.text.trim().isEmpty) return;
+          Navigator.pop(ctx);
+          context.read<OrganizationBloc>().add(BranchCreateRequested({
+            'name': nameCtrl.text.trim(),
+            if (descCtrl.text.trim().isNotEmpty) 'description': descCtrl.text.trim(),
+            if (addrCtrl.text.trim().isNotEmpty) 'address': addrCtrl.text.trim(),
+          }));
+        }, child: const Text('Create')),
+      ],
+    ));
+  }
+}
+
+
+// === FILE: lib/features/organization/presentation/pages/delegation_tab.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../bloc/organization_bloc.dart';
+import '../bloc/organization_event.dart';
+import '../bloc/organization_state.dart';
+
+class DelegationTab extends StatelessWidget {
+  const DelegationTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<OrganizationBloc, OrganizationState>(
+      buildWhen: (_, s) => s is DelegationsLoaded || s is OrganizationLoading,
+      builder: (c, s) {
+        if (s is OrganizationLoading) return const Center(child: CircularProgressIndicator());
+        if (s is DelegationsLoaded) {
+          if (s.delegations.isEmpty) return const Center(child: Text('No delegations configured'));
+          return ListView.builder(padding: const EdgeInsets.all(16), itemCount: s.delegations.length, itemBuilder: (_, i) {
+            final d = s.delegations[i];
+            return Card(margin: const EdgeInsets.only(bottom: 10), child: ListTile(
+              leading: CircleAvatar(child: Icon(Icons.swap_horiz, color: Theme.of(c).colorScheme.primary)),
+              title: Text(d.childOrgName, style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text('Role: ${d.roleName}  •  ${d.permissionSlugs.length} permissions'),
+              trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () {
+                c.read<OrganizationBloc>().add(DelegationRevokeRequested(d.id));
+              }),
+            ));
+          });
+        }
+        return Center(child: FilledButton(onPressed: () => c.read<OrganizationBloc>().add(DelegationsLoadRequested()), child: const Text('Load Delegations')));
+      },
+    );
+  }
+}
+
+
+// === FILE: lib/features/organization/presentation/pages/member_tab.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../bloc/organization_bloc.dart';
+import '../bloc/organization_event.dart';
+import '../bloc/organization_state.dart';
+import '../widgets/member_card_tile.dart';
+
+class MemberTab extends StatelessWidget {
+  const MemberTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<OrganizationBloc, OrganizationState>(
+      buildWhen: (_, s) => s is MembersLoaded || s is OrganizationLoading,
+      builder: (c, s) {
+        if (s is OrganizationLoading) return const Center(child: CircularProgressIndicator());
+        if (s is MembersLoaded) {
+          if (s.members.isEmpty) {
+            return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.people_outline, size: 48),
+              const SizedBox(height: 12),
+              const Text('No members'),
+              const SizedBox(height: 16),
+              FilledButton.icon(onPressed: () => _showInviteDialog(c), icon: const Icon(Icons.person_add), label: const Text('Invite Member')),
+            ]));
+          }
+          return Stack(children: [
+            ListView.builder(padding: const EdgeInsets.all(16), itemCount: s.members.length,
+              itemBuilder: (_, i) => MemberCardTile(
+                member: s.members[i],
+                onSuspend: (uid) => c.read<OrganizationBloc>().add(MemberUpdateRequested(userId: uid, data: {'status': 'suspended'})),
+                onActivate: (uid) => c.read<OrganizationBloc>().add(MemberUpdateRequested(userId: uid, data: {'status': 'active'})),
+                onRemove: (uid) => _confirmRemove(c, uid),
+              )),
+            Positioned(right: 16, bottom: 16, child: FloatingActionButton(
+              onPressed: () => _showInviteDialog(c), child: const Icon(Icons.person_add))),
+          ]);
+        }
+        return Center(child: FilledButton(onPressed: () => c.read<OrganizationBloc>().add(MembersLoadRequested()), child: const Text('Load Members')));
+      },
+    );
+  }
+
+  void _showInviteDialog(BuildContext context) {
+    final emailCtrl = TextEditingController();
+    final roleCtrl = TextEditingController();
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Invite Member'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: emailCtrl, decoration: const InputDecoration(labelText: 'Email *'), keyboardType: TextInputType.emailAddress),
+        const SizedBox(height: 12),
+        TextField(controller: roleCtrl, decoration: const InputDecoration(labelText: 'Role Name', hintText: 'e.g. field_officer')),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        FilledButton(onPressed: () {
+          if (emailCtrl.text.trim().isEmpty) return;
+          Navigator.pop(ctx);
+          context.read<OrganizationBloc>().add(MemberInviteRequested(data: {
+            'email': emailCtrl.text.trim(),
+            if (roleCtrl.text.trim().isNotEmpty) 'role_name': roleCtrl.text.trim(),
+          }));
+        }, child: const Text('Send Invite')),
+      ],
+    ));
+  }
+
+  void _confirmRemove(BuildContext context, String userId) {
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Remove Member'),
+      content: const Text('This will remove the member from the organization. Are you sure?'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red),
+          onPressed: () { Navigator.pop(ctx); context.read<OrganizationBloc>().add(MemberRemoveRequested(userId: userId)); },
+          child: const Text('Remove')),
+      ],
+    ));
+  }
+}
+
+
+// === FILE: lib/features/organization/presentation/pages/organization_hub_page.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../bloc/organization_bloc.dart';
+import '../bloc/organization_event.dart';
+import '../bloc/organization_state.dart';
+import 'branch_tab.dart';
+import 'role_tab.dart';
+import 'member_tab.dart';
+import 'delegation_tab.dart';
+import 'permission_request_tab.dart';
+import '../widgets/org_header_card.dart';
+import '../widgets/org_tree_view.dart';
+
+class OrganizationHubPage extends StatefulWidget {
+  const OrganizationHubPage({super.key});
+  @override
+  State<OrganizationHubPage> createState() => _OrganizationHubPageState();
+}
+
+class _OrganizationHubPageState extends State<OrganizationHubPage> with TickerProviderStateMixin {
+  late final TabController _tabController;
+
+  static const _tabs = [
+    Tab(icon: Icon(Icons.account_tree_outlined), text: 'Branches'),
+    Tab(icon: Icon(Icons.admin_panel_settings_outlined), text: 'Roles'),
+    Tab(icon: Icon(Icons.people_outlined), text: 'Members'),
+    Tab(icon: Icon(Icons.swap_horiz_outlined), text: 'Delegations'),
+    Tab(icon: Icon(Icons.lock_open_outlined), text: 'Requests'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: _tabs.length, vsync: this);
+    _tabController.addListener(_onTabChanged);
+  }
+
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) return;
+    final bloc = context.read<OrganizationBloc>();
+    switch (_tabController.index) {
+      case 0: bloc.add(BranchesLoadRequested()); break;
+      case 1: bloc.add(RolesLoadRequested()); break;
+      case 2: bloc.add(MembersLoadRequested()); break;
+      case 3: bloc.add(DelegationsLoadRequested()); break;
+      case 4: bloc.add(PermissionRequestsLoadRequested()); break;
+    }
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Organization'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: _tabs,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+        ),
+      ),
+      body: BlocListener<OrganizationBloc, OrganizationState>(
+        listener: (c, s) {
+          if (s is OrganizationOperationSuccess) {
+            ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message)));
+            _onTabChanged(); // reload current tab
+          }
+          if (s is OrganizationFailure) {
+            ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message), backgroundColor: scheme.error));
+          }
+        },
+        child: Column(
+          children: [
+            // Org header card
+            BlocBuilder<OrganizationBloc, OrganizationState>(
+              buildWhen: (_, s) => s is OrgLoaded,
+              builder: (c, s) {
+                if (s is OrgLoaded) return OrgHeaderCard(org: s.org);
+                return const SizedBox.shrink();
+              },
+            ),
+            // Tab content
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: const [
+                  BranchTab(),
+                  RoleTab(),
+                  MemberTab(),
+                  DelegationTab(),
+                  PermissionRequestTab(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/organization/presentation/pages/permission_request_tab.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../domain/entities/permission_request_entity.dart';
+import '../bloc/organization_bloc.dart';
+import '../bloc/organization_event.dart';
+import '../bloc/organization_state.dart';
+
+class PermissionRequestTab extends StatelessWidget {
+  const PermissionRequestTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return BlocBuilder<OrganizationBloc, OrganizationState>(
+      buildWhen: (_, s) => s is PermissionRequestsLoaded || s is OrganizationLoading,
+      builder: (c, s) {
+        if (s is OrganizationLoading) return const Center(child: CircularProgressIndicator());
+        if (s is PermissionRequestsLoaded) {
+          if (s.requests.isEmpty) return const Center(child: Text('No permission requests'));
+          return ListView.builder(padding: const EdgeInsets.all(16), itemCount: s.requests.length, itemBuilder: (_, i) {
+            final r = s.requests[i];
+            final isPending = r.status == PermissionRequestStatus.pending;
+            return Card(margin: const EdgeInsets.only(bottom: 10), child: Padding(padding: const EdgeInsets.all(16), child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Text(r.orgName, style: const TextStyle(fontWeight: FontWeight.w700))),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(
+                    color: isPending ? Colors.orange.withValues(alpha: 0.15) : r.status == PermissionRequestStatus.approved ? Colors.green.withValues(alpha: 0.15) : Colors.red.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8)),
+                    child: Text(r.status.name, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                      color: isPending ? Colors.orange : r.status == PermissionRequestStatus.approved ? Colors.green : Colors.red))),
+                ]),
+                const SizedBox(height: 8),
+                Text(r.reason, style: Theme.of(c).textTheme.bodyMedium),
+                Text('${r.permissionSlugs.length} permissions requested', style: Theme.of(c).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                if (isPending) ...[
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    FilledButton(onPressed: () => c.read<OrganizationBloc>().add(PermissionRequestApproveRequested(r.id)), child: const Text('Approve')),
+                    const SizedBox(width: 8),
+                    OutlinedButton(style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                      onPressed: () => c.read<OrganizationBloc>().add(PermissionRequestDenyRequested(r.id)), child: const Text('Deny')),
+                  ]),
+                ],
+              ],
+            )));
+          });
+        }
+        return Center(child: FilledButton(onPressed: () => c.read<OrganizationBloc>().add(PermissionRequestsLoadRequested()), child: const Text('Load Requests')));
+      },
+    );
+  }
+}
+
+
+// === FILE: lib/features/organization/presentation/pages/role_tab.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../bloc/organization_bloc.dart';
+import '../bloc/organization_event.dart';
+import '../bloc/organization_state.dart';
+import '../widgets/role_card_tile.dart';
+
+class RoleTab extends StatelessWidget {
+  const RoleTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<OrganizationBloc, OrganizationState>(
+      buildWhen: (_, s) => s is RolesLoaded || s is OrganizationLoading || s is OrganizationFailure,
+      builder: (c, s) {
+        if (s is OrganizationLoading) return const Center(child: CircularProgressIndicator());
+        if (s is RolesLoaded) {
+          if (s.roles.isEmpty) {
+            return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.admin_panel_settings_outlined, size: 48),
+              const SizedBox(height: 12),
+              const Text('No roles defined'),
+              const SizedBox(height: 16),
+              FilledButton.icon(onPressed: () => _showCreateDialog(c), icon: const Icon(Icons.add), label: const Text('Create Role')),
+            ]));
+          }
+          return Stack(children: [
+            ListView.builder(padding: const EdgeInsets.all(16), itemCount: s.roles.length,
+              itemBuilder: (_, i) => RoleCardTile(role: s.roles[i], onSyncPermissions: (roleId, slugs) {
+                c.read<OrganizationBloc>().add(RolePermissionsSyncRequested(roleId: roleId, permissionSlugs: slugs));
+              })),
+            Positioned(right: 16, bottom: 16, child: FloatingActionButton(
+              onPressed: () => _showCreateDialog(c), child: const Icon(Icons.add))),
+          ]);
+        }
+        return Center(child: FilledButton(onPressed: () => c.read<OrganizationBloc>().add(RolesLoadRequested()), child: const Text('Load Roles')));
+      },
+    );
+  }
+
+  void _showCreateDialog(BuildContext context) {
+    final nameCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Create Role'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Role Name *', hintText: 'e.g. Branch Manager')),
+        const SizedBox(height: 12),
+        TextField(controller: descCtrl, decoration: const InputDecoration(labelText: 'Description')),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        FilledButton(onPressed: () {
+          if (nameCtrl.text.trim().isEmpty) return;
+          Navigator.pop(ctx);
+          context.read<OrganizationBloc>().add(RoleCreateRequested({
+            'name': nameCtrl.text.trim(),
+            if (descCtrl.text.trim().isNotEmpty) 'description': descCtrl.text.trim(),
+          }));
+        }, child: const Text('Create')),
+      ],
+    ));
+  }
+}
+
+
+// === FILE: lib/features/organization/presentation/widgets/branch_card_tile.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/entities/branch_entity.dart';
+
+class BranchCardTile extends StatelessWidget {
+  final BranchEntity branch;
+  const BranchCardTile({super.key, required this.branch});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(margin: const EdgeInsets.only(bottom: 10), child: ListTile(
+      leading: CircleAvatar(backgroundColor: scheme.primaryContainer, child: Icon(Icons.store, color: scheme.onPrimaryContainer)),
+      title: Text(branch.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text([if (branch.address != null) branch.address!, '${branch.memberCount} members'].join('  •  '),
+        style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+      trailing: const Icon(Icons.chevron_right),
+    ));
+  }
+}
+
+
+// === FILE: lib/features/organization/presentation/widgets/member_card_tile.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/entities/org_member_entity.dart';
+
+class MemberCardTile extends StatelessWidget {
+  final OrgMemberEntity member;
+  final void Function(String userId)? onSuspend;
+  final void Function(String userId)? onActivate;
+  final void Function(String userId)? onRemove;
+  const MemberCardTile({super.key, required this.member, this.onSuspend, this.onActivate, this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final statusColor = switch (member.status) { MemberStatus.active => Colors.green, MemberStatus.suspended => Colors.red, _ => Colors.orange };
+    return Card(margin: const EdgeInsets.only(bottom: 10), child: Padding(padding: const EdgeInsets.all(16), child: Row(children: [
+      CircleAvatar(radius: 20, backgroundColor: scheme.primaryContainer,
+        child: Text(member.name.isNotEmpty ? member.name[0].toUpperCase() : '?', style: TextStyle(color: scheme.onPrimaryContainer, fontWeight: FontWeight.w700))),
+      const SizedBox(width: 12),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(member.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+        Text(member.email, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+        const SizedBox(height: 4),
+        Row(children: [
+          Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(
+            color: scheme.primaryContainer, borderRadius: BorderRadius.circular(6)),
+            child: Text(member.roleName, style: TextStyle(fontSize: 10, color: scheme.onPrimaryContainer, fontWeight: FontWeight.w600))),
+          const SizedBox(width: 6),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(
+            color: statusColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
+            child: Text(member.status.name, style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.w600))),
+          const SizedBox(width: 6),
+          Text('Lvl ${member.authorityLevel}', style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant)),
+        ]),
+      ])),
+      PopupMenuButton<String>(
+        onSelected: (v) { switch(v) {
+          case 'suspend': onSuspend?.call(member.userId); break;
+          case 'activate': onActivate?.call(member.userId); break;
+          case 'remove': onRemove?.call(member.userId); break;
+        }},
+        itemBuilder: (_) => [
+          if (member.isActive) const PopupMenuItem(value: 'suspend', child: Text('Suspend')),
+          if (member.isSuspended) const PopupMenuItem(value: 'activate', child: Text('Activate')),
+          const PopupMenuItem(value: 'remove', child: Text('Remove', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    ])));
+  }
+}
+
+
+// === FILE: lib/features/organization/presentation/widgets/org_header_card.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/entities/organization_entity.dart';
+
+class OrgHeaderCard extends StatelessWidget {
+  final OrganizationEntity org;
+  const OrgHeaderCard({super.key, required this.org});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final statusColor = switch (org.status) { OrgStatus.active => Colors.green, OrgStatus.pending => Colors.orange, OrgStatus.suspended => Colors.red, _ => Colors.grey };
+    return Card(margin: const EdgeInsets.all(16), child: Padding(padding: const EdgeInsets.all(16), child: Row(children: [
+      CircleAvatar(radius: 24, backgroundColor: scheme.primaryContainer, child: Icon(Icons.business, color: scheme.onPrimaryContainer)),
+      const SizedBox(width: 16),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(org.name, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        if (org.description != null) Text(org.description!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
+        const SizedBox(height: 4),
+        Row(children: [
+          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+            child: Text(org.status.name.toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: statusColor))),
+          const SizedBox(width: 8),
+          Text(org.type, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+        ]),
+      ])),
+    ])));
+  }
+}
+
+
+// === FILE: lib/features/organization/presentation/widgets/org_tree_view.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/entities/org_tree_entity.dart';
+
+class OrgTreeView extends StatelessWidget {
+  final OrgTreeNode root;
+  const OrgTreeView({super.key, required this.root});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(padding: const EdgeInsets.all(16), child: _buildNode(context, root, 0));
+  }
+
+  Widget _buildNode(BuildContext context, OrgTreeNode node, int depth) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(padding: EdgeInsets.only(left: depth * 24.0), child: Card(child: ListTile(
+        leading: Icon(depth == 0 ? Icons.business : Icons.store_outlined, color: scheme.primary),
+        title: Text(node.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text('${node.memberCount} members', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+      ))),
+      ...node.children.map((c) => _buildNode(context, c, depth + 1)),
+    ]);
+  }
+}
+
+
+// === FILE: lib/features/organization/presentation/widgets/role_card_tile.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/entities/org_role_entity.dart';
+
+class RoleCardTile extends StatelessWidget {
+  final OrgRoleEntity role;
+  final void Function(String roleId, List<String> slugs)? onSyncPermissions;
+  const RoleCardTile({super.key, required this.role, this.onSyncPermissions});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(margin: const EdgeInsets.only(bottom: 10), child: Padding(padding: const EdgeInsets.all(16), child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.admin_panel_settings, color: scheme.primary, size: 20),
+          const SizedBox(width: 8),
+          Expanded(child: Text(role.name, style: const TextStyle(fontWeight: FontWeight.w700))),
+          if (role.isDefault) Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(
+            color: scheme.primaryContainer, borderRadius: BorderRadius.circular(6)),
+            child: Text('Default', style: TextStyle(fontSize: 10, color: scheme.onPrimaryContainer))),
+        ]),
+        const SizedBox(height: 6),
+        Text('${role.permissions.length} permissions  •  ${role.memberCount} members', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+        if (role.description != null) ...[const SizedBox(height: 4), Text(role.description!, style: Theme.of(context).textTheme.bodySmall)],
+        if (role.permissions.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(spacing: 4, runSpacing: 4, children: role.permissions.take(8).map((p) => Chip(
+            label: Text(p.slug, style: const TextStyle(fontSize: 10)), visualDensity: VisualDensity.compact, padding: EdgeInsets.zero,
+          )).toList()),
+          if (role.permissions.length > 8) Padding(padding: const EdgeInsets.only(top: 4),
+            child: Text('+${role.permissions.length - 8} more', style: TextStyle(fontSize: 11, color: scheme.primary))),
+        ],
+      ],
+    )));
+  }
+}
+
+

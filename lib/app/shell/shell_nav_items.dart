@@ -42,6 +42,16 @@ abstract class ShellNavItems {
       // ── GENERATOR TABS — append only ──────────────────────────
 
       // ┌─────────────────────────────────────────────────────────
+      // │ ORGANIZATION MANAGEMENT
+      // └─────────────────────────────────────────────────────────
+      if (auth.can('org.manage'))
+        NavItem(
+          id: 'organization',
+          label: 'Organization',
+          icon: Icons.business_outlined,
+          path: AppRouter.orgHub,
+        ),
+      // ┌─────────────────────────────────────────────────────────
       // │ FIELD OPERATIONS
       // └─────────────────────────────────────────────────────────
       if (auth.can('officers.view'))

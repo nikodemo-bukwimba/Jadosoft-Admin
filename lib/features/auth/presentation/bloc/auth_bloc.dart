@@ -1,15 +1,26 @@
 // auth_bloc.dart
 // ─────────────────────────────────────────────────────────────
-// Key changes:
-//   1. logout emits AuthNeedsAccountPicker when other saved
-//      accounts exist, instead of going straight to login.
-//   2. _ensureActiveIncluded() guarantees the active session is
-//      always present in savedAccounts, regardless of whether
-//      getSavedAccounts() includes it. This fixes the empty list
-//      on the AccountPickerPage when adding a second account.
+// FIX: OrgContext was never populated after login/session restore,
+// causing every feature that calls orgContext.requireRootOrgId()
+// to throw "Bad state: no org is set" and stay stuck on loading.
+//
+// Changes:
+//   1. OrgContext injected as a dependency.
+//   2. _applyOrgContext() called after every successful auth
+//      (login, register, check, switch, refresh).
+//   3. orgContext.restore() called in _onCheckRequested so a
+//      returning user's org context is recovered from secure
+//      storage without re-login.
+//   4. orgContext.clear() called on logout.
+//
+// Org strategy: Barick Pharmacy is a single-org admin app.
+// AppConstants.orgId is the root org ULID — used directly.
+// Role is derived from the session's primaryRole slug.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/constants/app_constants.dart';
+import '../../../../core/context/org_context.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../../domain/entities/account_session.dart';
 import '../../domain/usecases/auth_usecases.dart';
@@ -21,14 +32,15 @@ import 'auth_event.dart';
 import 'auth_state.dart';
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
-  final LoginUseCase _login;
-  final RegisterUseCase _register;
-  final LogoutUseCase _logout;
-  final LogoutAccountUseCase _logoutAccount;
-  final SwitchAccountUseCase _switchAccount;
-  final GetActiveSessionUseCase _getActiveSession;
-  final GetSavedAccountsUseCase _getSavedAccounts;
-  final RefreshSessionUseCase _refreshSession;
+  final LoginUseCase          _login;
+  final RegisterUseCase       _register;
+  final LogoutUseCase         _logout;
+  final LogoutAccountUseCase  _logoutAccount;
+  final SwitchAccountUseCase  _switchAccount;
+  final GetActiveSessionUseCase   _getActiveSession;
+  final GetSavedAccountsUseCase   _getSavedAccounts;
+  final RefreshSessionUseCase     _refreshSession;
+  final OrgContext             _orgContext;           // FIX: added
 
   AuthBloc({
     required LoginUseCase login,
@@ -39,14 +51,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     required GetActiveSessionUseCase getActiveSession,
     required GetSavedAccountsUseCase getSavedAccounts,
     required RefreshSessionUseCase refreshSession,
-  }) : _login = login,
-       _register = register,
-       _logout = logout,
-       _logoutAccount = logoutAccount,
-       _switchAccount = switchAccount,
+    required OrgContext orgContext,                   // FIX: added
+  }) : _login           = login,
+       _register        = register,
+       _logout          = logout,
+       _logoutAccount   = logoutAccount,
+       _switchAccount   = switchAccount,
        _getActiveSession = getActiveSession,
        _getSavedAccounts = getSavedAccounts,
-       _refreshSession = refreshSession,
+       _refreshSession  = refreshSession,
+       _orgContext      = orgContext,                 // FIX: added
        super(AuthInitial()) {
     on<AuthCheckRequested>(_onCheckRequested);
     on<AuthLoginRequested>(_onLoginRequested);
@@ -58,10 +72,27 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthSessionRefreshRequested>(_onSessionRefreshRequested);
   }
 
+  // ── FIX: populate OrgContext after every successful auth ──
+  //
+  // Barick Pharmacy is single-org: AppConstants.orgId is the root.
+  // Role is derived from the session's primaryRole slug:
+  //   'org_admin' / 'admin' → OrgRole.orgAdmin
+  //   'branch_admin'        → OrgRole.branchAdmin
+  //   anything else         → OrgRole.orgAdmin (admin app default)
+  Future<void> _applyOrgContext(AccountSession session) async {
+    final roleSlug = session.user.primaryRole?.slug.toLowerCase() ?? '';
+    final role = roleSlug.contains('branch')
+        ? OrgRole.branchAdmin
+        : OrgRole.orgAdmin;
+
+    await _orgContext.setRootOrg(
+      id:   AppConstants.orgId,
+      name: 'Barick Pharmacy',
+      role: role,
+    );
+  }
+
   // ── Helper ────────────────────────────────────────────────
-  // Guarantees [active] is always present in the returned list.
-  // getSavedAccounts() on some backends only returns non-active
-  // sessions, which caused an empty list on AccountPickerPage.
   List<AccountSession> _ensureActiveIncluded(
     AccountSession active,
     List<AccountSession> accounts,
@@ -79,13 +110,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(AuthLoading());
 
+    // FIX: restore persisted org context so returning users don't
+    // need to re-login for OrgContext to be populated.
+    await _orgContext.restore();
+
     final sessionResult = await _getActiveSession(NoParams());
 
     await sessionResult.fold((_) async => emit(AuthUnauthenticated()), (
       session,
     ) async {
       if (session == null) {
-        // No active session — check if any accounts are saved
         final accountsResult = await _getSavedAccounts(NoParams());
         final saved = accountsResult.fold<List<AccountSession>>(
           (_) => <AccountSession>[],
@@ -97,6 +131,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           emit(AuthUnauthenticated());
         }
         return;
+      }
+
+      // FIX: session exists but org context may not have been
+      // restored yet (first cold start after login on a new device).
+      if (!_orgContext.hasOrg) {
+        await _applyOrgContext(session);
       }
 
       final accountsResult = await _getSavedAccounts(NoParams());
@@ -127,6 +167,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
+        await _applyOrgContext(session);           // FIX
+
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
           (_) => <AccountSession>[],
@@ -162,6 +204,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
+        await _applyOrgContext(session);           // FIX
+
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
           (_) => <AccountSession>[],
@@ -178,7 +222,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   }
 
   // ── Logout active account ─────────────────────────────────
-  // Emits AuthNeedsAccountPicker if other accounts remain.
   Future<void> _onLogoutRequested(
     AuthLogoutRequested event,
     Emitter<AuthState> emit,
@@ -190,6 +233,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (_) async {
+        await _orgContext.clear();                 // FIX
+
         final accountsResult = await _getSavedAccounts(NoParams());
         final remaining = accountsResult.fold<List<AccountSession>>(
           (_) => <AccountSession>[],
@@ -222,20 +267,18 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         );
 
         if (remaining.isEmpty) {
+          await _orgContext.clear();               // FIX
           emit(AuthUnauthenticated());
           return;
         }
 
-        // Check if there is still an active session
         final sessionResult = await _getActiveSession(NoParams());
         sessionResult.fold(
           (_) => emit(AuthNeedsAccountPicker(savedAccounts: remaining)),
           (session) {
             if (session == null) {
-              // The removed account was the active one — show picker
               emit(AuthNeedsAccountPicker(savedAccounts: remaining));
             } else {
-              // Active account untouched — just update the list
               emit(
                 AuthAccountsUpdated(
                   activeSession: session,
@@ -272,6 +315,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         });
       },
       (newSession) async {
+        await _applyOrgContext(newSession);        // FIX
+
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
           (_) => <AccountSession>[],
@@ -292,7 +337,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     AuthAccountsRefreshRequested event,
     Emitter<AuthState> emit,
   ) async {
-    final sessionResult = await _getActiveSession(NoParams());
+    final sessionResult  = await _getActiveSession(NoParams());
     final accountsResult = await _getSavedAccounts(NoParams());
 
     sessionResult.fold((_) => emit(AuthUnauthenticated()), (session) {
@@ -332,6 +377,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
+        await _applyOrgContext(session);           // FIX
+
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
           (_) => <AccountSession>[],

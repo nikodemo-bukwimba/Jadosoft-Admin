@@ -43,6 +43,7 @@ class _AuthPaths {
   String get register => '/auth/register';
   String get me => '/auth/me';
   String get refreshToken => '/auth/refresh-token';
+  String permissions(String orgId) => 'orgs/$orgId/permissions';
 }
 
 // ── Platform Admin (platform-wide, requires platform role) ──
@@ -84,15 +85,24 @@ class _AdminPaths {
 class _OrgPaths {
   const _OrgPaths();
 
-  String get create => '/orgs';
-  String branches(String orgId) => '/orgs/$orgId/branches';
-  String members(String orgId) => '/orgs/$orgId/members';
-  String member(String orgId, String userId) =>
-      '/orgs/$orgId/members/$userId';
-  String roles(String orgId) => '/orgs/$orgId/roles';
+  String get create => 'orgs';
+  String org(String id) => 'orgs/$id';
+  String tree(String id) => 'orgs/$id/tree';
+  String branches(String orgId) => 'orgs/$orgId/branches';
+  String members(String orgId) => 'orgs/$orgId/members';
+  String inviteMembers(String orgId) => 'orgs/$orgId/members/invite';
+  String member(String orgId, String userId) => 'orgs/$orgId/members/$userId';
+  String roles(String orgId) => 'orgs/$orgId/roles';
   String rolePermissions(String orgId, String roleId) =>
-      '/orgs/$orgId/roles/$roleId/permissions';
-  String delegations(String orgId) => '/orgs/$orgId/delegations';
+      'orgs/$orgId/roles/$roleId/permissions';
+  String permissions(String orgId) => 'orgs/$orgId/permissions';
+  String delegations(String orgId) => 'orgs/$orgId/delegations';
+  String delegation(String orgId, String id) => 'orgs/$orgId/delegations/$id';
+  String permissionRequests(String orgId) => 'orgs/$orgId/permission-requests';
+  String approveRequest(String orgId, String id) =>
+      'orgs/$orgId/permission-requests/$id/approve';
+  String denyRequest(String orgId, String id) =>
+      'orgs/$orgId/permission-requests/$id/deny';
 }
 
 // ── Pharma Marketing Vertical (all org-scoped) ─────────────
@@ -110,8 +120,7 @@ class _PharmaPaths {
   // Visits
   String visits(String orgId) => '/pharma/orgs/$orgId/visits';
   String visit(String id) => '/pharma/visits/$id';
-  String visitCheckIn(String orgId) =>
-      '/pharma/orgs/$orgId/visits/check-in';
+  String visitCheckIn(String orgId) => '/pharma/orgs/$orgId/visits/check-in';
   String visitCheckOut(String id) => '/pharma/visits/$id/check-out';
   String visitAttachments(String id) => '/pharma/visits/$id/attachments';
   // Admin review (needs to be built by API team)
@@ -136,8 +145,7 @@ class _PharmaPaths {
   String reportReject(String id) => '/pharma/reports/$id/reject';
 
   // Product Updates (maps to Promotions in the admin plan)
-  String productUpdates(String orgId) =>
-      '/pharma/orgs/$orgId/product-updates';
+  String productUpdates(String orgId) => '/pharma/orgs/$orgId/product-updates';
   String productUpdate(String id) => '/pharma/product-updates/$id';
   String publishUpdate(String id) => '/pharma/product-updates/$id/publish';
   String updateStats(String id) => '/pharma/product-updates/$id/stats';
@@ -190,8 +198,7 @@ class _CommercePaths {
 class _FinancePaths {
   const _FinancePaths();
 
-  String subscriptions(String orgId) =>
-      '/finance/org-subscriptions/$orgId';
+  String subscriptions(String orgId) => '/finance/org-subscriptions/$orgId';
   // Payments (needs confirmation from API team on exact paths)
   String payments(String orgId) => '/finance/orgs/$orgId/payments';
   String payment(String id) => '/finance/payments/$id';
@@ -233,8 +240,7 @@ class _NotificationPaths {
 class _InventoryPaths {
   const _InventoryPaths();
 
-  String warehouses(String orgId) =>
-      '/inventory/orgs/$orgId/warehouses';
+  String warehouses(String orgId) => '/inventory/orgs/$orgId/warehouses';
   String warehouse(String id) => '/inventory/warehouses/$id';
   String receive(String warehouseId) =>
       '/inventory/warehouses/$warehouseId/receive';
