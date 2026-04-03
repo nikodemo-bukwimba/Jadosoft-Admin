@@ -11,6 +11,7 @@ import '../widgets/order_card_tile.dart';
 import '../widgets/order_list_row.dart';
 import '../widgets/order_table_row.dart';
 import '../widgets/order_status_badge.dart';
+import '../widgets/order_confirm_delete_dialog.dart';
 
 enum _ViewMode { cards, list, table }
 
@@ -358,31 +359,11 @@ class _OrderListPageState extends State<OrderListPage> {
   }
 
   Future<void> _confirmDelete(OrderEntity item) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete Order?'),
-        content: Text(
-          'Remove order #${item.id.split('-').last.toUpperCase()}? This cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () =>
-                Navigator.of(context, rootNavigator: true).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            onPressed: () =>
-                Navigator.of(context, rootNavigator: true).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final confirmed = await OrderConfirmDeleteDialog.show(
+      context,
+      orderId: item.id,
     );
-    if (confirmed == true && mounted) {
+    if (confirmed && mounted) {
       context.read<OrderBloc>().add(OrderDeleteRequested(item.id));
     }
   }

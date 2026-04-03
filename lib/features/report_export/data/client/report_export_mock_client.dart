@@ -1,7 +1,7 @@
 // report_export_mock_client.dart
 // ─────────────────────────────────────────────────────────────────────────────
-// Development client that generates REAL PDF files on-device from mock data.
-// Uses ReportPdfGenerator to produce actual formatted PDFs that can be opened.
+// Development client that generates REAL PDF/XLSX files on-device from mock data.
+// Uses ReportPdfGenerator (PDF) and ReportExcelGenerator (Excel).
 //
 // When the Laravel API is ready, swap this for ReportExportClientImpl —
 // one line change in injection_container.dart.
@@ -13,6 +13,7 @@ import '../../domain/models/request_export_response.dart';
 import '../../domain/models/get_export_status_response.dart';
 import '../../domain/models/download_export_response.dart';
 import '../../domain/services/report_pdf_generator.dart';
+import '../../domain/services/report_excel_generator.dart';
 
 class ReportExportMockClient implements ReportExportClient {
   final Map<String, _MockJob> _jobs = {};
@@ -31,22 +32,37 @@ class ReportExportMockClient implements ReportExportClient {
       dateTo: request.dateRange?['to'],
       createdAt: DateTime.now(),
     );
-    // Kick off real PDF generation immediately
-    job.generateFuture =
-        ReportPdfGenerator.generate(
-              reportType: request.reportType,
-              referenceId: request.referenceId,
-              dateFrom: request.dateRange?['from'],
-              dateTo: request.dateRange?['to'],
-            )
-            .then((file) {
-              job.file = file;
-              return file;
-            })
-            .catchError((e) {
-              job.failed = true;
-              job.error = e.toString();
-            });
+
+    // Route to the correct generator based on format
+    if (request.format == 'excel') {
+      job.generateFuture = ReportExcelGenerator.generate(
+        reportType: request.reportType,
+        referenceId: request.referenceId,
+        dateFrom: request.dateRange?['from'],
+        dateTo: request.dateRange?['to'],
+      ).then((file) {
+        job.file = file;
+        return file;
+      }).catchError((e) {
+        job.failed = true;
+        job.error = e.toString();
+      });
+    } else {
+      // Default: PDF
+      job.generateFuture = ReportPdfGenerator.generate(
+        reportType: request.reportType,
+        referenceId: request.referenceId,
+        dateFrom: request.dateRange?['from'],
+        dateTo: request.dateRange?['to'],
+      ).then((file) {
+        job.file = file;
+        return file;
+      }).catchError((e) {
+        job.failed = true;
+        job.error = e.toString();
+      });
+    }
+
     _jobs[id] = job;
     return RequestExportResponse(
       exportId: id,
@@ -83,7 +99,6 @@ class ReportExportMockClient implements ReportExportClient {
         error: job.error ?? 'Generation failed',
       );
     }
-    // Still generating — show progress
     final elapsed = DateTime.now().difference(job.createdAt).inMilliseconds;
     final progress = (elapsed / 3000 * 80).clamp(10, 80).toInt();
     return GetExportStatusResponse(
@@ -102,12 +117,16 @@ class ReportExportMockClient implements ReportExportClient {
     final n = DateTime.now();
     final stamp =
         '${n.year}${n.month.toString().padLeft(2, '0')}${n.day.toString().padLeft(2, '0')}';
-    final name = '${job.reportType}_barick_$stamp.pdf';
+    final isExcel = job.format == 'excel';
+    final ext = isExcel ? 'xlsx' : 'pdf';
+    final name = '${job.reportType}_barick_$stamp.$ext';
     final size = await job.file!.length();
     return DownloadExportResponse(
       fileUrl: job.file!.path,
       fileName: name,
-      contentType: 'application/pdf',
+      contentType: isExcel
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'application/pdf',
       fileSize: size,
     );
   }
@@ -121,7 +140,7 @@ class _MockJob {
   final String? dateTo;
   final DateTime createdAt;
   Future<dynamic>? generateFuture;
-  dynamic file; // dart:io File once ready
+  dynamic file;
   bool failed = false;
   String? error;
 

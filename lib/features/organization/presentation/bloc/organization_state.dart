@@ -31,6 +31,12 @@ class OrgCreatedSuccess extends OrganizationState {
   OrgCreatedSuccess(this.org);
 }
 
+/// Invitation accepted — user joined an org. Reload everything.
+class InvitationAccepted extends OrganizationState {
+  final String message;
+  InvitationAccepted(this.message);
+}
+
 // ── Org ─────────────────────────────────────────────────────
 class OrgLoaded extends OrganizationState {
   final OrganizationEntity org;
@@ -51,7 +57,8 @@ class BranchesLoaded extends OrganizationState {
 // ── Roles ───────────────────────────────────────────────────
 class RolesLoaded extends OrganizationState {
   final List<OrgRoleEntity> roles;
-  RolesLoaded(this.roles);
+  final List<OrgPermissionEntity> availablePermissions;
+  RolesLoaded(this.roles, {this.availablePermissions = const []});
 }
 
 // ── Members ─────────────────────────────────────────────────
@@ -70,9 +77,4 @@ class DelegationsLoaded extends OrganizationState {
 class PermissionRequestsLoaded extends OrganizationState {
   final List<PermissionRequestEntity> requests;
   PermissionRequestsLoaded(this.requests);
-}
-
-class PermissionsLoaded extends OrganizationState {
-  final List<OrgPermissionEntity> permissions;
-  PermissionsLoaded(this.permissions);
 }

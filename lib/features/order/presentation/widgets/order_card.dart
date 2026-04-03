@@ -2,6 +2,7 @@
 import '../../domain/entities/order_entity.dart';
 import '../../domain/value_objects/order_status.dart';
 import 'order_status_badge.dart';
+import 'order_confirm_delete_dialog.dart';
 
 class OrderCard extends StatelessWidget {
   final OrderEntity item;
@@ -49,27 +50,11 @@ class OrderCard extends StatelessWidget {
     );
   }
 
-  Future<void> _confirmDelete(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete?'),
-        content: Text('Remove "${item.customerId}"? This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) onDelete();
-  }
+Future<void> _confirmDelete(BuildContext context) async {
+  final confirmed = await OrderConfirmDeleteDialog.show(
+    context,
+    orderId: item.id,
+  );
+  if (confirmed) onDelete();
+}
 }

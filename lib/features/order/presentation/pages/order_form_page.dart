@@ -6,9 +6,10 @@ import '../bloc/order_bloc.dart';
 import '../bloc/order_event.dart';
 import '../bloc/order_state.dart';
 import '../../domain/usecases/create_order_usecase.dart';
-import '../../../customer/data/datasources/customer_mock_datasource.dart';
+import '../../../../config/di/injection_container.dart';
+import '../../../customer/domain/repositories/customer_repository.dart';
 import '../../../customer/data/models/customer_model.dart';
-import '../../../product/data/datasources/product_mock_datasource.dart';
+import '../../../product/domain/repositories/product_repository.dart';
 import '../../../product/data/models/product_model.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,17 +45,35 @@ class _OrderFormPageState extends State<OrderFormPage> {
   }
 
   Future<void> _loadLookupData() async {
-    final customerResponse = await CustomerMockDataSource().getAll();
-    final products = await ProductMockDataSource().getAll();
-    if (mounted) {
+    try {
+      final customerRepo = sl<CustomerRepository>();
+      final productRepo = sl<ProductRepository>();
+
+      final customerResult = await customerRepo.getAll();
+      final productResult = await productRepo.getAll();
+
+      if (!mounted) return;
+
       setState(() {
-        _customers = customerResponse.items.cast<CustomerModel>();
-        _products = products
-            .cast<ProductModel>()
-            .where((p) => p.isAvailable && p.status != 'archived')
-            .toList();
+        _customers = customerResult.fold(
+          (_) => [],
+          (page) => page.items.whereType<CustomerModel>().toList(),
+        );
+        _products = productResult.fold(
+          (_) => [],
+          (list) => list
+              .whereType<ProductModel>()
+              .where((p) => p.isAvailable && p.status != 'archived')
+              .toList(),
+        );
         _loadingLookups = false;
       });
+
+      if (widget.mode == OrderFormNode.edit) {
+        _populateFromOrder();
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loadingLookups = false);
     }
   }
 
@@ -65,6 +84,45 @@ class _OrderFormPageState extends State<OrderFormPage> {
   void dispose() {
     _paymentRefController.dispose();
     super.dispose();
+  }
+
+  void _populateFromOrder() {
+    final state = context.read<OrderBloc>().state;
+    if (state is! OrderDetailLoaded) return;
+
+    final order = state.item;
+
+    // Pre-select customer
+    final customer = _customers
+        .where((c) => c.id == order.customerId)
+        .firstOrNull;
+    if (customer != null) {
+      setState(() => _selectedCustomer = customer);
+    }
+
+    // Pre-fill payment ref
+    if (order.paymentRef != null && order.paymentRef!.isNotEmpty) {
+      _paymentRefController.text = order.paymentRef!;
+    }
+
+    // Pre-fill line items from order items
+    final lineItems = <_OrderLineItem>[];
+    for (final item in order.items) {
+      final productId = item['productId']?.toString() ?? '';
+      final qty = int.tryParse(item['qty']?.toString() ?? '1') ?? 1;
+      final product = _products.where((p) => p.id == productId).firstOrNull;
+      if (product != null) {
+        lineItems.add(_OrderLineItem(product: product, quantity: qty));
+      }
+    }
+
+    if (lineItems.isNotEmpty) {
+      setState(
+        () => _lineItems
+          ..clear()
+          ..addAll(lineItems),
+      );
+    }
   }
 
   @override
@@ -305,7 +363,22 @@ class _OrderFormPageState extends State<OrderFormPage> {
   }
 
   Future<int?> _showQtyDialog(ProductModel product) {
+    final available = product.quantityAvailable;
+    final maxQty = (available != null && available > 0) ? available : 999;
+
+    if (available != null && available == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${product.name} is out of stock. Available: 0.'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+      return Future.value(null);
+    }
+
+    final controller = TextEditingController(text: '1');
     int qty = 1;
+
     return showDialog<int>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -324,29 +397,92 @@ class _OrderFormPageState extends State<OrderFormPage> {
                   color: Theme.of(ctx).colorScheme.onSurfaceVariant,
                 ),
               ),
+              const SizedBox(height: 4),
+              if (available != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: available <= 10
+                        ? Colors.orange.withValues(alpha: 0.12)
+                        : Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'Available: $available units',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: available <= 10
+                          ? Colors.orange.shade800
+                          : Colors.green.shade700,
+                    ),
+                  ),
+                ),
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   IconButton.outlined(
                     icon: const Icon(Icons.remove),
-                    onPressed: qty > 1 ? () => setS(() => qty--) : null,
+                    onPressed: qty > 1
+                        ? () {
+                            setS(() {
+                              qty--;
+                              controller.text = '$qty';
+                            });
+                          }
+                        : null,
                   ),
                   const SizedBox(width: 8),
+                  // ── Typing input ──────────────────────────────
                   SizedBox(
-                    width: 56,
-                    child: Text(
-                      '$qty',
+                    width: 72,
+                    child: TextField(
+                      controller: controller,
+                      keyboardType: TextInputType.number,
                       textAlign: TextAlign.center,
                       style: Theme.of(ctx).textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 8,
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (v) {
+                        final parsed = int.tryParse(v);
+                        if (parsed != null && parsed >= 1 && parsed <= maxQty) {
+                          setS(() => qty = parsed);
+                        } else if (parsed != null && parsed > maxQty) {
+                          // Clamp and correct the field
+                          setS(() {
+                            qty = maxQty;
+                            controller.text = '$maxQty';
+                            controller.selection = TextSelection.fromPosition(
+                              TextPosition(offset: controller.text.length),
+                            );
+                          });
+                        }
+                      },
                     ),
                   ),
                   const SizedBox(width: 8),
                   IconButton.outlined(
                     icon: const Icon(Icons.add),
-                    onPressed: qty < 999 ? () => setS(() => qty++) : null,
+                    onPressed: qty < maxQty
+                        ? () {
+                            setS(() {
+                              qty++;
+                              controller.text = '$qty';
+                            });
+                          }
+                        : null,
                   ),
                 ],
               ),
@@ -374,7 +510,6 @@ class _OrderFormPageState extends State<OrderFormPage> {
       ),
     );
   }
-
   // ── Submit ─────────────────────────────────────────────────────────────────
 
   void _submit() {
@@ -385,12 +520,39 @@ class _OrderFormPageState extends State<OrderFormPage> {
       );
       return;
     }
+
+    // Inventory check
+    for (final line in _lineItems) {
+      final available = line.product.quantityAvailable;
+      if (available != null && available == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${line.product.name} is out of stock.'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+        return;
+      }
+      if (available != null && line.quantity > available) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${line.product.name}: requested ${line.quantity} but only $available available.',
+            ),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+        return;
+      }
+    }
+
     setState(() => _isSubmitting = true);
 
     final items = _lineItems
         .map(
           (e) => {
             'productId': e.product.id,
+            'variantId': e.product.variantId ?? e.product.id,
             'name': e.product.name,
             'unitPrice': e.product.price,
             'qty': e.quantity,
@@ -399,18 +561,49 @@ class _OrderFormPageState extends State<OrderFormPage> {
         )
         .toList();
 
-    context.read<OrderBloc>().add(
-      OrderCreateRequested(
-        CreateOrderParams(
-          customerId: _selectedCustomer!.id,
-          items: items,
-          total: _calculatedTotal,
-          paymentRef: _paymentRefController.text.trim().isEmpty
-              ? null
-              : _paymentRefController.text.trim(),
+    final isEdit = widget.mode == OrderFormNode.edit;
+
+    if (isEdit) {
+      // ── Edit: Nexora orders cannot be re-created via basket.
+      // Only update the payment reference on the existing order entity.
+      final currentState = context.read<OrderBloc>().state;
+      if (currentState is OrderDetailLoaded) {
+        context.read<OrderBloc>().add(
+          OrderUpdateRequested(
+            currentState.item.copyWith(
+              paymentRef: _paymentRefController.text.trim().isEmpty
+                  ? null
+                  : _paymentRefController.text.trim(),
+            ),
+          ),
+        );
+      } else {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load order to update.')),
+        );
+      }
+    } else {
+      // ── Create: go through basket checkout
+      // ADD THESE 3 LINES HERE:
+      for (final e in _lineItems) {
+        debugPrint(
+          'ITEM: name=${e.product.name} id=${e.product.id} variantId=${e.product.variantId}',
+        );
+      }
+      context.read<OrderBloc>().add(
+        OrderCreateRequested(
+          CreateOrderParams(
+            customerId: _selectedCustomer!.id,
+            items: items,
+            total: _calculatedTotal,
+            paymentRef: _paymentRefController.text.trim().isEmpty
+                ? null
+                : _paymentRefController.text.trim(),
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 }
 
@@ -791,14 +984,41 @@ class _CustomerListSheetState extends State<_CustomerListSheet> {
 // No setState anywhere — qty is handled by AlertDialog in parent
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _ProductListSheet extends StatelessWidget {
-  final List<ProductModel> products;
+// ─────────────────────────────────────────────────────────────────────────────
+// Product list sheet — pops selected product
+// ─────────────────────────────────────────────────────────────────────────────
 
+class _ProductListSheet extends StatefulWidget {
+  final List<ProductModel> products;
   const _ProductListSheet({required this.products});
+  @override
+  State<_ProductListSheet> createState() => _ProductListSheetState();
+}
+
+class _ProductListSheetState extends State<_ProductListSheet> {
+  final _searchCtrl = TextEditingController();
+  String _q = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final filtered = _q.isEmpty
+        ? widget.products
+        : widget.products
+              .where(
+                (p) =>
+                    p.name.toLowerCase().contains(_q.toLowerCase()) ||
+                    p.id.toLowerCase().contains(_q.toLowerCase()),
+              )
+              .toList();
+
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
       maxChildSize: 0.9,
@@ -811,7 +1031,7 @@ class _ProductListSheet extends StatelessWidget {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+              color: cs.onSurfaceVariant.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -824,33 +1044,70 @@ class _ProductListSheet extends StatelessWidget {
               ),
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              controller: _searchCtrl,
+              autofocus: false,
+              decoration: InputDecoration(
+                hintText: 'Search products...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _q.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() => _q = '');
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                isDense: true,
+              ),
+              onChanged: (v) => setState(() => _q = v),
+            ),
+          ),
+          const SizedBox(height: 4),
           const Divider(height: 1),
           Expanded(
-            child: ListView.builder(
-              controller: scrollController,
-              itemCount: products.length,
-              itemBuilder: (_, i) {
-                final p = products[i];
-                return ListTile(
-                  leading: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(6),
+            child: filtered.isEmpty
+                ? Center(
+                    child: Text(
+                      'No products found',
+                      style: TextStyle(color: cs.onSurfaceVariant),
                     ),
-                    child: Icon(
-                      Icons.medication_outlined,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                  )
+                : ListView.builder(
+                    controller: scrollController,
+                    itemCount: filtered.length,
+                    itemBuilder: (_, i) {
+                      final p = filtered[i];
+                      return ListTile(
+                        leading: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            Icons.medication_outlined,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                        title: Text(p.name),
+                        subtitle: Text('TZS ${p.price.toStringAsFixed(0)}'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(ctx).pop(p),
+                      );
+                    },
                   ),
-                  title: Text(p.name),
-                  subtitle: Text('TZS ${p.price.toStringAsFixed(0)}'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(ctx).pop(p),
-                );
-              },
-            ),
           ),
         ],
       ),

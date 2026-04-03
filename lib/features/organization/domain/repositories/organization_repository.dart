@@ -29,11 +29,13 @@ abstract class OrganizationRepository {
     String orgId,
     Map<String, dynamic> data,
   );
+  Future<Either<Failure, void>> deleteRole(String orgId, String roleId);
   Future<Either<Failure, void>> syncRolePermissions(
     String orgId,
     String roleId,
     List<String> permissionIds,
   );
+  Future<Either<Failure, Map<String, dynamic>>> acceptInvitation(String token);
 
   // ── Members ───────────────────────────────────────────────
   Future<Either<Failure, List<OrgMemberEntity>>> getMembers(String orgId);
@@ -74,5 +76,9 @@ abstract class OrganizationRepository {
 
   Future<Either<Failure, List<OrgPermissionEntity>>> getPermissions(
     String orgId,
+  );
+  Future<Either<Failure, void>> assignMemberToBranch(
+    String branchId,
+    Map<String, dynamic> data,
   );
 }

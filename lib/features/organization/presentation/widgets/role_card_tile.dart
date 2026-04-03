@@ -6,12 +6,14 @@ class RoleCardTile extends StatelessWidget {
   final List<OrgPermissionEntity> availablePermissions;
   final void Function(String roleId, List<String> permissionIds)?
   onSyncPermissions;
+  final void Function(String roleId)? onDelete;
 
   const RoleCardTile({
     super.key,
     required this.role,
     required this.availablePermissions,
     this.onSyncPermissions,
+    this.onDelete,
   });
 
   @override
@@ -49,29 +51,55 @@ class RoleCardTile extends StatelessWidget {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      'Default',
+                      'System',
                       style: TextStyle(
                         fontSize: 10,
                         color: scheme.onPrimaryContainer,
                       ),
                     ),
                   ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: () => _showPermissionsDialog(context),
-                  icon: const Icon(Icons.tune, size: 14),
-                  label: const Text(
-                    'Permissions',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
+                const SizedBox(width: 4),
+                PopupMenuButton<String>(
+                  onSelected: (v) {
+                    switch (v) {
+                      case 'permissions':
+                        _showPermissionsDialog(context);
+                        break;
+                      case 'delete':
+                        onDelete?.call(role.id);
+                        break;
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'permissions',
+                      child: Row(
+                        children: [
+                          Icon(Icons.tune, size: 18),
+                          SizedBox(width: 8),
+                          Text('Manage Permissions'),
+                        ],
+                      ),
                     ),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
+                    if (!role.isDefault)
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.delete_outline,
+                              size: 18,
+                              color: Colors.red,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              'Delete Role',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -124,7 +152,6 @@ class RoleCardTile extends StatelessWidget {
   void _showPermissionsDialog(BuildContext context) {
     final selectedIds = role.permissions.map((p) => p.id).toSet();
 
-    // Group available permissions by group field
     final Map<String, List<OrgPermissionEntity>> grouped = {};
     for (final p in availablePermissions) {
       final key = p.group ?? 'General';
@@ -142,7 +169,7 @@ class RoleCardTile extends StatelessWidget {
                 ? const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16),
                     child: Text(
-                      'No permissions available. Check API connection.',
+                      'No permissions available. Run the permissions seeder migration on the server.',
                     ),
                   )
                 : SingleChildScrollView(
@@ -168,12 +195,26 @@ class RoleCardTile extends StatelessWidget {
                                   top: 10,
                                   bottom: 4,
                                 ),
-                                child: Text(
-                                  entry.key,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13,
-                                  ),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      _formatGroupName(entry.key),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '(${entry.value.length})',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                               ...entry.value.map(
@@ -222,5 +263,13 @@ class RoleCardTile extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _formatGroupName(String raw) {
+    return raw
+        .replaceAll('_', ' ')
+        .split(' ')
+        .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
   }
 }

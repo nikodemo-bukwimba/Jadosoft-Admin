@@ -57,6 +57,13 @@ class OrganizationRepositoryImpl implements OrganizationRepository {
     Map<String, dynamic> data,
   ) => _guard(() => _remote.createRole(orgId, data));
   @override
+  Future<Either<Failure, void>> deleteRole(String orgId, String roleId) =>
+      _guard(() => _remote.deleteRole(orgId, roleId));
+  @override
+  Future<Either<Failure, Map<String, dynamic>>> acceptInvitation(
+    String token,
+  ) => _guard(() => _remote.acceptInvitation(token));
+  @override
   Future<Either<Failure, void>> syncRolePermissions(
     String orgId,
     String roleId,
@@ -111,4 +118,9 @@ class OrganizationRepositoryImpl implements OrganizationRepository {
     String orgId,
     String id,
   ) => _guard(() => _remote.denyPermissionRequest(orgId, id));
+  @override
+  Future<Either<Failure, void>> assignMemberToBranch(
+    String branchId,
+    Map<String, dynamic> data,
+  ) => _guard(() => _remote.assignMemberToBranch(branchId, data));
 }

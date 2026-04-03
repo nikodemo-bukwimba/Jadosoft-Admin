@@ -8,6 +8,7 @@ import '../bloc/product_state.dart';
 import '../../domain/usecases/create_product_usecase.dart';
 import '../../../category/data/datasources/category_mock_datasource.dart';
 import '../../../category/domain/entities/category_entity.dart';
+import '../../../../core/widgets/searchable_picker_sheet.dart';
 import '../widgets/product_image.dart';
 
 class ProductFormPage extends StatefulWidget {
@@ -31,6 +32,10 @@ class _ProductFormPageState extends State<ProductFormPage> {
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _priceController = TextEditingController();
+  final _batchNumberController = TextEditingController();
+  final _packSizeController = TextEditingController();
+  final _quantityController = TextEditingController();
+  DateTime? _expiryDate;
 
   /// Holds either a network URL (from existing product) or local file path (from picker).
   String? _imageSource;
@@ -74,6 +79,9 @@ class _ProductFormPageState extends State<ProductFormPage> {
     _nameController.dispose();
     _descriptionController.dispose();
     _priceController.dispose();
+    _batchNumberController.dispose();
+    _packSizeController.dispose();
+    _quantityController.dispose();
     super.dispose();
   }
 
@@ -88,6 +96,10 @@ class _ProductFormPageState extends State<ProductFormPage> {
       _isFeaturedValue = state.item.isFeatured;
       _isNewValue = state.item.isNew;
       _fieldsPopulated = true;
+      _batchNumberController.text = state.item.batchNumber ?? '';
+      _packSizeController.text = state.item.packSize ?? '';
+      _quantityController.text = state.item.quantityAvailable?.toString() ?? '';
+      _expiryDate = state.item.expiryDate;
     }
   }
 
@@ -261,6 +273,80 @@ class _ProductFormPageState extends State<ProductFormPage> {
                     _buildCategoryDropdown(),
                     const SizedBox(height: 16),
 
+                    // Batch Number
+                    TextFormField(
+                      controller: _batchNumberController,
+                      decoration: const InputDecoration(
+                        labelText: 'Batch Number',
+                        hintText: 'e.g. BTC-2025-001',
+                        prefixIcon: Icon(Icons.tag),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Pack Size
+                    TextFormField(
+                      controller: _packSizeController,
+                      decoration: const InputDecoration(
+                        labelText: 'Pack Size',
+                        hintText: 'e.g. 30 Tablets',
+                        prefixIcon: Icon(Icons.inventory_2_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Available Quantity
+                    TextFormField(
+                      controller: _quantityController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Available Quantity',
+                        hintText: 'e.g. 150',
+                        prefixIcon: Icon(Icons.numbers),
+                      ),
+                      validator: (v) {
+                        if (v != null &&
+                            v.isNotEmpty &&
+                            int.tryParse(v) == null) {
+                          return 'Enter a valid whole number';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Expiry Date
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.calendar_month_outlined),
+                      title: Text(
+                        _expiryDate != null
+                            ? 'Expiry: ${_expiryDate!.year}-${_expiryDate!.month.toString().padLeft(2, '0')}-${_expiryDate!.day.toString().padLeft(2, '0')}'
+                            : 'Set Expiry Date',
+                      ),
+                      trailing: _expiryDate != null
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () =>
+                                  setState(() => _expiryDate = null),
+                            )
+                          : null,
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate:
+                              _expiryDate ??
+                              DateTime.now().add(const Duration(days: 365)),
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime(2040),
+                        );
+                        if (picked != null) {
+                          setState(() => _expiryDate = picked);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
                     // ── Toggles ──
                     _buildToggles(),
                     const SizedBox(height: 24),
@@ -379,23 +465,54 @@ class _ProductFormPageState extends State<ProductFormPage> {
 
   Widget _buildCategoryDropdown() {
     if (_categoriesLoading) return const LinearProgressIndicator();
-
-    return DropdownButtonFormField<String>(
-      value: _selectedCategoryId,
-      decoration: const InputDecoration(
-        labelText: 'Category',
-        border: OutlineInputBorder(),
-        prefixIcon: Icon(Icons.category_outlined),
+    final selected = _categories
+        .where((c) => c.id == _selectedCategoryId)
+        .firstOrNull;
+    return FormField<String>(
+      initialValue: _selectedCategoryId,
+      validator: (v) =>
+          (v == null || v.isEmpty) ? 'Category is required' : null,
+      builder: (field) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () async {
+              final picked = await showSearchablePicker<String>(
+                context: context,
+                title: 'Select Category',
+                hint: 'Search categories...',
+                items: _categories
+                    .where((c) => c.isActive)
+                    .map((c) => (value: c.id, label: c.name, subtitle: null))
+                    .toList(),
+                selected: _selectedCategoryId,
+              );
+              if (picked != null) {
+                setState(() => _selectedCategoryId = picked);
+                field.didChange(picked);
+              }
+            },
+            borderRadius: BorderRadius.circular(4),
+            child: InputDecorator(
+              decoration: InputDecoration(
+                labelText: 'Category',
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.category_outlined),
+                suffixIcon: const Icon(Icons.arrow_drop_down),
+                errorText: field.errorText,
+              ),
+              child: Text(
+                selected?.name ?? 'Select a category',
+                style: TextStyle(
+                  color: selected == null
+                      ? Theme.of(context).colorScheme.onSurfaceVariant
+                      : null,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
-      items: _categories
-          .where((c) => c.isActive)
-          .map((c) => DropdownMenuItem(value: c.id, child: Text(c.name)))
-          .toList(),
-      onChanged: (v) => setState(() => _selectedCategoryId = v),
-      validator: (v) {
-        if (v == null || v.isEmpty) return 'Category is required';
-        return null;
-      },
     );
   }
 
@@ -453,6 +570,14 @@ class _ProductFormPageState extends State<ProductFormPage> {
               isAvailable: _isAvailableValue,
               isNew: _isNewValue,
               imageUrl: _imageSource,
+              batchNumber: _batchNumberController.text.trim().isEmpty
+                  ? null
+                  : _batchNumberController.text.trim(),
+              expiryDate: _expiryDate,
+              packSize: _packSizeController.text.trim().isEmpty
+                  ? null
+                  : _packSizeController.text.trim(),
+              quantityAvailable: int.tryParse(_quantityController.text.trim()),
             ),
           ),
         );
@@ -469,6 +594,14 @@ class _ProductFormPageState extends State<ProductFormPage> {
             isFeatured: false,
             isNew: _isNewValue,
             imageUrl: _imageSource,
+            batchNumber: _batchNumberController.text.trim().isEmpty
+                ? null
+                : _batchNumberController.text.trim(),
+            expiryDate: _expiryDate,
+            packSize: _packSizeController.text.trim().isEmpty
+                ? null
+                : _packSizeController.text.trim(),
+            quantityAvailable: int.tryParse(_quantityController.text.trim()),
           ),
         ),
       );

@@ -9,6 +9,7 @@ import 'member_tab.dart';
 import 'delegation_tab.dart';
 import 'permission_request_tab.dart';
 import 'create_organization_page.dart';
+import 'accept_invitation_dialog.dart';
 import '../widgets/org_header_card.dart';
 import '../../domain/entities/organization_entity.dart';
 
@@ -21,6 +22,14 @@ class OrganizationHubPage extends StatefulWidget {
 class _OrganizationHubPageState extends State<OrganizationHubPage>
     with TickerProviderStateMixin {
   TabController? _tabController;
+
+  /// Tracks if we're viewing members for a specific branch.
+  /// null = root org, non-null = branch ID.
+  String? _viewingBranchMembers;
+
+  /// Prevents _onTabChanged from overwriting a branch-scoped member load
+  /// when the tab switch is triggered programmatically from branch view.
+  bool _skipNextMemberLoad = false;
 
   static const _tabs = [
     Tab(icon: Icon(Icons.account_tree_outlined), text: 'Branches'),
@@ -48,6 +57,13 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
         bloc.add(RolesLoadRequested());
         break;
       case 2:
+        // If switching to Members tab from branch view, skip reload
+        if (_skipNextMemberLoad) {
+          _skipNextMemberLoad = false;
+          return;
+        }
+        // Normal tab switch — load root org members, clear branch context
+        _viewingBranchMembers = null;
         bloc.add(MembersLoadRequested());
         break;
       case 3:
@@ -65,6 +81,16 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
     super.dispose();
   }
 
+  List<Widget> _appBarActions(BuildContext context) {
+    return [
+      IconButton(
+        icon: const Icon(Icons.mail_outlined),
+        tooltip: 'Accept Invitation',
+        onPressed: () => AcceptInvitationDialog.show(context),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -74,7 +100,15 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
           ScaffoldMessenger.of(
             c,
           ).showSnackBar(SnackBar(content: Text(s.message)));
-          _onTabChanged();
+          if (_viewingBranchMembers != null) {
+            c.read<OrganizationBloc>().add(
+              MembersLoadRequested(orgId: _viewingBranchMembers),
+            );
+          } else {
+            _onTabChanged();
+          }
+          // Always refresh branches so member counts update
+          c.read<OrganizationBloc>().add(BranchesLoadRequested());
         }
         if (s is OrganizationFailure) {
           ScaffoldMessenger.of(c).showSnackBar(
@@ -89,46 +123,41 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
               ),
             ),
           );
-          // Reload to show the org (will be in pending state)
           c.read<OrganizationBloc>().add(OrgLoadRequested());
         }
-        if (s is MembersLoaded) {
-          // If triggered from branch view, switch to members tab
-          if (_tabController!.index != 2) {
-            _tabController!.animateTo(2);
-          }
+        if (s is InvitationAccepted) {
+          ScaffoldMessenger.of(c).showSnackBar(
+            SnackBar(content: Text(s.message), backgroundColor: Colors.green),
+          );
+          c.read<OrganizationBloc>().add(OrgLoadRequested());
         }
+        // Do NOT auto-switch to Members tab on MembersLoaded anymore.
+        // The switch is handled by the branch callback directly.
       },
       builder: (c, s) {
-        // ── No organization yet — show create form ──────────
         if (s is NoOrganizationState) {
-          return const CreateOrganizationPage();
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text('Organization'),
+              actions: _appBarActions(c),
+            ),
+            body: const CreateOrganizationPage(),
+          );
         }
-
-        // ── Org exists but pending approval ─────────────────
-        if (s is OrgLoaded && s.org.isPending) {
+        if (s is OrgLoaded && s.org.isPending)
           return _pendingApprovalView(c, s.org);
-        }
-
-        // ── Org exists but rejected ─────────────────────────
-        if (s is OrgLoaded && s.org.isRejected) {
-          return _rejectedView(c, s.org);
-        }
-
-        // ── Org exists but suspended ────────────────────────
-        if (s is OrgLoaded && s.org.isSuspended) {
+        if (s is OrgLoaded && s.org.isRejected) return _rejectedView(c, s.org);
+        if (s is OrgLoaded && s.org.isSuspended)
           return _suspendedView(c, s.org);
-        }
-
-        // ── Loading ─────────────────────────────────────────
         if (s is OrganizationLoading || s is OrganizationInitial) {
           return Scaffold(
-            appBar: AppBar(title: const Text('Organization')),
+            appBar: AppBar(
+              title: const Text('Organization'),
+              actions: _appBarActions(c),
+            ),
             body: const Center(child: CircularProgressIndicator()),
           );
         }
-
-        // ── Active org — show full hub with tabs ────────────
         return _buildActiveHub(c, s);
       },
     );
@@ -138,6 +167,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Organization'),
+        actions: _appBarActions(c),
         bottom: TabBar(
           controller: _tabController,
           tabs: _tabs,
@@ -147,7 +177,6 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
       ),
       body: Column(
         children: [
-          // Org header
           BlocBuilder<OrganizationBloc, OrganizationState>(
             buildWhen: (_, s) => s is OrgLoaded,
             builder: (c, s) {
@@ -155,16 +184,29 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
               return const SizedBox.shrink();
             },
           ),
-          // Tab content
           Expanded(
             child: TabBarView(
               controller: _tabController,
               children: [
                 BranchTab(
-                  onSwitchToMembers: () => _tabController!.animateTo(2),
+                  onSwitchToMembers: (branchId) {
+                    // Load branch-scoped members
+                    _viewingBranchMembers = branchId;
+                    _skipNextMemberLoad = true;
+                    c.read<OrganizationBloc>().add(
+                      MembersLoadRequested(orgId: branchId),
+                    );
+                    _tabController!.animateTo(2);
+                  },
                 ),
                 const RoleTab(),
-                const MemberTab(),
+                MemberTab(
+                  viewingBranchId: _viewingBranchMembers,
+                  onBackToRootMembers: () {
+                    setState(() => _viewingBranchMembers = null);
+                    c.read<OrganizationBloc>().add(MembersLoadRequested());
+                  },
+                ),
                 const DelegationTab(),
                 const PermissionRequestTab(),
               ],
@@ -178,7 +220,10 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
   Widget _pendingApprovalView(BuildContext c, OrganizationEntity org) {
     final scheme = Theme.of(c).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Organization')),
+      appBar: AppBar(
+        title: const Text('Organization'),
+        actions: _appBarActions(c),
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
@@ -188,7 +233,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
               Icon(
                 Icons.hourglass_top,
                 size: 72,
-                color: Colors.orange.withValues(alpha: 0.6),
+                color: Colors.orange.withOpacity(0.6),
               ),
               const SizedBox(height: 24),
               Text(
@@ -199,7 +244,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
               ),
               const SizedBox(height: 12),
               Text(
-                'Your organization "${org.name}" has been submitted and is waiting for platform admin approval. You will be notified once it is approved.',
+                'Your organization "${org.name}" has been submitted and is waiting for platform admin approval.',
                 textAlign: TextAlign.center,
                 style: Theme.of(c).textTheme.bodyMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
@@ -222,7 +267,10 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
   Widget _rejectedView(BuildContext c, OrganizationEntity org) {
     final scheme = Theme.of(c).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Organization')),
+      appBar: AppBar(
+        title: const Text('Organization'),
+        actions: _appBarActions(c),
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
@@ -232,7 +280,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
               Icon(
                 Icons.cancel_outlined,
                 size: 72,
-                color: Colors.red.withValues(alpha: 0.6),
+                color: Colors.red.withOpacity(0.6),
               ),
               const SizedBox(height: 24),
               Text(
@@ -245,7 +293,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
               const SizedBox(height: 12),
               if (org.rejectionReason != null) ...[
                 Card(
-                  color: Colors.red.withValues(alpha: 0.06),
+                  color: Colors.red.withOpacity(0.06),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Row(
@@ -285,7 +333,10 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
 
   Widget _suspendedView(BuildContext c, OrganizationEntity org) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Organization')),
+      appBar: AppBar(
+        title: const Text('Organization'),
+        actions: _appBarActions(c),
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
@@ -295,7 +346,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
               Icon(
                 Icons.pause_circle_outline,
                 size: 72,
-                color: Colors.orange.withValues(alpha: 0.6),
+                color: Colors.orange.withOpacity(0.6),
               ),
               const SizedBox(height: 24),
               Text(

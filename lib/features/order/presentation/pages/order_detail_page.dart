@@ -15,21 +15,7 @@ class OrderDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Order Detail'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit',
-            onPressed: () {
-              final state = context.read<OrderBloc>().state;
-              if (state is OrderDetailLoaded) {
-                context.push(AppRouter.orderEditPath(state.item.id));
-              }
-            },
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Order Detail')),
       body: BlocConsumer<OrderBloc, OrderState>(
         listener: (context, state) {
           if (state is OrderOperationSuccess) {

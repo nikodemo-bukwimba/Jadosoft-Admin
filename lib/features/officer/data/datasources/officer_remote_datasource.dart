@@ -81,8 +81,8 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
   OfficerRemoteDataSourceImpl({
     required Dio dio,
     required OrgContext orgContext,
-  })  : _orgContext = orgContext,
-        super(dio: dio);
+  }) : _orgContext = orgContext,
+       super(dio: dio);
 
   // ── LIST ─────────────────────────────────────────────────
 
@@ -141,17 +141,19 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     String? username,
     String? phone,
   }) async {
-    return postAndParse(
+    final response = await dio.post(
       '${ApiPaths.orgs.members(branchId)}/invite',
-      {
+      data: {
         'email': email,
         if (username != null) 'username': username,
         if (phone != null) 'phone': phone,
         'org_role_id': orgRoleId,
       },
-      OfficerModel.fromJson,
-      dataKey: 'membership',
     );
+    final body = response.data as Map<String, dynamic>? ?? {};
+    // Try all known response key variants
+    final raw = body['membership'] ?? body['member'] ?? body['data'] ?? body;
+    return OfficerModel.fromJson(raw as Map<String, dynamic>);
   }
 
   // ── UPDATE MEMBERSHIP ────────────────────────────────────
@@ -200,10 +202,7 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     // This re-adds the existing user to the new branch org.
     await dio.post(
       '${ApiPaths.orgs.members(toBranchId)}/invite',
-      data: {
-        'user_id': userId,
-        'org_role_id': orgRoleId,
-      },
+      data: {'user_id': userId, 'org_role_id': orgRoleId},
     );
   }
 

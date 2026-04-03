@@ -28,6 +28,11 @@ class RoleCreateRequested extends OrganizationEvent {
   RoleCreateRequested(this.data);
 }
 
+class RoleDeleteRequested extends OrganizationEvent {
+  final String roleId;
+  RoleDeleteRequested(this.roleId);
+}
+
 class RolePermissionsSyncRequested extends OrganizationEvent {
   final String roleId;
   final List<String> permissionIds;
@@ -39,7 +44,7 @@ class RolePermissionsSyncRequested extends OrganizationEvent {
 
 // ── Members ─────────────────────────────────────────────────
 class MembersLoadRequested extends OrganizationEvent {
-  final String? orgId; // null = use effectiveOrgId
+  final String? orgId;
   MembersLoadRequested({this.orgId});
 }
 
@@ -60,6 +65,19 @@ class MemberRemoveRequested extends OrganizationEvent {
   final String? orgId;
   final String userId;
   MemberRemoveRequested({this.orgId, required this.userId});
+}
+
+/// Assign an existing root org member directly to a branch
+class MemberAssignToBranchRequested extends OrganizationEvent {
+  final String branchId;
+  final Map<String, dynamic> data; // { user_id, org_role_id, level? }
+  MemberAssignToBranchRequested({required this.branchId, required this.data});
+}
+
+// ── Invitation Accept ───────────────────────────────────────
+class InvitationAcceptRequested extends OrganizationEvent {
+  final String token;
+  InvitationAcceptRequested(this.token);
 }
 
 // ── Delegations ─────────────────────────────────────────────
@@ -87,5 +105,3 @@ class PermissionRequestDenyRequested extends OrganizationEvent {
   final String requestId;
   PermissionRequestDenyRequested(this.requestId);
 }
-
-class PermissionsLoadRequested extends OrganizationEvent {}

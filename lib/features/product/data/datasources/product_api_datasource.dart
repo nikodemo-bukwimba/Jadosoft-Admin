@@ -56,11 +56,9 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   final Dio _dio;
   final OrgContext _orgContext;
 
-  ProductApiDataSource({
-    required Dio dio,
-    required OrgContext orgContext,
-  })  : _dio = dio,
-        _orgContext = orgContext;
+  ProductApiDataSource({required Dio dio, required OrgContext orgContext})
+    : _dio = dio,
+      _orgContext = orgContext;
 
   // ── Error helper ───────────────────────────────────────────
 
@@ -76,8 +74,10 @@ class ProductApiDataSource implements ProductRemoteDataSource {
 
   Map<String, dynamic> _unwrapProduct(dynamic raw) {
     if (raw is Map<String, dynamic>) {
-      if (raw.containsKey('product')) return raw['product'] as Map<String, dynamic>;
-      if (raw.containsKey('data') && raw['data'] is Map) return raw['data'] as Map<String, dynamic>;
+      if (raw.containsKey('product'))
+        return raw['product'] as Map<String, dynamic>;
+      if (raw.containsKey('data') && raw['data'] is Map)
+        return raw['data'] as Map<String, dynamic>;
       return raw;
     }
     return {};
@@ -86,43 +86,66 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   // ── Nexora JSON → ProductModel ─────────────────────────────
 
   ProductModel _fromNexora(Map<String, dynamic> j) {
-    // Price from first/default variant
-    final variants = (j['variants'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final variants =
+        (j['variants'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     final defaultVariant = variants.isEmpty
         ? null
         : variants.firstWhere(
             (v) => v['is_default'] == true,
             orElse: () => variants.first,
           );
-    final price = (defaultVariant?['base_price'] as num? ?? 0).toDouble();
 
-    final meta  = (j['metadata']   as Map<String, dynamic>?) ?? {};
+    // ── Capture variant ID — this is what the basket endpoint needs ──
+    final variantId = defaultVariant?['id']?.toString();
+
+    final rawPrice = defaultVariant?['base_price'];
+    final price = rawPrice == null
+        ? 0.0
+        : double.tryParse(rawPrice.toString()) ?? 0.0;
+
+    final meta = (j['metadata'] as Map<String, dynamic>?) ?? {};
     final attrs = (j['attributes'] as Map<String, dynamic>?) ?? {};
-
     final categoryId =
         (attrs['category_id'] ?? meta['category_id'])?.toString() ?? '';
 
+    bool parseBool(dynamic v, bool fallback) {
+      if (v == null) return fallback;
+      if (v is bool) return v;
+      if (v is int) return v == 1;
+      final s = v.toString().toLowerCase();
+      return s == 'true' || s == '1';
+    }
+
     return ProductModel(
-      id:          j['id']?.toString() ?? '',
-      name:        j['name'] as String? ?? '',
-      description: j['description'] as String?,
-      price:       price,
-      categoryId:  categoryId,
-      isAvailable: meta['is_available'] as bool? ?? (j['status'] == 'active'),
-      isFeatured:  meta['is_featured']  as bool? ?? false,
-      isNew:       meta['is_new']       as bool? ?? false,
-      status:      _mapStatus(j['status'] as String? ?? 'draft'),
-      imageUrl:    _resolveImage(j, meta),
-      createdAt:   j['created_at'] != null
+      id: j['id']?.toString() ?? '',
+      variantId: variantId, // ← stored now
+      name: j['name']?.toString() ?? '',
+      description: j['description']?.toString(),
+      price: price,
+      categoryId: categoryId,
+      isAvailable: parseBool(meta['is_available'], j['status'] == 'active'),
+      isFeatured: parseBool(meta['is_featured'], false),
+      isNew: parseBool(meta['is_new'], false),
+      status: _mapStatus(j['status']?.toString() ?? 'draft'),
+      imageUrl: _resolveImage(j, meta),
+      createdAt: j['created_at'] != null
           ? DateTime.tryParse(j['created_at'].toString()) ?? DateTime.now()
           : DateTime.now(),
+      batchNumber: meta['batch_number']?.toString(),
+      expiryDate: meta['expiry_date'] != null
+          ? DateTime.tryParse(meta['expiry_date'].toString())
+          : null,
+      packSize: meta['pack_size']?.toString(),
+      quantityAvailable: meta['quantity_available'] != null
+          ? int.tryParse(meta['quantity_available'].toString())
+          : null,
     );
   }
 
   String _mapStatus(String s) => switch (s) {
-    'active'                  => 'active',
+    'active' => 'active',
     'archived' || 'suspended' => 'archived',
-    _                         => 'draft',
+    _ => 'draft',
   };
 
   String? _resolveImage(Map<String, dynamic> j, Map<String, dynamic> meta) {
@@ -134,42 +157,50 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   // ── ProductModel data → Nexora create body ─────────────────
 
   Map<String, dynamic> _createBody(Map<String, dynamic> d) => {
-    'name':                  d['name'] ?? '',
-    'description':           d['description'],
-    'type':                  'physical',
-    'seller_actor_id':       d['seller_actor_id'] ?? '',
-    'track_inventory':       true,
+    'name': d['name'] ?? '',
+    'description': d['description'],
+    'type': 'physical',
+    'seller_actor_id': d['seller_actor_id'] ?? '',
+    'track_inventory': true,
     'requires_confirmation': false,
     'attributes': {'category_id': d['category_id'] ?? ''},
     'metadata': {
       'category_id': d['category_id'] ?? '',
       'is_available': d['is_available'] ?? true,
-      'is_featured':  d['is_featured']  ?? false,
-      'is_new':       d['is_new']       ?? true,
+      'is_featured': d['is_featured'] ?? false,
+      'is_new': d['is_new'] ?? true,
       if (d['image_url'] != null) 'image_url': d['image_url'],
+      if (d['batch_number'] != null) 'batch_number': d['batch_number'],
+      if (d['expiry_date'] != null) 'expiry_date': d['expiry_date'],
+      if (d['pack_size'] != null) 'pack_size': d['pack_size'],
+      if (d['quantity_available'] != null)
+        'quantity_available': d['quantity_available'],
     },
     'variants': [
       {
         'base_price': d['price'] ?? 0,
-        'currency':   'TZS',
-        'name':       d['name'] ?? 'Default',
+        'currency': 'TZS',
+        'name': d['name'] ?? 'Default',
         'is_default': true,
       },
     ],
   };
 
-  // ── ProductModel data → Nexora PATCH body ──────────────────
-
   Map<String, dynamic> _updateBody(Map<String, dynamic> d) => {
-    'name':        d['name'] ?? '',
+    'name': d['name'] ?? '',
     'description': d['description'],
     'attributes': {'category_id': d['category_id'] ?? ''},
     'metadata': {
       'category_id': d['category_id'] ?? '',
       'is_available': d['is_available'] ?? true,
-      'is_featured':  d['is_featured']  ?? false,
-      'is_new':       d['is_new']       ?? true,
+      'is_featured': d['is_featured'] ?? false,
+      'is_new': d['is_new'] ?? true,
       if (d['image_url'] != null) 'image_url': d['image_url'],
+      if (d['batch_number'] != null) 'batch_number': d['batch_number'],
+      if (d['expiry_date'] != null) 'expiry_date': d['expiry_date'],
+      if (d['pack_size'] != null) 'pack_size': d['pack_size'],
+      if (d['quantity_available'] != null)
+        'quantity_available': d['quantity_available'],
     },
   };
 
@@ -228,16 +259,10 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   @override
   Future<ProductModel> update(String id, Map<String, dynamic> data) async {
     try {
-      // 1. Update product fields + metadata
+      // Update product metadata only — no variant price patch (endpoint doesn't exist)
       await _dio.patch('/commerce/products/$id', data: _updateBody(data));
 
-      // 2. Update default variant price (separate endpoint)
-      final newPrice = (data['price'] as num?)?.toDouble();
-      if (newPrice != null) {
-        await _updateVariantPrice(id, newPrice);
-      }
-
-      // 3. Re-fetch to return accurate state
+      // Re-fetch to return accurate state
       return await getById(id);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -248,27 +273,28 @@ class ProductApiDataSource implements ProductRemoteDataSource {
 
   /// Patches the default variant base_price. Non-fatal if it fails —
   /// the product metadata update already succeeded.
-  Future<void> _updateVariantPrice(String productId, double price) async {
-    try {
-      final res = await _dio.get('/commerce/products/$productId');
-      final productData = _unwrapProduct(res.data);
-      final variants =
-          (productData['variants'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-      if (variants.isEmpty) return;
-      final defaultVariant = variants.firstWhere(
-        (v) => v['is_default'] == true,
-        orElse: () => variants.first,
-      );
-      final variantId = defaultVariant['id']?.toString();
-      if (variantId == null || variantId.isEmpty) return;
-      await _dio.patch(
-        '/commerce/products/$productId/variants/$variantId',
-        data: {'base_price': price},
-      );
-    } catch (_) {
-      // Non-fatal
-    }
-  }
+  // Future<void> _updateVariantPrice(String productId, double price) async {
+  //   try {
+  //     final res = await _dio.get('/commerce/products/$productId');
+  //     final productData = _unwrapProduct(res.data);
+  //     final variants =
+  //         (productData['variants'] as List?)?.cast<Map<String, dynamic>>() ??
+  //         [];
+  //     if (variants.isEmpty) return;
+  //     final defaultVariant = variants.firstWhere(
+  //       (v) => v['is_default'] == true,
+  //       orElse: () => variants.first,
+  //     );
+  //     final variantId = defaultVariant['id']?.toString();
+  //     if (variantId == null || variantId.isEmpty) return;
+  //     await _dio.patch(
+  //       '/commerce/products/$productId/variants/$variantId',
+  //       data: {'base_price': price},
+  //     );
+  //   } catch (_) {
+  //     // Non-fatal
+  //   }
+  // }
 
   @override
   Future<void> delete(String id) async {

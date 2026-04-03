@@ -1,9 +1,12 @@
 ﻿// ================================================================
 // features_order_source.txt
-// Generated : 2026-03-25 10:33:58
-// Files     : 28
+// Generated : 2026-04-03 11:42:16
+// Files     : 30
 // Usage     : Upload to Claude Project documents as reference.
 // ================================================================
+
+// === FILE: lib/features/order/data/datasources/order_api_datasource.dart ===
+
 
 // === FILE: lib/features/order/data/datasources/order_mock_datasource.dart ===
 import '../../domain/value_objects/order_status.dart';
@@ -138,30 +141,86 @@ class OrderMockDataSource implements OrderRemoteDataSource {
     await Future.delayed(const Duration(milliseconds: 200));
     _orders.removeWhere((o) => o.id == id);
   }
+
+  @override
+  Future<OrderModel> confirm(String id) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return _updateStatus(id, 'confirmed');
+  }
+
+  @override
+  Future<OrderModel> ship(String id) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return _updateStatus(id, 'shipped');
+  }
+
+  @override
+  Future<OrderModel> deliver(String id) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return _updateStatus(id, 'delivered');
+  }
+
+  @override
+  Future<OrderModel> cancel(String id) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return _updateStatus(id, 'cancelled');
+  }
+
+  OrderModel _updateStatus(String id, String status) {
+    final index = _orders.indexWhere((o) => o.id == id);
+    if (index == -1) throw Exception('Order not found');
+    final updated = OrderModel(
+      id: _orders[index].id,
+      customerId: _orders[index].customerId,
+      items: _orders[index].items,
+      total: _orders[index].total,
+      paymentRef: _orders[index].paymentRef,
+      status: status,
+      createdAt: _orders[index].createdAt,
+    );
+    _orders[index] = updated;
+    return updated;
+  }
 }
 
 // === FILE: lib/features/order/data/datasources/order_remote_datasource.dart ===
 import 'package:dio/dio.dart';
 import '../../../../core/error/exceptions.dart';
+import '../../../../core/context/org_context.dart';
 import '../models/order_model.dart';
 
 abstract class OrderRemoteDataSource {
   Future<List<OrderModel>> getAll();
-  Future<OrderModel>       getById(String id);
-  Future<OrderModel>       create(Map<String, dynamic> data);
-  Future<OrderModel>       update(String id, Map<String, dynamic> data);
-  Future<void>                delete(String id);
+  Future<OrderModel> getById(String id);
+  Future<OrderModel> create(Map<String, dynamic> data);
+  Future<OrderModel> update(String id, Map<String, dynamic> data);
+  Future<void> delete(String id);
+  Future<OrderModel> confirm(String id);
+  Future<OrderModel> ship(String id);
+  Future<OrderModel> deliver(String id);
+  Future<OrderModel> cancel(String id);
 }
 
 class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
   final Dio _dio;
-  OrderRemoteDataSourceImpl({required Dio dio}) : _dio = dio;
+  final OrgContext _orgContext;
+
+  OrderRemoteDataSourceImpl({required Dio dio, required OrgContext orgContext})
+    : _dio = dio,
+      _orgContext = orgContext;
+
+  // Seller-scoped list — org is the seller
+  String get _sellerBase =>
+      '/commerce/orgs/${_orgContext.effectiveOrgId}/orders';
 
   @override
   Future<List<OrderModel>> getAll() async {
     try {
-      final response = await _dio.get('/orders');
-      final data = response.data as List;
+      final response = await _dio.get(
+        _sellerBase,
+        queryParameters: {'per_page': 100},
+      );
+      final data = (response.data['data'] ?? response.data) as List;
       return data
           .map((e) => OrderModel.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -173,8 +232,11 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
   @override
   Future<OrderModel> getById(String id) async {
     try {
-      final response = await _dio.get('/orders/$id');
-      return OrderModel.fromJson(response.data as Map<String, dynamic>);
+      // ✅ Correct: no org scope on single order fetch
+      final response = await _dio.get('/commerce/orders/$id');
+      final data =
+          response.data['data'] ?? response.data['order'] ?? response.data;
+      return OrderModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -183,8 +245,29 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
   @override
   Future<OrderModel> create(Map<String, dynamic> data) async {
     try {
-      final response = await _dio.post('/orders', data: data);
-      return OrderModel.fromJson(response.data as Map<String, dynamic>);
+      final orgId = _orgContext.effectiveOrgId;
+
+      // Build items for admin endpoint
+      final items = (data['items'] as List<dynamic>)
+          .map(
+            (item) => {
+              'variant_id': item['variantId']?.toString(),
+              'quantity': item['qty'],
+            },
+          )
+          .toList();
+
+      final response = await _dio.post(
+        '/commerce/orgs/$orgId/orders/admin',
+        data: {
+          'buyer_id': data['customer_id'] ?? data['customerId'],
+          'items': items,
+          if (data['payment_ref'] != null) 'payment_ref': data['payment_ref'],
+          'currency': 'TZS',
+        },
+      );
+      final body = response.data['order'] ?? response.data;
+      return OrderModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -193,8 +276,9 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
   @override
   Future<OrderModel> update(String id, Map<String, dynamic> data) async {
     try {
-      final response = await _dio.put('/orders/$id', data: data);
-      return OrderModel.fromJson(response.data as Map<String, dynamic>);
+      // Orders in Nexora are updated via status transitions, not PATCH
+      // This is a no-op for now — status changes go through confirm/ship/deliver/cancel
+      return await getById(id);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -203,7 +287,53 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
   @override
   Future<void> delete(String id) async {
     try {
-      await _dio.delete('/orders/$id');
+      // Nexora has no hard delete — cancel instead
+      await _dio.post('/commerce/orders/$id/cancel');
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return;
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<OrderModel> confirm(String id) async {
+    try {
+      final response = await _dio.post('/commerce/orders/$id/confirm');
+      final data = response.data['order'] ?? response.data;
+      return OrderModel.fromJson(data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<OrderModel> ship(String id) async {
+    try {
+      final response = await _dio.post('/commerce/orders/$id/ship');
+      final data = response.data['order'] ?? response.data;
+      return OrderModel.fromJson(data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<OrderModel> deliver(String id) async {
+    try {
+      final response = await _dio.post('/commerce/orders/$id/deliver');
+      final data = response.data['order'] ?? response.data;
+      return OrderModel.fromJson(data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<OrderModel> cancel(String id) async {
+    try {
+      final response = await _dio.post('/commerce/orders/$id/cancel');
+      final data = response.data['order'] ?? response.data;
+      return OrderModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -235,14 +365,59 @@ class OrderModel extends OrderEntity {
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
     return OrderModel(
-      id: json['id'] as String,
-      customerId: json['customer_id'] as String,
-      items: List<Map<String, dynamic>>.from(json['items'] as List),
-      total: (json['total'] as num).toDouble(),
-      paymentRef: json['payment_ref'] as String?,
-      status: json['status'] as String,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      id: json['id']?.toString() ?? '',
+      customerId:
+          (json['buyer_org_id'] ??
+                  json['buyer_actor_id'] ??
+                  json['customer_id'])
+              ?.toString() ??
+          '',
+      items: _parseItems(json['items']),
+      total:
+          double.tryParse(
+            json['total']?.toString() ?? json['subtotal']?.toString() ?? '0',
+          ) ??
+          0.0,
+      paymentRef:
+          json['payment_ref']?.toString() ?? json['order_number']?.toString(),
+      status: _mapStatus(json['status']?.toString() ?? 'pending'),
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
     );
+  }
+
+  static String _mapStatus(String s) => switch (s) {
+    'pending' => 'draft', // map Nexora pending → our draft
+    'confirmed' => 'confirmed',
+    'processing' => 'confirmed', // treat processing same as confirmed
+    'shipped' => 'shipped',
+    'delivered' => 'delivered',
+    'cancelled' => 'cancelled',
+    'refunded' => 'cancelled',
+    _ => 'draft',
+  };
+
+  static List<Map<String, dynamic>> _parseItems(dynamic raw) {
+    if (raw == null) return [];
+    if (raw is! List) return [];
+    return raw.map((e) {
+      final m = Map<String, dynamic>.from(e as Map);
+      return {
+        'productId':
+            (m['product_id'] ?? m['productId'] ?? m['variant_id'] ?? '')
+                .toString(),
+        'name': (m['product_name'] ?? m['variant_name'] ?? m['name'] ?? '')
+            .toString(),
+        'qty': int.tryParse((m['quantity'] ?? m['qty'] ?? 0).toString()) ?? 0,
+        'unitPrice':
+            double.tryParse(
+              (m['unit_price'] ?? m['unitPrice'] ?? 0).toString(),
+            ) ??
+            0.0,
+        'subtotal': double.tryParse((m['subtotal'] ?? 0).toString()) ?? 0.0,
+      };
+    }).toList();
   }
 
   Map<String, dynamic> toJson() => {
@@ -268,6 +443,7 @@ class OrderModel extends OrderEntity {
   }
 }
 
+
 // === FILE: lib/features/order/data/repositories/order_repository_impl.dart ===
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/exceptions.dart';
@@ -280,9 +456,8 @@ import '../datasources/order_remote_datasource.dart';
 class OrderRepositoryImpl implements OrderRepository {
   final OrderRemoteDataSource _remoteDataSource;
 
-  OrderRepositoryImpl({
-    required OrderRemoteDataSource remoteDataSource,
-  })  :         _remoteDataSource = remoteDataSource;
+  OrderRepositoryImpl({required OrderRemoteDataSource remoteDataSource})
+    : _remoteDataSource = remoteDataSource;
 
   @override
   Future<Either<Failure, List<OrderEntity>>> getAll() async {
@@ -314,7 +489,10 @@ class OrderRepositoryImpl implements OrderRepository {
   Future<Either<Failure, OrderEntity>> create(OrderEntity entity) async {
     try {
       final model = OrderModel.fromEntity(entity);
-      final result = await _remoteDataSource.create(model.toJson());
+      final json = model.toJson();
+      // Pass customerId explicitly for the admin endpoint
+      json['customer_id'] = entity.customerId;
+      final result = await _remoteDataSource.create(json);
       return Right(result);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
@@ -341,6 +519,50 @@ class OrderRepositoryImpl implements OrderRepository {
     try {
       await _remoteDataSource.delete(id);
       return const Right(null);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, OrderEntity>> confirm(String id) async {
+    try {
+      return Right(await _remoteDataSource.confirm(id));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, OrderEntity>> ship(String id) async {
+    try {
+      return Right(await _remoteDataSource.ship(id));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, OrderEntity>> deliver(String id) async {
+    try {
+      return Right(await _remoteDataSource.deliver(id));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, OrderEntity>> cancel(String id) async {
+    try {
+      return Right(await _remoteDataSource.cancel(id));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
@@ -541,9 +763,12 @@ abstract class OrderRepository {
   Future<Either<Failure, OrderEntity>>       getById(String id);
   Future<Either<Failure, OrderEntity>>       create(OrderEntity entity);
   Future<Either<Failure, OrderEntity>>       update(OrderEntity entity);
-  Future<Either<Failure, void>>                 delete(String id);
+  Future<Either<Failure, void>>              delete(String id);
+  Future<Either<Failure, OrderEntity>>       confirm(String id);
+  Future<Either<Failure, OrderEntity>>       ship(String id);
+  Future<Either<Failure, OrderEntity>>       deliver(String id);
+  Future<Either<Failure, OrderEntity>>       cancel(String id);
 }
-
 
 // === FILE: lib/features/order/domain/services/order_domain_service.dart ===
 import 'package:dartz/dartz.dart';
@@ -557,37 +782,26 @@ class OrderDomainService {
   final OrderRepository repository;
   final OrderTransitionGuard guard;
 
-  OrderDomainService({
-    required this.repository,
-    required this.guard,
-  });
+  OrderDomainService({required this.repository, required this.guard});
 
-  /// Performs a status transition: load, guard, apply, persist.
   Future<Either<Failure, OrderEntity>> transition({
     required String id,
     required OrderStatus targetStatus,
   }) async {
-    // 1. Load
-    final loadResult = await repository.getById(id);
-    if (loadResult.isLeft()) return loadResult;
-    final entity = loadResult.getOrElse(() => throw StateError('unreachable'));
-
-    // 2. Guard
-final guardResult = guard.validate(
-  current: OrderStatusX.fromString(entity.status),
-  target:  targetStatus,
-);
-    if (guardResult.isLeft()) {
-      return guardResult.fold((f) => Left(f), (_) => throw StateError('unreachable'));
+    switch (targetStatus) {
+      case OrderStatus.confirmed:
+        return repository.confirm(id);
+      case OrderStatus.shipped:
+        return repository.ship(id);
+      case OrderStatus.delivered:
+        return repository.deliver(id);
+      case OrderStatus.cancelled:
+        return repository.cancel(id);
+      default:
+        return const Left(ValidationFailure('Transition not supported'));
     }
-    final validTarget = guardResult.getOrElse(() => throw StateError('unreachable'));
-
-    // 3. Apply + Persist
-    final updated = entity.copyWith(status: validTarget.name);
-    return repository.update(updated);
   }
 }
-
 
 // === FILE: lib/features/order/domain/usecases/create_order_usecase.dart ===
 import 'package:dartz/dartz.dart';
@@ -595,7 +809,9 @@ import '../../../../core/error/failures.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../entities/order_entity.dart';
 import '../repositories/order_repository.dart';
+import '../../../product/domain/usecases/deduct_product_quantity_usecase.dart';
 
+// ── Params ────────────────────────────────────────────────────
 class CreateOrderParams {
   final String customerId;
   final List<Map<String, dynamic>> items;
@@ -610,13 +826,15 @@ class CreateOrderParams {
   });
 }
 
+// ── Use Case ──────────────────────────────────────────────────
 class CreateOrderUseCase implements UseCase<OrderEntity, CreateOrderParams> {
   final OrderRepository repository;
-  CreateOrderUseCase(this.repository);
+  final DeductProductQuantityUseCase deductQuantity;
+
+  CreateOrderUseCase({required this.repository, required this.deductQuantity});
 
   @override
   Future<Either<Failure, OrderEntity>> call(CreateOrderParams p) async {
-    // -- Validation gate --
     if (p.customerId.trim().isEmpty) {
       return const Left(ValidationFailure('Customer is required'));
     }
@@ -624,7 +842,7 @@ class CreateOrderUseCase implements UseCase<OrderEntity, CreateOrderParams> {
       return const Left(ValidationFailure('Total must be positive'));
     }
 
-    return repository.create(
+    final result = await repository.create(
       OrderEntity(
         id: '',
         customerId: p.customerId.trim(),
@@ -635,6 +853,20 @@ class CreateOrderUseCase implements UseCase<OrderEntity, CreateOrderParams> {
         createdAt: DateTime.now(),
       ),
     );
+
+    result.fold((_) => null, (_) async {
+      for (final item in p.items) {
+        final productId = item['productId']?.toString();
+        final qty = (item['qty'] as num?)?.toInt();
+        if (productId != null && qty != null && qty > 0) {
+          await deductQuantity(
+            DeductProductQuantityParams(productId: productId, quantity: qty),
+          );
+        }
+      }
+    });
+
+    return result;
   }
 }
 
@@ -1119,21 +1351,7 @@ class OrderDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Order Detail'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit',
-            onPressed: () {
-              final state = context.read<OrderBloc>().state;
-              if (state is OrderDetailLoaded) {
-                context.push(AppRouter.orderEditPath(state.item.id));
-              }
-            },
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Order Detail')),
       body: BlocConsumer<OrderBloc, OrderState>(
         listener: (context, state) {
           if (state is OrderOperationSuccess) {
@@ -1822,9 +2040,10 @@ import '../bloc/order_bloc.dart';
 import '../bloc/order_event.dart';
 import '../bloc/order_state.dart';
 import '../../domain/usecases/create_order_usecase.dart';
-import '../../../customer/data/datasources/customer_mock_datasource.dart';
+import '../../../../config/di/injection_container.dart';
+import '../../../customer/domain/repositories/customer_repository.dart';
 import '../../../customer/data/models/customer_model.dart';
-import '../../../product/data/datasources/product_mock_datasource.dart';
+import '../../../product/domain/repositories/product_repository.dart';
 import '../../../product/data/models/product_model.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1860,17 +2079,35 @@ class _OrderFormPageState extends State<OrderFormPage> {
   }
 
   Future<void> _loadLookupData() async {
-    final customers = await CustomerMockDataSource().getAll();
-    final products = await ProductMockDataSource().getAll();
-    if (mounted) {
+    try {
+      final customerRepo = sl<CustomerRepository>();
+      final productRepo = sl<ProductRepository>();
+
+      final customerResult = await customerRepo.getAll();
+      final productResult = await productRepo.getAll();
+
+      if (!mounted) return;
+
       setState(() {
-        _customers = customers.cast<CustomerModel>();
-        _products = products
-            .cast<ProductModel>()
-            .where((p) => p.isAvailable && p.status != 'archived')
-            .toList();
+        _customers = customerResult.fold(
+          (_) => [],
+          (page) => page.items.whereType<CustomerModel>().toList(),
+        );
+        _products = productResult.fold(
+          (_) => [],
+          (list) => list
+              .whereType<ProductModel>()
+              .where((p) => p.isAvailable && p.status != 'archived')
+              .toList(),
+        );
         _loadingLookups = false;
       });
+
+      if (widget.mode == OrderFormNode.edit) {
+        _populateFromOrder();
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loadingLookups = false);
     }
   }
 
@@ -1881,6 +2118,45 @@ class _OrderFormPageState extends State<OrderFormPage> {
   void dispose() {
     _paymentRefController.dispose();
     super.dispose();
+  }
+
+  void _populateFromOrder() {
+    final state = context.read<OrderBloc>().state;
+    if (state is! OrderDetailLoaded) return;
+
+    final order = state.item;
+
+    // Pre-select customer
+    final customer = _customers
+        .where((c) => c.id == order.customerId)
+        .firstOrNull;
+    if (customer != null) {
+      setState(() => _selectedCustomer = customer);
+    }
+
+    // Pre-fill payment ref
+    if (order.paymentRef != null && order.paymentRef!.isNotEmpty) {
+      _paymentRefController.text = order.paymentRef!;
+    }
+
+    // Pre-fill line items from order items
+    final lineItems = <_OrderLineItem>[];
+    for (final item in order.items) {
+      final productId = item['productId']?.toString() ?? '';
+      final qty = int.tryParse(item['qty']?.toString() ?? '1') ?? 1;
+      final product = _products.where((p) => p.id == productId).firstOrNull;
+      if (product != null) {
+        lineItems.add(_OrderLineItem(product: product, quantity: qty));
+      }
+    }
+
+    if (lineItems.isNotEmpty) {
+      setState(
+        () => _lineItems
+          ..clear()
+          ..addAll(lineItems),
+      );
+    }
   }
 
   @override
@@ -2032,13 +2308,14 @@ class _OrderFormPageState extends State<OrderFormPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          _selectedCustomer!.businessName,
+                          _selectedCustomer!.name, // was: businessName
                           style: theme.textTheme.bodyLarge?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                         Text(
-                          _selectedCustomer!.officeAddress ?? '',
+                          _selectedCustomer!.address ??
+                              '', // was: officeAddress
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -2120,7 +2397,22 @@ class _OrderFormPageState extends State<OrderFormPage> {
   }
 
   Future<int?> _showQtyDialog(ProductModel product) {
+    final available = product.quantityAvailable;
+    final maxQty = (available != null && available > 0) ? available : 999;
+
+    if (available != null && available == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${product.name} is out of stock. Available: 0.'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+      return Future.value(null);
+    }
+
+    final controller = TextEditingController(text: '1');
     int qty = 1;
+
     return showDialog<int>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -2139,29 +2431,92 @@ class _OrderFormPageState extends State<OrderFormPage> {
                   color: Theme.of(ctx).colorScheme.onSurfaceVariant,
                 ),
               ),
+              const SizedBox(height: 4),
+              if (available != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: available <= 10
+                        ? Colors.orange.withValues(alpha: 0.12)
+                        : Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'Available: $available units',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: available <= 10
+                          ? Colors.orange.shade800
+                          : Colors.green.shade700,
+                    ),
+                  ),
+                ),
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   IconButton.outlined(
                     icon: const Icon(Icons.remove),
-                    onPressed: qty > 1 ? () => setS(() => qty--) : null,
+                    onPressed: qty > 1
+                        ? () {
+                            setS(() {
+                              qty--;
+                              controller.text = '$qty';
+                            });
+                          }
+                        : null,
                   ),
                   const SizedBox(width: 8),
+                  // ── Typing input ──────────────────────────────
                   SizedBox(
-                    width: 56,
-                    child: Text(
-                      '$qty',
+                    width: 72,
+                    child: TextField(
+                      controller: controller,
+                      keyboardType: TextInputType.number,
                       textAlign: TextAlign.center,
                       style: Theme.of(ctx).textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 8,
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (v) {
+                        final parsed = int.tryParse(v);
+                        if (parsed != null && parsed >= 1 && parsed <= maxQty) {
+                          setS(() => qty = parsed);
+                        } else if (parsed != null && parsed > maxQty) {
+                          // Clamp and correct the field
+                          setS(() {
+                            qty = maxQty;
+                            controller.text = '$maxQty';
+                            controller.selection = TextSelection.fromPosition(
+                              TextPosition(offset: controller.text.length),
+                            );
+                          });
+                        }
+                      },
                     ),
                   ),
                   const SizedBox(width: 8),
                   IconButton.outlined(
                     icon: const Icon(Icons.add),
-                    onPressed: qty < 999 ? () => setS(() => qty++) : null,
+                    onPressed: qty < maxQty
+                        ? () {
+                            setS(() {
+                              qty++;
+                              controller.text = '$qty';
+                            });
+                          }
+                        : null,
                   ),
                 ],
               ),
@@ -2189,7 +2544,6 @@ class _OrderFormPageState extends State<OrderFormPage> {
       ),
     );
   }
-
   // ── Submit ─────────────────────────────────────────────────────────────────
 
   void _submit() {
@@ -2200,12 +2554,39 @@ class _OrderFormPageState extends State<OrderFormPage> {
       );
       return;
     }
+
+    // Inventory check
+    for (final line in _lineItems) {
+      final available = line.product.quantityAvailable;
+      if (available != null && available == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${line.product.name} is out of stock.'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+        return;
+      }
+      if (available != null && line.quantity > available) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${line.product.name}: requested ${line.quantity} but only $available available.',
+            ),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+        return;
+      }
+    }
+
     setState(() => _isSubmitting = true);
 
     final items = _lineItems
         .map(
           (e) => {
             'productId': e.product.id,
+            'variantId': e.product.variantId ?? e.product.id,
             'name': e.product.name,
             'unitPrice': e.product.price,
             'qty': e.quantity,
@@ -2214,18 +2595,49 @@ class _OrderFormPageState extends State<OrderFormPage> {
         )
         .toList();
 
-    context.read<OrderBloc>().add(
-      OrderCreateRequested(
-        CreateOrderParams(
-          customerId: _selectedCustomer!.id,
-          items: items,
-          total: _calculatedTotal,
-          paymentRef: _paymentRefController.text.trim().isEmpty
-              ? null
-              : _paymentRefController.text.trim(),
+    final isEdit = widget.mode == OrderFormNode.edit;
+
+    if (isEdit) {
+      // ── Edit: Nexora orders cannot be re-created via basket.
+      // Only update the payment reference on the existing order entity.
+      final currentState = context.read<OrderBloc>().state;
+      if (currentState is OrderDetailLoaded) {
+        context.read<OrderBloc>().add(
+          OrderUpdateRequested(
+            currentState.item.copyWith(
+              paymentRef: _paymentRefController.text.trim().isEmpty
+                  ? null
+                  : _paymentRefController.text.trim(),
+            ),
+          ),
+        );
+      } else {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load order to update.')),
+        );
+      }
+    } else {
+      // ── Create: go through basket checkout
+      // ADD THESE 3 LINES HERE:
+      for (final e in _lineItems) {
+        debugPrint(
+          'ITEM: name=${e.product.name} id=${e.product.id} variantId=${e.product.variantId}',
+        );
+      }
+      context.read<OrderBloc>().add(
+        OrderCreateRequested(
+          CreateOrderParams(
+            customerId: _selectedCustomer!.id,
+            items: items,
+            total: _calculatedTotal,
+            paymentRef: _paymentRefController.text.trim().isEmpty
+                ? null
+                : _paymentRefController.text.trim(),
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 }
 
@@ -2514,9 +2926,10 @@ class _CustomerListSheetState extends State<_CustomerListSheet> {
     final theme = Theme.of(context);
     final filtered = widget.customers.where((c) {
       final q = _search.toLowerCase();
-      return c.businessName.toLowerCase().contains(q) ||
-          (c.ownerName?.toLowerCase().contains(q) ?? false) ||
-          (c.officeAddress?.toLowerCase().contains(q) ?? false);
+      return c.name.toLowerCase().contains(q) || // was: businessName
+          (c.phone?.toLowerCase().contains(q) ??
+              false) || // was: ownerName (no ownerName exists)
+          (c.address?.toLowerCase().contains(q) ?? false); // was: officeAddress
     }).toList();
 
     return DraggableScrollableSheet(
@@ -2569,16 +2982,16 @@ class _CustomerListSheetState extends State<_CustomerListSheet> {
                   leading: CircleAvatar(
                     backgroundColor: theme.colorScheme.primaryContainer,
                     child: Text(
-                      c.businessName[0].toUpperCase(),
+                      c.name[0].toUpperCase(), // was: businessName
                       style: TextStyle(
                         color: theme.colorScheme.onPrimaryContainer,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
-                  title: Text(c.businessName),
+                  title: Text(c.name), // was: businessName
                   subtitle: Text(
-                    '${c.ownerName ?? ''} · ${c.officeAddress ?? ''}',
+                    '${c.phone ?? ''} · ${c.address ?? ''}', // was: ownerName · officeAddress
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -2605,14 +3018,41 @@ class _CustomerListSheetState extends State<_CustomerListSheet> {
 // No setState anywhere — qty is handled by AlertDialog in parent
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _ProductListSheet extends StatelessWidget {
-  final List<ProductModel> products;
+// ─────────────────────────────────────────────────────────────────────────────
+// Product list sheet — pops selected product
+// ─────────────────────────────────────────────────────────────────────────────
 
+class _ProductListSheet extends StatefulWidget {
+  final List<ProductModel> products;
   const _ProductListSheet({required this.products});
+  @override
+  State<_ProductListSheet> createState() => _ProductListSheetState();
+}
+
+class _ProductListSheetState extends State<_ProductListSheet> {
+  final _searchCtrl = TextEditingController();
+  String _q = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final filtered = _q.isEmpty
+        ? widget.products
+        : widget.products
+              .where(
+                (p) =>
+                    p.name.toLowerCase().contains(_q.toLowerCase()) ||
+                    p.id.toLowerCase().contains(_q.toLowerCase()),
+              )
+              .toList();
+
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
       maxChildSize: 0.9,
@@ -2625,7 +3065,7 @@ class _ProductListSheet extends StatelessWidget {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+              color: cs.onSurfaceVariant.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -2638,33 +3078,70 @@ class _ProductListSheet extends StatelessWidget {
               ),
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              controller: _searchCtrl,
+              autofocus: false,
+              decoration: InputDecoration(
+                hintText: 'Search products...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _q.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() => _q = '');
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                isDense: true,
+              ),
+              onChanged: (v) => setState(() => _q = v),
+            ),
+          ),
+          const SizedBox(height: 4),
           const Divider(height: 1),
           Expanded(
-            child: ListView.builder(
-              controller: scrollController,
-              itemCount: products.length,
-              itemBuilder: (_, i) {
-                final p = products[i];
-                return ListTile(
-                  leading: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(6),
+            child: filtered.isEmpty
+                ? Center(
+                    child: Text(
+                      'No products found',
+                      style: TextStyle(color: cs.onSurfaceVariant),
                     ),
-                    child: Icon(
-                      Icons.medication_outlined,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                  )
+                : ListView.builder(
+                    controller: scrollController,
+                    itemCount: filtered.length,
+                    itemBuilder: (_, i) {
+                      final p = filtered[i];
+                      return ListTile(
+                        leading: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            Icons.medication_outlined,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                        title: Text(p.name),
+                        subtitle: Text('TZS ${p.price.toStringAsFixed(0)}'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(ctx).pop(p),
+                      );
+                    },
                   ),
-                  title: Text(p.name),
-                  subtitle: Text('TZS ${p.price.toStringAsFixed(0)}'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(ctx).pop(p),
-                );
-              },
-            ),
           ),
         ],
       ),
@@ -2687,6 +3164,7 @@ import '../widgets/order_card_tile.dart';
 import '../widgets/order_list_row.dart';
 import '../widgets/order_table_row.dart';
 import '../widgets/order_status_badge.dart';
+import '../widgets/order_confirm_delete_dialog.dart';
 
 enum _ViewMode { cards, list, table }
 
@@ -3034,31 +3512,11 @@ class _OrderListPageState extends State<OrderListPage> {
   }
 
   Future<void> _confirmDelete(OrderEntity item) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete Order?'),
-        content: Text(
-          'Remove order #${item.id.split('-').last.toUpperCase()}? This cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () =>
-                Navigator.of(context, rootNavigator: true).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            onPressed: () =>
-                Navigator.of(context, rootNavigator: true).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final confirmed = await OrderConfirmDeleteDialog.show(
+      context,
+      orderId: item.id,
     );
-    if (confirmed == true && mounted) {
+    if (confirmed && mounted) {
       context.read<OrderBloc>().add(OrderDeleteRequested(item.id));
     }
   }
@@ -3116,6 +3574,7 @@ import 'package:flutter/material.dart';
 import '../../domain/entities/order_entity.dart';
 import '../../domain/value_objects/order_status.dart';
 import 'order_status_badge.dart';
+import 'order_confirm_delete_dialog.dart';
 
 class OrderCard extends StatelessWidget {
   final OrderEntity item;
@@ -3163,29 +3622,13 @@ class OrderCard extends StatelessWidget {
     );
   }
 
-  Future<void> _confirmDelete(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete?'),
-        content: Text('Remove "${item.customerId}"? This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) onDelete();
-  }
+Future<void> _confirmDelete(BuildContext context) async {
+  final confirmed = await OrderConfirmDeleteDialog.show(
+    context,
+    orderId: item.id,
+  );
+  if (confirmed) onDelete();
+}
 }
 
 
@@ -3194,6 +3637,7 @@ import 'package:flutter/material.dart';
 import '../../domain/entities/order_entity.dart';
 import '../../domain/value_objects/order_status.dart';
 import 'order_status_badge.dart';
+import 'order_confirm_delete_dialog.dart';
 
 class OrderCardTile extends StatelessWidget {
   final OrderEntity item;
@@ -3233,8 +3677,11 @@ class OrderCardTile extends StatelessWidget {
                       color: status.color.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(Icons.receipt_long_outlined,
-                        color: status.color, size: 20),
+                    child: Icon(
+                      Icons.receipt_long_outlined,
+                      color: status.color,
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -3244,12 +3691,14 @@ class OrderCardTile extends StatelessWidget {
                         Text(
                           'Order #${item.id.split('-').last.toUpperCase()}',
                           style: textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w700),
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         Text(
                           item.createdAt.toIso8601String().split('T').first,
                           style: textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurfaceVariant),
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
@@ -3261,13 +3710,17 @@ class OrderCardTile extends StatelessWidget {
               // Items count + total
               Row(
                 children: [
-                  Icon(Icons.inventory_2_outlined,
-                      size: 14, color: scheme.onSurfaceVariant),
+                  Icon(
+                    Icons.inventory_2_outlined,
+                    size: 14,
+                    color: scheme.onSurfaceVariant,
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     '${item.items.length} item${item.items.length != 1 ? 's' : ''}',
-                    style: textTheme.bodySmall
-                        ?.copyWith(color: scheme.onSurfaceVariant),
+                    style: textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                   const Spacer(),
                   Text(
@@ -3283,13 +3736,17 @@ class OrderCardTile extends StatelessWidget {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    Icon(Icons.payment_outlined,
-                        size: 13, color: scheme.tertiary),
+                    Icon(
+                      Icons.payment_outlined,
+                      size: 13,
+                      color: scheme.tertiary,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       item.paymentRef!,
-                      style: textTheme.bodySmall
-                          ?.copyWith(color: scheme.tertiary),
+                      style: textTheme.bodySmall?.copyWith(
+                        color: scheme.tertiary,
+                      ),
                     ),
                   ],
                 ),
@@ -3298,21 +3755,34 @@ class OrderCardTile extends StatelessWidget {
               // Footer
               Row(
                 children: [
-                  Icon(Icons.person_outline,
-                      size: 13, color: scheme.onSurfaceVariant),
+                  Icon(
+                    Icons.person_outline,
+                    size: 13,
+                    color: scheme.onSurfaceVariant,
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     'Customer: ${item.customerId}',
-                    style: textTheme.bodySmall
-                        ?.copyWith(color: scheme.onSurfaceVariant),
+                    style: textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: Icon(Icons.delete_outline,
-                        color: scheme.error, size: 18),
+                    icon: Icon(
+                      Icons.delete_outline,
+                      color: scheme.error,
+                      size: 18,
+                    ),
                     tooltip: 'Delete',
-                    onPressed: onDelete,
+                    onPressed: () async {
+                      final confirmed = await OrderConfirmDeleteDialog.show(
+                        context,
+                        orderId: item.id,
+                      );
+                      if (confirmed) onDelete();
+                    },
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),
@@ -3332,11 +3802,123 @@ class OrderCardTile extends StatelessWidget {
   }
 }
 
+
+// === FILE: lib/features/order/presentation/widgets/order_confirm_delete_dialog.dart ===
+import 'package:flutter/material.dart';
+
+class OrderConfirmDeleteDialog extends StatefulWidget {
+  final String orderId;
+
+  const OrderConfirmDeleteDialog({super.key, required this.orderId});
+
+  static Future<bool> show(BuildContext context, {required String orderId}) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => OrderConfirmDeleteDialog(orderId: orderId),
+    );
+    return result ?? false;
+  }
+
+  @override
+  State<OrderConfirmDeleteDialog> createState() => _State();
+}
+
+class _State extends State<OrderConfirmDeleteDialog> {
+  final _controller = TextEditingController();
+  bool _matches = false;
+
+  String get _displayId => widget.orderId.split('-').last.toUpperCase();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      final matches = _controller.text.trim().toUpperCase() == _displayId;
+      if (matches != _matches) setState(() => _matches = matches);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return AlertDialog(
+      title: const Text('Delete Order?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: scheme.errorContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'This action is irreversible. The order will be permanently removed.',
+              style: TextStyle(color: scheme.onErrorContainer, fontSize: 13),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'To confirm, type the order ID below:',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _displayId,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontFamily: 'monospace',
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.characters,
+            decoration: InputDecoration(
+              hintText: 'Type order ID to confirm',
+              border: const OutlineInputBorder(),
+              errorText: _controller.text.isNotEmpty && !_matches
+                  ? 'ID does not match'
+                  : null,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+              backgroundColor: scheme.error),
+          onPressed: _matches ? () => Navigator.pop(context, true) : null,
+          child: const Text('Delete'),
+        ),
+      ],
+    );
+  }
+}
+
 // === FILE: lib/features/order/presentation/widgets/order_list_row.dart ===
 import 'package:flutter/material.dart';
 import '../../domain/entities/order_entity.dart';
 import '../../domain/value_objects/order_status.dart';
 import 'order_status_badge.dart';
+import 'order_confirm_delete_dialog.dart';
 
 class OrderListRow extends StatelessWidget {
   final OrderEntity item;
@@ -3374,7 +3956,11 @@ class OrderListRow extends StatelessWidget {
                     color: status.color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(9),
                   ),
-                  child: Icon(Icons.receipt_long_outlined, color: status.color, size: 18),
+                  child: Icon(
+                    Icons.receipt_long_outlined,
+                    color: status.color,
+                    size: 18,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -3383,13 +3969,17 @@ class OrderListRow extends StatelessWidget {
                     children: [
                       Text(
                         'Order #${item.id.split('-').last.toUpperCase()}',
-                        style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                        style: textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
                         '${item.items.length} item${item.items.length != 1 ? 's' : ''} · ${item.createdAt.toIso8601String().split('T').first}',
-                        style: textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                        style: textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -3413,8 +4003,18 @@ class OrderListRow extends StatelessWidget {
                 ),
                 const SizedBox(width: 4),
                 IconButton(
-                  icon: Icon(Icons.delete_outline, color: scheme.error, size: 18),
-                  onPressed: onDelete,
+                  icon: Icon(
+                    Icons.delete_outline,
+                    color: scheme.error,
+                    size: 18,
+                  ),
+                  onPressed: () async {
+                    final confirmed = await OrderConfirmDeleteDialog.show(
+                      context,
+                      orderId: item.id,
+                    );
+                    if (confirmed) onDelete();
+                  },
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                 ),
@@ -3432,6 +4032,7 @@ class OrderListRow extends StatelessWidget {
     return v.toStringAsFixed(0);
   }
 }
+
 
 // === FILE: lib/features/order/presentation/widgets/order_status_badge.dart ===
 import 'package:flutter/material.dart';
@@ -3477,6 +4078,7 @@ import 'package:flutter/material.dart';
 import '../../domain/entities/order_entity.dart';
 import '../../domain/value_objects/order_status.dart';
 import 'order_status_badge.dart';
+import 'order_confirm_delete_dialog.dart';
 
 class OrderTableRow extends StatelessWidget {
   final OrderEntity item;
@@ -3506,7 +4108,9 @@ class OrderTableRow extends StatelessWidget {
           border: Border(
             bottom: isLast
                 ? BorderSide.none
-                : BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.3)),
+                : BorderSide(
+                    color: scheme.outlineVariant.withValues(alpha: 0.3),
+                  ),
           ),
         ),
         child: Row(
@@ -3515,7 +4119,9 @@ class OrderTableRow extends StatelessWidget {
               flex: 2,
               child: Text(
                 '#${item.id.split('-').last.toUpperCase()}',
-                style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                style: textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -3533,7 +4139,9 @@ class OrderTableRow extends StatelessWidget {
               width: 48,
               child: Text(
                 '${item.items.length} item${item.items.length != 1 ? 's' : ''}',
-                style: textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                style: textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
                 maxLines: 1,
               ),
             ),
@@ -3557,7 +4165,13 @@ class OrderTableRow extends StatelessWidget {
               width: 36,
               child: IconButton(
                 icon: Icon(Icons.delete_outline, color: scheme.error, size: 18),
-                onPressed: onDelete,
+                onPressed: () async {
+                  final confirmed = await OrderConfirmDeleteDialog.show(
+                    context,
+                    orderId: item.id,
+                  );
+                  if (confirmed) onDelete();
+                },
                 padding: EdgeInsets.zero,
               ),
             ),
@@ -3573,4 +4187,5 @@ class OrderTableRow extends StatelessWidget {
     return v.toStringAsFixed(0);
   }
 }
+
 

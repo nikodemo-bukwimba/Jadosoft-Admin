@@ -24,6 +24,13 @@ class _ConversationFormPageState extends State<ConversationFormPage>
   final _titleController = TextEditingController();
   final _messageController = TextEditingController();
   final _broadcastMsgController = TextEditingController();
+  // ── conversation tab search ──
+  final _contactSearchCtrl = TextEditingController();
+  String _contactSearch = '';
+  // ── broadcast tab search ──
+  final _broadcastSearchCtrl = TextEditingController();
+  String _broadcastSearch = '';
+
   String _type = 'direct';
   final Set<String> _selectedIds = {};
   final Set<String> _broadcastConvIds = {};
@@ -43,6 +50,8 @@ class _ConversationFormPageState extends State<ConversationFormPage>
     _titleController.dispose();
     _messageController.dispose();
     _broadcastMsgController.dispose();
+    _contactSearchCtrl.dispose();
+    _broadcastSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -105,16 +114,17 @@ class _ConversationFormPageState extends State<ConversationFormPage>
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final isWide = MediaQuery.of(context).size.width > 600;
     return BlocListener<ConversationBloc, ConversationState>(
       listener: (ctx, state) {
-        if (state is ConversationNewCreated)
+        if (state is ConversationNewCreated) {
           ctx.go(AppRouter.conversationDetailPath(state.conversationId));
-        if (state is ConversationFailure)
+        }
+        if (state is ConversationFailure) {
           ScaffoldMessenger.of(
             ctx,
           ).showSnackBar(SnackBar(content: Text(state.message)));
+        }
         if (state is ConversationBroadcastSuccess) {
           ScaffoldMessenger.of(ctx).showSnackBar(
             SnackBar(content: Text('Sent to ${state.sentCount} conversations')),
@@ -139,8 +149,9 @@ class _ConversationFormPageState extends State<ConversationFormPage>
         ),
         body: BlocBuilder<ConversationBloc, ConversationState>(
           builder: (ctx, state) {
-            if (state is ConversationLoading)
+            if (state is ConversationLoading) {
               return const Center(child: CircularProgressIndicator());
+            }
             return TabBarView(
               controller: _tabController,
               children: [
@@ -240,37 +251,50 @@ class _ConversationFormPageState extends State<ConversationFormPage>
                 ],
               ),
               const SizedBox(height: 8),
-              _SectionHeader(
+              // ── Contact search ──
+              TextField(
+                controller: _contactSearchCtrl,
+                decoration: InputDecoration(
+                  hintText: 'Search contacts...',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _contactSearch.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            _contactSearchCtrl.clear();
+                            setState(() => _contactSearch = '');
+                          },
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  isDense: true,
+                ),
+                onChanged: (v) => setState(() => _contactSearch = v),
+              ),
+              const SizedBox(height: 8),
+              ..._buildFilteredContactTiles(
+                role: 'officer',
                 label: 'Officers',
                 icon: Icons.badge,
                 color: Colors.teal,
+                selected: _selectedIds,
+                onTap: (id) => _toggle(id),
               ),
-              const SizedBox(height: 4),
-              ..._contacts
-                  .where((c) => c['role'] == 'officer')
-                  .map(
-                    (c) => _ContactTile(
-                      contact: c,
-                      selected: _selectedIds.contains(c['id']),
-                      onTap: () => _toggle(c['id']!),
-                    ),
-                  ),
-              const SizedBox(height: 16),
-              _SectionHeader(
+              const SizedBox(height: 8),
+              ..._buildFilteredContactTiles(
+                role: 'customer',
                 label: 'Customers',
                 icon: Icons.storefront,
                 color: Colors.orange,
+                selected: _selectedIds,
+                onTap: (id) => _toggle(id),
               ),
-              const SizedBox(height: 4),
-              ..._contacts
-                  .where((c) => c['role'] == 'customer')
-                  .map(
-                    (c) => _ContactTile(
-                      contact: c,
-                      selected: _selectedIds.contains(c['id']),
-                      onTap: () => _toggle(c['id']!),
-                    ),
-                  ),
               const SizedBox(height: 24),
               Text(
                 'First Message (Optional)',
@@ -374,71 +398,108 @@ class _ConversationFormPageState extends State<ConversationFormPage>
                 ).textTheme.bodySmall?.copyWith(color: cs.outline),
               ),
               const SizedBox(height: 8),
-              ...existingConvs.map(
-                (c) => Card(
-                  elevation: 0,
-                  margin: const EdgeInsets.symmetric(vertical: 2),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    side: BorderSide(
-                      color: _broadcastConvIds.contains(c.id)
-                          ? cs.primary
-                          : cs.outlineVariant.withValues(alpha: 0.3),
-                      width: _broadcastConvIds.contains(c.id) ? 1.5 : 0.5,
-                    ),
-                  ),
-                  color: _broadcastConvIds.contains(c.id)
-                      ? cs.primaryContainer.withValues(alpha: 0.15)
+              // ── Broadcast search (covers both convs & new contacts) ──
+              TextField(
+                controller: _broadcastSearchCtrl,
+                decoration: InputDecoration(
+                  hintText: 'Search conversations or contacts...',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _broadcastSearch.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            _broadcastSearchCtrl.clear();
+                            setState(() => _broadcastSearch = '');
+                          },
+                        )
                       : null,
-                  child: ListTile(
-                    dense: true,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    leading: CircleAvatar(
-                      radius: 18,
-                      backgroundColor: cs.primaryContainer,
-                      child: c.type == ConversationType.group
-                          ? Icon(Icons.group, size: 16, color: cs.primary)
-                          : Text(
-                              c.displayName(kAdminId)[0],
-                              style: TextStyle(
-                                color: cs.primary,
-                                fontWeight: FontWeight.w600,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  isDense: true,
+                ),
+                onChanged: (v) => setState(() => _broadcastSearch = v),
+              ),
+              const SizedBox(height: 8),
+              ...existingConvs
+                  .where(
+                    (c) =>
+                        _broadcastSearch.isEmpty ||
+                        c
+                            .displayName(kAdminId)
+                            .toLowerCase()
+                            .contains(_broadcastSearch.toLowerCase()),
+                  )
+                  .map(
+                    (c) => Card(
+                      elevation: 0,
+                      margin: const EdgeInsets.symmetric(vertical: 2),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: BorderSide(
+                          color: _broadcastConvIds.contains(c.id)
+                              ? cs.primary
+                              : cs.outlineVariant.withValues(alpha: 0.3),
+                          width: _broadcastConvIds.contains(c.id) ? 1.5 : 0.5,
+                        ),
+                      ),
+                      color: _broadcastConvIds.contains(c.id)
+                          ? cs.primaryContainer.withValues(alpha: 0.15)
+                          : null,
+                      child: ListTile(
+                        dense: true,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        leading: CircleAvatar(
+                          radius: 18,
+                          backgroundColor: cs.primaryContainer,
+                          child: c.type == ConversationType.group
+                              ? Icon(Icons.group, size: 16, color: cs.primary)
+                              : Text(
+                                  c.displayName(kAdminId)[0],
+                                  style: TextStyle(
+                                    color: cs.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                        ),
+                        title: Text(
+                          c.displayName(kAdminId),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: _broadcastConvIds.contains(c.id)
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                          ),
+                        ),
+                        subtitle: Text(
+                          c.type == ConversationType.group
+                              ? 'Group • ${c.participants.length} members'
+                              : 'Direct',
+                          style: TextStyle(fontSize: 10, color: cs.outline),
+                        ),
+                        trailing: _broadcastConvIds.contains(c.id)
+                            ? Icon(Icons.check_circle, color: cs.primary)
+                            : Icon(
+                                Icons.circle_outlined,
+                                color: cs.outlineVariant,
+                                size: 20,
                               ),
-                            ),
-                    ),
-                    title: Text(
-                      c.displayName(kAdminId),
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: _broadcastConvIds.contains(c.id)
-                            ? FontWeight.w600
-                            : FontWeight.w400,
+                        onTap: () => setState(() {
+                          if (_broadcastConvIds.contains(c.id)) {
+                            _broadcastConvIds.remove(c.id);
+                          } else {
+                            _broadcastConvIds.add(c.id);
+                          }
+                        }),
                       ),
                     ),
-                    subtitle: Text(
-                      c.type == ConversationType.group
-                          ? 'Group • ${c.participants.length} members'
-                          : 'Direct',
-                      style: TextStyle(fontSize: 10, color: cs.outline),
-                    ),
-                    trailing: _broadcastConvIds.contains(c.id)
-                        ? Icon(Icons.check_circle, color: cs.primary)
-                        : Icon(
-                            Icons.circle_outlined,
-                            color: cs.outlineVariant,
-                            size: 20,
-                          ),
-                    onTap: () => setState(() {
-                      if (_broadcastConvIds.contains(c.id))
-                        _broadcastConvIds.remove(c.id);
-                      else
-                        _broadcastConvIds.add(c.id);
-                    }),
                   ),
-                ),
-              ),
 
               const SizedBox(height: 24),
 
@@ -458,49 +519,40 @@ class _ConversationFormPageState extends State<ConversationFormPage>
                   ).textTheme.bodySmall?.copyWith(color: cs.outline),
                 ),
                 const SizedBox(height: 8),
-                _SectionHeader(
+                ..._buildFilteredContactTiles(
+                  role: 'officer',
                   label: 'Officers',
                   icon: Icons.badge,
                   color: Colors.teal,
+                  contacts: newContacts,
+                  query: _broadcastSearch,
+                  selected: _broadcastNewContactIds,
+                  onTap: (id) => setState(() {
+                    if (_broadcastNewContactIds.contains(id)) {
+                      _broadcastNewContactIds.remove(id);
+                    } else {
+                      _broadcastNewContactIds.add(id);
+                    }
+                  }),
                 ),
-                const SizedBox(height: 4),
-                ...newContacts
-                    .where((c) => c['role'] == 'officer')
-                    .map(
-                      (c) => _ContactTile(
-                        contact: c,
-                        selected: _broadcastNewContactIds.contains(c['id']),
-                        onTap: () => setState(() {
-                          if (_broadcastNewContactIds.contains(c['id']))
-                            _broadcastNewContactIds.remove(c['id']);
-                          else
-                            _broadcastNewContactIds.add(c['id']!);
-                        }),
-                      ),
-                    ),
                 const SizedBox(height: 8),
-                _SectionHeader(
+                ..._buildFilteredContactTiles(
+                  role: 'customer',
                   label: 'Customers',
                   icon: Icons.storefront,
                   color: Colors.orange,
+                  contacts: newContacts,
+                  query: _broadcastSearch,
+                  selected: _broadcastNewContactIds,
+                  onTap: (id) => setState(() {
+                    if (_broadcastNewContactIds.contains(id)) {
+                      _broadcastNewContactIds.remove(id);
+                    } else {
+                      _broadcastNewContactIds.add(id);
+                    }
+                  }),
                 ),
-                const SizedBox(height: 4),
-                ...newContacts
-                    .where((c) => c['role'] == 'customer')
-                    .map(
-                      (c) => _ContactTile(
-                        contact: c,
-                        selected: _broadcastNewContactIds.contains(c['id']),
-                        onTap: () => setState(() {
-                          if (_broadcastNewContactIds.contains(c['id']))
-                            _broadcastNewContactIds.remove(c['id']);
-                          else
-                            _broadcastNewContactIds.add(c['id']!);
-                        }),
-                      ),
-                    ),
               ],
-
               const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
@@ -528,23 +580,62 @@ class _ConversationFormPageState extends State<ConversationFormPage>
   void _toggle(String id) {
     setState(() {
       if (_type == 'direct') {
-        if (_selectedIds.contains(id))
+        if (_selectedIds.contains(id)) {
           _selectedIds.remove(id);
-        else {
+        } else {
           _selectedIds.clear();
           _selectedIds.add(id);
         }
       } else {
-        if (_selectedIds.contains(id))
+        if (_selectedIds.contains(id)) {
           _selectedIds.remove(id);
-        else if (_selectedIds.length < 10)
+        } else if (_selectedIds.length < 10)
+          // ignore: curly_braces_in_flow_control_structures
           _selectedIds.add(id);
         else
+          // ignore: curly_braces_in_flow_control_structures
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(const SnackBar(content: Text('Max 10 participants')));
       }
     });
+  }
+
+  /// Renders a labelled section + filtered [_ContactTile] rows.
+  /// [contacts] defaults to [_contacts]; [query] defaults to [_contactSearch].
+  List<Widget> _buildFilteredContactTiles({
+    required String role,
+    required String label,
+    required IconData icon,
+    required Color color,
+    required Set<String> selected,
+    required void Function(String id) onTap,
+    List<Map<String, String>>? contacts,
+    String? query,
+  }) {
+    final src = contacts ?? _contacts;
+    final q = (query ?? _contactSearch).toLowerCase();
+    final filtered = src
+        .where(
+          (c) =>
+              c['role'] == role &&
+              (q.isEmpty ||
+                  (c['name'] ?? '').toLowerCase().contains(q) ||
+                  (c['id'] ?? '').toLowerCase().contains(q)),
+        )
+        .toList();
+    if (filtered.isEmpty) return [];
+    return [
+      _SectionHeader(label: label, icon: icon, color: color),
+      const SizedBox(height: 4),
+      ...filtered.map(
+        (c) => _ContactTile(
+          contact: c,
+          selected: selected.contains(c['id']),
+          onTap: () => onTap(c['id']!),
+        ),
+      ),
+    ];
   }
 }
 

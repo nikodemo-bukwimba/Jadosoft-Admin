@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../domain/entities/order_entity.dart';
 import '../../domain/value_objects/order_status.dart';
 import 'order_status_badge.dart';
+import 'order_confirm_delete_dialog.dart';
 
 class OrderTableRow extends StatelessWidget {
   final OrderEntity item;
@@ -31,7 +32,9 @@ class OrderTableRow extends StatelessWidget {
           border: Border(
             bottom: isLast
                 ? BorderSide.none
-                : BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.3)),
+                : BorderSide(
+                    color: scheme.outlineVariant.withValues(alpha: 0.3),
+                  ),
           ),
         ),
         child: Row(
@@ -40,7 +43,9 @@ class OrderTableRow extends StatelessWidget {
               flex: 2,
               child: Text(
                 '#${item.id.split('-').last.toUpperCase()}',
-                style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                style: textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -58,7 +63,9 @@ class OrderTableRow extends StatelessWidget {
               width: 48,
               child: Text(
                 '${item.items.length} item${item.items.length != 1 ? 's' : ''}',
-                style: textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                style: textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
                 maxLines: 1,
               ),
             ),
@@ -82,7 +89,13 @@ class OrderTableRow extends StatelessWidget {
               width: 36,
               child: IconButton(
                 icon: Icon(Icons.delete_outline, color: scheme.error, size: 18),
-                onPressed: onDelete,
+                onPressed: () async {
+                  final confirmed = await OrderConfirmDeleteDialog.show(
+                    context,
+                    orderId: item.id,
+                  );
+                  if (confirmed) onDelete();
+                },
                 padding: EdgeInsets.zero,
               ),
             ),

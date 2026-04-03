@@ -17,6 +17,7 @@ import 'package:admin_panel/features/actor/domain/usecases/update_actor_usecase.
 import 'package:admin_panel/features/actor/domain/usecases/delete_actor_usecase.dart';
 import 'package:admin_panel/features/actor/presentation/bloc/actor_bloc.dart';
 import 'package:admin_panel/core/database/actor_cache_dao.dart';
+import 'package:admin_panel/features/product/domain/usecases/deduct_product_quantity_usecase.dart';
 
 // Phase 3 ? SMS Gateway (L5) ? data/client/ (singular)
 import 'package:admin_panel/features/sms_gateway/data/client/sms_gateway_client.dart';
@@ -470,8 +471,11 @@ Future<void> initDependencies() async {
   // ----------------------------------------------------------
 
   // Seq 6 ? Officers (L2)
+  // sl.registerLazySingleton<OfficerRemoteDataSource>(
+  //   () => OfficerMockDataSource(),
+  // );
   sl.registerLazySingleton<OfficerRemoteDataSource>(
-    () => OfficerMockDataSource(),
+    () => OfficerRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
   );
   sl.registerLazySingleton<OfficerRepository>(
     () => OfficerRepositoryImpl(remoteDataSource: sl()),
@@ -511,6 +515,9 @@ Future<void> initDependencies() async {
   // sl.registerLazySingleton<CustomerRemoteDataSource>(
   //   () => CustomerMockDataSource(),
   // );
+//   sl.registerLazySingleton<CustomerRemoteDataSource>(
+//   () => CustomerRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
+// );
   sl.registerLazySingleton<CustomerRemoteDataSource>(
     () => CustomerRemoteDataSourceImpl(
       dio: sl<Dio>(),
@@ -564,13 +571,13 @@ Future<void> initDependencies() async {
   // Seq 9 — Products (L2) — using mock until API is ready
 
   //comment/delete this on real api
-  sl.registerLazySingleton<ProductRemoteDataSource>(
-    () => ProductMockDataSource(),
-  );
-  //uncomment this on real api
   // sl.registerLazySingleton<ProductRemoteDataSource>(
-  //   () => ProductApiDataSource(dio: sl(), orgContext: sl()),,
+  //   () => ProductMockDataSource(),
   // );
+  // uncomment this on real api
+  sl.registerLazySingleton<ProductRemoteDataSource>(
+    () => ProductApiDataSource(dio: sl(), orgContext: sl()),
+  );
 
   sl.registerLazySingleton<ProductRepository>(
     () => ProductRepositoryImpl(remoteDataSource: sl()),
@@ -747,11 +754,11 @@ Future<void> initDependencies() async {
 
   // Seq 15 — Orders (L3)
   // DEVELOPMENT (mock — active now):
-  sl.registerLazySingleton<OrderRemoteDataSource>(() => OrderMockDataSource());
+  // sl.registerLazySingleton<OrderRemoteDataSource>(() => OrderMockDataSource());
   // PRODUCTION (real — swap when Laravel API is ready):
-  // sl.registerLazySingleton<OrderRemoteDataSource>(
-  //   () => OrderRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
-  // );
+  sl.registerLazySingleton<OrderRemoteDataSource>(
+    () => OrderRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
+  );
   sl.registerLazySingleton<OrderRepository>(
     () => OrderRepositoryImpl(remoteDataSource: sl()),
   );
@@ -761,7 +768,10 @@ Future<void> initDependencies() async {
   );
   sl.registerLazySingleton(() => GetAllOrderUseCase(sl()));
   sl.registerLazySingleton(() => GetOrderUseCase(sl()));
-  sl.registerLazySingleton(() => CreateOrderUseCase(sl()));
+  sl.registerLazySingleton(
+    () => CreateOrderUseCase(repository: sl(), deductQuantity: sl()),
+  );
+  sl.registerLazySingleton(() => DeductProductQuantityUseCase(sl()));
   sl.registerLazySingleton(() => UpdateOrderUseCase(sl()));
   sl.registerLazySingleton(() => DeleteOrderUseCase(sl()));
   sl.registerFactory<OrderBloc>(

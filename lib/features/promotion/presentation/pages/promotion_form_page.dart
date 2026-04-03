@@ -5,6 +5,7 @@ import '../../data/datasources/promotion_mock_datasource.dart';
 import '../../domain/entities/promotion_entity.dart';
 import '../../domain/usecases/create_promotion_usecase.dart';
 import '../../domain/usecases/update_promotion_usecase.dart';
+import '../../../../core/widgets/searchable_picker_sheet.dart';
 import '../bloc/promotion_bloc.dart';
 import '../bloc/promotion_event.dart';
 import '../bloc/promotion_state.dart';
@@ -267,37 +268,69 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
                                   'Products to Promote (${_selectedProducts.length} selected)',
                               icon: Icons.medication_outlined,
                               child: Column(
-                                children: _allProducts.entries.map((entry) {
-                                  final selected = _selectedProducts.contains(
-                                    entry.key,
-                                  );
-                                  return CheckboxListTile(
-                                    value: selected,
-                                    title: Text(
-                                      entry.value,
-                                      style: theme.textTheme.bodyMedium,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (_selectedProducts.isNotEmpty)
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 4,
+                                      children: _selectedProducts
+                                          .map(
+                                            (id) => Chip(
+                                              label: Text(
+                                                _allProducts[id] ?? id,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                              onDeleted: () => setState(
+                                                () => _selectedProducts.remove(
+                                                  id,
+                                                ),
+                                              ),
+                                              materialTapTargetSize:
+                                                  MaterialTapTargetSize
+                                                      .shrinkWrap,
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                            ),
+                                          )
+                                          .toList(),
                                     ),
-                                    subtitle: Text(
-                                      entry.key,
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: theme
-                                                .colorScheme
-                                                .onSurfaceVariant,
-                                          ),
+                                  const SizedBox(height: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final result =
+                                          await showSearchableMultiPicker<
+                                            String
+                                          >(
+                                            context: context,
+                                            title: 'Select Products',
+                                            hint: 'Search products...',
+                                            items: _allProducts.entries
+                                                .map(
+                                                  (e) => (
+                                                    value: e.key,
+                                                    label: e.value,
+                                                    subtitle: e.key,
+                                                  ),
+                                                )
+                                                .toList(),
+                                            selected: _selectedProducts.toSet(),
+                                          );
+                                      if (result != null)
+                                        setState(() {
+                                          _selectedProducts.clear();
+                                          _selectedProducts.addAll(result);
+                                        });
+                                    },
+                                    icon: const Icon(Icons.add, size: 18),
+                                    label: const Text('Select Products'),
+                                    style: OutlinedButton.styleFrom(
+                                      visualDensity: VisualDensity.compact,
                                     ),
-                                    controlAffinity:
-                                        ListTileControlAffinity.leading,
-                                    dense: true,
-                                    onChanged: (v) => setState(() {
-                                      if (v == true) {
-                                        _selectedProducts.add(entry.key);
-                                      } else {
-                                        _selectedProducts.remove(entry.key);
-                                      }
-                                    }),
-                                  );
-                                }).toList(),
+                                  ),
+                                ],
                               ),
                             ),
                             if (_selectedProducts.isEmpty)

@@ -21,44 +21,59 @@ class RoleTab extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
         if (s is RolesLoaded) {
-          // Get permissions from a separate state — store last known in bloc or use local var
-          // Since BLoC emits one state at a time, keep permissions in a local variable
-          // by reading from the previous state or using a secondary BlocBuilder.
-          return BlocBuilder<OrganizationBloc, OrganizationState>(
-            buildWhen: (_, s) => s is PermissionsLoaded,
-            builder: (pc, ps) {
-              final perms = ps is PermissionsLoaded
-                  ? ps.permissions
-                  : <OrgPermissionEntity>[];
-              return Stack(
+          if (s.roles.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: s.roles.length,
-                    itemBuilder: (_, i) => RoleCardTile(
-                      role: s.roles[i],
-                      availablePermissions: perms,
-                      onSyncPermissions: (roleId, permissionIds) {
-                        c.read<OrganizationBloc>().add(
-                          RolePermissionsSyncRequested(
-                            roleId: roleId,
-                            permissionIds: permissionIds,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  Positioned(
-                    right: 16,
-                    bottom: 16,
-                    child: FloatingActionButton(
-                      onPressed: () => _showCreateDialog(c),
-                      child: const Icon(Icons.add),
-                    ),
+                  const Icon(Icons.admin_panel_settings_outlined, size: 48),
+                  const SizedBox(height: 12),
+                  const Text('No roles defined'),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => _showCreateDialog(c),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Create Role'),
                   ),
                 ],
-              );
-            },
+              ),
+            );
+          }
+
+          final availablePerms = s.availablePermissions;
+
+          return Stack(
+            children: [
+              RefreshIndicator(
+                onRefresh: () async =>
+                    c.read<OrganizationBloc>().add(RolesLoadRequested()),
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: s.roles.length,
+                  itemBuilder: (_, i) => RoleCardTile(
+                    role: s.roles[i],
+                    availablePermissions: availablePerms,
+                    onSyncPermissions: (roleId, permissionIds) {
+                      c.read<OrganizationBloc>().add(
+                        RolePermissionsSyncRequested(
+                          roleId: roleId,
+                          permissionIds: permissionIds,
+                        ),
+                      );
+                    },
+                    onDelete: (roleId) => _confirmDelete(c, s.roles[i]),
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 16,
+                bottom: 16,
+                child: FloatingActionButton(
+                  onPressed: () => _showCreateDialog(c),
+                  child: const Icon(Icons.add),
+                ),
+              ),
+            ],
           );
         }
         return Center(
@@ -69,6 +84,51 @@ class RoleTab extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  void _confirmDelete(BuildContext context, OrgRoleEntity role) {
+    if (role.isDefault) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('System roles cannot be deleted.')),
+      );
+      return;
+    }
+    if (role.memberCount > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Cannot delete "${role.name}": ${role.memberCount} active member(s) assigned. Reassign them first.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final bloc = context.read<OrganizationBloc>();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Role'),
+        content: Text(
+          'Are you sure you want to delete "${role.name}"?\n\n'
+          'All permissions assigned to this role will be removed. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(ctx);
+              bloc.add(RoleDeleteRequested(role.id));
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
   }
 

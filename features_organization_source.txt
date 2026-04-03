@@ -1,7 +1,7 @@
 ﻿// ================================================================
 // features_organization_source.txt
-// Generated : 2026-03-26 22:42:01
-// Files     : 32
+// Generated : 2026-04-01 16:03:44
+// Files     : 34
 // Usage     : Upload to Claude Project documents as reference.
 // ================================================================
 
@@ -60,14 +60,14 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
 
   Future<List<BranchModel>> getBranches(String orgId) async {
     try {
-      final response = await dio.get(ApiPaths.orgs.branches(orgId));
-      final data = response.data;
-      final List<dynamic> items = data is Map<String, dynamic>
-          ? (data['data'] as List<dynamic>? ??
-                data['branches'] as List<dynamic>? ??
-                [])
-          : (data as List<dynamic>? ?? []);
+      final response = await dio.get(ApiPaths.orgs.tree(orgId));
+      final raw = response.data;
+
+      // /tree returns a FLAT list of all orgs in the hierarchy.
+      // Root has type:'root', depth:0. Branches have type:'branch', depth:1.
+      final List<dynamic> items = raw is List ? raw : [];
       return items
+          .where((e) => (e as Map<String, dynamic>)['type'] == 'branch')
           .map((e) => BranchModel.fromJson(e as Map<String, dynamic>))
           .toList();
     } on DioException catch (e) {
@@ -109,16 +109,23 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
         OrgRoleModel.fromJson,
         dataKey: 'role',
       );
+  Future<void> deleteRole(String orgId, String roleId) async {
+    try {
+      await dio.delete('${ApiPaths.orgs.roles(orgId)}/$roleId');
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
 
   Future<void> syncRolePermissions(
     String orgId,
     String roleId,
-    List<String> slugs,
+    List<String> permissionIds,
   ) async {
     try {
       await dio.post(
         ApiPaths.orgs.rolePermissions(orgId, roleId),
-        data: {'permissions': slugs},
+        data: {'permission_ids': permissionIds}, // ← key is permission_ids
       );
     } on DioException catch (e) {
       throw mapDioException(e);
@@ -230,6 +237,23 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
     dataKey: 'request',
   );
 
+  Future<List<OrgPermissionModel>> getPermissions(String orgId) async {
+    try {
+      final response = await dio.get(ApiPaths.orgs.permissions(orgId));
+      final data = response.data;
+      final List<dynamic> items = data is Map<String, dynamic>
+          ? (data['data'] as List<dynamic>? ??
+                data['permissions'] as List<dynamic>? ??
+                [])
+          : (data as List<dynamic>? ?? []);
+      return items
+          .map((e) => OrgPermissionModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
   Future<PermissionRequestModel> denyPermissionRequest(
     String orgId,
     String id,
@@ -238,6 +262,29 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
     PermissionRequestModel.fromJson,
     dataKey: 'request',
   );
+
+  Future<Map<String, dynamic>> acceptInvitation(String token) async {
+    try {
+      final response = await dio.post('orgs/invitations/$token/accept');
+      final data = response.data;
+      return data is Map<String, dynamic>
+          ? (data['membership'] as Map<String, dynamic>? ?? data)
+          : <String, dynamic>{};
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
+  Future<void> assignMemberToBranch(
+    String branchId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      await dio.post('${ApiPaths.orgs.members(branchId)}/assign', data: data);
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
 }
 
 
@@ -317,18 +364,40 @@ class OrgMemberModel extends OrgMemberEntity {
   });
 
   factory OrgMemberModel.fromJson(Map<String, dynamic> json) {
+    // API returns membership with nested user object OR flat fields
     final user = json['user'] as Map<String, dynamic>?;
+    final role = json['role'] as Map<String, dynamic>?;
+
+    // Try multiple name sources
+    final name =
+        user?['name'] as String? ??
+        user?['display_name'] as String? ??
+        json['name'] as String? ??
+        json['display_name'] as String? ??
+        user?['email'] as String? ??
+        json['email'] as String? ??
+        '';
+
+    final email = user?['email'] as String? ?? json['email'] as String? ?? '';
+
     return OrgMemberModel(
       userId: json['user_id']?.toString() ?? user?['id']?.toString() ?? '',
-      name: user?['name'] as String? ?? json['name'] as String? ?? '',
-      email: user?['email'] as String? ?? json['email'] as String? ?? '',
+      name: name,
+      email: email,
       phone: user?['phone'] as String? ?? json['phone'] as String?,
-      roleName: json['role_name'] as String? ?? json['role']?['name'] as String? ?? 'member',
-      roleId: json['org_role_id']?.toString(),
-      authorityLevel: json['level'] as int? ?? 0,
+      roleName:
+          role?['name'] as String? ??
+          json['role_name'] as String? ??
+          json['org_role_name'] as String? ??
+          'member',
+      roleId: json['org_role_id']?.toString() ?? role?['id']?.toString(),
+      authorityLevel:
+          json['level'] as int? ?? json['authority_level'] as int? ?? 0,
       status: _parseStatus(json['status'] as String?),
-      joinedAt: json['joined_at'] != null ? DateTime.parse(json['joined_at'].toString())
-          : json['created_at'] != null ? DateTime.parse(json['created_at'].toString())
+      joinedAt: json['joined_at'] != null
+          ? DateTime.parse(json['joined_at'].toString())
+          : json['created_at'] != null
+          ? DateTime.parse(json['created_at'].toString())
           : DateTime.now(),
     );
   }
@@ -345,6 +414,43 @@ class OrgMemberModel extends OrgMemberEntity {
 // === FILE: lib/features/organization/data/models/org_role_model.dart ===
 import '../../domain/entities/org_role_entity.dart';
 
+class OrgPermissionModel extends OrgPermissionEntity {
+  const OrgPermissionModel({
+    required super.id,
+    required super.name,
+    required super.slug,
+    super.group,
+  });
+
+  /// Maps from the actual API response:
+  /// { "id": "01KM...", "name": "members.view", "group_name": "members", "description": null }
+  ///
+  /// - API "name" field IS the slug (e.g. "members.view")
+  /// - API has NO separate "slug" field
+  /// - API uses "group_name" not "group"
+  factory OrgPermissionModel.fromJson(Map<String, dynamic> json) {
+    final nameVal = json['name'] as String? ?? '';
+    return OrgPermissionModel(
+      id: json['id']?.toString() ?? '',
+      name:
+          json['description'] as String? ??
+          _humanize(nameVal), // human-readable
+      slug: nameVal, // e.g. "members.view"
+      group: json['group_name'] as String? ?? json['group'] as String?,
+    );
+  }
+
+  /// Converts "members.view" → "Members View"
+  static String _humanize(String slug) {
+    return slug
+        .replaceAll('.', ' ')
+        .replaceAll('_', ' ')
+        .split(' ')
+        .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
+  }
+}
+
 class OrgRoleModel extends OrgRoleEntity {
   const OrgRoleModel({
     required super.id,
@@ -357,24 +463,25 @@ class OrgRoleModel extends OrgRoleEntity {
   });
 
   factory OrgRoleModel.fromJson(Map<String, dynamic> json) {
-    final permList = (json['permissions'] as List<dynamic>?)?.map((p) {
-      final pm = p as Map<String, dynamic>;
-      return OrgPermissionEntity(
-        id: pm['id'] as int? ?? 0,
-        name: pm['name'] as String? ?? '',
-        slug: pm['slug'] as String? ?? '',
-        group: pm['group'] as String?,
-      );
-    }).toList() ?? [];
+    final permList =
+        (json['permissions'] as List<dynamic>?)?.map((p) {
+          final pm = p as Map<String, dynamic>;
+          return OrgPermissionModel.fromJson(pm);
+        }).toList() ??
+        [];
 
     return OrgRoleModel(
       id: json['id']?.toString() ?? '',
       name: json['name'] as String? ?? '',
       description: json['description'] as String?,
       permissions: permList,
-      memberCount: json['member_count'] as int? ?? json['users_count'] as int? ?? 0,
-      isDefault: json['is_default'] as bool? ?? false,
-      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'].toString()) : DateTime.now(),
+      memberCount:
+          json['member_count'] as int? ?? json['users_count'] as int? ?? 0,
+      isDefault:
+          json['is_default'] as bool? ?? json['is_system'] as bool? ?? false,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'].toString())
+          : DateTime.now(),
     );
   }
 }
@@ -513,7 +620,8 @@ import '../datasources/organization_remote_datasource.dart';
 
 class OrganizationRepositoryImpl implements OrganizationRepository {
   final OrganizationRemoteDataSource _remote;
-  OrganizationRepositoryImpl({required OrganizationRemoteDataSource remote}) : _remote = remote;
+  OrganizationRepositoryImpl({required OrganizationRemoteDataSource remote})
+    : _remote = remote;
 
   Future<Either<Failure, T>> _guard<T>(Future<T> Function() fn) async {
     try {
@@ -529,24 +637,99 @@ class OrganizationRepositoryImpl implements OrganizationRepository {
     }
   }
 
-  @override Future<Either<Failure, OrganizationEntity>> createOrg(Map<String, dynamic> data) => _guard(() => _remote.createOrg(data));
-  @override Future<Either<Failure, OrganizationEntity>> getOrg(String id) => _guard(() => _remote.getOrg(id));
-  @override Future<Either<Failure, OrgTreeNode>> getOrgTree(String orgId) => _guard(() => _remote.getOrgTree(orgId));
-  @override Future<Either<Failure, List<BranchEntity>>> getBranches(String orgId) => _guard(() async => await _remote.getBranches(orgId));
-  @override Future<Either<Failure, BranchEntity>> createBranch(String orgId, Map<String, dynamic> data) => _guard(() => _remote.createBranch(orgId, data));
-  @override Future<Either<Failure, List<OrgRoleEntity>>> getRoles(String orgId) => _guard(() async => await _remote.getRoles(orgId));
-  @override Future<Either<Failure, OrgRoleEntity>> createRole(String orgId, Map<String, dynamic> data) => _guard(() => _remote.createRole(orgId, data));
-  @override Future<Either<Failure, void>> syncRolePermissions(String orgId, String roleId, List<String> slugs) => _guard(() => _remote.syncRolePermissions(orgId, roleId, slugs));
-  @override Future<Either<Failure, List<OrgMemberEntity>>> getMembers(String orgId) => _guard(() async => await _remote.getMembers(orgId));
-  @override Future<Either<Failure, OrgMemberEntity>> inviteMember(String orgId, Map<String, dynamic> data) => _guard(() => _remote.inviteMember(orgId, data));
-  @override Future<Either<Failure, OrgMemberEntity>> updateMember(String orgId, String userId, Map<String, dynamic> data) => _guard(() => _remote.updateMember(orgId, userId, data));
-  @override Future<Either<Failure, void>> removeMember(String orgId, String userId) => _guard(() => _remote.removeMember(orgId, userId));
-  @override Future<Either<Failure, List<DelegationEntity>>> getDelegations(String orgId) => _guard(() async => await _remote.getDelegations(orgId));
-  @override Future<Either<Failure, DelegationEntity>> createDelegation(String orgId, Map<String, dynamic> data) => _guard(() => _remote.createDelegation(orgId, data));
-  @override Future<Either<Failure, void>> revokeDelegation(String orgId, String delegationId) => _guard(() => _remote.revokeDelegation(orgId, delegationId));
-  @override Future<Either<Failure, List<PermissionRequestEntity>>> getPermissionRequests(String orgId) => _guard(() async => await _remote.getPermissionRequests(orgId));
-  @override Future<Either<Failure, PermissionRequestEntity>> approvePermissionRequest(String orgId, String id) => _guard(() => _remote.approvePermissionRequest(orgId, id));
-  @override Future<Either<Failure, PermissionRequestEntity>> denyPermissionRequest(String orgId, String id) => _guard(() => _remote.denyPermissionRequest(orgId, id));
+  @override
+  Future<Either<Failure, OrganizationEntity>> createOrg(
+    Map<String, dynamic> data,
+  ) => _guard(() => _remote.createOrg(data));
+  @override
+  Future<Either<Failure, OrganizationEntity>> getOrg(String id) =>
+      _guard(() => _remote.getOrg(id));
+  @override
+  Future<Either<Failure, OrgTreeNode>> getOrgTree(String orgId) =>
+      _guard(() => _remote.getOrgTree(orgId));
+  @override
+  Future<Either<Failure, List<BranchEntity>>> getBranches(String orgId) =>
+      _guard(() async => await _remote.getBranches(orgId));
+  @override
+  Future<Either<Failure, BranchEntity>> createBranch(
+    String orgId,
+    Map<String, dynamic> data,
+  ) => _guard(() => _remote.createBranch(orgId, data));
+  @override
+  Future<Either<Failure, List<OrgRoleEntity>>> getRoles(String orgId) =>
+      _guard(() async => await _remote.getRoles(orgId));
+  @override
+  Future<Either<Failure, OrgRoleEntity>> createRole(
+    String orgId,
+    Map<String, dynamic> data,
+  ) => _guard(() => _remote.createRole(orgId, data));
+  @override
+  Future<Either<Failure, void>> deleteRole(String orgId, String roleId) =>
+      _guard(() => _remote.deleteRole(orgId, roleId));
+  @override
+  Future<Either<Failure, Map<String, dynamic>>> acceptInvitation(
+    String token,
+  ) => _guard(() => _remote.acceptInvitation(token));
+  @override
+  Future<Either<Failure, void>> syncRolePermissions(
+    String orgId,
+    String roleId,
+    List<String> permissionIds,
+  ) => _guard(() => _remote.syncRolePermissions(orgId, roleId, permissionIds));
+  @override
+  Future<Either<Failure, List<OrgPermissionEntity>>> getPermissions(
+    String orgId,
+  ) => _guard(() async => await _remote.getPermissions(orgId));
+  @override
+  Future<Either<Failure, List<OrgMemberEntity>>> getMembers(String orgId) =>
+      _guard(() async => await _remote.getMembers(orgId));
+  @override
+  Future<Either<Failure, OrgMemberEntity>> inviteMember(
+    String orgId,
+    Map<String, dynamic> data,
+  ) => _guard(() => _remote.inviteMember(orgId, data));
+  @override
+  Future<Either<Failure, OrgMemberEntity>> updateMember(
+    String orgId,
+    String userId,
+    Map<String, dynamic> data,
+  ) => _guard(() => _remote.updateMember(orgId, userId, data));
+  @override
+  Future<Either<Failure, void>> removeMember(String orgId, String userId) =>
+      _guard(() => _remote.removeMember(orgId, userId));
+  @override
+  Future<Either<Failure, List<DelegationEntity>>> getDelegations(
+    String orgId,
+  ) => _guard(() async => await _remote.getDelegations(orgId));
+  @override
+  Future<Either<Failure, DelegationEntity>> createDelegation(
+    String orgId,
+    Map<String, dynamic> data,
+  ) => _guard(() => _remote.createDelegation(orgId, data));
+  @override
+  Future<Either<Failure, void>> revokeDelegation(
+    String orgId,
+    String delegationId,
+  ) => _guard(() => _remote.revokeDelegation(orgId, delegationId));
+  @override
+  Future<Either<Failure, List<PermissionRequestEntity>>> getPermissionRequests(
+    String orgId,
+  ) => _guard(() async => await _remote.getPermissionRequests(orgId));
+  @override
+  Future<Either<Failure, PermissionRequestEntity>> approvePermissionRequest(
+    String orgId,
+    String id,
+  ) => _guard(() => _remote.approvePermissionRequest(orgId, id));
+  @override
+  Future<Either<Failure, PermissionRequestEntity>> denyPermissionRequest(
+    String orgId,
+    String id,
+  ) => _guard(() => _remote.denyPermissionRequest(orgId, id));
+  @override
+  Future<Either<Failure, void>> assignMemberToBranch(
+    String branchId,
+    Map<String, dynamic> data,
+  ) => _guard(() => _remote.assignMemberToBranch(branchId, data));
 }
 
 
@@ -647,7 +830,7 @@ class OrgMemberEntity extends Equatable {
 import 'package:equatable/equatable.dart';
 
 class OrgPermissionEntity extends Equatable {
-  final int id;
+  final String id; // ← was int
   final String name;
   final String slug;
   final String? group;
@@ -811,34 +994,77 @@ import '../entities/org_tree_entity.dart';
 
 abstract class OrganizationRepository {
   // ── Organization ──────────────────────────────────────────
-  Future<Either<Failure, OrganizationEntity>> createOrg(Map<String, dynamic> data);
+  Future<Either<Failure, OrganizationEntity>> createOrg(
+    Map<String, dynamic> data,
+  );
   Future<Either<Failure, OrganizationEntity>> getOrg(String id);
   Future<Either<Failure, OrgTreeNode>> getOrgTree(String orgId);
 
   // ── Branches ──────────────────────────────────────────────
   Future<Either<Failure, List<BranchEntity>>> getBranches(String orgId);
-  Future<Either<Failure, BranchEntity>> createBranch(String orgId, Map<String, dynamic> data);
+  Future<Either<Failure, BranchEntity>> createBranch(
+    String orgId,
+    Map<String, dynamic> data,
+  );
 
   // ── Roles ─────────────────────────────────────────────────
   Future<Either<Failure, List<OrgRoleEntity>>> getRoles(String orgId);
-  Future<Either<Failure, OrgRoleEntity>> createRole(String orgId, Map<String, dynamic> data);
-  Future<Either<Failure, void>> syncRolePermissions(String orgId, String roleId, List<String> permissionSlugs);
+  Future<Either<Failure, OrgRoleEntity>> createRole(
+    String orgId,
+    Map<String, dynamic> data,
+  );
+  Future<Either<Failure, void>> deleteRole(String orgId, String roleId);
+  Future<Either<Failure, void>> syncRolePermissions(
+    String orgId,
+    String roleId,
+    List<String> permissionIds,
+  );
+  Future<Either<Failure, Map<String, dynamic>>> acceptInvitation(String token);
 
   // ── Members ───────────────────────────────────────────────
   Future<Either<Failure, List<OrgMemberEntity>>> getMembers(String orgId);
-  Future<Either<Failure, OrgMemberEntity>> inviteMember(String orgId, Map<String, dynamic> data);
-  Future<Either<Failure, OrgMemberEntity>> updateMember(String orgId, String userId, Map<String, dynamic> data);
+  Future<Either<Failure, OrgMemberEntity>> inviteMember(
+    String orgId,
+    Map<String, dynamic> data,
+  );
+  Future<Either<Failure, OrgMemberEntity>> updateMember(
+    String orgId,
+    String userId,
+    Map<String, dynamic> data,
+  );
   Future<Either<Failure, void>> removeMember(String orgId, String userId);
 
   // ── Delegations ───────────────────────────────────────────
   Future<Either<Failure, List<DelegationEntity>>> getDelegations(String orgId);
-  Future<Either<Failure, DelegationEntity>> createDelegation(String orgId, Map<String, dynamic> data);
-  Future<Either<Failure, void>> revokeDelegation(String orgId, String delegationId);
+  Future<Either<Failure, DelegationEntity>> createDelegation(
+    String orgId,
+    Map<String, dynamic> data,
+  );
+  Future<Either<Failure, void>> revokeDelegation(
+    String orgId,
+    String delegationId,
+  );
 
   // ── Permission Requests ───────────────────────────────────
-  Future<Either<Failure, List<PermissionRequestEntity>>> getPermissionRequests(String orgId);
-  Future<Either<Failure, PermissionRequestEntity>> approvePermissionRequest(String orgId, String requestId);
-  Future<Either<Failure, PermissionRequestEntity>> denyPermissionRequest(String orgId, String requestId);
+  Future<Either<Failure, List<PermissionRequestEntity>>> getPermissionRequests(
+    String orgId,
+  );
+  Future<Either<Failure, PermissionRequestEntity>> approvePermissionRequest(
+    String orgId,
+    String requestId,
+  );
+  Future<Either<Failure, PermissionRequestEntity>> denyPermissionRequest(
+    String orgId,
+    String requestId,
+  );
+
+  Future<Either<Failure, List<OrgPermissionEntity>>> getPermissions(
+    String orgId,
+  );
+  Future<Either<Failure, void>> assignMemberToBranch(
+    String branchId,
+    Map<String, dynamic> data,
+  );
 }
 
 
@@ -900,12 +1126,14 @@ import '../../../../core/context/org_context.dart';
 import '../../domain/repositories/organization_repository.dart';
 import 'organization_event.dart';
 import 'organization_state.dart';
+import 'package:flutter/foundation.dart';
 
 class OrganizationBloc extends Bloc<OrganizationEvent, OrganizationState> {
   final OrganizationRepository repository;
   final OrgContext orgContext;
 
-  OrganizationBloc({required this.repository, required this.orgContext}) : super(OrganizationInitial()) {
+  OrganizationBloc({required this.repository, required this.orgContext})
+    : super(OrganizationInitial()) {
     on<OrgLoadRequested>(_onLoadOrg);
     on<OrgCreateRequested>(_onCreateOrg);
     on<OrgTreeLoadRequested>(_onLoadTree);
@@ -913,11 +1141,14 @@ class OrganizationBloc extends Bloc<OrganizationEvent, OrganizationState> {
     on<BranchCreateRequested>(_onCreateBranch);
     on<RolesLoadRequested>(_onLoadRoles);
     on<RoleCreateRequested>(_onCreateRole);
+    on<RoleDeleteRequested>(_onDeleteRole);
     on<RolePermissionsSyncRequested>(_onSyncPermissions);
     on<MembersLoadRequested>(_onLoadMembers);
     on<MemberInviteRequested>(_onInviteMember);
     on<MemberUpdateRequested>(_onUpdateMember);
     on<MemberRemoveRequested>(_onRemoveMember);
+    on<MemberAssignToBranchRequested>(_onAssignToBranch);
+    on<InvitationAcceptRequested>(_onAcceptInvitation);
     on<DelegationsLoadRequested>(_onLoadDelegations);
     on<DelegationCreateRequested>(_onCreateDelegation);
     on<DelegationRevokeRequested>(_onRevokeDelegation);
@@ -926,134 +1157,296 @@ class OrganizationBloc extends Bloc<OrganizationEvent, OrganizationState> {
     on<PermissionRequestDenyRequested>(_onDenyPermRequest);
   }
 
-  String get _orgId => orgContext.requireRootOrgId();
-  String _resolveOrgId(String? override) => override ?? orgContext.effectiveOrgId;
+  String? get _orgIdOrNull => orgContext.rootOrgId;
+
+  String? _requireOrg(Emitter<OrganizationState> emit) {
+    final id = _orgIdOrNull;
+    if (id == null || id.isEmpty) {
+      emit(NoOrganizationState());
+      return null;
+    }
+    return id;
+  }
+
+  String _resolveOrgId(String? override) =>
+      override ?? orgContext.effectiveOrgId;
 
   // ── Organization ──────────────────────────────────────────
 
-  Future<void> _onLoadOrg(OrgLoadRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onLoadOrg(
+    OrgLoadRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _orgIdOrNull;
+    debugPrint('[OrgBloc] rootOrgId = $id, hasOrg = ${orgContext.hasOrg}');
+    if (id == null || id.isEmpty) { emit(NoOrganizationState()); return; }
     emit(OrganizationLoading());
-    final result = await repository.getOrg(_orgId);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (org) => emit(OrgLoaded(org)));
+    final result = await repository.getOrg(id);
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (org) => emit(OrgLoaded(org)),
+    );
   }
 
-  Future<void> _onCreateOrg(OrgCreateRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onCreateOrg(
+    OrgCreateRequested e, Emitter<OrganizationState> emit,
+  ) async {
     emit(OrganizationLoading());
     final result = await repository.createOrg(e.data);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (org) => emit(OrganizationOperationSuccess('Organization created. Awaiting approval.')));
+    result.fold((f) => emit(OrganizationFailure(f.message)), (org) async {
+      await orgContext.setRootOrg(id: org.id, name: org.name, role: OrgRole.orgAdmin);
+      emit(OrgCreatedSuccess(org));
+    });
   }
 
-  Future<void> _onLoadTree(OrgTreeLoadRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onLoadTree(
+    OrgTreeLoadRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
-    final result = await repository.getOrgTree(_orgId);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (tree) => emit(OrgTreeLoaded(tree)));
+    final result = await repository.getOrgTree(id);
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (tree) => emit(OrgTreeLoaded(tree)),
+    );
   }
 
   // ── Branches ──────────────────────────────────────────────
 
-  Future<void> _onLoadBranches(BranchesLoadRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onLoadBranches(
+    BranchesLoadRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
-    final result = await repository.getBranches(_orgId);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (b) => emit(BranchesLoaded(b)));
+    final result = await repository.getBranches(id);
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (b) => emit(BranchesLoaded(b)),
+    );
   }
 
-  Future<void> _onCreateBranch(BranchCreateRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onCreateBranch(
+    BranchCreateRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
-    final result = await repository.createBranch(_orgId, e.data);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Branch created')));
+    final result = await repository.createBranch(id, e.data);
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (_) => emit(OrganizationOperationSuccess('Branch created')),
+    );
   }
 
   // ── Roles ─────────────────────────────────────────────────
 
-  Future<void> _onLoadRoles(RolesLoadRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onLoadRoles(
+    RolesLoadRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
-    final result = await repository.getRoles(_orgId);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (r) => emit(RolesLoaded(r)));
+    final rolesResult = await repository.getRoles(id);
+    final permsResult = await repository.getPermissions(id);
+    final availablePerms = permsResult.fold((_) => <dynamic>[], (p) => p);
+    rolesResult.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (roles) => emit(RolesLoaded(roles, availablePermissions: List.from(availablePerms))),
+    );
   }
 
-  Future<void> _onCreateRole(RoleCreateRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onCreateRole(
+    RoleCreateRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
-    final result = await repository.createRole(_orgId, e.data);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Role created')));
+    final result = await repository.createRole(id, e.data);
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (_) => emit(OrganizationOperationSuccess('Role created')),
+    );
   }
 
-  Future<void> _onSyncPermissions(RolePermissionsSyncRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onDeleteRole(
+    RoleDeleteRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
-    final result = await repository.syncRolePermissions(_orgId, e.roleId, e.permissionSlugs);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Permissions updated')));
+    final result = await repository.deleteRole(id, e.roleId);
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (_) => emit(OrganizationOperationSuccess('Role deleted')),
+    );
+  }
+
+  Future<void> _onSyncPermissions(
+    RolePermissionsSyncRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
+    emit(OrganizationLoading());
+    final result = await repository.syncRolePermissions(id, e.roleId, e.permissionIds);
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (_) => emit(OrganizationOperationSuccess('Permissions updated')),
+    );
   }
 
   // ── Members ───────────────────────────────────────────────
 
-  Future<void> _onLoadMembers(MembersLoadRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onLoadMembers(
+    MembersLoadRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
     final oid = _resolveOrgId(e.orgId);
     final result = await repository.getMembers(oid);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (m) => emit(MembersLoaded(m)));
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (m) => emit(MembersLoaded(m)),
+    );
   }
 
-  Future<void> _onInviteMember(MemberInviteRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onInviteMember(
+    MemberInviteRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
     final oid = _resolveOrgId(e.orgId);
     final result = await repository.inviteMember(oid, e.data);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Invitation sent')));
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (_) => emit(OrganizationOperationSuccess('Invitation sent')),
+    );
   }
 
-  Future<void> _onUpdateMember(MemberUpdateRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onUpdateMember(
+    MemberUpdateRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
     final oid = _resolveOrgId(e.orgId);
     final result = await repository.updateMember(oid, e.userId, e.data);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Member updated')));
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (_) => emit(OrganizationOperationSuccess('Member updated')),
+    );
   }
 
-  Future<void> _onRemoveMember(MemberRemoveRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onRemoveMember(
+    MemberRemoveRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
     final oid = _resolveOrgId(e.orgId);
     final result = await repository.removeMember(oid, e.userId);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Member removed')));
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (_) => emit(OrganizationOperationSuccess('Member removed')),
+    );
+  }
+
+  /// Assign existing root org member directly to a branch
+  Future<void> _onAssignToBranch(
+    MemberAssignToBranchRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
+    emit(OrganizationLoading());
+    final result = await repository.assignMemberToBranch(e.branchId, e.data);
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (_) => emit(OrganizationOperationSuccess('Member assigned to branch')),
+    );
+  }
+
+  // ── Invitation Accept ─────────────────────────────────────
+
+  Future<void> _onAcceptInvitation(
+    InvitationAcceptRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    emit(OrganizationLoading());
+    final result = await repository.acceptInvitation(e.token);
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (membership) {
+        final orgName = membership['organization']?['name'] as String? ?? 'Organization';
+        emit(InvitationAccepted('You have joined $orgName successfully!'));
+      },
+    );
   }
 
   // ── Delegations ───────────────────────────────────────────
 
-  Future<void> _onLoadDelegations(DelegationsLoadRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onLoadDelegations(
+    DelegationsLoadRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
-    final result = await repository.getDelegations(_orgId);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (d) => emit(DelegationsLoaded(d)));
+    final result = await repository.getDelegations(id);
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (d) => emit(DelegationsLoaded(d)),
+    );
   }
 
-  Future<void> _onCreateDelegation(DelegationCreateRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onCreateDelegation(
+    DelegationCreateRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
-    final result = await repository.createDelegation(_orgId, e.data);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Delegation granted')));
+    final result = await repository.createDelegation(id, e.data);
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (_) => emit(OrganizationOperationSuccess('Delegation granted')),
+    );
   }
 
-  Future<void> _onRevokeDelegation(DelegationRevokeRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onRevokeDelegation(
+    DelegationRevokeRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
-    final result = await repository.revokeDelegation(_orgId, e.delegationId);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Delegation revoked')));
+    final result = await repository.revokeDelegation(id, e.delegationId);
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (_) => emit(OrganizationOperationSuccess('Delegation revoked')),
+    );
   }
 
   // ── Permission Requests ───────────────────────────────────
 
-  Future<void> _onLoadPermRequests(PermissionRequestsLoadRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onLoadPermRequests(
+    PermissionRequestsLoadRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
-    final result = await repository.getPermissionRequests(_orgId);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (r) => emit(PermissionRequestsLoaded(r)));
+    final result = await repository.getPermissionRequests(id);
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (r) => emit(PermissionRequestsLoaded(r)),
+    );
   }
 
-  Future<void> _onApprovePermRequest(PermissionRequestApproveRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onApprovePermRequest(
+    PermissionRequestApproveRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
-    final result = await repository.approvePermissionRequest(_orgId, e.requestId);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Request approved')));
+    final result = await repository.approvePermissionRequest(id, e.requestId);
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (_) => emit(OrganizationOperationSuccess('Request approved')),
+    );
   }
 
-  Future<void> _onDenyPermRequest(PermissionRequestDenyRequested e, Emitter<OrganizationState> emit) async {
+  Future<void> _onDenyPermRequest(
+    PermissionRequestDenyRequested e, Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit); if (id == null) return;
     emit(OrganizationLoading());
-    final result = await repository.denyPermissionRequest(_orgId, e.requestId);
-    result.fold((f) => emit(OrganizationFailure(f.message)), (_) => emit(OrganizationOperationSuccess('Request denied')));
+    final result = await repository.denyPermissionRequest(id, e.requestId);
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (_) => emit(OrganizationOperationSuccess('Request denied')),
+    );
   }
 }
-
 
 // === FILE: lib/features/organization/presentation/bloc/organization_event.dart ===
 import '../../domain/entities/org_role_entity.dart';
@@ -1062,14 +1455,17 @@ abstract class OrganizationEvent {}
 
 // ── Organization ────────────────────────────────────────────
 class OrgLoadRequested extends OrganizationEvent {}
+
 class OrgCreateRequested extends OrganizationEvent {
   final Map<String, dynamic> data;
   OrgCreateRequested(this.data);
 }
+
 class OrgTreeLoadRequested extends OrganizationEvent {}
 
 // ── Branches ────────────────────────────────────────────────
 class BranchesLoadRequested extends OrganizationEvent {}
+
 class BranchCreateRequested extends OrganizationEvent {
   final Map<String, dynamic> data;
   BranchCreateRequested(this.data);
@@ -1077,44 +1473,72 @@ class BranchCreateRequested extends OrganizationEvent {
 
 // ── Roles ───────────────────────────────────────────────────
 class RolesLoadRequested extends OrganizationEvent {}
+
 class RoleCreateRequested extends OrganizationEvent {
   final Map<String, dynamic> data;
   RoleCreateRequested(this.data);
 }
+
+class RoleDeleteRequested extends OrganizationEvent {
+  final String roleId;
+  RoleDeleteRequested(this.roleId);
+}
+
 class RolePermissionsSyncRequested extends OrganizationEvent {
   final String roleId;
-  final List<String> permissionSlugs;
-  RolePermissionsSyncRequested({required this.roleId, required this.permissionSlugs});
+  final List<String> permissionIds;
+  RolePermissionsSyncRequested({
+    required this.roleId,
+    required this.permissionIds,
+  });
 }
 
 // ── Members ─────────────────────────────────────────────────
 class MembersLoadRequested extends OrganizationEvent {
-  final String? orgId; // null = use effectiveOrgId
+  final String? orgId;
   MembersLoadRequested({this.orgId});
 }
+
 class MemberInviteRequested extends OrganizationEvent {
   final String? orgId;
   final Map<String, dynamic> data;
   MemberInviteRequested({this.orgId, required this.data});
 }
+
 class MemberUpdateRequested extends OrganizationEvent {
   final String? orgId;
   final String userId;
   final Map<String, dynamic> data;
   MemberUpdateRequested({this.orgId, required this.userId, required this.data});
 }
+
 class MemberRemoveRequested extends OrganizationEvent {
   final String? orgId;
   final String userId;
   MemberRemoveRequested({this.orgId, required this.userId});
 }
 
+/// Assign an existing root org member directly to a branch
+class MemberAssignToBranchRequested extends OrganizationEvent {
+  final String branchId;
+  final Map<String, dynamic> data; // { user_id, org_role_id, level? }
+  MemberAssignToBranchRequested({required this.branchId, required this.data});
+}
+
+// ── Invitation Accept ───────────────────────────────────────
+class InvitationAcceptRequested extends OrganizationEvent {
+  final String token;
+  InvitationAcceptRequested(this.token);
+}
+
 // ── Delegations ─────────────────────────────────────────────
 class DelegationsLoadRequested extends OrganizationEvent {}
+
 class DelegationCreateRequested extends OrganizationEvent {
   final Map<String, dynamic> data;
   DelegationCreateRequested(this.data);
 }
+
 class DelegationRevokeRequested extends OrganizationEvent {
   final String delegationId;
   DelegationRevokeRequested(this.delegationId);
@@ -1122,15 +1546,16 @@ class DelegationRevokeRequested extends OrganizationEvent {
 
 // ── Permission Requests ─────────────────────────────────────
 class PermissionRequestsLoadRequested extends OrganizationEvent {}
+
 class PermissionRequestApproveRequested extends OrganizationEvent {
   final String requestId;
   PermissionRequestApproveRequested(this.requestId);
 }
+
 class PermissionRequestDenyRequested extends OrganizationEvent {
   final String requestId;
   PermissionRequestDenyRequested(this.requestId);
 }
-
 
 // === FILE: lib/features/organization/presentation/bloc/organization_state.dart ===
 import '../../domain/entities/organization_entity.dart';
@@ -1144,6 +1569,7 @@ import '../../domain/entities/org_tree_entity.dart';
 abstract class OrganizationState {}
 
 class OrganizationInitial extends OrganizationState {}
+
 class OrganizationLoading extends OrganizationState {}
 
 class OrganizationFailure extends OrganizationState {
@@ -1154,6 +1580,21 @@ class OrganizationFailure extends OrganizationState {
 class OrganizationOperationSuccess extends OrganizationState {
   final String message;
   OrganizationOperationSuccess(this.message);
+}
+
+/// No organization exists yet — show create org form.
+class NoOrganizationState extends OrganizationState {}
+
+/// Organization just created — pending platform admin approval.
+class OrgCreatedSuccess extends OrganizationState {
+  final OrganizationEntity org;
+  OrgCreatedSuccess(this.org);
+}
+
+/// Invitation accepted — user joined an org. Reload everything.
+class InvitationAccepted extends OrganizationState {
+  final String message;
+  InvitationAccepted(this.message);
 }
 
 // ── Org ─────────────────────────────────────────────────────
@@ -1176,7 +1617,8 @@ class BranchesLoaded extends OrganizationState {
 // ── Roles ───────────────────────────────────────────────────
 class RolesLoaded extends OrganizationState {
   final List<OrgRoleEntity> roles;
-  RolesLoaded(this.roles);
+  final List<OrgPermissionEntity> availablePermissions;
+  RolesLoaded(this.roles, {this.availablePermissions = const []});
 }
 
 // ── Members ─────────────────────────────────────────────────
@@ -1198,6 +1640,82 @@ class PermissionRequestsLoaded extends OrganizationState {
 }
 
 
+// === FILE: lib/features/organization/presentation/pages/accept_invitation_dialog.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../bloc/organization_bloc.dart';
+import '../bloc/organization_event.dart';
+import '../bloc/organization_state.dart';
+
+/// Shown alongside the Create Organization option when the user has no org.
+/// Allows entering an invitation token from email to join an existing org.
+class AcceptInvitationDialog {
+  static void show(BuildContext context) {
+    final tokenCtrl = TextEditingController();
+    final bloc = context.read<OrganizationBloc>();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Accept Invitation'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Colors.blue.shade700),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Enter the invitation token you received via email to join an organization.',
+                      style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: tokenCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Invitation Token *',
+                hintText: 'Paste your token here',
+                prefixIcon: Icon(Icons.vpn_key_outlined),
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+              minLines: 1,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              final token = tokenCtrl.text.trim();
+              if (token.isEmpty) return;
+              Navigator.pop(ctx);
+              bloc.add(InvitationAcceptRequested(token));
+            },
+            icon: const Icon(Icons.check),
+            label: const Text('Accept'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // === FILE: lib/features/organization/presentation/pages/branch_tab.dart ===
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -1207,41 +1725,115 @@ import '../bloc/organization_state.dart';
 import '../widgets/branch_card_tile.dart';
 
 class BranchTab extends StatelessWidget {
-  const BranchTab({super.key});
+  /// Changed from VoidCallback to pass the branchId
+  final void Function(String branchId)? onSwitchToMembers;
+  const BranchTab({super.key, this.onSwitchToMembers});
 
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<OrganizationBloc, OrganizationState>(
-      buildWhen: (_, s) => s is BranchesLoaded || s is OrganizationLoading || s is OrganizationFailure,
+      buildWhen: (_, s) =>
+          s is BranchesLoaded ||
+          s is OrganizationLoading ||
+          s is OrganizationFailure,
       builder: (c, s) {
-        if (s is OrganizationLoading) return const Center(child: CircularProgressIndicator());
+        if (s is OrganizationLoading) {
+          return const Center(child: CircularProgressIndicator());
+        }
         if (s is BranchesLoaded) {
           if (s.branches.isEmpty) {
-            return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.store_outlined, size: 48, color: Theme.of(c).colorScheme.onSurfaceVariant.withValues(alpha: 0.3)),
-              const SizedBox(height: 12),
-              const Text('No branches yet'),
-              const SizedBox(height: 16),
-              FilledButton.icon(onPressed: () => _showCreateDialog(c), icon: const Icon(Icons.add), label: const Text('Create Branch')),
-            ]));
-          }
-          return Stack(children: [
-            RefreshIndicator(
-              onRefresh: () async => c.read<OrganizationBloc>().add(BranchesLoadRequested()),
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: s.branches.length,
-                itemBuilder: (_, i) => BranchCardTile(branch: s.branches[i]),
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.store_outlined,
+                    size: 48,
+                    color: Theme.of(
+                      c,
+                    ).colorScheme.onSurfaceVariant.withOpacity(0.3),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('No branches yet'),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => _showCreateDialog(c),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Create Branch'),
+                  ),
+                ],
               ),
-            ),
-            Positioned(right: 16, bottom: 16, child: FloatingActionButton(
-              onPressed: () => _showCreateDialog(c),
-              child: const Icon(Icons.add),
-            )),
-          ]);
+            );
+          }
+          return Stack(
+            children: [
+              RefreshIndicator(
+                onRefresh: () async =>
+                    c.read<OrganizationBloc>().add(BranchesLoadRequested()),
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: s.branches.length,
+                  itemBuilder: (_, i) => BranchCardTile(
+                    branch: s.branches[i],
+                    onViewMembers: (branchId) {
+                      onSwitchToMembers?.call(branchId);
+                    },
+                    onDelete: (branchId) =>
+                        _confirmDelete(c, branchId, s.branches[i].name),
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 16,
+                bottom: 16,
+                child: FloatingActionButton(
+                  onPressed: () => _showCreateDialog(c),
+                  child: const Icon(Icons.add),
+                ),
+              ),
+            ],
+          );
         }
-        return Center(child: FilledButton(onPressed: () => c.read<OrganizationBloc>().add(BranchesLoadRequested()), child: const Text('Load Branches')));
+        return Center(
+          child: FilledButton(
+            onPressed: () =>
+                c.read<OrganizationBloc>().add(BranchesLoadRequested()),
+            child: const Text('Load Branches'),
+          ),
+        );
       },
+    );
+  }
+
+  void _confirmDelete(BuildContext context, String branchId, String name) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Branch'),
+        content: Text(
+          'Are you sure you want to delete "$name"? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Branch deletion requires platform admin. Contact support.',
+                  ),
+                ),
+              );
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1249,28 +1841,282 @@ class BranchTab extends StatelessWidget {
     final nameCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     final addrCtrl = TextEditingController();
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Create Branch'),
-      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Branch Name *', hintText: 'e.g. Mbeya Branch')),
-        const SizedBox(height: 12),
-        TextField(controller: descCtrl, decoration: const InputDecoration(labelText: 'Description'), maxLines: 2),
-        const SizedBox(height: 12),
-        TextField(controller: addrCtrl, decoration: const InputDecoration(labelText: 'Address')),
-      ])),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-        FilledButton(onPressed: () {
-          if (nameCtrl.text.trim().isEmpty) return;
-          Navigator.pop(ctx);
-          context.read<OrganizationBloc>().add(BranchCreateRequested({
-            'name': nameCtrl.text.trim(),
-            if (descCtrl.text.trim().isNotEmpty) 'description': descCtrl.text.trim(),
-            if (addrCtrl.text.trim().isNotEmpty) 'address': addrCtrl.text.trim(),
-          }));
-        }, child: const Text('Create')),
-      ],
-    ));
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Create Branch'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Branch Name *',
+                  hintText: 'e.g. Dar es Salaam Branch',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descCtrl,
+                decoration: const InputDecoration(labelText: 'Description'),
+                maxLines: 2,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: addrCtrl,
+                decoration: const InputDecoration(labelText: 'Address'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (nameCtrl.text.trim().isEmpty) return;
+              Navigator.pop(ctx);
+              context.read<OrganizationBloc>().add(
+                BranchCreateRequested({
+                  'name': nameCtrl.text.trim(),
+                  if (descCtrl.text.trim().isNotEmpty)
+                    'description': descCtrl.text.trim(),
+                  if (addrCtrl.text.trim().isNotEmpty)
+                    'address': addrCtrl.text.trim(),
+                }),
+              );
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/organization/presentation/pages/create_organization_page.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../bloc/organization_bloc.dart';
+import '../bloc/organization_event.dart';
+import '../bloc/organization_state.dart';
+
+/// Shown when the user has no organization yet.
+/// After creating, the org goes to "pending" status until platform admin approves.
+class CreateOrganizationPage extends StatefulWidget {
+  const CreateOrganizationPage({super.key});
+  @override
+  State<CreateOrganizationPage> createState() => _CreateOrganizationPageState();
+}
+
+class _CreateOrganizationPageState extends State<CreateOrganizationPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameCtrl = TextEditingController();
+  final _descCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _websiteCtrl = TextEditingController();
+  final _addressCtrl = TextEditingController();
+  String _selectedType = 'company';
+  bool _isSubmitting = false;
+
+  static const _orgTypes = [
+    ('company', 'Company', Icons.business),
+    ('ngo', 'NGO', Icons.volunteer_activism),
+    ('government', 'Government', Icons.account_balance),
+    ('individual', 'Individual', Icons.person),
+  ];
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _descCtrl.dispose();
+    _phoneCtrl.dispose();
+    _websiteCtrl.dispose();
+    _addressCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    if (_isSubmitting) return;
+    setState(() => _isSubmitting = true);
+
+    context.read<OrganizationBloc>().add(OrgCreateRequested({
+      'name': _nameCtrl.text.trim(),
+      'type': _selectedType,
+      if (_descCtrl.text.trim().isNotEmpty) 'description': _descCtrl.text.trim(),
+      if (_phoneCtrl.text.trim().isNotEmpty) 'phone': _phoneCtrl.text.trim(),
+      if (_websiteCtrl.text.trim().isNotEmpty) 'website': _websiteCtrl.text.trim(),
+      if (_addressCtrl.text.trim().isNotEmpty) 'address': _addressCtrl.text.trim(),
+    }));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Organization')),
+      body: BlocListener<OrganizationBloc, OrganizationState>(
+        listener: (c, s) {
+          if (s is OrganizationFailure) {
+            setState(() => _isSubmitting = false);
+            ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message), backgroundColor: scheme.error));
+          }
+          // OrgCreatedSuccess is handled by parent hub page
+        },
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              // ── Welcome header ────────────────────────────────
+              Icon(Icons.business_outlined, size: 64, color: scheme.primary.withValues(alpha: 0.6)),
+              const SizedBox(height: 16),
+              Text('Create Your Organization', style: tt.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Text(
+                'Set up your organization to start managing branches, officers, customers, and marketing operations.',
+                textAlign: TextAlign.center,
+                style: tt.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.info_outline, size: 16, color: Colors.orange.shade700),
+                    const SizedBox(width: 6),
+                    Text('Requires platform admin approval', style: TextStyle(fontSize: 12, color: Colors.orange.shade700, fontWeight: FontWeight.w500)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // ── Form ──────────────────────────────────────────
+              Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Organization name
+                    TextFormField(
+                      controller: _nameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Organization Name *',
+                        hintText: 'e.g. Barick Pharmacy Ltd',
+                        prefixIcon: Icon(Icons.business),
+                      ),
+                      textInputAction: TextInputAction.next,
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) return 'Organization name is required';
+                        if (v.trim().length < 2) return 'Name must be at least 2 characters';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Type selector
+                    Text('Organization Type', style: tt.labelLarge),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _orgTypes.map((t) {
+                        final selected = _selectedType == t.$1;
+                        return ChoiceChip(
+                          label: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(t.$3, size: 16, color: selected ? scheme.onPrimary : scheme.onSurfaceVariant),
+                            const SizedBox(width: 6),
+                            Text(t.$2),
+                          ]),
+                          selected: selected,
+                          onSelected: (_) => setState(() => _selectedType = t.$1),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Description
+                    TextFormField(
+                      controller: _descCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Description',
+                        hintText: 'What does your organization do?',
+                        prefixIcon: Icon(Icons.description_outlined),
+                        alignLabelWithHint: true,
+                      ),
+                      maxLines: 3,
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Phone
+                    TextFormField(
+                      controller: _phoneCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Phone',
+                        hintText: '+255 xxx xxx xxx',
+                        prefixIcon: Icon(Icons.phone_outlined),
+                      ),
+                      keyboardType: TextInputType.phone,
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Website
+                    TextFormField(
+                      controller: _websiteCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Website',
+                        hintText: 'https://www.example.com',
+                        prefixIcon: Icon(Icons.language),
+                      ),
+                      keyboardType: TextInputType.url,
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Address
+                    TextFormField(
+                      controller: _addressCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Address',
+                        hintText: 'City, Region, Country',
+                        prefixIcon: Icon(Icons.location_on_outlined),
+                      ),
+                      textInputAction: TextInputAction.done,
+                    ),
+                    const SizedBox(height: 32),
+
+                    // Submit
+                    FilledButton.icon(
+                      onPressed: _isSubmitting ? null : _submit,
+                      icon: _isSubmitting
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.send),
+                      label: const Text('Submit for Approval'),
+                      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                    ),
+                    const SizedBox(height: 40),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -1278,6 +2124,8 @@ class BranchTab extends StatelessWidget {
 // === FILE: lib/features/organization/presentation/pages/delegation_tab.dart ===
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../domain/entities/branch_entity.dart';
+import '../../domain/entities/org_role_entity.dart';
 import '../bloc/organization_bloc.dart';
 import '../bloc/organization_event.dart';
 import '../bloc/organization_state.dart';
@@ -1287,26 +2135,325 @@ class DelegationTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return BlocBuilder<OrganizationBloc, OrganizationState>(
       buildWhen: (_, s) => s is DelegationsLoaded || s is OrganizationLoading,
       builder: (c, s) {
-        if (s is OrganizationLoading) return const Center(child: CircularProgressIndicator());
+        if (s is OrganizationLoading)
+          return const Center(child: CircularProgressIndicator());
         if (s is DelegationsLoaded) {
-          if (s.delegations.isEmpty) return const Center(child: Text('No delegations configured'));
-          return ListView.builder(padding: const EdgeInsets.all(16), itemCount: s.delegations.length, itemBuilder: (_, i) {
-            final d = s.delegations[i];
-            return Card(margin: const EdgeInsets.only(bottom: 10), child: ListTile(
-              leading: CircleAvatar(child: Icon(Icons.swap_horiz, color: Theme.of(c).colorScheme.primary)),
-              title: Text(d.childOrgName, style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text('Role: ${d.roleName}  •  ${d.permissionSlugs.length} permissions'),
-              trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () {
-                c.read<OrganizationBloc>().add(DelegationRevokeRequested(d.id));
-              }),
-            ));
-          });
+          return Stack(
+            children: [
+              if (s.delegations.isEmpty)
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.swap_horiz,
+                        size: 48,
+                        color: scheme.onSurfaceVariant.withValues(alpha: 0.3),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text('No delegations configured'),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Delegate authority from HQ to branches.\nBranch admins can then manage their own area.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: () => _showCreateDialog(c),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Create Delegation'),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                RefreshIndicator(
+                  onRefresh: () async => c.read<OrganizationBloc>().add(
+                    DelegationsLoadRequested(),
+                  ),
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: s.delegations.length,
+                    itemBuilder: (_, i) {
+                      final d = s.delegations[i];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  CircleAvatar(
+                                    backgroundColor: scheme.primaryContainer,
+                                    radius: 18,
+                                    child: Icon(
+                                      Icons.swap_horiz,
+                                      color: scheme.onPrimaryContainer,
+                                      size: 18,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          d.childOrgName,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Role: ${d.roleName}',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: scheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete_outline,
+                                      color: Colors.red,
+                                      size: 20,
+                                    ),
+                                    onPressed: () =>
+                                        _confirmRevoke(c, d.id, d.childOrgName),
+                                  ),
+                                ],
+                              ),
+                              if (d.permissionSlugs.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 4,
+                                  runSpacing: 4,
+                                  children: d.permissionSlugs
+                                      .take(6)
+                                      .map(
+                                        (p) => Chip(
+                                          label: Text(
+                                            p,
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                            ),
+                                          ),
+                                          visualDensity: VisualDensity.compact,
+                                          padding: EdgeInsets.zero,
+                                        ),
+                                      )
+                                      .toList(),
+                                ),
+                                if (d.permissionSlugs.length > 6)
+                                  Text(
+                                    '+${d.permissionSlugs.length - 6} more',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: scheme.primary,
+                                    ),
+                                  ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              Positioned(
+                right: 16,
+                bottom: 16,
+                child: FloatingActionButton(
+                  onPressed: () => _showCreateDialog(c),
+                  child: const Icon(Icons.add),
+                ),
+              ),
+            ],
+          );
         }
-        return Center(child: FilledButton(onPressed: () => c.read<OrganizationBloc>().add(DelegationsLoadRequested()), child: const Text('Load Delegations')));
+        return Center(
+          child: FilledButton(
+            onPressed: () =>
+                c.read<OrganizationBloc>().add(DelegationsLoadRequested()),
+            child: const Text('Load Delegations'),
+          ),
+        );
       },
+    );
+  }
+
+  void _confirmRevoke(
+    BuildContext context,
+    String delegationId,
+    String branchName,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Revoke Delegation'),
+        content: Text('Revoke all delegated permissions from "$branchName"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.read<OrganizationBloc>().add(
+                DelegationRevokeRequested(delegationId),
+              );
+            },
+            child: const Text('Revoke'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCreateDialog(BuildContext context) {
+    final bloc = context.read<OrganizationBloc>();
+    bloc.add(BranchesLoadRequested());
+    bloc.add(RolesLoadRequested());
+
+    String? selectedBranchId;
+    String? selectedRoleId;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Create Delegation'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: Colors.amber.shade800,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Delegate a role and its permissions to a branch. The branch admin can then manage users with those permissions.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.amber.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                BlocBuilder<OrganizationBloc, OrganizationState>(
+                  bloc: bloc, // ← fix
+                  buildWhen: (_, s) => s is BranchesLoaded,
+                  builder: (c, s) {
+                    final branches = s is BranchesLoaded
+                        ? s.branches
+                        : <BranchEntity>[];
+                    return DropdownButtonFormField<String>(
+                      value: selectedBranchId,
+                      decoration: const InputDecoration(
+                        labelText: 'Branch *',
+                        prefixIcon: Icon(Icons.store_outlined),
+                      ),
+                      items: branches
+                          .map(
+                            (b) => DropdownMenuItem(
+                              value: b.id,
+                              child: Text(b.name),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) =>
+                          setDialogState(() => selectedBranchId = v),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                BlocBuilder<OrganizationBloc, OrganizationState>(
+                  bloc: bloc, // ← fix
+                  buildWhen: (_, s) => s is RolesLoaded,
+                  builder: (c, s) {
+                    final roles = s is RolesLoaded
+                        ? s.roles
+                        : <OrgRoleEntity>[];
+                    return DropdownButtonFormField<String>(
+                      value: selectedRoleId,
+                      decoration: const InputDecoration(
+                        labelText: 'Role to Delegate *',
+                        prefixIcon: Icon(Icons.admin_panel_settings_outlined),
+                      ),
+                      items: roles
+                          .map(
+                            (r) => DropdownMenuItem(
+                              value: r.id,
+                              child: Text(r.name),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) =>
+                          setDialogState(() => selectedRoleId = v),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (selectedBranchId == null || selectedRoleId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Select both branch and role'),
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(ctx);
+                bloc.add(
+                  DelegationCreateRequested({
+                    // ← bloc, not context.read
+                    'child_org_id': selectedBranchId,
+                    'org_role_id': selectedRoleId,
+                  }),
+                );
+              },
+              child: const Text('Delegate'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1315,82 +2462,571 @@ class DelegationTab extends StatelessWidget {
 // === FILE: lib/features/organization/presentation/pages/member_tab.dart ===
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../domain/entities/org_role_entity.dart';
+import '../../domain/entities/org_member_entity.dart';
 import '../bloc/organization_bloc.dart';
 import '../bloc/organization_event.dart';
 import '../bloc/organization_state.dart';
 import '../widgets/member_card_tile.dart';
 
 class MemberTab extends StatelessWidget {
-  const MemberTab({super.key});
+  final String? viewingBranchId;
+  final VoidCallback? onBackToRootMembers;
+
+  const MemberTab({super.key, this.viewingBranchId, this.onBackToRootMembers});
 
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<OrganizationBloc, OrganizationState>(
       buildWhen: (_, s) => s is MembersLoaded || s is OrganizationLoading,
       builder: (c, s) {
-        if (s is OrganizationLoading) return const Center(child: CircularProgressIndicator());
-        if (s is MembersLoaded) {
-          if (s.members.isEmpty) {
-            return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.people_outline, size: 48),
-              const SizedBox(height: 12),
-              const Text('No members'),
-              const SizedBox(height: 16),
-              FilledButton.icon(onPressed: () => _showInviteDialog(c), icon: const Icon(Icons.person_add), label: const Text('Invite Member')),
-            ]));
-          }
-          return Stack(children: [
-            ListView.builder(padding: const EdgeInsets.all(16), itemCount: s.members.length,
-              itemBuilder: (_, i) => MemberCardTile(
-                member: s.members[i],
-                onSuspend: (uid) => c.read<OrganizationBloc>().add(MemberUpdateRequested(userId: uid, data: {'status': 'suspended'})),
-                onActivate: (uid) => c.read<OrganizationBloc>().add(MemberUpdateRequested(userId: uid, data: {'status': 'active'})),
-                onRemove: (uid) => _confirmRemove(c, uid),
-              )),
-            Positioned(right: 16, bottom: 16, child: FloatingActionButton(
-              onPressed: () => _showInviteDialog(c), child: const Icon(Icons.person_add))),
-          ]);
+        if (s is OrganizationLoading) {
+          return const Center(child: CircularProgressIndicator());
         }
-        return Center(child: FilledButton(onPressed: () => c.read<OrganizationBloc>().add(MembersLoadRequested()), child: const Text('Load Members')));
+        if (s is MembersLoaded) {
+          return Column(
+            children: [
+              if (viewingBranchId != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  color: Theme.of(
+                    c,
+                  ).colorScheme.primaryContainer.withOpacity(0.3),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.store,
+                        size: 16,
+                        color: Theme.of(c).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Viewing branch members',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(c).colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: onBackToRootMembers,
+                        icon: const Icon(Icons.arrow_back, size: 16),
+                        label: const Text(
+                          'All Members',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: s.members.isEmpty
+                    ? _emptyState(c)
+                    : Stack(
+                        children: [
+                          RefreshIndicator(
+                            onRefresh: () async =>
+                                c.read<OrganizationBloc>().add(
+                                  MembersLoadRequested(orgId: viewingBranchId),
+                                ),
+                            child: ListView.builder(
+                              padding: const EdgeInsets.all(16),
+                              itemCount: s.members.length,
+                              itemBuilder: (_, i) => MemberCardTile(
+                                member: s.members[i],
+                                onSuspend: (uid) =>
+                                    c.read<OrganizationBloc>().add(
+                                      MemberUpdateRequested(
+                                        orgId: viewingBranchId,
+                                        userId: uid,
+                                        data: {'status': 'suspended'},
+                                      ),
+                                    ),
+                                onActivate: (uid) =>
+                                    c.read<OrganizationBloc>().add(
+                                      MemberUpdateRequested(
+                                        orgId: viewingBranchId,
+                                        userId: uid,
+                                        data: {'status': 'active'},
+                                      ),
+                                    ),
+                                onRemove: (uid) => _confirmRemove(
+                                  c,
+                                  c.read<OrganizationBloc>(),
+                                  uid,
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            right: 16,
+                            bottom: 16,
+                            child: FloatingActionButton(
+                              onPressed: () => viewingBranchId != null
+                                  ? _showAssignDialog(c, viewingBranchId!)
+                                  : _showInviteDialog(c),
+                              tooltip: viewingBranchId != null
+                                  ? 'Assign Member'
+                                  : 'Invite Member',
+                              child: Icon(
+                                viewingBranchId != null
+                                    ? Icons.person_add_alt_1
+                                    : Icons.person_add,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          );
+        }
+        return Center(
+          child: FilledButton(
+            onPressed: () =>
+                c.read<OrganizationBloc>().add(MembersLoadRequested()),
+            child: const Text('Load Members'),
+          ),
+        );
       },
     );
   }
 
-  void _showInviteDialog(BuildContext context) {
-    final emailCtrl = TextEditingController();
-    final roleCtrl = TextEditingController();
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Invite Member'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: emailCtrl, decoration: const InputDecoration(labelText: 'Email *'), keyboardType: TextInputType.emailAddress),
-        const SizedBox(height: 12),
-        TextField(controller: roleCtrl, decoration: const InputDecoration(labelText: 'Role Name', hintText: 'e.g. field_officer')),
-      ]),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-        FilledButton(onPressed: () {
-          if (emailCtrl.text.trim().isEmpty) return;
-          Navigator.pop(ctx);
-          context.read<OrganizationBloc>().add(MemberInviteRequested(data: {
-            'email': emailCtrl.text.trim(),
-            if (roleCtrl.text.trim().isNotEmpty) 'role_name': roleCtrl.text.trim(),
-          }));
-        }, child: const Text('Send Invite')),
-      ],
-    ));
+  Widget _emptyState(BuildContext c) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.people_outline, size: 48),
+          const SizedBox(height: 12),
+          Text(
+            viewingBranchId != null
+                ? 'No members in this branch'
+                : 'No members',
+          ),
+          const SizedBox(height: 8),
+          if (viewingBranchId != null) ...[
+            Text(
+              'Assign existing organization members\nto this branch.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(c).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () => _showAssignDialog(c, viewingBranchId!),
+              icon: const Icon(Icons.person_add_alt_1),
+              label: const Text('Assign Member'),
+            ),
+          ] else ...[
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: () => _showInviteDialog(c),
+              icon: const Icon(Icons.person_add),
+              label: const Text('Invite Member'),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
-  void _confirmRemove(BuildContext context, String userId) {
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Remove Member'),
-      content: const Text('This will remove the member from the organization. Are you sure?'),
+  void _showAssignDialog(BuildContext context, String branchId) {
+    final bloc = context.read<OrganizationBloc>();
+    showDialog(
+      context: context,
+      builder: (_) => _AssignMemberDialog(
+        bloc: bloc,
+        rootOrgId: bloc.orgContext.rootOrgId ?? '',
+        branchId: branchId,
+      ),
+    );
+  }
+
+  void _showInviteDialog(BuildContext context) {
+    final bloc = context.read<OrganizationBloc>();
+    showDialog(
+      context: context,
+      builder: (_) => _InviteDialogContent(bloc: bloc),
+    );
+  }
+
+  void _confirmRemove(
+    BuildContext context,
+    OrganizationBloc bloc,
+    String userId,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove Member'),
+        content: const Text(
+          'This will remove the member from the organization. Are you sure?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(ctx);
+              bloc.add(
+                MemberRemoveRequested(orgId: viewingBranchId, userId: userId),
+              );
+            },
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Assign Member Dialog — loads data from repository directly
+// Does NOT trigger BLoC state changes (no OrganizationLoading)
+// ═══════════════════════════════════════════════════════════
+
+class _AssignMemberDialog extends StatefulWidget {
+  final OrganizationBloc bloc;
+  final String rootOrgId;
+  final String branchId;
+
+  const _AssignMemberDialog({
+    required this.bloc,
+    required this.rootOrgId,
+    required this.branchId,
+  });
+
+  @override
+  State<_AssignMemberDialog> createState() => _AssignMemberDialogState();
+}
+
+class _AssignMemberDialogState extends State<_AssignMemberDialog> {
+  List<OrgMemberEntity> rootMembers = [];
+  List<OrgRoleEntity> roles = [];
+  bool loading = true;
+  String? error;
+  String? selectedUserId;
+  String? selectedRoleId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final membersResult = await widget.bloc.repository.getMembers(
+      widget.rootOrgId,
+    );
+    final rolesResult = await widget.bloc.repository.getRoles(widget.rootOrgId);
+
+    if (!mounted) return;
+
+    setState(() {
+      membersResult.fold(
+        (f) => error = 'Failed to load members: ${f.message}',
+        (m) => rootMembers = m,
+      );
+      rolesResult.fold(
+        (f) => error = error ?? 'Failed to load roles: ${f.message}',
+        (r) => roles = r,
+      );
+      loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Assign Member to Branch'),
+      content: loading
+          ? const SizedBox(
+              height: 100,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : error != null
+          ? Text(error!, style: const TextStyle(color: Colors.red))
+          : SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: Colors.green.shade700,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Select a member from your organization to assign to this branch.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.green.shade700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: selectedUserId,
+                    decoration: const InputDecoration(
+                      labelText: 'Member *',
+                      prefixIcon: Icon(Icons.person_outlined),
+                    ),
+                    isExpanded: true,
+                    items: rootMembers
+                        .where((m) => m.isActive)
+                        .map(
+                          (m) => DropdownMenuItem(
+                            value: m.userId,
+                            child: Text(
+                              m.name.isNotEmpty
+                                  ? '${m.name} (${m.email})'
+                                  : m.email,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setState(() => selectedUserId = v),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: selectedRoleId,
+                    decoration: const InputDecoration(
+                      labelText: 'Branch Role *',
+                      prefixIcon: Icon(Icons.admin_panel_settings_outlined),
+                    ),
+                    isExpanded: true,
+                    items: roles
+                        .map(
+                          (r) => DropdownMenuItem(
+                            value: r.id,
+                            child: Text(r.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setState(() => selectedRoleId = v),
+                  ),
+                ],
+              ),
+            ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-        FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red),
-          onPressed: () { Navigator.pop(ctx); context.read<OrganizationBloc>().add(MemberRemoveRequested(userId: userId)); },
-          child: const Text('Remove')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: loading || error != null
+              ? null
+              : () {
+                  if (selectedUserId == null || selectedRoleId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Select both a member and a role'),
+                      ),
+                    );
+                    return;
+                  }
+                  Navigator.pop(context);
+                  widget.bloc.add(
+                    MemberAssignToBranchRequested(
+                      branchId: widget.branchId,
+                      data: {
+                        'user_id': selectedUserId,
+                        'org_role_id': selectedRoleId,
+                      },
+                    ),
+                  );
+                },
+          child: const Text('Assign'),
+        ),
       ],
-    ));
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Invite Dialog — loads roles from repository directly
+// ═══════════════════════════════════════════════════════════
+
+class _InviteDialogContent extends StatefulWidget {
+  final OrganizationBloc bloc;
+
+  const _InviteDialogContent({required this.bloc});
+
+  @override
+  State<_InviteDialogContent> createState() => _InviteDialogContentState();
+}
+
+class _InviteDialogContentState extends State<_InviteDialogContent> {
+  final emailCtrl = TextEditingController();
+  final levelCtrl = TextEditingController(text: '50');
+  List<OrgRoleEntity> roles = [];
+  bool loading = true;
+  String? selectedRoleId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRoles();
+  }
+
+  @override
+  void dispose() {
+    emailCtrl.dispose();
+    levelCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadRoles() async {
+    final rootOrgId = widget.bloc.orgContext.rootOrgId ?? '';
+    final result = await widget.bloc.repository.getRoles(rootOrgId);
+    if (!mounted) return;
+    setState(() {
+      result.fold((_) {}, (r) => roles = r);
+      loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Invite Member'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: Colors.blue.shade700,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'An invitation email will be sent. The user must accept it to join the organization.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: emailCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Email Address *',
+                hintText: 'officer@company.com',
+                prefixIcon: Icon(Icons.email_outlined),
+              ),
+              keyboardType: TextInputType.emailAddress,
+            ),
+            const SizedBox(height: 12),
+            loading
+                ? const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                : DropdownButtonFormField<String>(
+                    value: selectedRoleId,
+                    decoration: const InputDecoration(
+                      labelText: 'Role *',
+                      prefixIcon: Icon(Icons.admin_panel_settings_outlined),
+                    ),
+                    items: roles
+                        .map(
+                          (r) => DropdownMenuItem(
+                            value: r.id,
+                            child: Text(r.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setState(() => selectedRoleId = v),
+                  ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: levelCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Authority Level (0-100)',
+                hintText: '50',
+                prefixIcon: Icon(Icons.trending_up),
+                helperText: '100 = full authority, 0 = view only',
+              ),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (emailCtrl.text.trim().isEmpty) return;
+            if (selectedRoleId == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Please select a role')),
+              );
+              return;
+            }
+            Navigator.pop(context);
+            widget.bloc.add(
+              MemberInviteRequested(
+                data: {
+                  'email': emailCtrl.text.trim(),
+                  'org_role_id': selectedRoleId,
+                  'level': int.tryParse(levelCtrl.text.trim()) ?? 50,
+                },
+              ),
+            );
+          },
+          child: const Text('Send Invitation'),
+        ),
+      ],
+    );
   }
 }
 
@@ -1406,8 +3042,10 @@ import 'role_tab.dart';
 import 'member_tab.dart';
 import 'delegation_tab.dart';
 import 'permission_request_tab.dart';
+import 'create_organization_page.dart';
+import 'accept_invitation_dialog.dart';
 import '../widgets/org_header_card.dart';
-import '../widgets/org_tree_view.dart';
+import '../../domain/entities/organization_entity.dart';
 
 class OrganizationHubPage extends StatefulWidget {
   const OrganizationHubPage({super.key});
@@ -1415,8 +3053,17 @@ class OrganizationHubPage extends StatefulWidget {
   State<OrganizationHubPage> createState() => _OrganizationHubPageState();
 }
 
-class _OrganizationHubPageState extends State<OrganizationHubPage> with TickerProviderStateMixin {
-  late final TabController _tabController;
+class _OrganizationHubPageState extends State<OrganizationHubPage>
+    with TickerProviderStateMixin {
+  TabController? _tabController;
+
+  /// Tracks if we're viewing members for a specific branch.
+  /// null = root org, non-null = branch ID.
+  String? _viewingBranchMembers;
+
+  /// Prevents _onTabChanged from overwriting a branch-scoped member load
+  /// when the tab switch is triggered programmatically from branch view.
+  bool _skipNextMemberLoad = false;
 
   static const _tabs = [
     Tab(icon: Icon(Icons.account_tree_outlined), text: 'Branches'),
@@ -1430,33 +3077,131 @@ class _OrganizationHubPageState extends State<OrganizationHubPage> with TickerPr
   void initState() {
     super.initState();
     _tabController = TabController(length: _tabs.length, vsync: this);
-    _tabController.addListener(_onTabChanged);
+    _tabController!.addListener(_onTabChanged);
   }
 
   void _onTabChanged() {
-    if (!_tabController.indexIsChanging) return;
+    if (_tabController == null || !_tabController!.indexIsChanging) return;
     final bloc = context.read<OrganizationBloc>();
-    switch (_tabController.index) {
-      case 0: bloc.add(BranchesLoadRequested()); break;
-      case 1: bloc.add(RolesLoadRequested()); break;
-      case 2: bloc.add(MembersLoadRequested()); break;
-      case 3: bloc.add(DelegationsLoadRequested()); break;
-      case 4: bloc.add(PermissionRequestsLoadRequested()); break;
+    switch (_tabController!.index) {
+      case 0:
+        bloc.add(BranchesLoadRequested());
+        break;
+      case 1:
+        bloc.add(RolesLoadRequested());
+        break;
+      case 2:
+        // If switching to Members tab from branch view, skip reload
+        if (_skipNextMemberLoad) {
+          _skipNextMemberLoad = false;
+          return;
+        }
+        // Normal tab switch — load root org members, clear branch context
+        _viewingBranchMembers = null;
+        bloc.add(MembersLoadRequested());
+        break;
+      case 3:
+        bloc.add(DelegationsLoadRequested());
+        break;
+      case 4:
+        bloc.add(PermissionRequestsLoadRequested());
+        break;
     }
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _tabController?.dispose();
     super.dispose();
+  }
+
+  List<Widget> _appBarActions(BuildContext context) {
+    return [
+      IconButton(
+        icon: const Icon(Icons.mail_outlined),
+        tooltip: 'Accept Invitation',
+        onPressed: () => AcceptInvitationDialog.show(context),
+      ),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    return BlocConsumer<OrganizationBloc, OrganizationState>(
+      listener: (c, s) {
+        if (s is OrganizationOperationSuccess) {
+          ScaffoldMessenger.of(
+            c,
+          ).showSnackBar(SnackBar(content: Text(s.message)));
+          if (_viewingBranchMembers != null) {
+            c.read<OrganizationBloc>().add(
+              MembersLoadRequested(orgId: _viewingBranchMembers),
+            );
+          } else {
+            _onTabChanged();
+          }
+          // Always refresh branches so member counts update
+          c.read<OrganizationBloc>().add(BranchesLoadRequested());
+        }
+        if (s is OrganizationFailure) {
+          ScaffoldMessenger.of(c).showSnackBar(
+            SnackBar(content: Text(s.message), backgroundColor: scheme.error),
+          );
+        }
+        if (s is OrgCreatedSuccess) {
+          ScaffoldMessenger.of(c).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Organization created! Awaiting platform admin approval.',
+              ),
+            ),
+          );
+          c.read<OrganizationBloc>().add(OrgLoadRequested());
+        }
+        if (s is InvitationAccepted) {
+          ScaffoldMessenger.of(c).showSnackBar(
+            SnackBar(content: Text(s.message), backgroundColor: Colors.green),
+          );
+          c.read<OrganizationBloc>().add(OrgLoadRequested());
+        }
+        // Do NOT auto-switch to Members tab on MembersLoaded anymore.
+        // The switch is handled by the branch callback directly.
+      },
+      builder: (c, s) {
+        if (s is NoOrganizationState) {
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text('Organization'),
+              actions: _appBarActions(c),
+            ),
+            body: const CreateOrganizationPage(),
+          );
+        }
+        if (s is OrgLoaded && s.org.isPending)
+          return _pendingApprovalView(c, s.org);
+        if (s is OrgLoaded && s.org.isRejected) return _rejectedView(c, s.org);
+        if (s is OrgLoaded && s.org.isSuspended)
+          return _suspendedView(c, s.org);
+        if (s is OrganizationLoading || s is OrganizationInitial) {
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text('Organization'),
+              actions: _appBarActions(c),
+            ),
+            body: const Center(child: CircularProgressIndicator()),
+          );
+        }
+        return _buildActiveHub(c, s);
+      },
+    );
+  }
+
+  Widget _buildActiveHub(BuildContext c, OrganizationState s) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Organization'),
+        actions: _appBarActions(c),
         bottom: TabBar(
           controller: _tabController,
           tabs: _tabs,
@@ -1464,40 +3209,194 @@ class _OrganizationHubPageState extends State<OrganizationHubPage> with TickerPr
           tabAlignment: TabAlignment.start,
         ),
       ),
-      body: BlocListener<OrganizationBloc, OrganizationState>(
-        listener: (c, s) {
-          if (s is OrganizationOperationSuccess) {
-            ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message)));
-            _onTabChanged(); // reload current tab
-          }
-          if (s is OrganizationFailure) {
-            ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message), backgroundColor: scheme.error));
-          }
-        },
-        child: Column(
-          children: [
-            // Org header card
-            BlocBuilder<OrganizationBloc, OrganizationState>(
-              buildWhen: (_, s) => s is OrgLoaded,
-              builder: (c, s) {
-                if (s is OrgLoaded) return OrgHeaderCard(org: s.org);
-                return const SizedBox.shrink();
-              },
+      body: Column(
+        children: [
+          BlocBuilder<OrganizationBloc, OrganizationState>(
+            buildWhen: (_, s) => s is OrgLoaded,
+            builder: (c, s) {
+              if (s is OrgLoaded) return OrgHeaderCard(org: s.org);
+              return const SizedBox.shrink();
+            },
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                BranchTab(
+                  onSwitchToMembers: (branchId) {
+                    // Load branch-scoped members
+                    _viewingBranchMembers = branchId;
+                    _skipNextMemberLoad = true;
+                    c.read<OrganizationBloc>().add(
+                      MembersLoadRequested(orgId: branchId),
+                    );
+                    _tabController!.animateTo(2);
+                  },
+                ),
+                const RoleTab(),
+                MemberTab(
+                  viewingBranchId: _viewingBranchMembers,
+                  onBackToRootMembers: () {
+                    setState(() => _viewingBranchMembers = null);
+                    c.read<OrganizationBloc>().add(MembersLoadRequested());
+                  },
+                ),
+                const DelegationTab(),
+                const PermissionRequestTab(),
+              ],
             ),
-            // Tab content
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: const [
-                  BranchTab(),
-                  RoleTab(),
-                  MemberTab(),
-                  DelegationTab(),
-                  PermissionRequestTab(),
-                ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pendingApprovalView(BuildContext c, OrganizationEntity org) {
+    final scheme = Theme.of(c).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Organization'),
+        actions: _appBarActions(c),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.hourglass_top,
+                size: 72,
+                color: Colors.orange.withOpacity(0.6),
               ),
-            ),
-          ],
+              const SizedBox(height: 24),
+              Text(
+                'Awaiting Approval',
+                style: Theme.of(c).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Your organization "${org.name}" has been submitted and is waiting for platform admin approval.',
+                textAlign: TextAlign.center,
+                style: Theme.of(c).textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 24),
+              OutlinedButton.icon(
+                onPressed: () =>
+                    c.read<OrganizationBloc>().add(OrgLoadRequested()),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Check Status'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _rejectedView(BuildContext c, OrganizationEntity org) {
+    final scheme = Theme.of(c).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Organization'),
+        actions: _appBarActions(c),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.cancel_outlined,
+                size: 72,
+                color: Colors.red.withOpacity(0.6),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Organization Rejected',
+                style: Theme.of(c).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: Colors.red,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (org.rejectionReason != null) ...[
+                Card(
+                  color: Colors.red.withOpacity(0.06),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.info_outline,
+                          color: Colors.red,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            org.rejectionReason!,
+                            style: Theme.of(c).textTheme.bodyMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              Text(
+                'Please contact platform support or create a new organization.',
+                textAlign: TextAlign.center,
+                style: Theme.of(c).textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _suspendedView(BuildContext c, OrganizationEntity org) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Organization'),
+        actions: _appBarActions(c),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.pause_circle_outline,
+                size: 72,
+                color: Colors.orange.withOpacity(0.6),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Organization Suspended',
+                style: Theme.of(c).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Your organization "${org.name}" has been suspended by the platform admin. Please contact support.',
+                textAlign: TextAlign.center,
+                style: Theme.of(c).textTheme.bodyMedium,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1520,41 +3419,195 @@ class PermissionRequestTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return BlocBuilder<OrganizationBloc, OrganizationState>(
-      buildWhen: (_, s) => s is PermissionRequestsLoaded || s is OrganizationLoading,
+      buildWhen: (_, s) =>
+          s is PermissionRequestsLoaded || s is OrganizationLoading,
       builder: (c, s) {
-        if (s is OrganizationLoading) return const Center(child: CircularProgressIndicator());
+        if (s is OrganizationLoading)
+          return const Center(child: CircularProgressIndicator());
         if (s is PermissionRequestsLoaded) {
-          if (s.requests.isEmpty) return const Center(child: Text('No permission requests'));
-          return ListView.builder(padding: const EdgeInsets.all(16), itemCount: s.requests.length, itemBuilder: (_, i) {
-            final r = s.requests[i];
-            final isPending = r.status == PermissionRequestStatus.pending;
-            return Card(margin: const EdgeInsets.only(bottom: 10), child: Padding(padding: const EdgeInsets.all(16), child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Expanded(child: Text(r.orgName, style: const TextStyle(fontWeight: FontWeight.w700))),
-                  Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(
-                    color: isPending ? Colors.orange.withValues(alpha: 0.15) : r.status == PermissionRequestStatus.approved ? Colors.green.withValues(alpha: 0.15) : Colors.red.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8)),
-                    child: Text(r.status.name, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
-                      color: isPending ? Colors.orange : r.status == PermissionRequestStatus.approved ? Colors.green : Colors.red))),
-                ]),
-                const SizedBox(height: 8),
-                Text(r.reason, style: Theme.of(c).textTheme.bodyMedium),
-                Text('${r.permissionSlugs.length} permissions requested', style: Theme.of(c).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
-                if (isPending) ...[
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    FilledButton(onPressed: () => c.read<OrganizationBloc>().add(PermissionRequestApproveRequested(r.id)), child: const Text('Approve')),
-                    const SizedBox(width: 8),
-                    OutlinedButton(style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                      onPressed: () => c.read<OrganizationBloc>().add(PermissionRequestDenyRequested(r.id)), child: const Text('Deny')),
-                  ]),
-                ],
-              ],
-            )));
-          });
+          if (s.requests.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.lock_open,
+                      size: 48,
+                      color: scheme.onSurfaceVariant.withValues(alpha: 0.3),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('No permission requests'),
+                    const SizedBox(height: 8),
+                    Text(
+                      'When branch admins need additional permissions beyond what was delegated, their requests will appear here for your approval.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () => c.read<OrganizationBloc>().add(
+                        PermissionRequestsLoadRequested(),
+                      ),
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Refresh'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+          return RefreshIndicator(
+            onRefresh: () async => c.read<OrganizationBloc>().add(
+              PermissionRequestsLoadRequested(),
+            ),
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: s.requests.length,
+              itemBuilder: (_, i) {
+                final r = s.requests[i];
+                final isPending = r.status == PermissionRequestStatus.pending;
+                final statusColor = isPending
+                    ? Colors.orange
+                    : r.status == PermissionRequestStatus.approved
+                    ? Colors.green
+                    : Colors.red;
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                r.orgName.isNotEmpty
+                                    ? r.orgName
+                                    : 'Branch Request',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: statusColor.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                r.status.name.toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: statusColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(r.reason, style: Theme.of(c).textTheme.bodyMedium),
+                        if (r.permissionSlugs.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 4,
+                            runSpacing: 4,
+                            children: r.permissionSlugs
+                                .map(
+                                  (p) => Chip(
+                                    label: Text(
+                                      p,
+                                      style: const TextStyle(fontSize: 10),
+                                    ),
+                                    visualDensity: VisualDensity.compact,
+                                    padding: EdgeInsets.zero,
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                        ],
+                        if (r.reviewNotes != null &&
+                            r.reviewNotes!.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: scheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.comment_outlined,
+                                  size: 14,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    r.reviewNotes!,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        if (isPending) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              FilledButton.icon(
+                                onPressed: () => c.read<OrganizationBloc>().add(
+                                  PermissionRequestApproveRequested(r.id),
+                                ),
+                                icon: const Icon(Icons.check, size: 18),
+                                label: const Text('Approve'),
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                ),
+                                onPressed: () => c.read<OrganizationBloc>().add(
+                                  PermissionRequestDenyRequested(r.id),
+                                ),
+                                icon: const Icon(Icons.close, size: 18),
+                                label: const Text('Deny'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
         }
-        return Center(child: FilledButton(onPressed: () => c.read<OrganizationBloc>().add(PermissionRequestsLoadRequested()), child: const Text('Load Requests')));
+        return Center(
+          child: FilledButton(
+            onPressed: () => c.read<OrganizationBloc>().add(
+              PermissionRequestsLoadRequested(),
+            ),
+            child: const Text('Load Requests'),
+          ),
+        );
       },
     );
   }
@@ -1568,6 +3621,7 @@ import '../bloc/organization_bloc.dart';
 import '../bloc/organization_event.dart';
 import '../bloc/organization_state.dart';
 import '../widgets/role_card_tile.dart';
+import '../../domain/entities/org_role_entity.dart';
 
 class RoleTab extends StatelessWidget {
   const RoleTab({super.key});
@@ -1575,55 +3629,172 @@ class RoleTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<OrganizationBloc, OrganizationState>(
-      buildWhen: (_, s) => s is RolesLoaded || s is OrganizationLoading || s is OrganizationFailure,
+      buildWhen: (_, s) =>
+          s is RolesLoaded ||
+          s is OrganizationLoading ||
+          s is OrganizationFailure,
       builder: (c, s) {
-        if (s is OrganizationLoading) return const Center(child: CircularProgressIndicator());
+        if (s is OrganizationLoading) {
+          return const Center(child: CircularProgressIndicator());
+        }
         if (s is RolesLoaded) {
           if (s.roles.isEmpty) {
-            return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.admin_panel_settings_outlined, size: 48),
-              const SizedBox(height: 12),
-              const Text('No roles defined'),
-              const SizedBox(height: 16),
-              FilledButton.icon(onPressed: () => _showCreateDialog(c), icon: const Icon(Icons.add), label: const Text('Create Role')),
-            ]));
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.admin_panel_settings_outlined, size: 48),
+                  const SizedBox(height: 12),
+                  const Text('No roles defined'),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => _showCreateDialog(c),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Create Role'),
+                  ),
+                ],
+              ),
+            );
           }
-          return Stack(children: [
-            ListView.builder(padding: const EdgeInsets.all(16), itemCount: s.roles.length,
-              itemBuilder: (_, i) => RoleCardTile(role: s.roles[i], onSyncPermissions: (roleId, slugs) {
-                c.read<OrganizationBloc>().add(RolePermissionsSyncRequested(roleId: roleId, permissionSlugs: slugs));
-              })),
-            Positioned(right: 16, bottom: 16, child: FloatingActionButton(
-              onPressed: () => _showCreateDialog(c), child: const Icon(Icons.add))),
-          ]);
+
+          final availablePerms = s.availablePermissions;
+
+          return Stack(
+            children: [
+              RefreshIndicator(
+                onRefresh: () async =>
+                    c.read<OrganizationBloc>().add(RolesLoadRequested()),
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: s.roles.length,
+                  itemBuilder: (_, i) => RoleCardTile(
+                    role: s.roles[i],
+                    availablePermissions: availablePerms,
+                    onSyncPermissions: (roleId, permissionIds) {
+                      c.read<OrganizationBloc>().add(
+                        RolePermissionsSyncRequested(
+                          roleId: roleId,
+                          permissionIds: permissionIds,
+                        ),
+                      );
+                    },
+                    onDelete: (roleId) => _confirmDelete(c, s.roles[i]),
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 16,
+                bottom: 16,
+                child: FloatingActionButton(
+                  onPressed: () => _showCreateDialog(c),
+                  child: const Icon(Icons.add),
+                ),
+              ),
+            ],
+          );
         }
-        return Center(child: FilledButton(onPressed: () => c.read<OrganizationBloc>().add(RolesLoadRequested()), child: const Text('Load Roles')));
+        return Center(
+          child: FilledButton(
+            onPressed: () =>
+                c.read<OrganizationBloc>().add(RolesLoadRequested()),
+            child: const Text('Load Roles'),
+          ),
+        );
       },
+    );
+  }
+
+  void _confirmDelete(BuildContext context, OrgRoleEntity role) {
+    if (role.isDefault) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('System roles cannot be deleted.')),
+      );
+      return;
+    }
+    if (role.memberCount > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Cannot delete "${role.name}": ${role.memberCount} active member(s) assigned. Reassign them first.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final bloc = context.read<OrganizationBloc>();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Role'),
+        content: Text(
+          'Are you sure you want to delete "${role.name}"?\n\n'
+          'All permissions assigned to this role will be removed. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(ctx);
+              bloc.add(RoleDeleteRequested(role.id));
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
   }
 
   void _showCreateDialog(BuildContext context) {
     final nameCtrl = TextEditingController();
     final descCtrl = TextEditingController();
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Create Role'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Role Name *', hintText: 'e.g. Branch Manager')),
-        const SizedBox(height: 12),
-        TextField(controller: descCtrl, decoration: const InputDecoration(labelText: 'Description')),
-      ]),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-        FilledButton(onPressed: () {
-          if (nameCtrl.text.trim().isEmpty) return;
-          Navigator.pop(ctx);
-          context.read<OrganizationBloc>().add(RoleCreateRequested({
-            'name': nameCtrl.text.trim(),
-            if (descCtrl.text.trim().isNotEmpty) 'description': descCtrl.text.trim(),
-          }));
-        }, child: const Text('Create')),
-      ],
-    ));
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Create Role'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Role Name *',
+                hintText: 'e.g. Branch Manager',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: descCtrl,
+              decoration: const InputDecoration(labelText: 'Description'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (nameCtrl.text.trim().isEmpty) return;
+              Navigator.pop(ctx);
+              context.read<OrganizationBloc>().add(
+                RoleCreateRequested({
+                  'name': nameCtrl.text.trim(),
+                  if (descCtrl.text.trim().isNotEmpty)
+                    'description': descCtrl.text.trim(),
+                }),
+              );
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1634,18 +3805,116 @@ import '../../domain/entities/branch_entity.dart';
 
 class BranchCardTile extends StatelessWidget {
   final BranchEntity branch;
-  const BranchCardTile({super.key, required this.branch});
+  final void Function(String branchId)? onViewMembers;
+  final void Function(String branchId)? onDelete;
+  const BranchCardTile({
+    super.key,
+    required this.branch,
+    this.onViewMembers,
+    this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Card(margin: const EdgeInsets.only(bottom: 10), child: ListTile(
-      leading: CircleAvatar(backgroundColor: scheme.primaryContainer, child: Icon(Icons.store, color: scheme.onPrimaryContainer)),
-      title: Text(branch.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: Text([if (branch.address != null) branch.address!, '${branch.memberCount} members'].join('  •  '),
-        style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-      trailing: const Icon(Icons.chevron_right),
-    ));
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: scheme.primaryContainer,
+                  child: Icon(Icons.store, color: scheme.onPrimaryContainer),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        branch.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                      if (branch.address != null && branch.address!.isNotEmpty)
+                        Text(
+                          branch.address!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      Text(
+                        '${branch.memberCount} members',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  onSelected: (v) {
+                    switch (v) {
+                      case 'members':
+                        onViewMembers?.call(branch.id);
+                        break;
+                      case 'delete':
+                        onDelete?.call(branch.id);
+                        break;
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'members',
+                      child: Row(
+                        children: [
+                          Icon(Icons.people_outline, size: 18),
+                          SizedBox(width: 8),
+                          Text('View Members'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete_outline,
+                            size: 18,
+                            color: Colors.red,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Delete Branch',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            if (branch.description != null &&
+                branch.description!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                branch.description!,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -1766,35 +4035,274 @@ import '../../domain/entities/org_role_entity.dart';
 
 class RoleCardTile extends StatelessWidget {
   final OrgRoleEntity role;
-  final void Function(String roleId, List<String> slugs)? onSyncPermissions;
-  const RoleCardTile({super.key, required this.role, this.onSyncPermissions});
+  final List<OrgPermissionEntity> availablePermissions;
+  final void Function(String roleId, List<String> permissionIds)?
+  onSyncPermissions;
+  final void Function(String roleId)? onDelete;
+
+  const RoleCardTile({
+    super.key,
+    required this.role,
+    required this.availablePermissions,
+    this.onSyncPermissions,
+    this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Card(margin: const EdgeInsets.only(bottom: 10), child: Padding(padding: const EdgeInsets.all(16), child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.admin_panel_settings, color: scheme.primary, size: 20),
-          const SizedBox(width: 8),
-          Expanded(child: Text(role.name, style: const TextStyle(fontWeight: FontWeight.w700))),
-          if (role.isDefault) Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(
-            color: scheme.primaryContainer, borderRadius: BorderRadius.circular(6)),
-            child: Text('Default', style: TextStyle(fontSize: 10, color: scheme.onPrimaryContainer))),
-        ]),
-        const SizedBox(height: 6),
-        Text('${role.permissions.length} permissions  •  ${role.memberCount} members', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-        if (role.description != null) ...[const SizedBox(height: 4), Text(role.description!, style: Theme.of(context).textTheme.bodySmall)],
-        if (role.permissions.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Wrap(spacing: 4, runSpacing: 4, children: role.permissions.take(8).map((p) => Chip(
-            label: Text(p.slug, style: const TextStyle(fontSize: 10)), visualDensity: VisualDensity.compact, padding: EdgeInsets.zero,
-          )).toList()),
-          if (role.permissions.length > 8) Padding(padding: const EdgeInsets.only(top: 4),
-            child: Text('+${role.permissions.length - 8} more', style: TextStyle(fontSize: 11, color: scheme.primary))),
-        ],
-      ],
-    )));
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.admin_panel_settings,
+                  color: scheme.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    role.name,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (role.isDefault)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: scheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'System',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: scheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 4),
+                PopupMenuButton<String>(
+                  onSelected: (v) {
+                    switch (v) {
+                      case 'permissions':
+                        _showPermissionsDialog(context);
+                        break;
+                      case 'delete':
+                        onDelete?.call(role.id);
+                        break;
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'permissions',
+                      child: Row(
+                        children: [
+                          Icon(Icons.tune, size: 18),
+                          SizedBox(width: 8),
+                          Text('Manage Permissions'),
+                        ],
+                      ),
+                    ),
+                    if (!role.isDefault)
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.delete_outline,
+                              size: 18,
+                              color: Colors.red,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              'Delete Role',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${role.permissions.length} permissions  •  ${role.memberCount} members',
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+            ),
+            if (role.description != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                role.description!,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+            if (role.permissions.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 4,
+                runSpacing: 4,
+                children: role.permissions
+                    .take(8)
+                    .map(
+                      (p) => Chip(
+                        label: Text(
+                          p.slug,
+                          style: const TextStyle(fontSize: 10),
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ),
+                    )
+                    .toList(),
+              ),
+              if (role.permissions.length > 8)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    '+${role.permissions.length - 8} more',
+                    style: TextStyle(fontSize: 11, color: scheme.primary),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPermissionsDialog(BuildContext context) {
+    final selectedIds = role.permissions.map((p) => p.id).toSet();
+
+    final Map<String, List<OrgPermissionEntity>> grouped = {};
+    for (final p in availablePermissions) {
+      final key = p.group ?? 'General';
+      grouped.putIfAbsent(key, () => []).add(p);
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text('Permissions: ${role.name}'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: availablePermissions.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Text(
+                      'No permissions available. Run the permissions seeder migration on the server.',
+                    ),
+                  )
+                : SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Select permissions to assign to this role.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        ...grouped.entries.map(
+                          (entry) => Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  top: 10,
+                                  bottom: 4,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      _formatGroupName(entry.key),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '(${entry.value.length})',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              ...entry.value.map(
+                                (p) => CheckboxListTile(
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(
+                                    p.slug,
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                  subtitle: Text(
+                                    p.name,
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                  value: selectedIds.contains(p.id),
+                                  onChanged: (v) => setDialogState(() {
+                                    if (v == true)
+                                      selectedIds.add(p.id);
+                                    else
+                                      selectedIds.remove(p.id);
+                                  }),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: availablePermissions.isEmpty
+                  ? null
+                  : () {
+                      Navigator.pop(ctx);
+                      onSyncPermissions?.call(role.id, selectedIds.toList());
+                    },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatGroupName(String raw) {
+    return raw
+        .replaceAll('_', ' ')
+        .split(' ')
+        .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
   }
 }
 

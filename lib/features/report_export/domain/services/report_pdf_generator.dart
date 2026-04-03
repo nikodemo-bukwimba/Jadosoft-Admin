@@ -793,70 +793,137 @@ class ReportPdfGenerator {
     final active = products.where((p) => p.status == 'active').length;
     final featured = products.where((p) => p.isFeatured).length;
     final archived = products.where((p) => p.status == 'archived').length;
+    final totalQty = products.fold<int>(
+      0,
+      (s, p) => s + (p.quantityAvailable ?? 0),
+    );
+
+    // Separate into groups for layout
+    final available = products.where((p) => p.isAvailable).toList();
+    final unavailable = products.where((p) => !p.isAvailable).toList();
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: pw.EdgeInsets.zero,
-        header: (_) => _header('Product Catalogue', 'All pharmacy products'),
+        header: (_) => _header(
+          'Product Catalogue',
+          'Pharmaceutical stock register with batch & expiry data',
+        ),
         footer: _footer,
         build: (ctx) => [
           pw.Padding(
-            padding: const pw.EdgeInsets.all(24),
+            padding: const pw.EdgeInsets.fromLTRB(24, 24, 24, 0),
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
+                // ── Overview KPIs ────────────────────────────────────────
                 _sectionTitle('CATALOGUE OVERVIEW'),
                 pw.SizedBox(height: 8),
                 _kpiRow([
-                  {'value': '${products.length}', 'label': 'Total Products'},
+                  {'value': '${products.length}', 'label': 'Total SKUs'},
                   {'value': '$active', 'label': 'Active'},
                   {'value': '$featured', 'label': 'Featured'},
                   {'value': '$archived', 'label': 'Archived'},
+                  {'value': '$totalQty', 'label': 'Total Units'},
                 ]),
-                _sectionTitle('FULL PRODUCT LIST'),
-                pw.SizedBox(height: 4),
-                _table(
-                  headers: [
-                    'ID',
-                    'Product Name',
-                    'Category',
-                    'Price (TZS)',
-                    'Available',
-                    'Featured',
-                    'New',
-                    'Status',
-                  ],
-                  widths: [
-                    const pw.FlexColumnWidth(0.8),
-                    const pw.FlexColumnWidth(2.5),
-                    const pw.FlexColumnWidth(1),
-                    const pw.FlexColumnWidth(1.2),
-                    const pw.FlexColumnWidth(0.8),
-                    const pw.FlexColumnWidth(0.8),
-                    const pw.FlexColumnWidth(0.6),
-                    const pw.FlexColumnWidth(1),
-                  ],
-                  rows: products
-                      .map(
-                        (p) => [
-                          p.id,
-                          p.name,
-                          p.categoryId,
-                          _fmtNum(p.price),
-                          p.isAvailable ? 'Yes' : 'No',
-                          p.isFeatured ? 'Yes' : 'No',
-                          p.isNew ? 'Yes' : 'No',
-                          p.status.toUpperCase(),
-                        ],
-                      )
-                      .toList(),
-                ),
+                pw.SizedBox(height: 20),
+
+                // ── Available stock ──────────────────────────────────────
+                _sectionTitle('AVAILABLE STOCK (${available.length})'),
+                pw.SizedBox(height: 6),
+                _productTable(available),
+                pw.SizedBox(height: 20),
+
+                // ── Unavailable / out of stock ───────────────────────────
+                if (unavailable.isNotEmpty) ...[
+                  _sectionTitle(
+                    'UNAVAILABLE / OUT OF STOCK (${unavailable.length})',
+                  ),
+                  pw.SizedBox(height: 6),
+                  _productTable(unavailable),
+                  pw.SizedBox(height: 20),
+                ],
+
+                // ── Expiry alert: products expiring within 12 months ─────
+                () {
+                  final now = DateTime.now();
+                  final soon =
+                      products
+                          .where(
+                            (p) =>
+                                p.expiryDate != null &&
+                                p.expiryDate!.difference(now).inDays <= 365,
+                          )
+                          .toList()
+                        ..sort(
+                          (a, b) => a.expiryDate!.compareTo(b.expiryDate!),
+                        );
+                  if (soon.isEmpty) return pw.SizedBox();
+                  return pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      _sectionTitle(
+                        '⚠  EXPIRY ALERT — WITHIN 12 MONTHS (${soon.length})',
+                      ),
+                      pw.SizedBox(height: 6),
+                      _productTable(soon),
+                      pw.SizedBox(height: 20),
+                    ],
+                  );
+                }(),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  // ── Product table — shared between sections ─────────────────────────────────
+
+  static pw.Widget _productTable(List<dynamic> products) {
+    return _table(
+      headers: [
+        '#',
+        'Product Name',
+        'Pack Size',
+        'Batch No.',
+        'Expiry Date',
+        'Price (TZS)',
+        'Qty',
+        'Status',
+      ],
+      widths: [
+        const pw.FlexColumnWidth(0.4),
+        const pw.FlexColumnWidth(2.6),
+        const pw.FlexColumnWidth(1.2),
+        const pw.FlexColumnWidth(1.2),
+        const pw.FlexColumnWidth(1.0),
+        const pw.FlexColumnWidth(1.1),
+        const pw.FlexColumnWidth(0.6),
+        const pw.FlexColumnWidth(0.9),
+      ],
+      rows: products.asMap().entries.map((e) {
+        final i = e.key;
+        final p = e.value;
+        final expiry = p.expiryDate;
+        final expiryStr = expiry != null
+            ? '${expiry.year}-${expiry.month.toString().padLeft(2, '0')}-${expiry.day.toString().padLeft(2, '0')}'
+            : '—';
+        final isExpiringSoon =
+            expiry != null && expiry.difference(DateTime.now()).inDays <= 180;
+        return <String>[
+          '${i + 1}',
+          p.name,
+          p.packSize ?? '—',
+          p.batchNumber ?? '—',
+          isExpiringSoon ? '⚠ $expiryStr' : expiryStr,
+          _fmtNum(p.price),
+          p.quantityAvailable?.toString() ?? '—',
+          p.status.toUpperCase(),
+        ];
+      }).toList(),
     );
   }
 

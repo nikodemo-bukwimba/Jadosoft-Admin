@@ -8,13 +8,33 @@ class OrgPermissionModel extends OrgPermissionEntity {
     super.group,
   });
 
-  factory OrgPermissionModel.fromJson(Map<String, dynamic> json) =>
-      OrgPermissionModel(
-        id: json['id']?.toString() ?? '',
-        name: json['name'] as String? ?? '',
-        slug: json['slug'] as String? ?? '',
-        group: json['group'] as String?,
-      );
+  /// Maps from the actual API response:
+  /// { "id": "01KM...", "name": "members.view", "group_name": "members", "description": null }
+  ///
+  /// - API "name" field IS the slug (e.g. "members.view")
+  /// - API has NO separate "slug" field
+  /// - API uses "group_name" not "group"
+  factory OrgPermissionModel.fromJson(Map<String, dynamic> json) {
+    final nameVal = json['name'] as String? ?? '';
+    return OrgPermissionModel(
+      id: json['id']?.toString() ?? '',
+      name:
+          json['description'] as String? ??
+          _humanize(nameVal), // human-readable
+      slug: nameVal, // e.g. "members.view"
+      group: json['group_name'] as String? ?? json['group'] as String?,
+    );
+  }
+
+  /// Converts "members.view" → "Members View"
+  static String _humanize(String slug) {
+    return slug
+        .replaceAll('.', ' ')
+        .replaceAll('_', ' ')
+        .split(' ')
+        .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
+  }
 }
 
 class OrgRoleModel extends OrgRoleEntity {
@@ -43,7 +63,8 @@ class OrgRoleModel extends OrgRoleEntity {
       permissions: permList,
       memberCount:
           json['member_count'] as int? ?? json['users_count'] as int? ?? 0,
-      isDefault: json['is_default'] as bool? ?? false,
+      isDefault:
+          json['is_default'] as bool? ?? json['is_system'] as bool? ?? false,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'].toString())
           : DateTime.now(),

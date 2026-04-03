@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../domain/entities/order_entity.dart';
 import '../../domain/value_objects/order_status.dart';
 import 'order_status_badge.dart';
+import 'order_confirm_delete_dialog.dart';
 
 class OrderListRow extends StatelessWidget {
   final OrderEntity item;
@@ -39,7 +40,11 @@ class OrderListRow extends StatelessWidget {
                     color: status.color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(9),
                   ),
-                  child: Icon(Icons.receipt_long_outlined, color: status.color, size: 18),
+                  child: Icon(
+                    Icons.receipt_long_outlined,
+                    color: status.color,
+                    size: 18,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -48,13 +53,17 @@ class OrderListRow extends StatelessWidget {
                     children: [
                       Text(
                         'Order #${item.id.split('-').last.toUpperCase()}',
-                        style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                        style: textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
                         '${item.items.length} item${item.items.length != 1 ? 's' : ''} · ${item.createdAt.toIso8601String().split('T').first}',
-                        style: textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                        style: textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -78,8 +87,18 @@ class OrderListRow extends StatelessWidget {
                 ),
                 const SizedBox(width: 4),
                 IconButton(
-                  icon: Icon(Icons.delete_outline, color: scheme.error, size: 18),
-                  onPressed: onDelete,
+                  icon: Icon(
+                    Icons.delete_outline,
+                    color: scheme.error,
+                    size: 18,
+                  ),
+                  onPressed: () async {
+                    final confirmed = await OrderConfirmDeleteDialog.show(
+                      context,
+                      orderId: item.id,
+                    );
+                    if (confirmed) onDelete();
+                  },
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                 ),

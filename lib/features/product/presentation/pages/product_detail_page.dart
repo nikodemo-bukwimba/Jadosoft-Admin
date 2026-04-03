@@ -10,6 +10,7 @@ import '../../domain/value_objects/product_status.dart';
 import '../widgets/product_image.dart';
 import '../widgets/product_status_badge.dart';
 import '../../../category/data/datasources/category_mock_datasource.dart';
+import '../widgets/product_confirm_name_dialog.dart';
 
 class ProductDetailPage extends StatelessWidget {
   const ProductDetailPage({super.key});
@@ -254,6 +255,92 @@ class ProductDetailPage extends StatelessWidget {
                     ),
                   ),
                 ),
+
+                // ── Inventory Card ──
+                const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Inventory',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(
+                                color: scheme.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        const Divider(height: 24),
+                        _field(
+                          context,
+                          'Batch Number',
+                          item.batchNumber ?? '—',
+                        ),
+                        _field(context, 'Pack Size', item.packSize ?? '—'),
+                        _field(
+                          context,
+                          'Available Qty',
+                          item.quantityAvailable != null
+                              ? item.quantityAvailable.toString()
+                              : '—',
+                        ),
+                        _field(
+                          context,
+                          'Expiry Date',
+                          item.expiryDate != null
+                              ? '${item.expiryDate!.year}-'
+                                    '${item.expiryDate!.month.toString().padLeft(2, '0')}-'
+                                    '${item.expiryDate!.day.toString().padLeft(2, '0')}'
+                              : '—',
+                        ),
+                        if (item.expiryDate != null) ...[
+                          const SizedBox(height: 4),
+                          Builder(
+                            builder: (context) {
+                              final daysLeft = item.expiryDate!
+                                  .difference(DateTime.now())
+                                  .inDays;
+                              final isExpiringSoon = daysLeft <= 180;
+                              final isExpired = daysLeft < 0;
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isExpired
+                                      ? scheme.errorContainer
+                                      : isExpiringSoon
+                                      ? Colors.orange.withValues(alpha: 0.15)
+                                      : Colors.green.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  isExpired
+                                      ? 'Expired ${daysLeft.abs()} days ago'
+                                      : isExpiringSoon
+                                      ? 'Expires in $daysLeft days — check stock'
+                                      : 'Expires in $daysLeft days',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: isExpired
+                                        ? scheme.onErrorContainer
+                                        : isExpiringSoon
+                                        ? Colors.orange.shade800
+                                        : Colors.green.shade800,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 80), // FAB clearance
               ],
             ),
@@ -315,8 +402,20 @@ class ProductDetailPage extends StatelessWidget {
           icon: Icons.archive_outlined,
           label: 'Archive',
           color: Colors.blueGrey,
-          onPressed: () =>
-              context.read<ProductBloc>().add(ProductArchiveRequested(item.id)),
+          onPressed: () async {
+            final confirmed = await ProductConfirmNameDialog.show(
+              context,
+              title: 'Archive Product?',
+              productName: item.name,
+              actionLabel: 'Archive',
+              actionColor: Colors.blueGrey,
+              warningMessage:
+                  'Archiving will hide this product from all listings. This action cannot be undone.',
+            );
+            if (confirmed && context.mounted) {
+              context.read<ProductBloc>().add(ProductArchiveRequested(item.id));
+            }
+          },
         ),
       );
     }
@@ -405,27 +504,16 @@ class ProductDetailPage extends StatelessWidget {
     String id,
     String name,
   ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete Product?'),
-        content: Text('Remove "$name"? This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final confirmed = await ProductConfirmNameDialog.show(
+      context,
+      title: 'Delete Product?',
+      productName: name,
+      actionLabel: 'Delete',
+      actionColor: Theme.of(context).colorScheme.error,
+      warningMessage:
+          'This action is irreversible. The product will be permanently removed from the system.',
     );
-    if (confirmed == true && context.mounted) {
+    if (confirmed && context.mounted) {
       context.read<ProductBloc>().add(ProductDeleteRequested(id));
     }
   }

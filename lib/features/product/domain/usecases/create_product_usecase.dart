@@ -13,6 +13,11 @@ class CreateProductParams {
   final bool isFeatured;
   final bool isNew;
   final String? imageUrl;
+  // ── New inventory fields ──
+  final String? batchNumber;
+  final DateTime? expiryDate;
+  final String? packSize;
+  final int? quantityAvailable;
 
   const CreateProductParams({
     required this.name,
@@ -23,6 +28,10 @@ class CreateProductParams {
     required this.isFeatured,
     required this.isNew,
     this.imageUrl,
+    this.batchNumber,
+    this.expiryDate,
+    this.packSize,
+    this.quantityAvailable,
   });
 }
 
@@ -62,6 +71,11 @@ class CreateProductUseCase
         status: '',
         imageUrl: p.imageUrl,
         createdAt: DateTime.now(),
+        // ── NEW ──
+        batchNumber: p.batchNumber,
+        expiryDate: p.expiryDate,
+        packSize: p.packSize,
+        quantityAvailable: p.quantityAvailable,
       ),
     );
   }

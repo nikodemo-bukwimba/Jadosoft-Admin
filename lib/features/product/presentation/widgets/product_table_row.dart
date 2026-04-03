@@ -3,6 +3,7 @@ import '../../domain/entities/product_entity.dart';
 import '../../domain/value_objects/product_status.dart';
 import 'product_image.dart';
 import 'product_status_badge.dart';
+import 'product_confirm_name_dialog.dart';
 
 /// Details view row — table-style with aligned columns.
 class ProductTableRow extends StatelessWidget {
@@ -35,7 +36,8 @@ class ProductTableRow extends StatelessWidget {
             bottom: isLast
                 ? BorderSide.none
                 : BorderSide(
-                    color: scheme.outlineVariant.withValues(alpha: 0.3)),
+                    color: scheme.outlineVariant.withValues(alpha: 0.3),
+                  ),
           ),
         ),
         child: Row(
@@ -56,10 +58,9 @@ class ProductTableRow extends StatelessWidget {
                   Flexible(
                     child: Text(
                       item.name,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -68,7 +69,9 @@ class ProductTableRow extends StatelessWidget {
                     const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 4, vertical: 1),
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.blue.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(3),
@@ -92,9 +95,9 @@ class ProductTableRow extends StatelessWidget {
               child: Text(
                 formatPrice(item.price),
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
             // Status
@@ -106,9 +109,19 @@ class ProductTableRow extends StatelessWidget {
             SizedBox(
               width: 48,
               child: IconButton(
-                icon:
-                    Icon(Icons.delete_outline, color: scheme.error, size: 18),
-                onPressed: onDelete,
+                icon: Icon(Icons.delete_outline, color: scheme.error, size: 18),
+                onPressed: () async {
+                  final confirmed = await ProductConfirmNameDialog.show(
+                    context,
+                    title: 'Delete Product?',
+                    productName: item.name,
+                    actionLabel: 'Delete',
+                    actionColor: Theme.of(context).colorScheme.error,
+                    warningMessage:
+                        'This action is irreversible. The product will be permanently removed from the system.',
+                  );
+                  if (confirmed) onDelete();
+                },
                 padding: EdgeInsets.zero,
               ),
             ),

@@ -11,6 +11,7 @@ import '../widgets/product_card_tile.dart';
 import '../widgets/product_grid_tile.dart';
 import '../widgets/product_list_row.dart';
 import '../widgets/product_table_row.dart';
+import '../widgets/product_confirm_name_dialog.dart';
 
 class ProductListPage extends StatefulWidget {
   const ProductListPage({super.key});
@@ -30,29 +31,17 @@ class _ProductListPageState extends State<ProductListPage> {
 
   void _navigateToDetail(String id) =>
       context.push(AppRouter.productDetailPath(id));
-
   void _deleteProduct(String id, String name) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete Product?'),
-        content: Text('Remove "$name"? This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final confirmed = await ProductConfirmNameDialog.show(
+      context,
+      title: 'Delete Product?',
+      productName: name,
+      actionLabel: 'Delete',
+      actionColor: Theme.of(context).colorScheme.error,
+      warningMessage:
+          'This action is irreversible. The product will be permanently removed from the system.',
     );
-    if (confirmed == true && mounted) {
+    if (confirmed && mounted) {
       context.read<ProductBloc>().add(ProductDeleteRequested(id));
     }
   }

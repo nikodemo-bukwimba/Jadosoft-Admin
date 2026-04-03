@@ -6,7 +6,8 @@ import '../bloc/organization_state.dart';
 import '../widgets/branch_card_tile.dart';
 
 class BranchTab extends StatelessWidget {
-  final VoidCallback? onSwitchToMembers;
+  /// Changed from VoidCallback to pass the branchId
+  final void Function(String branchId)? onSwitchToMembers;
   const BranchTab({super.key, this.onSwitchToMembers});
 
   @override
@@ -17,8 +18,9 @@ class BranchTab extends StatelessWidget {
           s is OrganizationLoading ||
           s is OrganizationFailure,
       builder: (c, s) {
-        if (s is OrganizationLoading)
+        if (s is OrganizationLoading) {
           return const Center(child: CircularProgressIndicator());
+        }
         if (s is BranchesLoaded) {
           if (s.branches.isEmpty) {
             return Center(
@@ -55,11 +57,7 @@ class BranchTab extends StatelessWidget {
                   itemBuilder: (_, i) => BranchCardTile(
                     branch: s.branches[i],
                     onViewMembers: (branchId) {
-                      c.read<OrganizationBloc>().add(
-                        MembersLoadRequested(orgId: branchId),
-                      );
-                      onSwitchToMembers
-                          ?.call(); // ← use callback, not DefaultTabController
+                      onSwitchToMembers?.call(branchId);
                     },
                     onDelete: (branchId) =>
                         _confirmDelete(c, branchId, s.branches[i].name),
@@ -105,7 +103,6 @@ class BranchTab extends StatelessWidget {
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () {
               Navigator.pop(ctx);
-              // Delete is via the platform admin API — show info for now
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text(

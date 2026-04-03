@@ -101,6 +101,13 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
         OrgRoleModel.fromJson,
         dataKey: 'role',
       );
+  Future<void> deleteRole(String orgId, String roleId) async {
+    try {
+      await dio.delete('${ApiPaths.orgs.roles(orgId)}/$roleId');
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
 
   Future<void> syncRolePermissions(
     String orgId,
@@ -247,4 +254,27 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
     PermissionRequestModel.fromJson,
     dataKey: 'request',
   );
+
+  Future<Map<String, dynamic>> acceptInvitation(String token) async {
+    try {
+      final response = await dio.post('orgs/invitations/$token/accept');
+      final data = response.data;
+      return data is Map<String, dynamic>
+          ? (data['membership'] as Map<String, dynamic>? ?? data)
+          : <String, dynamic>{};
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
+  Future<void> assignMemberToBranch(
+    String branchId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      await dio.post('${ApiPaths.orgs.members(branchId)}/assign', data: data);
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
 }

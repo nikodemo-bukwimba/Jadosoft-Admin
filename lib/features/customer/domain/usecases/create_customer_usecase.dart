@@ -21,11 +21,32 @@ class CreateCustomerParams {
   final String? contactName;
   final String? contactRole;
   final String? contactPhone;
+  final String? assignedOfficerId;
 
-  const CreateCustomerParams({required this.name, required this.customerType, this.category, this.tier, this.phone, this.email, this.whatsappNumber, this.address, this.city, this.county, this.latitude, this.longitude, this.notes, this.contactName, this.contactRole, this.contactPhone});
+  const CreateCustomerParams({
+    required this.name,
+    required this.customerType,
+    this.category,
+    this.tier,
+    this.phone,
+    this.email,
+    this.whatsappNumber,
+    this.address,
+    this.city,
+    this.county,
+    this.latitude,
+    this.longitude,
+    this.notes,
+    this.contactName,
+    this.contactRole,
+    this.contactPhone,
+    this.assignedOfficerId,
+  });
 
   Map<String, dynamic> toJson() {
-    final data = <String, dynamic>{'name': name.trim(), 'customer_type': customerType,
+    final data = <String, dynamic>{
+      'name': name.trim(),
+      'customer_type': customerType,
       if (category != null && category!.isNotEmpty) 'category': category,
       if (tier != null && tier!.isNotEmpty) 'tier': tier,
       if (phone != null && phone!.isNotEmpty) 'phone': phone,
@@ -34,10 +55,21 @@ class CreateCustomerParams {
       if (address != null && address!.isNotEmpty) 'address': address,
       if (city != null && city!.isNotEmpty) 'city': city,
       if (county != null && county!.isNotEmpty) 'county': county,
-      if (latitude != null) 'latitude': latitude, if (longitude != null) 'longitude': longitude,
-      if (notes != null && notes!.isNotEmpty) 'notes': notes};
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
+      if (notes != null && notes!.isNotEmpty) 'notes': notes,
+      if (assignedOfficerId != null && assignedOfficerId!.isNotEmpty)
+        'assigned_officer_id': assignedOfficerId,
+    };
     if (contactName != null && contactName!.isNotEmpty) {
-      data['contacts'] = [{'name': contactName, if (contactRole != null) 'role': contactRole, if (contactPhone != null) 'phone': contactPhone, 'is_primary': true}];
+      data['contacts'] = [
+        {
+          'name': contactName,
+          if (contactRole != null) 'role': contactRole,
+          if (contactPhone != null) 'phone': contactPhone,
+          'is_primary': true,
+        }
+      ];
     }
     return data;
   }
@@ -46,6 +78,7 @@ class CreateCustomerParams {
 class CreateCustomerUseCase implements UseCase<CustomerEntity, CreateCustomerParams> {
   final CustomerRepository repository;
   CreateCustomerUseCase(this.repository);
+
   @override
   Future<Either<Failure, CustomerEntity>> call(CreateCustomerParams p) async {
     if (p.name.trim().isEmpty) return const Left(ValidationFailure('Customer name is required'));

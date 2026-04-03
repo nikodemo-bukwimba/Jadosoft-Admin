@@ -42,7 +42,10 @@ class OrderRepositoryImpl implements OrderRepository {
   Future<Either<Failure, OrderEntity>> create(OrderEntity entity) async {
     try {
       final model = OrderModel.fromEntity(entity);
-      final result = await _remoteDataSource.create(model.toJson());
+      final json = model.toJson();
+      // Pass customerId explicitly for the admin endpoint
+      json['customer_id'] = entity.customerId;
+      final result = await _remoteDataSource.create(json);
       return Right(result);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));

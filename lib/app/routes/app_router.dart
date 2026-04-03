@@ -69,7 +69,6 @@ import '../../features/product/presentation/bloc/product_event.dart';
 import '../../features/product/presentation/pages/product_list_page.dart';
 import '../../features/product/presentation/pages/product_detail_page.dart';
 import '../../features/product/presentation/pages/product_form_page.dart';
-import '../../features/product/domain/entities/product_entity.dart';
 
 // Phase 6 — Promotions (L3)
 import '../../features/promotion/presentation/bloc/promotion_bloc.dart';
@@ -461,8 +460,15 @@ class AppRouter {
             ),
             GoRoute(
               path: officerCreate,
-              builder: (_, _) => BlocProvider(
-                create: (_) => sl<OfficerBloc>(),
+              builder: (_, _) => MultiBlocProvider(
+                providers: [
+                  BlocProvider(create: (_) => sl<OfficerBloc>()),
+                  BlocProvider(
+                    create: (_) => sl<OrganizationBloc>()
+                      ..add(BranchesLoadRequested())
+                      ..add(RolesLoadRequested()),
+                  ),
+                ],
                 child: const OfficerFormPage(mode: OfficerFormNode.create),
               ),
             ),
@@ -481,9 +487,18 @@ class AppRouter {
               path: officerEdit,
               builder: (_, s) {
                 final id = s.pathParameters['id'] ?? '';
-                return BlocProvider(
-                  create: (_) =>
-                      sl<OfficerBloc>()..add(OfficerLoadOneRequested(id)),
+                return MultiBlocProvider(
+                  providers: [
+                    BlocProvider(
+                      create: (_) =>
+                          sl<OfficerBloc>()..add(OfficerLoadOneRequested(id)),
+                    ),
+                    BlocProvider(
+                      create: (_) => sl<OrganizationBloc>()
+                        ..add(BranchesLoadRequested())
+                        ..add(RolesLoadRequested()),
+                    ),
+                  ],
                   child: OfficerFormPage(mode: OfficerFormNode.edit, id: id),
                 );
               },
