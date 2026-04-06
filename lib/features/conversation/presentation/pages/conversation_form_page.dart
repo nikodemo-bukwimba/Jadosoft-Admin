@@ -66,13 +66,16 @@ class _ConversationFormPageState extends State<ConversationFormPage>
 
   void _rebuildContacts() {
     final currentUserId = context.read<ConversationBloc>().currentUserId;
+    final lowerCurrentId = currentUserId.toLowerCase();
     final contacts = <Map<String, String>>[];
 
-    // Officers from OfficerBloc (real API: orgs/{orgId}/members)
+    bool _isSelf(String id) =>
+        id.isEmpty || id == currentUserId || id.toLowerCase() == lowerCurrentId;
+
     final officerState = context.read<OfficerBloc>().state;
     if (officerState is OfficerListLoaded) {
       for (final o in officerState.items) {
-        if (o.actorId.isEmpty || o.actorId == currentUserId) continue;
+        if (o.actorId.isEmpty || _isSelf(o.actorId)) continue;
         contacts.add({
           'id': o.actorId,
           'name': o.displayName,
@@ -81,22 +84,20 @@ class _ConversationFormPageState extends State<ConversationFormPage>
       }
     }
 
-    // Customers from CustomerBloc
     final customerState = context.read<CustomerBloc>().state;
     if (customerState is CustomerListLoaded) {
       for (final c in customerState.items) {
-        if (c.id == currentUserId) continue;
+        if (_isSelf(c.id)) continue;
         contacts.add({'id': c.id, 'name': c.name, 'role': 'customer'});
       }
     }
 
-    // Org members from ActorBloc — fallback for any not already listed
     final actorState = context.read<ActorBloc>().state;
     if (actorState is ActorListLoaded) {
-      final existingIds = contacts.map((c) => c['id']).toSet();
+      final existingIds = contacts.map((c) => c['id']!.toLowerCase()).toSet();
       for (final a in actorState.items) {
-        if (a.id == currentUserId) continue;
-        if (existingIds.contains(a.id)) continue;
+        if (_isSelf(a.id)) continue;
+        if (existingIds.contains(a.id.toLowerCase())) continue;
         final typeLabels = a.actorTypes
             .map((t) => t.label.toLowerCase())
             .toList();

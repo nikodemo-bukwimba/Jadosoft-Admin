@@ -404,6 +404,32 @@ class _MembersTab extends StatelessWidget {
     this.onPrivateMessage,
   });
 
+  String _friendlyRole(String raw) {
+    switch (raw.toLowerCase()) {
+      case 'super_admin':
+        return 'Creator';
+      case 'admin':
+        return 'Admin';
+      case 'member':
+        return 'Member';
+      case 'officer':
+        return 'Officer';
+      case 'customer':
+        return 'Customer';
+      default:
+        // Capitalize first letter, replace underscores with spaces
+        return raw
+            .replaceAll('_', ' ')
+            .split(' ')
+            .map(
+              (w) => w.isEmpty
+                  ? ''
+                  : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}',
+            )
+            .join(' ');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -484,7 +510,7 @@ class _MembersTab extends StatelessWidget {
               ],
             ),
             subtitle: Text(
-              '${p.role.toUpperCase()} • ${p.lastSeenLabel}',
+              '${_friendlyRole(p.role)} • ${p.lastSeenLabel}',
               style: TextStyle(fontSize: 10, color: cs.outline),
             ),
             trailing: !isMe && isAdmin

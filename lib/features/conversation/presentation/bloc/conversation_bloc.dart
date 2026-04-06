@@ -9,9 +9,6 @@ import '../../domain/usecases/update_conversation_usecase.dart';
 import 'conversation_event.dart';
 import 'conversation_state.dart';
 
-// Admin identity is resolved from the authenticated session at runtime.
-// Injected via [ConversationBloc] constructor so the BLoC has no
-// hard-coded credential references.
 class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   final GetAllConversationUseCase getAllUseCase;
   final GetConversationUseCase getUseCase;
@@ -19,13 +16,8 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   final UpdateConversationUseCase updateUseCase;
   final DeleteConversationUseCase deleteUseCase;
 
-  // ── Production datasource (injected) ──────────────────────────────────
-  // The BLoC no longer owns a ConversationMockDataSource singleton.
-  // The concrete type is ConversationRemoteDataSourceImpl in production and
-  // ConversationMockDataSource in tests/dev via the same interface.
   final ConversationRemoteDataSource _ds;
 
-  // Current user identity — provided by the auth session at injection time.
   final String currentUserId;
   final String currentUserName;
   final String currentUserRole;
@@ -40,8 +32,12 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     required this.currentUserId,
     required this.currentUserName,
     required this.currentUserRole,
-  })  : _ds = dataSource,
-        super(ConversationInitial()) {
+  }) : _ds = dataSource,
+       super(ConversationInitial()) {
+    // FIX #2: Register current user's name in the datasource name cache
+    // so that messages sent by this user show their name, not their ULID.
+    _ds.registerName(currentUserId, currentUserName);
+
     on<ConversationLoadAllRequested>(_onLoadAll);
     on<ConversationLoadOneRequested>(_onLoadOne);
     on<ConversationCreateRequested>(_onCreate);
@@ -70,8 +66,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     on<ConversationPrivateReplyRequested>(_onPrivateReply);
     on<ConversationStartNewRequested>(_onStartNew);
 
-    // Real-time callbacks — no-op in REST mode; populated by WebSocket/Pusher
-    // layer when present. The interface contract is identical to mock.
     _ds.onAutoReply = (convId, _) {
       if (!isClosed) add(ConversationAutoReplyReceived(convId));
     };
@@ -136,7 +130,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     emit(ConversationLoading());
     try {
       await _reloadChat(event.id, emit);
-      // Mark conversation as read on open
       await _ds.markAsRead(event.id);
     } catch (e) {
       emit(ConversationFailure(e.toString()));
@@ -224,7 +217,8 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   ) async {
     if (state is! ConversationChatLoaded) return;
     if ((state as ConversationChatLoaded).conversation.id !=
-        event.conversationId) return;
+        event.conversationId)
+      return;
     try {
       await _reloadChat(event.conversationId, emit);
     } catch (_) {}
@@ -272,8 +266,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
       await _ds.togglePin(event.conversationId, event.messageId);
       await _reloadChat(event.conversationId, emit);
     } catch (e) {
-      // 🔴 Pin endpoint not yet available — silently ignore 404
-      // Remove the catch once the API implements /messages/{scope}/{id}/pin
       emit(ConversationFailure(e.toString()));
     }
   }
@@ -286,7 +278,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
       await _ds.toggleStar(event.conversationId, event.messageId);
       await _reloadChat(event.conversationId, emit);
     } catch (e) {
-      // 🔴 Star endpoint not yet available
       emit(ConversationFailure(e.toString()));
     }
   }
@@ -296,11 +287,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _ds.addReaction(
-        event.conversationId,
-        event.messageId,
-        event.emoji,
-      );
+      await _ds.addReaction(event.conversationId, event.messageId, event.emoji);
       await _reloadChat(event.conversationId, emit);
     } catch (e) {
       emit(ConversationFailure(e.toString()));
@@ -319,7 +306,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
       );
       await _reloadChat(event.conversationId, emit);
     } catch (e) {
-      // 🔴 Edit endpoint not yet available
       emit(ConversationFailure(e.toString()));
     }
   }
@@ -354,16 +340,13 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
       emit(s.copyWith(clearSearch: true));
       return;
     }
-    // Client-side search over already-loaded messages
     final results = _ds.searchMessages(event.conversationId, event.query);
-    // Fallback: if the datasource returns empty (API impl), search in-memory
     final effective = results.isNotEmpty
         ? results
         : s.messages
               .where(
-                (m) => m.content
-                    .toLowerCase()
-                    .contains(event.query.toLowerCase()),
+                (m) =>
+                    m.content.toLowerCase().contains(event.query.toLowerCase()),
               )
               .toList();
     emit(s.copyWith(searchResults: effective, searchQuery: event.query));
@@ -504,6 +487,16 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   ) async {
     emit(ConversationLoading());
     try {
+      // FIX #5: Register participant names in the datasource cache
+      // so that when the API returns only actor IDs, we can resolve names.
+      for (final p in event.participants) {
+        final id = p['id'] ?? '';
+        final name = p['name'] ?? '';
+        if (id.isNotEmpty && name.isNotEmpty) {
+          _ds.registerName(id, name);
+        }
+      }
+
       final participantMaps = <Map<String, dynamic>>[
         {
           'id': currentUserId,
@@ -525,11 +518,11 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
         ),
       ];
 
-      // For direct conversations the API only needs recipient_actor_id
       final body = event.type == 'group'
           ? {
               'type': event.type,
               'title': event.title,
+              '_currentUserId': currentUserId,
               'participants': participantMaps,
             }
           : {
@@ -540,12 +533,15 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
 
       final conv = await _ds.create(body);
 
+      // FIX #6: Send first message AFTER creation and wait for it,
+      // then emit the navigation event. This ensures the backend processes
+      // the system "group_created" message first, then our message.
       if (event.firstMessage != null && event.firstMessage!.isNotEmpty) {
-        await _ds.sendMessage(
-          convId: conv.id,
-          content: event.firstMessage!,
-        );
+        // Small delay to let backend process the system message first
+        await Future.delayed(const Duration(milliseconds: 300));
+        await _ds.sendMessage(convId: conv.id, content: event.firstMessage!);
       }
+
       emit(ConversationNewCreated(conv.id));
     } catch (e) {
       emit(ConversationFailure(e.toString()));

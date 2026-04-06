@@ -758,6 +758,13 @@ Future<void> initDependencies() async {
       currentUserRole: _activeSession?.user.primaryRole?.slug ?? 'admin',
     ),
   );
+  final convDs = sl<ConversationRemoteDataSource>();
+  final convUserId =
+      _activeSession?.user.actorId ?? _activeSession?.user.id ?? '';
+  final convUserName = _activeSession?.user.name ?? '';
+  if (convUserId.isNotEmpty && convUserName.isNotEmpty) {
+    convDs.registerName(convUserId, convUserName);
+  }
 
   // Seq 15 — Orders (L3)
   // DEVELOPMENT (mock — active now):

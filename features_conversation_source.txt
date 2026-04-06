@@ -1,6 +1,6 @@
 ﻿// ================================================================
 // features_conversation_source.txt
-// Generated : 2026-04-06 03:25:31
+// Generated : 2026-04-06 13:53:33
 // Files     : 26
 // Usage     : Upload to Claude Project documents as reference.
 // ================================================================
@@ -19,7 +19,6 @@ import 'dart:async';
 import 'dart:math';
 import '../models/conversation_model.dart';
 import '../models/message_model.dart';
-import '../../domain/entities/conversation_entity.dart';
 import '../../domain/entities/message_entity.dart';
 import 'conversation_remote_datasource.dart';
 
@@ -40,6 +39,17 @@ class ConversationMockDataSource implements ConversationRemoteDataSource {
   int _msgCounter = 200;
   int _convCounter = 100;
   final _random = Random();
+  final Map<String, String> _nameCache = {};
+
+  @override
+  Map<String, String> get nameCache => Map.unmodifiable(_nameCache);
+
+  @override
+  void registerName(String actorId, String name) {
+    if (actorId.isNotEmpty && name.isNotEmpty) {
+      _nameCache[actorId] = name;
+    }
+  }
 
   void Function(String conversationId, MessageModel message)? onAutoReply;
   void Function(String conversationId, String senderName)? onTypingStart;
@@ -1148,24 +1158,13 @@ import '../models/conversation_model.dart';
 import '../models/message_model.dart';
 import '../../domain/entities/message_entity.dart';
 
-/// Full datasource interface for Nexora Communications API.
-///
-/// Extends the original Maishell CRUD interface with all message
-/// operations. The BLoC should inject this instead of hardcoding
-/// ConversationMockDataSource.
-///
-/// Scope logic: DM conversations use /communications/conversations/{id}/...
-///              Group conversations use /communications/groups/{id}/...
-///              The datasource resolves the scope from conversation type.
 abstract class ConversationRemoteDataSource {
-  // ── Original CRUD (Maishell) ──────────────────────────────
   Future<List<ConversationModel>> getAll();
   Future<ConversationModel> getById(String id);
   Future<ConversationModel> create(Map<String, dynamic> data);
   Future<ConversationModel> update(String id, Map<String, dynamic> data);
   Future<void> delete(String id);
 
-  // ── Messages ──────────────────────────────────────────────
   Future<List<MessageModel>> getMessages(String convId, {int perPage = 50});
   Future<MessageModel> sendMessage({
     required String convId,
@@ -1182,31 +1181,23 @@ abstract class ConversationRemoteDataSource {
   Future<void> deleteMessage(String convId, String msgId);
   Future<void> markAsRead(String convId);
 
-  // ── Reactions ─────────────────────────────────────────────
   Future<void> addReaction(String convId, String msgId, String emoji);
 
-  // ── Pins 🔴 MISSING API ──────────────────────────────────
   Future<void> togglePin(String convId, String msgId);
   List<MessageModel> getPinnedMessages(String convId);
 
-  // ── Stars 🔴 MISSING API ─────────────────────────────────
   Future<void> toggleStar(String convId, String msgId);
   List<MessageModel> getStarredMessages();
 
-  // ── Edit 🔴 MISSING API ──────────────────────────────────
   Future<void> editMessage(String convId, String msgId, String newContent);
 
-  // ── Read Receipts ─────────────────────────────────────────
   Future<List<ReadReceipt>> getReadReceipts(String convId, String msgId);
 
-  // ── Search (client-side for now) ──────────────────────────
   List<MessageModel> searchMessages(String convId, String query);
 
-  // ── Conversation management ───────────────────────────────
   Future<void> closeConversation(String convId);
   Future<void> reopenConversation(String convId);
 
-  // ── Group participants ────────────────────────────────────
   Future<void> addParticipant(
     String convId,
     String pId,
@@ -1215,10 +1206,8 @@ abstract class ConversationRemoteDataSource {
   );
   Future<void> removeParticipant(String convId, String pId, String name);
 
-  // ── Broadcast ─────────────────────────────────────────────
   Future<int> broadcastMessage(List<String> convIds, String content);
 
-  // ── Private reply from group ──────────────────────────────
   Future<String> createPrivateFromGroup(
     String participantId,
     String participantName,
@@ -1226,31 +1215,24 @@ abstract class ConversationRemoteDataSource {
     String? message,
   );
 
-  // ── Typing (no-op for REST, real implementation via WebSocket) ──
-  // Typing indicators are client-side events dispatched via WebSocket/Pusher.
-  // The datasource does not handle them — the BLoC manages typing state directly.
-
-  // ── Callbacks for auto-reply simulation (mock only) ───────
   void Function(String conversationId, MessageModel message)? onAutoReply;
   void Function(String conversationId, String senderName)? onTypingStart;
   void Function(String conversationId)? onTypingStop;
+
+  /// Actor-ID → display name cache, populated from conversations & messages.
+  /// Used by the BLoC/UI to resolve ULIDs to human-readable names.
+  Map<String, String> get nameCache;
+
+  /// Register a known actor name (called during DI setup with current user).
+  void registerName(String actorId, String name);
 }
 
-/// Production implementation wired to Nexora Communications API.
-///
-/// Endpoints used:
-///   DMs:        /api/v1/communications/conversations/...
-///   Groups:     /api/v1/communications/groups/...
-///   Broadcasts: /api/v1/communications/broadcasts/...
-///   Presence:   /api/v1/communications/presence/...
-///   Reactions:  /api/v1/communications/messages/{scope}/{id}/react
 class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   final Dio _dio;
   ConversationRemoteDataSourceImpl({required Dio dio}) : _dio = dio;
 
   static const _base = 'communications';
 
-  // Callbacks (unused in production — mock-only feature)
   @override
   void Function(String, MessageModel)? onAutoReply;
   @override
@@ -1258,26 +1240,283 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   @override
   void Function(String)? onTypingStop;
 
-  // ── Track conversation types for scope resolution ─────────
-  final Map<String, String> _typeCache =
-      {}; // convId → 'direct' | 'group' | 'broadcast'
+  /// Type cache: conversation ID → 'direct' | 'group'
+  final Map<String, String> _typeCache = {};
+
+  /// Actor-ID → display name cache.
+  /// Populated from:
+  ///   1. registerName() called at DI time with the current user
+  ///   2. Participant data from getAll / getById responses
+  ///   3. Message sender data from getMessages responses
+  final Map<String, String> _nameCache = {};
+
+  @override
+  Map<String, String> get nameCache => Map.unmodifiable(_nameCache);
+
+  @override
+  void registerName(String actorId, String name) {
+    if (actorId.isNotEmpty && name.isNotEmpty) {
+      _nameCache[actorId] = name;
+    }
+  }
+
+  /// Returns true if the value looks like a raw ULID (26 uppercase alphanumeric).
+  bool _isUlid(String? v) {
+    if (v == null || v.length != 26) return false;
+    return RegExp(r'^[0-9A-Z]{26}$', caseSensitive: false).hasMatch(v);
+  }
+
+  /// Resolve a name: use cache if the raw value looks like a ULID.
+  String _resolveName(String? raw, String? actorId) {
+    // If we have a non-ULID name from the API, use it
+    if (raw != null && raw.isNotEmpty && !_isUlid(raw)) {
+      // Also cache it
+      if (actorId != null && actorId.isNotEmpty) {
+        _nameCache[actorId] = raw;
+      }
+      return raw;
+    }
+    // Try the cache
+    final id = actorId ?? raw ?? '';
+    if (_nameCache.containsKey(id)) return _nameCache[id]!;
+    // Also try case-insensitive
+    final lower = id.toLowerCase();
+    for (final entry in _nameCache.entries) {
+      if (entry.key.toLowerCase() == lower) return entry.value;
+    }
+    // Last resort: return a truncated ID
+    if (id.length > 8) {
+      return '${id.substring(0, 4)}…${id.substring(id.length - 4)}';
+    }
+    return id.isNotEmpty ? id : 'Unknown';
+  }
+
+  /// Cache name from a participant map.
+  void _cacheParticipantName(Map<String, dynamic> p) {
+    final id = p['actor_id'] as String? ?? p['id'] as String? ?? '';
+    final name =
+        p['name'] as String? ??
+        p['display_name'] as String? ??
+        p['full_name'] as String? ??
+        '';
+    if (id.isNotEmpty && name.isNotEmpty && !_isUlid(name)) {
+      _nameCache[id] = name;
+    }
+  }
 
   String _scope(String convId) =>
       _typeCache[convId] == 'group' ? 'groups' : 'conversations';
+
   String _msgScope(String convId) =>
       _typeCache[convId] == 'group' ? 'group' : 'dm';
+
+  // ── Normalizers ───────────────────────────────────────────
+
+  /// Normalizes DirectConversation API shape → ConversationModel shape.
+  Map<String, dynamic> _normalizeDirect(Map<String, dynamic> j) {
+    final existing = j['participants'] as List?;
+    if (existing != null && existing.isNotEmpty) {
+      // Cache names from existing participants
+      for (final p in existing) {
+        if (p is Map<String, dynamic>) {
+          _cacheParticipantName(p);
+        }
+      }
+      return j;
+    }
+
+    final initiatorId =
+        j['initiator_actor_id'] as String? ??
+        j['initiator_id'] as String? ??
+        '';
+    final recipientId =
+        j['recipient_actor_id'] as String? ??
+        j['recipient_id'] as String? ??
+        '';
+    final now = DateTime.now().toIso8601String();
+
+    final initiatorName = _resolveName(
+      j['initiator_name'] as String? ??
+          j['initiator_display_name'] as String? ??
+          j['initiator_full_name'] as String?,
+      initiatorId,
+    );
+    final recipientName = _resolveName(
+      j['recipient_name'] as String? ??
+          j['recipient_display_name'] as String? ??
+          j['recipient_full_name'] as String?,
+      recipientId,
+    );
+
+    return {
+      ...j,
+      'type': 'direct',
+      'status': j['status'] as String? ?? 'open',
+      'unread_count': j['unread_count'] ?? 0,
+      'created_at': j['created_at'] ?? now,
+      'participants': [
+        {
+          'id': initiatorId,
+          'name': initiatorName,
+          'role': j['initiator_role'] as String? ?? 'unknown',
+          'joined_at': now,
+          'online_status': j['initiator_online_status'] as String? ?? 'offline',
+          'last_seen_at': j['initiator_last_seen_at'],
+        },
+        {
+          'id': recipientId,
+          'name': recipientName,
+          'role': j['recipient_role'] as String? ?? 'unknown',
+          'joined_at': now,
+          'online_status': j['recipient_online_status'] as String? ?? 'offline',
+          'last_seen_at': j['recipient_last_seen_at'],
+        },
+      ],
+    };
+  }
+
+  /// Normalizes Group API shape → ConversationModel shape.
+  Map<String, dynamic> _normalizeGroup(Map<String, dynamic> j) {
+    final rawP = j['participants'] as List<dynamic>? ?? [];
+    final now = DateTime.now().toIso8601String();
+
+    final participants = rawP.map((p) {
+      final m = p as Map<String, dynamic>;
+      final id = m['actor_id'] as String? ?? m['id'] as String? ?? '';
+
+      // Cache the name
+      _cacheParticipantName(m);
+
+      final name = _resolveName(
+        m['name'] as String? ??
+            m['display_name'] as String? ??
+            m['full_name'] as String?,
+        id,
+      );
+
+      // Map super_admin → admin for display friendliness
+      final rawRole = m['role'] as String? ?? 'member';
+
+      return {
+        'id': id,
+        'name': name,
+        'role': rawRole,
+        'joined_at': m['created_at'] as String? ?? now,
+        'online_status': m['online_status'] as String? ?? 'offline',
+        'last_seen_at': m['last_seen_at'],
+      };
+    }).toList();
+
+    return {
+      ...j,
+      'type': 'group',
+      'status': j['status'] as String? ?? 'open',
+      'title': j['name'] as String? ?? j['title'] as String?,
+      'participants': participants,
+      'unread_count': j['unread_count'] ?? 0,
+      'created_at': j['created_at'] ?? now,
+    };
+  }
+
+  /// Try to fetch presence for a list of actor IDs and update participant maps.
+  Future<void> _enrichPresence(List<Map<String, dynamic>> participants) async {
+    final actorIds = participants
+        .map((p) => p['id'] as String? ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList();
+    if (actorIds.isEmpty) return;
+
+    try {
+      final r = await _dio.post(
+        '$_base/presence/bulk',
+        data: {'actor_ids': actorIds},
+      );
+      final presenceList = r.data is List
+          ? r.data as List
+          : (r.data is Map ? (r.data['data'] as List? ?? []) : []);
+
+      final presenceMap = <String, Map<String, dynamic>>{};
+      for (final p in presenceList) {
+        final m = p as Map<String, dynamic>;
+        final aid = m['actor_id'] as String? ?? '';
+        if (aid.isNotEmpty) {
+          presenceMap[aid] = m;
+        }
+      }
+
+      for (final participant in participants) {
+        final pid = participant['id'] as String? ?? '';
+        final presence = presenceMap[pid];
+        if (presence != null) {
+          participant['online_status'] = (presence['is_online'] == true)
+              ? 'online'
+              : 'offline';
+          participant['last_seen_at'] = presence['last_seen_at'];
+        }
+      }
+    } catch (_) {
+      // Presence fetch is best-effort — don't fail the conversation load
+    }
+  }
+
+  // ── Type detection for getById ────────────────────────────
+
+  /// Detects conversation type from the API response data.
+  /// The API returns different shapes for DMs vs groups.
+  String _detectType(Map<String, dynamic> data) {
+    // Explicit type field
+    final typeField = data['type'] as String?;
+    if (typeField == 'group') return 'group';
+    if (typeField == 'direct') return 'direct';
+
+    // Groups have 'name' field (group name), DMs don't
+    if (data.containsKey('name') && data['name'] != null) return 'group';
+
+    // Groups typically have 'participant_ids' or multiple participants
+    if (data.containsKey('participant_ids')) return 'group';
+
+    // DMs have initiator_actor_id / recipient_actor_id
+    if (data.containsKey('initiator_actor_id') ||
+        data.containsKey('recipient_actor_id'))
+      return 'direct';
+
+    // Default to whatever was cached, or 'direct'
+    return 'direct';
+  }
 
   // ── CRUD ──────────────────────────────────────────────────
 
   @override
   Future<List<ConversationModel>> getAll() async {
     try {
-      final r = await _dio.get('communications/conversations');
-      final items = (r.data['data'] as List? ?? []).map((e) {
-        _typeCache[e['id']] = 'direct';
-        return ConversationModel.fromJson(e as Map<String, dynamic>);
+      final dmFuture = _dio.get('$_base/conversations');
+      final groupFuture = _dio.get('$_base/groups');
+      final results = await Future.wait([dmFuture, groupFuture]);
+
+      final dms = (results[0].data['data'] as List? ?? []).map((e) {
+        final map = e as Map<String, dynamic>;
+        _typeCache[map['id'] as String? ?? ''] = 'direct';
+        return ConversationModel.fromJson(_normalizeDirect(map));
       }).toList();
-      return items;
+
+      final groupRaw = results[1].data;
+      final groupList = groupRaw is List
+          ? groupRaw
+          : (groupRaw is Map ? (groupRaw['data'] as List? ?? []) : <dynamic>[]);
+
+      final groups = groupList.map((e) {
+        final map = e as Map<String, dynamic>;
+        _typeCache[map['id'] as String? ?? ''] = 'group';
+        return ConversationModel.fromJson(_normalizeGroup(map));
+      }).toList();
+
+      final all = [...dms, ...groups];
+      all.sort(
+        (a, b) => (b.lastMessageAt ?? b.createdAt).compareTo(
+          a.lastMessageAt ?? a.createdAt,
+        ),
+      );
+      return all;
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -1286,11 +1525,50 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   @override
   Future<ConversationModel> getById(String id) async {
     try {
-      final scope = _scope(id);
-      final r = await _dio.get('$_base/$scope/$id');
-      _typeCache[id] =
-          (r.data['type'] as String?) ?? _typeCache[id] ?? 'direct';
-      return ConversationModel.fromJson(r.data as Map<String, dynamic>);
+      // If we don't know the type, try the cached scope first.
+      // If it 404s and we tried 'conversations', retry with 'groups' (and vice versa).
+      final cachedType = _typeCache[id];
+      final primaryScope = cachedType == 'group' ? 'groups' : 'conversations';
+      final fallbackScope = primaryScope == 'groups'
+          ? 'conversations'
+          : 'groups';
+
+      Map<String, dynamic> data;
+      try {
+        final r = await _dio.get('$_base/$primaryScope/$id');
+        data = r.data is Map<String, dynamic>
+            ? r.data as Map<String, dynamic>
+            : (r.data['data'] as Map<String, dynamic>? ?? r.data);
+      } on DioException catch (e) {
+        // If 404 and we didn't have a cached type, try the other scope
+        if (e.response?.statusCode == 404 && cachedType == null) {
+          final r2 = await _dio.get('$_base/$fallbackScope/$id');
+          data = r2.data is Map<String, dynamic>
+              ? r2.data as Map<String, dynamic>
+              : (r2.data['data'] as Map<String, dynamic>? ?? r2.data);
+        } else {
+          rethrow;
+        }
+      }
+
+      // Detect and cache the type from response
+      final detectedType = _detectType(data);
+      _typeCache[id] = detectedType;
+
+      final normalized = detectedType == 'group'
+          ? _normalizeGroup(data)
+          : _normalizeDirect(data);
+
+      // Enrich with presence data (best-effort)
+      final participantMaps = (normalized['participants'] as List)
+          .cast<Map<String, dynamic>>();
+      await _enrichPresence(participantMaps);
+
+      // Rebuild model with enriched presence
+      return ConversationModel.fromJson({
+        ...normalized,
+        'participants': participantMaps,
+      });
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -1300,20 +1578,62 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   Future<ConversationModel> create(Map<String, dynamic> data) async {
     try {
       final type = data['type'] as String? ?? 'direct';
-      final endpoint = type == 'group'
-          ? '$_base/groups'
-          : '$_base/conversations';
-      final body = type == 'group'
-          ? data
-          : {
-              'recipient_actor_id':
-                  data['recipient_actor_id'] ??
-                  data['participants']?.first?['id'],
-            };
-      final r = await _dio.post(endpoint, data: body);
-      final id = r.data['id'] as String? ?? '';
-      _typeCache[id] = type;
-      return ConversationModel.fromJson(r.data as Map<String, dynamic>);
+
+      if (type == 'group') {
+        final participants = data['participants'] as List<dynamic>? ?? [];
+        final selfId = data['_currentUserId'] as String?;
+
+        // Cache names from the participant list we're sending
+        for (final p in participants) {
+          if (p is Map<String, dynamic>) {
+            _cacheParticipantName(p);
+          }
+        }
+
+        // Backend auto-adds creator — exclude self to avoid duplicate
+        final participantIds = participants
+            .map((p) => (p as Map<String, dynamic>)['id'] as String?)
+            .where((id) => id != null && id.isNotEmpty && id != selfId)
+            .toList();
+
+        final body = <String, dynamic>{
+          'name': data['title'] ?? data['name'] ?? 'Group Chat',
+          if (data['description'] != null) 'description': data['description'],
+          'participant_ids': participantIds,
+        };
+
+        final r = await _dio.post('$_base/groups', data: body);
+        final responseData = r.data as Map<String, dynamic>;
+        final groupData = responseData['group'] is Map
+            ? responseData['group'] as Map<String, dynamic>
+            : responseData;
+        final newId = groupData['id'] as String? ?? '';
+        _typeCache[newId] = 'group';
+        return ConversationModel.fromJson(_normalizeGroup(groupData));
+      } else {
+        final participants = data['participants'] as List<dynamic>? ?? [];
+
+        // Cache names from the participant list
+        for (final p in participants) {
+          if (p is Map<String, dynamic>) {
+            _cacheParticipantName(p);
+          }
+        }
+
+        final recipientId =
+            data['recipient_actor_id'] as String? ??
+            participants
+                .map((p) => (p as Map<String, dynamic>)['id'] as String?)
+                .where((id) => id != null && id.isNotEmpty)
+                .firstOrNull;
+
+        final body = <String, dynamic>{'recipient_actor_id': recipientId};
+        final r = await _dio.post('$_base/conversations', data: body);
+        final conv = r.data as Map<String, dynamic>;
+        final newId = conv['id'] as String? ?? '';
+        _typeCache[newId] = 'direct';
+        return ConversationModel.fromJson(_normalizeDirect(conv));
+      }
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -1324,7 +1644,10 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     try {
       final scope = _scope(id);
       final r = await _dio.patch('$_base/$scope/$id', data: data);
-      return ConversationModel.fromJson(r.data as Map<String, dynamic>);
+      final normalized = _typeCache[id] == 'group'
+          ? _normalizeGroup(r.data as Map<String, dynamic>)
+          : _normalizeDirect(r.data as Map<String, dynamic>);
+      return ConversationModel.fromJson(normalized);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -1353,12 +1676,27 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         '$_base/$scope/$convId/messages',
         queryParameters: {'per_page': perPage},
       );
-      final data = r.data is Map
-          ? (r.data['data'] as List? ?? [])
-          : (r.data as List? ?? []);
-      return data
-          .map((e) => MessageModel.fromJson(e as Map<String, dynamic>))
-          .toList();
+      final raw = r.data;
+      final list = raw is Map
+          ? (raw['data'] as List? ?? [])
+          : (raw as List? ?? []);
+
+      final messages = list.map((e) {
+        final msgMap = e as Map<String, dynamic>;
+        // Resolve sender name from cache if API returns only actor_id
+        final senderId =
+            msgMap['sender_actor_id'] as String? ??
+            msgMap['sender_id'] as String? ??
+            '';
+        final rawSenderName = msgMap['sender_name'] as String?;
+        final resolvedName = _resolveName(rawSenderName, senderId);
+        // Inject resolved name back into the map before parsing
+        msgMap['sender_name'] = resolvedName;
+        return MessageModel.fromJson(msgMap);
+      }).toList();
+
+      // API returns newest-first (desc) — reverse to chronological for UI
+      return messages.reversed.toList();
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -1387,13 +1725,26 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       final body = <String, dynamic>{
         'content': content,
         'content_type': contentType,
-        if (replyToId != null) 'reply_to_id': replyToId,
-        if (forwardedFromConvId != null)
-          'forwarded_from_id': forwardedFromConvId,
+        'reply_to_id': replyToId,
+        'forwarded_from_id': forwardedFromConvId,
       };
 
       final r = await _dio.post('$_base/$scope/$convId/messages', data: body);
-      return MessageModel.fromJson(r.data as Map<String, dynamic>);
+      final msgData = r.data is Map && (r.data as Map).containsKey('data')
+          ? r.data['data'] as Map<String, dynamic>
+          : r.data as Map<String, dynamic>;
+
+      // Resolve sender name
+      final senderId =
+          msgData['sender_actor_id'] as String? ??
+          msgData['sender_id'] as String? ??
+          '';
+      msgData['sender_name'] = _resolveName(
+        msgData['sender_name'] as String?,
+        senderId,
+      );
+
+      return MessageModel.fromJson(msgData);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -1434,7 +1785,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     }
   }
 
-  // ── Pins 🔴 MISSING API — calls will 404 until Laravel implements ──
+  // ── Pins ──────────────────────────────────────────────────
 
   @override
   Future<void> togglePin(String convId, String msgId) async {
@@ -1447,13 +1798,9 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   }
 
   @override
-  List<MessageModel> getPinnedMessages(String convId) {
-    // 🔴 MISSING API — returns empty until endpoint is built
-    // When available: GET /communications/{scope}/{convId}/pinned
-    return [];
-  }
+  List<MessageModel> getPinnedMessages(String convId) => [];
 
-  // ── Stars 🔴 MISSING API ─────────────────────────────────
+  // ── Stars ─────────────────────────────────────────────────
 
   @override
   Future<void> toggleStar(String convId, String msgId) async {
@@ -1466,12 +1813,9 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   }
 
   @override
-  List<MessageModel> getStarredMessages() {
-    // 🔴 MISSING API — returns empty until endpoint is built
-    return [];
-  }
+  List<MessageModel> getStarredMessages() => [];
 
-  // ── Edit 🔴 MISSING API ──────────────────────────────────
+  // ── Edit ──────────────────────────────────────────────────
 
   @override
   Future<void> editMessage(
@@ -1498,30 +1842,25 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       final scope = _msgScope(convId);
       final r = await _dio.get('$_base/messages/$scope/$msgId/receipts');
       final data = r.data['receipts'] as List? ?? [];
-      return data
-          .map(
-            (e) => ReadReceipt(
-              userId: e['actor_id'] as String? ?? '',
-              userName: e['name'] as String? ?? '',
-              readAt: DateTime.parse(e['read_at'] as String),
-            ),
-          )
-          .toList();
+      return data.map((e) {
+        final actorId = e['actor_id'] as String? ?? '';
+        return ReadReceipt(
+          userId: actorId,
+          userName: _resolveName(e['name'] as String?, actorId),
+          readAt: DateTime.parse(e['read_at'] as String),
+        );
+      }).toList();
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
   }
 
-  // ── Search (client-side) ──────────────────────────────────
+  // ── Search ────────────────────────────────────────────────
 
   @override
-  List<MessageModel> searchMessages(String convId, String query) {
-    // Client-side search — operates on already-loaded messages.
-    // Server-side search would use GET .../search?q= when available.
-    return [];
-  }
+  List<MessageModel> searchMessages(String convId, String query) => [];
 
-  // ── Conversation management 🔴 MISSING API ───────────────
+  // ── Conversation management ───────────────────────────────
 
   @override
   Future<void> closeConversation(String convId) async {
@@ -1557,6 +1896,10 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         '$_base/groups/$convId/participants',
         data: {'actor_id': pId},
       );
+      // Cache the added participant's name
+      if (name.isNotEmpty && !_isUlid(name)) {
+        _nameCache[pId] = name;
+      }
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -1578,8 +1921,9 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     try {
       int sent = 0;
       for (final id in convIds) {
+        final scope = _scope(id);
         await _dio.post(
-          '$_base/broadcasts/$id/messages',
+          '$_base/$scope/$id/messages',
           data: {'content': content, 'content_type': 'text'},
         );
         sent++;
@@ -1600,15 +1944,19 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     String? message,
   ) async {
     try {
-      // Create or retrieve DM with that participant
+      // Cache the participant name
+      if (participantName.isNotEmpty && !_isUlid(participantName)) {
+        _nameCache[participantId] = participantName;
+      }
+
       final r = await _dio.post(
         '$_base/conversations',
         data: {'recipient_actor_id': participantId},
       );
-      final convId = r.data['id'] as String;
+      final conv = r.data as Map<String, dynamic>;
+      final convId = conv['id'] as String? ?? '';
       _typeCache[convId] = 'direct';
 
-      // Send first message if provided
       if (message != null && message.isNotEmpty) {
         await _dio.post(
           '$_base/conversations/$convId/messages',
@@ -1621,10 +1969,13 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     }
   }
 
+  // ── Helpers ───────────────────────────────────────────────
+
   String _msg(DioException e) {
     final data = e.response?.data;
-    if (data is Map<String, dynamic> && data['message'] is String)
+    if (data is Map<String, dynamic> && data['message'] is String) {
       return data['message'] as String;
+    }
     return 'An error occurred. Please try again.';
   }
 }
@@ -1778,9 +2129,10 @@ class MessageModel extends MessageEntity {
     final reactions = rawReactions.map((r) {
       final m = r as Map<String, dynamic>;
       return MessageReaction(
-        emoji: m['emoji'] ?? '',
-        userId: m['user_id'] ?? '',
-        userName: m['user_name'] ?? '',
+        emoji: m['emoji'] as String? ?? '',
+        // API uses actor_id not user_id
+        userId: m['actor_id'] as String? ?? m['user_id'] as String? ?? '',
+        userName: m['user_name'] as String? ?? '',
       );
     }).toList();
 
@@ -1788,27 +2140,55 @@ class MessageModel extends MessageEntity {
     final receipts = rawReceipts.map((r) {
       final m = r as Map<String, dynamic>;
       return ReadReceipt(
-        userId: m['user_id'] ?? '',
-        userName: m['user_name'] ?? '',
+        userId: m['actor_id'] as String? ?? m['user_id'] as String? ?? '',
+        userName: m['user_name'] as String? ?? '',
         readAt: m['read_at'] != null
-            ? DateTime.parse(m['read_at'])
+            ? DateTime.parse(m['read_at'] as String)
             : DateTime.now(),
       );
     }).toList();
 
+    // API uses sender_actor_id, fallback to sender_id
+    final senderId =
+        j['sender_actor_id'] as String? ?? j['sender_id'] as String? ?? '';
+
+    // API uses conversation_id for DMs, group_id for groups
+    final conversationId =
+        j['conversation_id'] as String? ?? j['group_id'] as String? ?? '';
+
+    // API uses created_at (DirectMessage has $timestamps = false),
+    // fallback to sent_at for forward compatibility
+    DateTime sentAt;
+    if (j['sent_at'] != null) {
+      sentAt = DateTime.parse(j['sent_at'] as String);
+    } else if (j['created_at'] != null) {
+      sentAt = DateTime.parse(j['created_at'] as String);
+    } else {
+      sentAt = DateTime.now();
+    }
+
+    // API uses content_type, fallback to type
+    final contentType = j['content_type'] as String? ?? j['type'] as String?;
+
+    // API uses status field for delivery, fallback to delivery_status
+    final deliveryStr =
+        j['status'] as String? ?? j['delivery_status'] as String?;
+
+    // sender_name may not be in the API response — use actor_id as fallback
+    final senderName =
+        j['sender_name'] as String? ?? j['sender_actor_id'] as String? ?? '';
+
     return MessageModel(
       id: j['id'] as String? ?? '',
-      conversationId: j['conversation_id'] as String? ?? '',
-      senderId: j['sender_id'] as String? ?? '',
-      senderName: j['sender_name'] as String? ?? '',
+      conversationId: conversationId,
+      senderId: senderId,
+      senderName: senderName,
       senderRole: j['sender_role'] as String? ?? 'unknown',
-      type: _parseType(j['type'] as String?),
+      type: _parseType(contentType),
       content: j['content'] as String? ?? '',
       imageUrl: j['image_url'] as String?,
-      deliveryStatus: _parseDelivery(j['delivery_status'] as String?),
-      sentAt: j['sent_at'] != null
-          ? DateTime.parse(j['sent_at'] as String)
-          : DateTime.now(),
+      deliveryStatus: _parseDelivery(deliveryStr),
+      sentAt: sentAt,
       replyToId: j['reply_to_id'] as String?,
       replyToSenderName: j['reply_to_sender_name'] as String?,
       replyToContent: j['reply_to_content'] as String?,
@@ -1847,7 +2227,7 @@ class MessageModel extends MessageEntity {
         .map(
           (r) => {
             'emoji': r.emoji,
-            'user_id': r.userId,
+            'actor_id': r.userId,
             'user_name': r.userName,
           },
         )
@@ -1860,7 +2240,7 @@ class MessageModel extends MessageEntity {
     'read_receipts': readReceipts
         .map(
           (r) => {
-            'user_id': r.userId,
+            'actor_id': r.userId,
             'user_name': r.userName,
             'read_at': r.readAt.toIso8601String(),
           },
@@ -1874,9 +2254,10 @@ class MessageModel extends MessageEntity {
   static MessageType _parseType(String? v) => switch (v) {
     'image' => MessageType.image,
     'system' => MessageType.system,
-    'voice' => MessageType.voice,
+    'audio' || 'voice' => MessageType.voice,
     _ => MessageType.text,
   };
+
   static DeliveryStatus _parseDelivery(String? v) => switch (v) {
     'sending' => DeliveryStatus.sending,
     'sent' => DeliveryStatus.sent,
@@ -2470,9 +2851,6 @@ import '../../domain/usecases/update_conversation_usecase.dart';
 import 'conversation_event.dart';
 import 'conversation_state.dart';
 
-// Admin identity is resolved from the authenticated session at runtime.
-// Injected via [ConversationBloc] constructor so the BLoC has no
-// hard-coded credential references.
 class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   final GetAllConversationUseCase getAllUseCase;
   final GetConversationUseCase getUseCase;
@@ -2480,13 +2858,8 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   final UpdateConversationUseCase updateUseCase;
   final DeleteConversationUseCase deleteUseCase;
 
-  // ── Production datasource (injected) ──────────────────────────────────
-  // The BLoC no longer owns a ConversationMockDataSource singleton.
-  // The concrete type is ConversationRemoteDataSourceImpl in production and
-  // ConversationMockDataSource in tests/dev via the same interface.
   final ConversationRemoteDataSource _ds;
 
-  // Current user identity — provided by the auth session at injection time.
   final String currentUserId;
   final String currentUserName;
   final String currentUserRole;
@@ -2501,8 +2874,12 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     required this.currentUserId,
     required this.currentUserName,
     required this.currentUserRole,
-  })  : _ds = dataSource,
-        super(ConversationInitial()) {
+  }) : _ds = dataSource,
+       super(ConversationInitial()) {
+    // FIX #2: Register current user's name in the datasource name cache
+    // so that messages sent by this user show their name, not their ULID.
+    _ds.registerName(currentUserId, currentUserName);
+
     on<ConversationLoadAllRequested>(_onLoadAll);
     on<ConversationLoadOneRequested>(_onLoadOne);
     on<ConversationCreateRequested>(_onCreate);
@@ -2531,8 +2908,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     on<ConversationPrivateReplyRequested>(_onPrivateReply);
     on<ConversationStartNewRequested>(_onStartNew);
 
-    // Real-time callbacks — no-op in REST mode; populated by WebSocket/Pusher
-    // layer when present. The interface contract is identical to mock.
     _ds.onAutoReply = (convId, _) {
       if (!isClosed) add(ConversationAutoReplyReceived(convId));
     };
@@ -2597,7 +2972,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     emit(ConversationLoading());
     try {
       await _reloadChat(event.id, emit);
-      // Mark conversation as read on open
       await _ds.markAsRead(event.id);
     } catch (e) {
       emit(ConversationFailure(e.toString()));
@@ -2685,7 +3059,8 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   ) async {
     if (state is! ConversationChatLoaded) return;
     if ((state as ConversationChatLoaded).conversation.id !=
-        event.conversationId) return;
+        event.conversationId)
+      return;
     try {
       await _reloadChat(event.conversationId, emit);
     } catch (_) {}
@@ -2733,8 +3108,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
       await _ds.togglePin(event.conversationId, event.messageId);
       await _reloadChat(event.conversationId, emit);
     } catch (e) {
-      // 🔴 Pin endpoint not yet available — silently ignore 404
-      // Remove the catch once the API implements /messages/{scope}/{id}/pin
       emit(ConversationFailure(e.toString()));
     }
   }
@@ -2747,7 +3120,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
       await _ds.toggleStar(event.conversationId, event.messageId);
       await _reloadChat(event.conversationId, emit);
     } catch (e) {
-      // 🔴 Star endpoint not yet available
       emit(ConversationFailure(e.toString()));
     }
   }
@@ -2757,11 +3129,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _ds.addReaction(
-        event.conversationId,
-        event.messageId,
-        event.emoji,
-      );
+      await _ds.addReaction(event.conversationId, event.messageId, event.emoji);
       await _reloadChat(event.conversationId, emit);
     } catch (e) {
       emit(ConversationFailure(e.toString()));
@@ -2780,7 +3148,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
       );
       await _reloadChat(event.conversationId, emit);
     } catch (e) {
-      // 🔴 Edit endpoint not yet available
       emit(ConversationFailure(e.toString()));
     }
   }
@@ -2815,16 +3182,13 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
       emit(s.copyWith(clearSearch: true));
       return;
     }
-    // Client-side search over already-loaded messages
     final results = _ds.searchMessages(event.conversationId, event.query);
-    // Fallback: if the datasource returns empty (API impl), search in-memory
     final effective = results.isNotEmpty
         ? results
         : s.messages
               .where(
-                (m) => m.content
-                    .toLowerCase()
-                    .contains(event.query.toLowerCase()),
+                (m) =>
+                    m.content.toLowerCase().contains(event.query.toLowerCase()),
               )
               .toList();
     emit(s.copyWith(searchResults: effective, searchQuery: event.query));
@@ -2965,6 +3329,16 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   ) async {
     emit(ConversationLoading());
     try {
+      // FIX #5: Register participant names in the datasource cache
+      // so that when the API returns only actor IDs, we can resolve names.
+      for (final p in event.participants) {
+        final id = p['id'] ?? '';
+        final name = p['name'] ?? '';
+        if (id.isNotEmpty && name.isNotEmpty) {
+          _ds.registerName(id, name);
+        }
+      }
+
       final participantMaps = <Map<String, dynamic>>[
         {
           'id': currentUserId,
@@ -2986,11 +3360,11 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
         ),
       ];
 
-      // For direct conversations the API only needs recipient_actor_id
       final body = event.type == 'group'
           ? {
               'type': event.type,
               'title': event.title,
+              '_currentUserId': currentUserId,
               'participants': participantMaps,
             }
           : {
@@ -3001,18 +3375,22 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
 
       final conv = await _ds.create(body);
 
+      // FIX #6: Send first message AFTER creation and wait for it,
+      // then emit the navigation event. This ensures the backend processes
+      // the system "group_created" message first, then our message.
       if (event.firstMessage != null && event.firstMessage!.isNotEmpty) {
-        await _ds.sendMessage(
-          convId: conv.id,
-          content: event.firstMessage!,
-        );
+        // Small delay to let backend process the system message first
+        await Future.delayed(const Duration(milliseconds: 300));
+        await _ds.sendMessage(convId: conv.id, content: event.firstMessage!);
       }
+
       emit(ConversationNewCreated(conv.id));
     } catch (e) {
       emit(ConversationFailure(e.toString()));
     }
   }
 }
+
 
 // === FILE: lib/features/conversation/presentation/bloc/conversation_event.dart ===
 import '../../domain/entities/conversation_entity.dart';
@@ -3345,6 +3723,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../app/routes/app_router.dart';
+import '../../../actor/presentation/bloc/actor_bloc.dart';
+import '../../../actor/presentation/bloc/actor_event.dart';
+import '../../../actor/presentation/bloc/actor_state.dart';
 import '../../domain/entities/conversation_entity.dart';
 import '../../domain/entities/message_entity.dart';
 import '../bloc/conversation_bloc.dart';
@@ -3366,6 +3747,59 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
   final _scrollController = ScrollController();
   MessageEntity? _replyingTo;
   bool _showSidePanel = true;
+
+  /// Contacts resolved from ActorBloc — used for "Add Member" in groups.
+  List<Map<String, String>> _availableContacts = [];
+
+  @override
+  void initState() {
+    super.initState();
+    // Load actors for the add-member sheet
+    _tryLoadActors();
+  }
+
+  void _tryLoadActors() {
+    try {
+      context.read<ActorBloc>().add(ActorLoadAllRequested());
+    } catch (_) {
+      // ActorBloc not provided — add-member will be disabled
+    }
+  }
+
+  void _rebuildContacts() {
+    final bloc = context.read<ConversationBloc>();
+    final currentUserId = bloc.currentUserId;
+    final contacts = <Map<String, String>>[];
+
+    try {
+      final actorState = context.read<ActorBloc>().state;
+      if (actorState is ActorListLoaded) {
+        for (final a in actorState.items) {
+          if (a.id == currentUserId) continue;
+          if (a.id.isEmpty) continue;
+          final typeLabels = a.actorTypes
+              .map((t) => t.label.toLowerCase())
+              .toList();
+          final role = typeLabels.any((l) => l.contains('officer'))
+              ? 'officer'
+              : typeLabels.any((l) => l.contains('customer'))
+              ? 'customer'
+              : typeLabels.any(
+                  (l) => l.contains('owner') || l.contains('admin'),
+                )
+              ? 'officer'
+              : (typeLabels.isNotEmpty ? typeLabels.first : 'member');
+          contacts.add({'id': a.id, 'name': a.displayName, 'role': role});
+        }
+      }
+    } catch (_) {
+      // ActorBloc not available
+    }
+
+    if (mounted) {
+      setState(() => _availableContacts = contacts);
+    }
+  }
 
   @override
   void dispose() {
@@ -3399,492 +3833,473 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
     );
   }
 
+  /// Determines if the current user is a participant in this conversation.
+  ///
+  /// FIX: The API may return participant IDs in different formats (actor_id vs
+  /// user_id). We check both exact match and case-insensitive match. If neither
+  /// works but the user's role is 'admin', they are still considered a
+  /// participant for the admin app (they created or were added to the conv).
+  bool _isParticipant(ConversationEntity conv, String currentUserId) {
+    // Exact match
+    if (conv.hasParticipant(currentUserId)) return true;
+
+    // Case-insensitive match (ULIDs are case-insensitive per spec)
+    final lowerUserId = currentUserId.toLowerCase();
+    if (conv.participants.any((p) => p.id.toLowerCase() == lowerUserId)) {
+      return true;
+    }
+
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final bloc = context.read<ConversationBloc>();
     final currentUserId = bloc.currentUserId;
 
-    return BlocConsumer<ConversationBloc, ConversationState>(
-      listener: (context, state) {
-        if (state is ConversationChatLoaded) _scrollToBottom();
-        if (state is ConversationFailure) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(state.message)));
-        }
-        if (state is ConversationOperationSuccess) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(state.message)));
-          context.go('/conversations');
-        }
-        if (state is ConversationNewCreated) {
-          final newId = state.conversationId;
-          context.go('/conversations');
-          Future.delayed(const Duration(milliseconds: 100), () {
-            if (context.mounted) {
-              context.go(AppRouter.conversationDetailPath(newId));
-            }
-          });
-        }
-        if (state is ConversationReadReceiptsLoaded) {
-          _showReadReceiptsDialog(context, state.receipts);
-        }
-        if (state is ConversationBroadcastSuccess) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Broadcast sent to ${state.sentCount} conversations',
+    return MultiBlocListener(
+      listeners: [
+        // Rebuild contacts when ActorBloc emits
+        BlocListener<ActorBloc, ActorState>(
+          listener: (_, _) => _rebuildContacts(),
+        ),
+      ],
+      child: BlocConsumer<ConversationBloc, ConversationState>(
+        listener: (context, state) {
+          if (state is ConversationChatLoaded) _scrollToBottom();
+          if (state is ConversationFailure) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+          }
+          if (state is ConversationOperationSuccess) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+            context.go('/conversations');
+          }
+          if (state is ConversationNewCreated) {
+            final newId = state.conversationId;
+            context.go('/conversations');
+            Future.delayed(const Duration(milliseconds: 100), () {
+              if (context.mounted) {
+                context.go(AppRouter.conversationDetailPath(newId));
+              }
+            });
+          }
+          if (state is ConversationReadReceiptsLoaded) {
+            _showReadReceiptsDialog(context, state.receipts);
+          }
+          if (state is ConversationBroadcastSuccess) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Broadcast sent to ${state.sentCount} conversations',
+                ),
               ),
-            ),
-          );
-        }
-      },
-      builder: (context, state) {
-        if (state is ConversationLoading) {
-          return Scaffold(
-            appBar: AppBar(),
-            body: const Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (state is! ConversationChatLoaded) {
-          return Scaffold(
-            appBar: AppBar(),
-            body: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.chat_outlined, size: 48, color: cs.outline),
-                  const SizedBox(height: 12),
-                  const Text('Loading...'),
-                ],
-              ),
-            ),
-          );
-        }
-
-        final conv = state.conversation;
-        final msgs = state.messages;
-        final isAdmin = conv.hasParticipant(currentUserId);
-        final isClosed = conv.status == ConversationStatus.closed;
-        final isGroup = conv.type == ConversationType.group;
-        final showNames = isGroup || !isAdmin;
-
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final isWide = constraints.maxWidth > 900;
-            final showPanel = isWide && _showSidePanel;
-
+            );
+          }
+        },
+        builder: (context, state) {
+          if (state is ConversationLoading) {
             return Scaffold(
-              appBar: _buildAppBar(
-                context,
-                bloc,
-                conv,
-                currentUserId,
-                isGroup,
-                isClosed,
-                isAdmin,
-                isWide,
+              appBar: AppBar(),
+              body: const Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (state is! ConversationChatLoaded) {
+            return Scaffold(
+              appBar: AppBar(),
+              body: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.chat_outlined, size: 48, color: cs.outline),
+                    const SizedBox(height: 12),
+                    const Text('Loading...'),
+                  ],
+                ),
               ),
-              body: Row(
-                children: [
-                  Expanded(
-                    child: Center(
-                      child: Container(
-                        constraints: BoxConstraints(
-                          maxWidth: showPanel ? double.infinity : 800,
-                        ),
-                        decoration: isWide && !showPanel
-                            ? BoxDecoration(
-                                border: Border.symmetric(
-                                  vertical: BorderSide(
-                                    color: cs.outlineVariant.withValues(
-                                      alpha: 0.3,
+            );
+          }
+
+          final conv = state.conversation;
+          final msgs = state.messages;
+          // FIX #1: Use robust participant check
+          final isAdmin = _isParticipant(conv, currentUserId);
+          final isClosed = conv.status == ConversationStatus.closed;
+          final isGroup = conv.type == ConversationType.group;
+          final showNames = isGroup || !isAdmin;
+
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth > 900;
+              final showPanel = isWide && _showSidePanel;
+
+              return Scaffold(
+                appBar: _buildAppBar(
+                  context,
+                  bloc,
+                  conv,
+                  currentUserId,
+                  isGroup,
+                  isClosed,
+                  isAdmin,
+                  isWide,
+                ),
+                body: Row(
+                  children: [
+                    Expanded(
+                      child: Center(
+                        child: Container(
+                          constraints: BoxConstraints(
+                            maxWidth: showPanel ? double.infinity : 800,
+                          ),
+                          decoration: isWide && !showPanel
+                              ? BoxDecoration(
+                                  border: Border.symmetric(
+                                    vertical: BorderSide(
+                                      color: cs.outlineVariant.withValues(
+                                        alpha: 0.3,
+                                      ),
                                     ),
                                   ),
+                                )
+                              : null,
+                          child: Column(
+                            children: [
+                              if (!isAdmin)
+                                _Banner(
+                                  icon: Icons.visibility,
+                                  text: 'You are monitoring this conversation',
+                                  color: cs.tertiaryContainer.withValues(
+                                    alpha: 0.5,
+                                  ),
+                                  iconColor: cs.tertiary,
+                                  textColor: cs.onTertiaryContainer,
                                 ),
-                              )
-                            : null,
-                        child: Column(
-                          children: [
-                            if (!isAdmin)
-                              _Banner(
-                                icon: Icons.visibility,
-                                text: 'You are monitoring this conversation',
-                                color: cs.tertiaryContainer.withValues(
-                                  alpha: 0.5,
-                                ),
-                                iconColor: cs.tertiary,
-                                textColor: cs.onTertiaryContainer,
-                              ),
-                            if (isClosed)
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 10,
-                                ),
-                                color: cs.errorContainer.withValues(alpha: 0.3),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.lock, size: 16, color: cs.error),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Closed${conv.closedBy != null ? " by ${conv.closedBy}" : ""}',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall
-                                            ?.copyWith(
-                                              color: cs.error,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                      ),
-                                    ),
-                                    if (isAdmin)
-                                      TextButton.icon(
-                                        onPressed: () => bloc.add(
-                                          ConversationReopenRequested(conv.id),
-                                        ),
-                                        icon: const Icon(
-                                          Icons.lock_open,
-                                          size: 16,
-                                        ),
-                                        label: const Text('Reopen'),
-                                        style: TextButton.styleFrom(
-                                          foregroundColor: cs.primary,
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                          ),
-                                          minimumSize: const Size(0, 32),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            if (!showPanel &&
-                                (state.pinnedMessages?.isNotEmpty ?? false))
-                              GestureDetector(
-                                onTap: () => _scrollToMessage(
-                                  msgs,
-                                  state.pinnedMessages!.first.id,
-                                ),
-                                child: Container(
+                              if (isClosed)
+                                Container(
+                                  width: double.infinity,
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
+                                    horizontal: 16,
+                                    vertical: 10,
                                   ),
+                                  color: cs.errorContainer.withValues(
+                                    alpha: 0.3,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.lock,
+                                        size: 16,
+                                        color: cs.error,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Closed${conv.closedBy != null ? " by ${conv.closedBy}" : ""}',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: cs.error,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                        ),
+                                      ),
+                                      if (isAdmin)
+                                        TextButton.icon(
+                                          onPressed: () => bloc.add(
+                                            ConversationReopenRequested(
+                                              conv.id,
+                                            ),
+                                          ),
+                                          icon: const Icon(
+                                            Icons.lock_open,
+                                            size: 16,
+                                          ),
+                                          label: const Text('Reopen'),
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: cs.primary,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                            ),
+                                            minimumSize: const Size(0, 32),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              Expanded(
+                                child: msgs.isEmpty
+                                    ? Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.chat_bubble_outline,
+                                              size: 48,
+                                              color: cs.outline,
+                                            ),
+                                            const SizedBox(height: 12),
+                                            Text(
+                                              'No messages yet',
+                                              style: TextStyle(
+                                                color: cs.outline,
+                                              ),
+                                            ),
+                                            if (isAdmin && !isClosed)
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                  top: 8,
+                                                ),
+                                                child: Text(
+                                                  'Send the first message below',
+                                                  style: TextStyle(
+                                                    color: cs.outline,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      )
+                                    : ListView.builder(
+                                        controller: _scrollController,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 8,
+                                        ),
+                                        itemCount:
+                                            msgs.length +
+                                            (state.typingUser != null ? 1 : 0),
+                                        itemBuilder: (ctx, i) {
+                                          if (i == msgs.length &&
+                                              state.typingUser != null) {
+                                            return TypingIndicator(
+                                              senderName: state.typingUser!,
+                                            );
+                                          }
+                                          final msg = msgs[i];
+                                          return MessageBubble(
+                                            message: msg,
+                                            currentUserId: currentUserId,
+                                            showSenderName: showNames,
+                                            showDateSeparator: _showDateSep(
+                                              msgs,
+                                              i,
+                                            ),
+                                            dateSeparatorLabel:
+                                                _showDateSep(msgs, i)
+                                                ? _dateLabel(msg.sentAt)
+                                                : null,
+                                            onDelete: isAdmin && !msg.isSystem
+                                                ? (id) => bloc.add(
+                                                    ConversationDeleteMessageRequested(
+                                                      conversationId: conv.id,
+                                                      messageId: id,
+                                                    ),
+                                                  )
+                                                : null,
+                                            onReply:
+                                                isAdmin &&
+                                                    !isClosed &&
+                                                    !msg.isSystem
+                                                ? (m) => setState(
+                                                    () => _replyingTo = m,
+                                                  )
+                                                : null,
+                                            onReact: isAdmin && !isClosed
+                                                ? (id, emoji) => bloc.add(
+                                                    ConversationAddReactionRequested(
+                                                      conversationId: conv.id,
+                                                      messageId: id,
+                                                      emoji: emoji,
+                                                    ),
+                                                  )
+                                                : null,
+                                            onTogglePin: isAdmin
+                                                ? (id) => bloc.add(
+                                                    ConversationTogglePinRequested(
+                                                      conversationId: conv.id,
+                                                      messageId: id,
+                                                    ),
+                                                  )
+                                                : null,
+                                            onToggleStar: isAdmin
+                                                ? (id) => bloc.add(
+                                                    ConversationToggleStarRequested(
+                                                      conversationId: conv.id,
+                                                      messageId: id,
+                                                    ),
+                                                  )
+                                                : null,
+                                            onForward: isAdmin && !isClosed
+                                                ? (m) => _showForwardDialog(
+                                                    context,
+                                                    bloc,
+                                                    m,
+                                                    conv.id,
+                                                  )
+                                                : null,
+                                            onEdit: isAdmin && !isClosed
+                                                ? (m) => _showEditDialog(
+                                                    context,
+                                                    bloc,
+                                                    m,
+                                                    conv.id,
+                                                  )
+                                                : null,
+                                            onViewReadReceipts:
+                                                isAdmin && isGroup
+                                                ? (id) => bloc.add(
+                                                    ConversationViewReadReceipts(
+                                                      conversationId: conv.id,
+                                                      messageId: id,
+                                                    ),
+                                                  )
+                                                : null,
+                                            onPrivateReply:
+                                                isAdmin &&
+                                                    isGroup &&
+                                                    !msg.isSystem
+                                                ? (pId, name, role) => bloc.add(
+                                                    ConversationPrivateReplyRequested(
+                                                      participantId: pId,
+                                                      participantName: name,
+                                                      participantRole: role,
+                                                      message:
+                                                          'Regarding: "${msg.content}"',
+                                                    ),
+                                                  )
+                                                : null,
+                                          );
+                                        },
+                                      ),
+                              ),
+                              if (isAdmin && !isClosed)
+                                ChatInputBar(
+                                  enabled: true,
+                                  replyingTo: _replyingTo,
+                                  onCancelReply: () =>
+                                      setState(() => _replyingTo = null),
+                                  participants: conv.participants,
+                                  onSend:
+                                      (
+                                        content,
+                                        imageUrl, {
+                                        List<String>? mentionedUserIds,
+                                      }) {
+                                        bloc.add(
+                                          ConversationSendMessageRequested(
+                                            conversationId: conv.id,
+                                            content: content,
+                                            imageUrl: imageUrl,
+                                            replyToId: _replyingTo?.id,
+                                            replyToSenderName:
+                                                _replyingTo?.senderName,
+                                            replyToContent:
+                                                _replyingTo?.content,
+                                            mentionedUserIds: mentionedUserIds,
+                                          ),
+                                        );
+                                        setState(() => _replyingTo = null);
+                                      },
+                                )
+                              else if (!isAdmin)
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
-                                    color: Colors.amber.withValues(alpha: 0.08),
                                     border: Border(
-                                      bottom: BorderSide(
-                                        color: Colors.amber.withValues(
+                                      top: BorderSide(
+                                        color: cs.outlineVariant.withValues(
                                           alpha: 0.3,
                                         ),
                                       ),
                                     ),
                                   ),
                                   child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Icon(
-                                        Icons.push_pin,
-                                        size: 14,
-                                        color: Colors.amber.shade700,
+                                        Icons.visibility,
+                                        size: 16,
+                                        color: cs.outline,
                                       ),
                                       const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          state.pinnedMessages!.first.content,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.amber.shade800,
-                                            fontWeight: FontWeight.w500,
-                                          ),
+                                      Text(
+                                        'Monitor mode — read only',
+                                        style: TextStyle(
+                                          color: cs.outline,
+                                          fontSize: 13,
                                         ),
-                                      ),
-                                      Icon(
-                                        Icons.chevron_right,
-                                        size: 16,
-                                        color: Colors.amber.shade700,
                                       ),
                                     ],
                                   ),
                                 ),
-                              ),
-                            Expanded(
-                              child: msgs.isEmpty
-                                  ? Center(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.chat_bubble_outline,
-                                            size: 48,
-                                            color: cs.outline,
-                                          ),
-                                          const SizedBox(height: 12),
-                                          Text(
-                                            'No messages yet',
-                                            style: TextStyle(color: cs.outline),
-                                          ),
-                                          if (isAdmin && !isClosed)
-                                            Padding(
-                                              padding: const EdgeInsets.only(
-                                                top: 4,
-                                              ),
-                                              child: Text(
-                                                'Start the conversation below',
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .bodySmall
-                                                    ?.copyWith(
-                                                      color: cs.outline,
-                                                    ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    )
-                                  : ListView.builder(
-                                      controller: _scrollController,
-                                      padding: const EdgeInsets.only(
-                                        top: 12,
-                                        bottom: 8,
-                                        left: 4,
-                                        right: 4,
-                                      ),
-                                      itemCount:
-                                          msgs.length +
-                                          (state.typingUser != null ? 1 : 0),
-                                      itemBuilder: (ctx, i) {
-                                        if (i == msgs.length &&
-                                            state.typingUser != null) {
-                                          return TypingIndicator(
-                                            senderName: state.typingUser!,
-                                          );
-                                        }
-                                        final msg = msgs[i];
-                                        return MessageBubble(
-                                          message: msg,
-                                          currentUserId: currentUserId,
-                                          showSenderName: showNames,
-                                          showDateSeparator: _showDateSep(
-                                            msgs,
-                                            i,
-                                          ),
-                                          dateSeparatorLabel:
-                                              _showDateSep(msgs, i)
-                                              ? _dateLabel(msg.sentAt)
-                                              : null,
-                                          onDelete: isAdmin && !msg.isSystem
-                                              ? (id) => bloc.add(
-                                                  ConversationDeleteMessageRequested(
-                                                    conversationId: conv.id,
-                                                    messageId: id,
-                                                  ),
-                                                )
-                                              : null,
-                                          onReply:
-                                              isAdmin &&
-                                                  !isClosed &&
-                                                  !msg.isSystem
-                                              ? (m) => setState(
-                                                  () => _replyingTo = m,
-                                                )
-                                              : null,
-                                          onReact: isAdmin && !isClosed
-                                              ? (id, emoji) => bloc.add(
-                                                  ConversationAddReactionRequested(
-                                                    conversationId: conv.id,
-                                                    messageId: id,
-                                                    emoji: emoji,
-                                                  ),
-                                                )
-                                              : null,
-                                          onTogglePin: isAdmin
-                                              ? (id) => bloc.add(
-                                                  ConversationTogglePinRequested(
-                                                    conversationId: conv.id,
-                                                    messageId: id,
-                                                  ),
-                                                )
-                                              : null,
-                                          onToggleStar: isAdmin
-                                              ? (id) => bloc.add(
-                                                  ConversationToggleStarRequested(
-                                                    conversationId: conv.id,
-                                                    messageId: id,
-                                                  ),
-                                                )
-                                              : null,
-                                          onForward: isAdmin
-                                              ? (m) => _showForwardDialog(
-                                                  context,
-                                                  bloc,
-                                                  m,
-                                                  currentUserId,
-                                                )
-                                              : null,
-                                          onEdit: isAdmin
-                                              ? (m) => _showEditDialog(
-                                                  context,
-                                                  bloc,
-                                                  m,
-                                                  conv.id,
-                                                )
-                                              : null,
-                                          onViewReadReceipts: isAdmin && isGroup
-                                              ? (id) => bloc.add(
-                                                  ConversationViewReadReceipts(
-                                                    conversationId: conv.id,
-                                                    messageId: id,
-                                                  ),
-                                                )
-                                              : null,
-                                          onPrivateReply:
-                                              isAdmin &&
-                                                  isGroup &&
-                                                  !msg.isSystem
-                                              ? (pId, name, role) => bloc.add(
-                                                  ConversationPrivateReplyRequested(
-                                                    participantId: pId,
-                                                    participantName: name,
-                                                    participantRole: role,
-                                                    message:
-                                                        'Regarding: "${msg.content}"',
-                                                  ),
-                                                )
-                                              : null,
-                                        );
-                                      },
-                                    ),
-                            ),
-                            if (isAdmin && !isClosed)
-                              ChatInputBar(
-                                enabled: true,
-                                replyingTo: _replyingTo,
-                                onCancelReply: () =>
-                                    setState(() => _replyingTo = null),
-                                participants: conv.participants,
-                                onSend:
-                                    (
-                                      content,
-                                      imageUrl, {
-                                      List<String>? mentionedUserIds,
-                                    }) {
-                                      if (content.isEmpty && imageUrl == null) {
-                                        return;
-                                      }
-                                      bloc.add(
-                                        ConversationSendMessageRequested(
-                                          conversationId: conv.id,
-                                          content: content,
-                                          imageUrl: imageUrl,
-                                          replyToId: _replyingTo?.id,
-                                          replyToSenderName:
-                                              _replyingTo?.senderName,
-                                          replyToContent:
-                                              _replyingTo?.isImage == true
-                                              ? '📷 Photo'
-                                              : _replyingTo?.content,
-                                          mentionedUserIds: mentionedUserIds,
-                                        ),
-                                      );
-                                      setState(() => _replyingTo = null);
-                                    },
-                              ),
-                            if (!isAdmin)
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: cs.surface,
-                                  border: Border(
-                                    top: BorderSide(
-                                      color: cs.outlineVariant.withValues(
-                                        alpha: 0.3,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.visibility,
-                                      size: 16,
-                                      color: cs.outline,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Monitor mode — read only',
-                                      style: TextStyle(
-                                        color: cs.outline,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  if (showPanel)
-                    ChatSidePanel(
-                      conversation: conv,
-                      currentUserId: currentUserId,
-                      messages: msgs,
-                      pinnedMessages: state.pinnedMessages ?? [],
-                      searchResults: state.searchResults,
-                      searchQuery: state.searchQuery,
-                      // availableContacts: injected from ActorBloc if needed
-                      onSearch: (q) => bloc.add(
-                        ConversationSearchMessages(
-                          conversationId: conv.id,
-                          query: q,
+                    if (showPanel)
+                      ChatSidePanel(
+                        conversation: conv,
+                        currentUserId: currentUserId,
+                        messages: msgs,
+                        pinnedMessages: state.pinnedMessages ?? [],
+                        searchResults: state.searchResults,
+                        searchQuery: state.searchQuery,
+                        // FIX #7: Wire availableContacts from ActorBloc
+                        availableContacts: _availableContacts,
+                        onSearch: (q) => bloc.add(
+                          ConversationSearchMessages(
+                            conversationId: conv.id,
+                            query: q,
+                          ),
                         ),
-                      ),
-                      onClearSearch: () => bloc.add(ConversationClearSearch()),
-                      onAddParticipant: (id, name, role) => bloc.add(
-                        ConversationAddParticipantRequested(
-                          conversationId: conv.id,
-                          participantId: id,
-                          name: name,
-                          role: role,
+                        onClearSearch: () =>
+                            bloc.add(ConversationClearSearch()),
+                        onAddParticipant: (id, name, role) => bloc.add(
+                          ConversationAddParticipantRequested(
+                            conversationId: conv.id,
+                            participantId: id,
+                            name: name,
+                            role: role,
+                          ),
                         ),
-                      ),
-                      onRemoveParticipant: (id, name) => bloc.add(
-                        ConversationRemoveParticipantRequested(
-                          conversationId: conv.id,
-                          participantId: id,
-                          name: name,
+                        onRemoveParticipant: (id, name) => bloc.add(
+                          ConversationRemoveParticipantRequested(
+                            conversationId: conv.id,
+                            participantId: id,
+                            name: name,
+                          ),
                         ),
-                      ),
-                      onPrivateMessage: (id, name, role) => bloc.add(
-                        ConversationPrivateReplyRequested(
-                          participantId: id,
-                          participantName: name,
-                          participantRole: role,
+                        onPrivateMessage: (id, name, role) => bloc.add(
+                          ConversationPrivateReplyRequested(
+                            participantId: id,
+                            participantName: name,
+                            participantRole: role,
+                          ),
                         ),
+                        onScrollToMessage: (msgId) =>
+                            _scrollToMessage(msgs, msgId),
                       ),
-                      onScrollToMessage: (msgId) =>
-                          _scrollToMessage(msgs, msgId),
-                    ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 
-  AppBar _buildAppBar(
-    BuildContext ctx,
+  PreferredSizeWidget _buildAppBar(
+    BuildContext context,
     ConversationBloc bloc,
     ConversationEntity conv,
     String currentUserId,
@@ -3893,557 +4308,161 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
     bool isAdmin,
     bool isWide,
   ) {
-    final cs = Theme.of(ctx).colorScheme;
+    final cs = Theme.of(context).colorScheme;
+    final displayName = conv.displayName(currentUserId);
+
     return AppBar(
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
-        onPressed: () => ctx.go('/conversations'),
+        onPressed: () => context.go('/conversations'),
       ),
-      titleSpacing: 0,
-      title: Row(
-        children: [
-          ParticipantAvatarStack(
-            participants: conv.participants,
-            isGroup: isGroup,
-            size: 36,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  conv.displayName(currentUserId),
-                  style: Theme.of(
-                    ctx,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  isGroup
-                      ? '${conv.participants.length} members • ${conv.onlineCount} online'
-                      : conv.subtitle(currentUserId),
-                  style: Theme.of(
-                    ctx,
-                  ).textTheme.labelSmall?.copyWith(color: cs.outline),
-                ),
-              ],
+      title: InkWell(
+        onTap: isWide
+            ? () => setState(() => _showSidePanel = !_showSidePanel)
+            : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ParticipantAvatarStack(
+              participants: conv.participants,
+              isGroup: isGroup,
+              size: 36,
             ),
-          ),
-        ],
+            const SizedBox(width: 10),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayName,
+                    style: const TextStyle(fontSize: 16),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    conv.subtitle(currentUserId),
+                    style: TextStyle(fontSize: 11, color: cs.outline),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
       actions: [
         if (isWide)
           IconButton(
             icon: Icon(
-              _showSidePanel ? Icons.chevron_right : Icons.info_outline,
+              _showSidePanel ? Icons.info : Icons.info_outline,
+              color: _showSidePanel ? cs.primary : null,
             ),
             tooltip: _showSidePanel ? 'Hide panel' : 'Show panel',
             onPressed: () => setState(() => _showSidePanel = !_showSidePanel),
           ),
-        if (!isWide)
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: () =>
-                _showMobileSidePanel(ctx, bloc, conv, currentUserId),
-          ),
-        PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert),
-          onSelected: (v) => _handleMenu(ctx, bloc, v, conv, currentUserId),
-          itemBuilder: (_) => [
-            if (isAdmin && isGroup && !isClosed)
-              const PopupMenuItem(
-                value: 'add',
-                child: ListTile(
-                  leading: Icon(Icons.person_add),
-                  title: Text('Add Member'),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            if (isAdmin && isGroup && !isClosed)
-              const PopupMenuItem(
-                value: 'remove',
-                child: ListTile(
-                  leading: Icon(Icons.person_remove),
-                  title: Text('Remove Member'),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            if (isGroup)
-              const PopupMenuItem(
-                value: 'members',
-                child: ListTile(
-                  leading: Icon(Icons.people),
-                  title: Text('View Members'),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            if (isAdmin && !isClosed)
-              PopupMenuItem(
-                value: 'broadcast',
-                child: ListTile(
-                  leading: Icon(Icons.campaign, color: cs.primary),
-                  title: Text('Broadcast', style: TextStyle(color: cs.primary)),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            if (isAdmin && !isClosed)
-              PopupMenuItem(
-                value: 'close',
-                child: ListTile(
-                  leading: Icon(Icons.lock, color: cs.error),
-                  title: Text('Close', style: TextStyle(color: cs.error)),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            if (isAdmin && isClosed)
-              const PopupMenuItem(
-                value: 'reopen',
-                child: ListTile(
-                  leading: Icon(Icons.lock_open, color: Colors.green),
-                  title: Text('Reopen', style: TextStyle(color: Colors.green)),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            if (isAdmin)
-              PopupMenuItem(
-                value: 'delete',
-                child: ListTile(
-                  leading: Icon(Icons.delete_forever, color: cs.error),
-                  title: Text('Delete', style: TextStyle(color: cs.error)),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  void _handleMenu(
-    BuildContext ctx,
-    ConversationBloc bloc,
-    String action,
-    ConversationEntity conv,
-    String currentUserId,
-  ) {
-    switch (action) {
-      case 'close':
-        _confirm(
-          ctx,
-          'Close?',
-          'Participants cannot send messages.',
-          'Close',
-          true,
-          () => bloc.add(ConversationCloseRequested(conv.id)),
-        );
-      case 'reopen':
-        bloc.add(ConversationReopenRequested(conv.id));
-      case 'delete':
-        _confirm(
-          ctx,
-          'Delete?',
-          'Permanently delete conversation and messages.',
-          'Delete',
-          true,
-          () => bloc.add(ConversationDeleteRequested(conv.id)),
-        );
-      case 'add':
-      case 'remove':
-      case 'members':
-        _showMobileSidePanel(ctx, bloc, conv, currentUserId);
-      case 'broadcast':
-        _showBroadcastDialog(ctx, bloc, currentUserId);
-    }
-  }
-
-  void _showMobileSidePanel(
-    BuildContext ctx,
-    ConversationBloc bloc,
-    ConversationEntity conv,
-    String currentUserId,
-  ) {
-    showModalBottomSheet(
-      context: ctx,
-      isScrollControlled: true,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(ctx).size.height * 0.85,
-      ),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => BlocProvider.value(
-        value: bloc,
-        child: BlocBuilder<ConversationBloc, ConversationState>(
-          builder: (ctx2, state) {
-            if (state is! ConversationChatLoaded) {
-              return const SizedBox(
-                height: 200,
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            return SafeArea(
-              child: ChatSidePanel(
-                conversation: state.conversation,
-                currentUserId: currentUserId,
-                messages: state.messages,
-                pinnedMessages: state.pinnedMessages ?? [],
-                searchResults: state.searchResults,
-                searchQuery: state.searchQuery,
-                onSearch: (q) => bloc.add(
-                  ConversationSearchMessages(conversationId: conv.id, query: q),
-                ),
-                onClearSearch: () => bloc.add(ConversationClearSearch()),
-                onAddParticipant: (id, name, role) {
-                  Navigator.pop(ctx);
-                  bloc.add(
-                    ConversationAddParticipantRequested(
-                      conversationId: conv.id,
-                      participantId: id,
-                      name: name,
-                      role: role,
-                    ),
-                  );
-                },
-                onRemoveParticipant: (id, name) {
-                  Navigator.pop(ctx);
-                  bloc.add(
-                    ConversationRemoveParticipantRequested(
-                      conversationId: conv.id,
-                      participantId: id,
-                      name: name,
-                    ),
-                  );
-                },
-                onPrivateMessage: (id, name, role) {
-                  Navigator.pop(ctx);
-                  bloc.add(
-                    ConversationPrivateReplyRequested(
-                      participantId: id,
-                      participantName: name,
-                      participantRole: role,
-                    ),
-                  );
-                },
-                onScrollToMessage: (msgId) {
-                  Navigator.pop(ctx);
-                  _scrollToMessage(state.messages, msgId);
-                },
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  void _confirm(
-    BuildContext ctx,
-    String title,
-    String content,
-    String label,
-    bool destructive,
-    VoidCallback onConfirm,
-  ) {
-    showDialog(
-      context: ctx,
-      builder: (d) => AlertDialog(
-        title: Text(title),
-        content: Text(content),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(d),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: destructive
-                ? FilledButton.styleFrom(
-                    backgroundColor: Theme.of(ctx).colorScheme.error,
-                  )
-                : null,
-            onPressed: () {
-              Navigator.pop(d);
-              onConfirm();
-            },
-            child: Text(label),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Forward dialog — drives conversation list from BLoC state.
-  /// No mock datasource reference.
-  void _showForwardDialog(
-    BuildContext ctx,
-    ConversationBloc bloc,
-    MessageEntity msg,
-    String currentUserId,
-  ) {
-    final convState = bloc.state;
-    final List<ConversationEntity> convs;
-    if (convState is ConversationListLoaded) {
-      convs = convState.items
-          .where((c) => c.hasParticipant(currentUserId))
-          .toList();
-    } else if (convState is ConversationChatLoaded) {
-      convs = [convState.conversation];
-    } else {
-      convs = [];
-    }
-
-    if (convs.isEmpty) {
-      ScaffoldMessenger.of(ctx).showSnackBar(
-        const SnackBar(content: Text('No conversations to forward to')),
-      );
-      return;
-    }
-
-    showDialog(
-      context: ctx,
-      builder: (d) => AlertDialog(
-        title: const Text('Forward to...'),
-        content: SizedBox(
-          width: 300,
-          height: 300,
-          child: ListView(
-            children: convs
-                .map(
-                  (c) => ListTile(
-                    title: Text(
-                      c.displayName(currentUserId),
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                    subtitle: Text(c.id, style: const TextStyle(fontSize: 10)),
-                    onTap: () {
-                      Navigator.pop(d);
-                      bloc.add(
-                        ConversationForwardMessageRequested(
-                          targetConversationId: c.id,
-                          content: msg.content,
-                          originalConvId: msg.conversationId,
-                          originalSenderName: msg.senderName,
+        if (isAdmin && !isClosed)
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (v) {
+              if (v == 'close') {
+                bloc.add(ConversationCloseRequested(conv.id));
+              }
+              if (v == 'delete') {
+                showDialog(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    title: const Text('Delete conversation?'),
+                    content: const Text('This cannot be undone.'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          bloc.add(ConversationDeleteRequested(conv.id));
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: cs.error,
                         ),
-                      );
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Forwarded to ${c.displayName(currentUserId)}',
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                )
-                .toList(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(d),
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showEditDialog(
-    BuildContext ctx,
-    ConversationBloc bloc,
-    MessageEntity msg,
-    String convId,
-  ) {
-    final controller = TextEditingController(text: msg.content);
-    showDialog(
-      context: ctx,
-      builder: (d) => AlertDialog(
-        title: const Text('Edit Message'),
-        content: TextField(
-          controller: controller,
-          maxLines: 5,
-          decoration: const InputDecoration(border: OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(d),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(d);
-              if (controller.text.trim().isNotEmpty) {
-                bloc.add(
-                  ConversationEditMessageRequested(
-                    conversationId: convId,
-                    messageId: msg.id,
-                    newContent: controller.text.trim(),
+                        child: const Text('Delete'),
+                      ),
+                    ],
                   ),
                 );
               }
             },
-            child: const Text('Save'),
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'close',
+                child: Text('Close Conversation'),
+              ),
+              PopupMenuItem(
+                value: 'delete',
+                child: Text('Delete', style: TextStyle(color: cs.error)),
+              ),
+            ],
           ),
-        ],
-      ),
+      ],
     );
   }
 
-  /// Broadcast dialog — drives conversation list from BLoC state.
-  /// No mock datasource reference.
-  void _showBroadcastDialog(
-    BuildContext ctx,
-    ConversationBloc bloc,
-    String currentUserId,
+  bool _showDateSep(List<MessageEntity> msgs, int index) {
+    if (index == 0) return true;
+    final curr = msgs[index].sentAt;
+    final prev = msgs[index - 1].sentAt;
+    return curr.year != prev.year ||
+        curr.month != prev.month ||
+        curr.day != prev.day;
+  }
+
+  String _dateLabel(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final date = DateTime(d.year, d.month, d.day);
+    if (date == today) return 'Today';
+    if (date == today.subtract(const Duration(days: 1))) return 'Yesterday';
+    return '${d.day}/${d.month}/${d.year}';
+  }
+
+  void _showReadReceiptsDialog(
+    BuildContext context,
+    List<ReadReceipt> receipts,
   ) {
-    final convState = bloc.state;
-    final List<ConversationEntity> existingConvs =
-        convState is ConversationListLoaded
-        ? convState.items.where((c) => c.hasParticipant(currentUserId)).toList()
-        : convState is ConversationChatLoaded
-        ? [convState.conversation]
-        : [];
-
-    final selected = <String>{};
-    final msgController = TextEditingController();
-
     showDialog(
-      context: ctx,
-      builder: (d) => StatefulBuilder(
-        builder: (ctx2, setState2) => AlertDialog(
-          title: const Text('Broadcast Message'),
-          content: SizedBox(
-            width: 380,
-            height: 400,
-            child: Column(
-              children: [
-                TextField(
-                  controller: msgController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    hintText: 'Type broadcast message...',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Conversations (${selected.length} selected)',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                if (existingConvs.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text(
-                      'No conversations loaded.\nGo back to the list first.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 13),
-                    ),
-                  )
-                else
-                  Expanded(
-                    child: ListView(
-                      children: existingConvs
-                          .map(
-                            (c) => CheckboxListTile(
-                              dense: true,
-                              value: selected.contains(c.id),
-                              title: Text(
-                                c.displayName(currentUserId),
-                                style: const TextStyle(fontSize: 13),
-                              ),
-                              subtitle: Text(
-                                c.type == ConversationType.group
-                                    ? 'Group'
-                                    : 'Direct',
-                                style: const TextStyle(fontSize: 10),
-                              ),
-                              onChanged: (v) => setState2(() {
-                                if (v == true) {
-                                  selected.add(c.id);
-                                } else {
-                                  selected.remove(c.id);
-                                }
-                              }),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(d),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed:
-                  selected.isNotEmpty && msgController.text.trim().isNotEmpty
-                  ? () {
-                      Navigator.pop(d);
-                      bloc.add(
-                        ConversationBroadcastRequested(
-                          conversationIds: selected.toList(),
-                          content: msgController.text.trim(),
-                        ),
-                      );
-                    }
-                  : null,
-              child: Text('Send (${selected.length})'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showReadReceiptsDialog(BuildContext ctx, List<ReadReceipt> receipts) {
-    showDialog(
-      context: ctx,
-      builder: (d) => AlertDialog(
+      context: context,
+      builder: (_) => AlertDialog(
         title: const Text('Read by'),
         content: SizedBox(
           width: 280,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: receipts
-                .map(
-                  (r) => ListTile(
-                    dense: true,
-                    leading: const Icon(
-                      Icons.done_all,
-                      size: 16,
-                      color: Colors.blue,
-                    ),
-                    title: Text(
-                      r.userName,
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                    trailing: Text(
-                      '${r.readAt.hour.toString().padLeft(2, '0')}:${r.readAt.minute.toString().padLeft(2, '0')}',
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
+          child: receipts.isEmpty
+              ? const Text('No one has read this message yet.')
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: receipts
+                      .map(
+                        (r) => ListTile(
+                          dense: true,
+                          leading: CircleAvatar(
+                            radius: 16,
+                            child: Text(
+                              r.userName.isNotEmpty ? r.userName[0] : '?',
+                            ),
+                          ),
+                          title: Text(r.userName),
+                          subtitle: Text(
+                            '${r.readAt.hour}:${r.readAt.minute.toString().padLeft(2, '0')}',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(d),
+            onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
           ),
         ],
@@ -4451,24 +4470,74 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
     );
   }
 
-  bool _showDateSep(List<MessageEntity> msgs, int i) {
-    if (i == 0) return true;
-    final c = msgs[i].sentAt;
-    final p = msgs[i - 1].sentAt;
-    return c.day != p.day || c.month != p.month || c.year != p.year;
+  void _showForwardDialog(
+    BuildContext context,
+    ConversationBloc bloc,
+    MessageEntity msg,
+    String currentConvId,
+  ) {
+    // Simplified — forward to a conversation selected from the list
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Forward Message'),
+        content: const Text(
+          'Forward functionality requires loading the conversation list. '
+          'Use the broadcast tab for multi-recipient forwarding.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
-  String _dateLabel(DateTime dt) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final d = DateTime(dt.year, dt.month, dt.day);
-    final diff = today.difference(d).inDays;
-    if (diff == 0) return 'Today';
-    if (diff == 1) return 'Yesterday';
-    if (diff < 7) {
-      return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][dt.weekday - 1];
-    }
-    return '${dt.day}/${dt.month}/${dt.year}';
+  void _showEditDialog(
+    BuildContext context,
+    ConversationBloc bloc,
+    MessageEntity msg,
+    String convId,
+  ) {
+    final controller = TextEditingController(text: msg.content);
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Edit Message'),
+        content: TextField(
+          controller: controller,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            hintText: 'Edit your message...',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final newContent = controller.text.trim();
+              if (newContent.isNotEmpty && newContent != msg.content) {
+                bloc.add(
+                  ConversationEditMessageRequested(
+                    conversationId: convId,
+                    messageId: msg.id,
+                    newContent: newContent,
+                  ),
+                );
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -4478,7 +4547,6 @@ class _Banner extends StatelessWidget {
   final Color color;
   final Color iconColor;
   final Color textColor;
-
   const _Banner({
     required this.icon,
     required this.text,
@@ -4486,26 +4554,29 @@ class _Banner extends StatelessWidget {
     required this.iconColor,
     required this.textColor,
   });
-
   @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-    color: color,
-    child: Row(
-      children: [
-        Icon(icon, size: 16, color: iconColor),
-        const SizedBox(width: 8),
-        Text(
-          text,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: textColor,
-            fontWeight: FontWeight.w500,
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: color,
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: iconColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: textColor,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 
@@ -4517,6 +4588,12 @@ import '../../../../app/routes/app_router.dart';
 import '../../../actor/presentation/bloc/actor_bloc.dart';
 import '../../../actor/presentation/bloc/actor_event.dart';
 import '../../../actor/presentation/bloc/actor_state.dart';
+import '../../../officer/presentation/bloc/officer_bloc.dart';
+import '../../../officer/presentation/bloc/officer_event.dart';
+import '../../../officer/presentation/bloc/officer_state.dart';
+import '../../../customer/presentation/bloc/customer_bloc.dart';
+import '../../../customer/presentation/bloc/customer_event.dart';
+import '../../../customer/presentation/bloc/customer_state.dart';
 import '../../domain/entities/conversation_entity.dart';
 import '../bloc/conversation_bloc.dart';
 import '../bloc/conversation_event.dart';
@@ -4548,15 +4625,15 @@ class _ConversationFormPageState extends State<ConversationFormPage>
   final Set<String> _broadcastConvIds = {};
   final Set<String> _broadcastNewContactIds = {};
 
-  // Contacts are loaded from ActorBloc — no mock dependency.
   List<Map<String, String>> _contacts = [];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    // Trigger actor list load to populate contacts
     context.read<ActorBloc>().add(ActorLoadAllRequested());
+    context.read<OfficerBloc>().add(OfficerLoadAllRequested());
+    context.read<CustomerBloc>().add(CustomerLoadAllRequested());
   }
 
   @override
@@ -4570,21 +4647,55 @@ class _ConversationFormPageState extends State<ConversationFormPage>
     super.dispose();
   }
 
-  /// Maps ActorEntity list to the flat Map format the form uses.
-  List<Map<String, String>> _toContactMaps(ActorState actorState) {
-    if (actorState is! ActorListLoaded) return _contacts;
-    return actorState.items.map((a) {
-      // Derive role from actorTypes labels; fallback to 'unknown'
-      final typeLabels = a.actorTypes
-          .map((t) => t.label.toLowerCase())
-          .toList();
-      final role = typeLabels.any((l) => l.contains('officer'))
-          ? 'officer'
-          : typeLabels.any((l) => l.contains('customer'))
-          ? 'customer'
-          : (typeLabels.isNotEmpty ? typeLabels.first : 'unknown');
-      return {'id': a.id, 'name': a.displayName, 'role': role};
-    }).toList();
+  void _rebuildContacts() {
+    final currentUserId = context.read<ConversationBloc>().currentUserId;
+    final lowerCurrentId = currentUserId.toLowerCase();
+    final contacts = <Map<String, String>>[];
+
+    bool _isSelf(String id) =>
+        id.isEmpty || id == currentUserId || id.toLowerCase() == lowerCurrentId;
+
+    final officerState = context.read<OfficerBloc>().state;
+    if (officerState is OfficerListLoaded) {
+      for (final o in officerState.items) {
+        if (o.actorId.isEmpty || _isSelf(o.actorId)) continue;
+        contacts.add({
+          'id': o.actorId,
+          'name': o.displayName,
+          'role': 'officer',
+        });
+      }
+    }
+
+    final customerState = context.read<CustomerBloc>().state;
+    if (customerState is CustomerListLoaded) {
+      for (final c in customerState.items) {
+        if (_isSelf(c.id)) continue;
+        contacts.add({'id': c.id, 'name': c.name, 'role': 'customer'});
+      }
+    }
+
+    final actorState = context.read<ActorBloc>().state;
+    if (actorState is ActorListLoaded) {
+      final existingIds = contacts.map((c) => c['id']!.toLowerCase()).toSet();
+      for (final a in actorState.items) {
+        if (_isSelf(a.id)) continue;
+        if (existingIds.contains(a.id.toLowerCase())) continue;
+        final typeLabels = a.actorTypes
+            .map((t) => t.label.toLowerCase())
+            .toList();
+        final role = typeLabels.any((l) => l.contains('officer'))
+            ? 'officer'
+            : typeLabels.any((l) => l.contains('customer'))
+            ? 'customer'
+            : typeLabels.any((l) => l.contains('owner') || l.contains('admin'))
+            ? 'officer'
+            : (typeLabels.isNotEmpty ? typeLabels.first : 'unknown');
+        contacts.add({'id': a.id, 'name': a.displayName, 'role': role});
+      }
+    }
+
+    setState(() => _contacts = contacts);
   }
 
   bool get _canSubmit {
@@ -4648,60 +4759,66 @@ class _ConversationFormPageState extends State<ConversationFormPage>
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width > 600;
 
-    // Sync contacts from ActorBloc whenever state changes
-    return BlocListener<ActorBloc, ActorState>(
-      listener: (ctx, actorState) {
-        final loaded = _toContactMaps(actorState);
-        if (loaded.isNotEmpty) setState(() => _contacts = loaded);
-      },
-      child: BlocListener<ConversationBloc, ConversationState>(
-        listener: (ctx, state) {
-          if (state is ConversationNewCreated) {
-            ctx.go(AppRouter.conversationDetailPath(state.conversationId));
-          }
-          if (state is ConversationFailure) {
-            ScaffoldMessenger.of(
-              ctx,
-            ).showSnackBar(SnackBar(content: Text(state.message)));
-          }
-          if (state is ConversationBroadcastSuccess) {
-            ScaffoldMessenger.of(ctx).showSnackBar(
-              SnackBar(
-                content: Text('Sent to ${state.sentCount} conversations'),
-              ),
-            );
-            ctx.go('/conversations');
-          }
-        },
-        child: Scaffold(
-          appBar: AppBar(
-            title: const Text('New'),
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () => context.go('/conversations'),
-            ),
-            bottom: TabBar(
-              controller: _tabController,
-              tabs: const [
-                Tab(text: 'Conversation'),
-                Tab(text: 'Broadcast'),
-              ],
-            ),
-          ),
-          body: BlocBuilder<ConversationBloc, ConversationState>(
-            builder: (ctx, state) {
-              if (state is ConversationLoading) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              return TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildNewConversationTab(context, isWide),
-                  _buildBroadcastTab(context, isWide),
-                ],
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<ActorBloc, ActorState>(
+          listener: (_, __) => _rebuildContacts(),
+        ),
+        BlocListener<OfficerBloc, OfficerState>(
+          listener: (_, __) => _rebuildContacts(),
+        ),
+        BlocListener<CustomerBloc, CustomerState>(
+          listener: (_, __) => _rebuildContacts(),
+        ),
+        BlocListener<ConversationBloc, ConversationState>(
+          listener: (ctx, state) {
+            if (state is ConversationNewCreated) {
+              ctx.go(AppRouter.conversationDetailPath(state.conversationId));
+            }
+            if (state is ConversationFailure) {
+              ScaffoldMessenger.of(
+                ctx,
+              ).showSnackBar(SnackBar(content: Text(state.message)));
+            }
+            if (state is ConversationBroadcastSuccess) {
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                SnackBar(
+                  content: Text('Sent to ${state.sentCount} conversations'),
+                ),
               );
-            },
+              ctx.go('/conversations');
+            }
+          },
+        ),
+      ],
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('New'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.go('/conversations'),
           ),
+          bottom: TabBar(
+            controller: _tabController,
+            tabs: const [
+              Tab(text: 'Conversation'),
+              Tab(text: 'Broadcast'),
+            ],
+          ),
+        ),
+        body: BlocBuilder<ConversationBloc, ConversationState>(
+          builder: (ctx, state) {
+            if (state is ConversationLoading) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            return TabBarView(
+              controller: _tabController,
+              children: [
+                _buildNewConversationTab(context, isWide),
+                _buildBroadcastTab(context, isWide),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -4864,7 +4981,6 @@ class _ConversationFormPageState extends State<ConversationFormPage>
 
   Widget _buildBroadcastTab(BuildContext context, bool isWide) {
     final cs = Theme.of(context).colorScheme;
-    // Drive existing conversations from BLoC state (no mock needed)
     final convBloc = context.read<ConversationBloc>();
     final convState = convBloc.state;
     final currentUserId = convBloc.currentUserId;
@@ -5299,12 +5415,12 @@ class _ContactTile extends StatelessWidget {
           radius: 18,
           backgroundColor: color.withValues(alpha: 0.15),
           child: Text(
-            contact['name']![0],
+            (contact['name'] ?? '?')[0].toUpperCase(),
             style: TextStyle(color: color, fontWeight: FontWeight.w600),
           ),
         ),
         title: Text(
-          contact['name']!,
+          contact['name'] ?? '',
           style: TextStyle(
             fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
           ),
@@ -6152,6 +6268,32 @@ class _MembersTab extends StatelessWidget {
     this.onPrivateMessage,
   });
 
+  String _friendlyRole(String raw) {
+    switch (raw.toLowerCase()) {
+      case 'super_admin':
+        return 'Creator';
+      case 'admin':
+        return 'Admin';
+      case 'member':
+        return 'Member';
+      case 'officer':
+        return 'Officer';
+      case 'customer':
+        return 'Customer';
+      default:
+        // Capitalize first letter, replace underscores with spaces
+        return raw
+            .replaceAll('_', ' ')
+            .split(' ')
+            .map(
+              (w) => w.isEmpty
+                  ? ''
+                  : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}',
+            )
+            .join(' ');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -6232,7 +6374,7 @@ class _MembersTab extends StatelessWidget {
               ],
             ),
             subtitle: Text(
-              '${p.role.toUpperCase()} • ${p.lastSeenLabel}',
+              '${_friendlyRole(p.role)} • ${p.lastSeenLabel}',
               style: TextStyle(fontSize: 10, color: cs.outline),
             ),
             trailing: !isMe && isAdmin

@@ -835,10 +835,20 @@ class AppRouter {
               path: conversationDetail,
               builder: (_, s) {
                 final id = s.pathParameters['id'] ?? '';
-                return BlocProvider(
-                  create: (_) =>
-                      sl<ConversationBloc>()
-                        ..add(ConversationLoadOneRequested(id)),
+                return MultiBlocProvider(
+                  providers: [
+                    BlocProvider(
+                      create: (_) =>
+                          sl<ConversationBloc>()
+                            ..add(ConversationLoadOneRequested(id)),
+                    ),
+                    // FIX #7: Provide ActorBloc so the detail page can
+                    // populate availableContacts for the "Add Member" sheet.
+                    BlocProvider(
+                      create: (_) =>
+                          sl<ActorBloc>()..add(ActorLoadAllRequested()),
+                    ),
+                  ],
                   child: const ConversationDetailPage(),
                 );
               },

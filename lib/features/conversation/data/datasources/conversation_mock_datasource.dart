@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 import '../models/conversation_model.dart';
 import '../models/message_model.dart';
-import '../../domain/entities/conversation_entity.dart';
 import '../../domain/entities/message_entity.dart';
 import 'conversation_remote_datasource.dart';
 
@@ -23,6 +22,17 @@ class ConversationMockDataSource implements ConversationRemoteDataSource {
   int _msgCounter = 200;
   int _convCounter = 100;
   final _random = Random();
+  final Map<String, String> _nameCache = {};
+
+  @override
+  Map<String, String> get nameCache => Map.unmodifiable(_nameCache);
+
+  @override
+  void registerName(String actorId, String name) {
+    if (actorId.isNotEmpty && name.isNotEmpty) {
+      _nameCache[actorId] = name;
+    }
+  }
 
   void Function(String conversationId, MessageModel message)? onAutoReply;
   void Function(String conversationId, String senderName)? onTypingStart;

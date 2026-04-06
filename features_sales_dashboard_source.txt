@@ -1,6 +1,6 @@
 ﻿// ================================================================
 // features_sales_dashboard_source.txt
-// Generated : 2026-03-25 11:09:36
+// Generated : 2026-04-06 14:50:47
 // Files     : 15
 // Usage     : Upload to Claude Project documents as reference.
 // ================================================================
@@ -149,52 +149,80 @@ class GetSalesDashboardUseCase {
     required OrderDataProvider orderProvider,
     required PaymentDataProvider paymentProvider,
     required ProductDataProvider productProvider,
-  })      : _orderProvider = orderProvider,
-        _paymentProvider = paymentProvider,
-        _productProvider = productProvider;
+  }) : _orderProvider = orderProvider,
+       _paymentProvider = paymentProvider,
+       _productProvider = productProvider;
 
   Future<Either<Failure, SalesDashboardProjection>> call() async {
     final orderResult = await _orderProvider.getAll();
     if (orderResult.isLeft()) {
-      return orderResult.fold((f) => Left(f), (_) => throw StateError('unreachable'));
+      return orderResult.fold(
+        (f) => Left(f),
+        (_) => throw StateError('unreachable'),
+      );
     }
-    final orderList = orderResult.getOrElse(() => throw StateError('unreachable'));
+    final orderList = orderResult.getOrElse(
+      () => throw StateError('unreachable'),
+    );
+
     final paymentResult = await _paymentProvider.getAll();
     if (paymentResult.isLeft()) {
-      return paymentResult.fold((f) => Left(f), (_) => throw StateError('unreachable'));
+      return paymentResult.fold(
+        (f) => Left(f),
+        (_) => throw StateError('unreachable'),
+      );
     }
-    final paymentList = paymentResult.getOrElse(() => throw StateError('unreachable'));
+    final paymentList = paymentResult.getOrElse(
+      () => throw StateError('unreachable'),
+    );
+
     final productResult = await _productProvider.getAll();
     if (productResult.isLeft()) {
-      return productResult.fold((f) => Left(f), (_) => throw StateError('unreachable'));
+      return productResult.fold(
+        (f) => Left(f),
+        (_) => throw StateError('unreachable'),
+      );
     }
-    final productList = productResult.getOrElse(() => throw StateError('unreachable'));
+    final productList = productResult.getOrElse(
+      () => throw StateError('unreachable'),
+    );
 
     final totalOrders = orderList.length;
-    final totalRevenue = orderList.fold<double>(0.0, (s, e) => s + (e.total ?? 0.0));
-    final averageOrderValue = orderList.isEmpty ? 0.0 : orderList.fold<double>(0.0, (s, e) => s + (e.total ?? 0.0)) / orderList.length;
+    final totalRevenue = orderList.fold<double>(0.0, (s, e) => s + e.total);
+    final averageOrderValue = orderList.isEmpty
+        ? 0.0
+        : totalRevenue / orderList.length;
+
     final ordersByStatus = <String, int>{};
     for (final e in orderList) {
-      final key = e.status.toString();
+      final key = e.status;
       ordersByStatus[key] = (ordersByStatus[key] ?? 0) + 1;
     }
-    final confirmedPayments = paymentList.length;
-    final sortedrecentOrders = List.of(orderList)..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    final recentOrders = sortedrecentOrders.take(5).toList();
-    final productCount = productList.length;
-    final featuredProductCount = productList.length;
 
-    return Right(SalesDashboardProjection(
-      totalOrders: totalOrders,
-      totalRevenue: totalRevenue,
-      averageOrderValue: averageOrderValue,
-      ordersByStatus: ordersByStatus,
-      confirmedPayments: confirmedPayments,
-      recentOrders: recentOrders,
-      productCount: productCount,
-      featuredProductCount: featuredProductCount,
-      generatedAt: DateTime.now(),
-    ));
+    final confirmedPayments = paymentList.length;
+
+    final sortedrecentOrders = List.of(orderList)
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final recentOrders = sortedrecentOrders.take(5).toList();
+
+    final productCount = productList.length;
+    final featuredProductCount = productList
+        .where((p) => p.isFeatured == true || p.isFeatured == 'true')
+        .length;
+
+    return Right(
+      SalesDashboardProjection(
+        totalOrders: totalOrders,
+        totalRevenue: totalRevenue,
+        averageOrderValue: averageOrderValue,
+        ordersByStatus: ordersByStatus,
+        confirmedPayments: confirmedPayments,
+        recentOrders: recentOrders,
+        productCount: productCount,
+        featuredProductCount: featuredProductCount,
+        generatedAt: DateTime.now(),
+      ),
+    );
   }
 }
 
