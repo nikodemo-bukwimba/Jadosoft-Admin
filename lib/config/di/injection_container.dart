@@ -408,7 +408,7 @@ Future<void> initDependencies() async {
   // -- 5. Actor (HMSCP core ? L1) ----------------------------
   sl.registerLazySingleton<ActorCacheDao>(() => ActorCacheDao(sl()));
   sl.registerLazySingleton<ActorRemoteDataSource>(
-    () => ActorRemoteDataSourceImpl(dio: sl()),
+    () => ActorRemoteDataSourceImpl(dio: sl(), orgContext: sl<OrgContext>()),
   );
   sl.registerLazySingleton<ActorLocalDataSource>(
     () => ActorLocalDataSourceImpl(dao: sl()),

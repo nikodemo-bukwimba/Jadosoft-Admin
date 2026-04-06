@@ -5,6 +5,12 @@ import '../../../../app/routes/app_router.dart';
 import '../../../actor/presentation/bloc/actor_bloc.dart';
 import '../../../actor/presentation/bloc/actor_event.dart';
 import '../../../actor/presentation/bloc/actor_state.dart';
+import '../../../officer/presentation/bloc/officer_bloc.dart';
+import '../../../officer/presentation/bloc/officer_event.dart';
+import '../../../officer/presentation/bloc/officer_state.dart';
+import '../../../customer/presentation/bloc/customer_bloc.dart';
+import '../../../customer/presentation/bloc/customer_event.dart';
+import '../../../customer/presentation/bloc/customer_state.dart';
 import '../../domain/entities/conversation_entity.dart';
 import '../bloc/conversation_bloc.dart';
 import '../bloc/conversation_event.dart';
@@ -36,15 +42,15 @@ class _ConversationFormPageState extends State<ConversationFormPage>
   final Set<String> _broadcastConvIds = {};
   final Set<String> _broadcastNewContactIds = {};
 
-  // Contacts are loaded from ActorBloc — no mock dependency.
   List<Map<String, String>> _contacts = [];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    // Trigger actor list load to populate contacts
     context.read<ActorBloc>().add(ActorLoadAllRequested());
+    context.read<OfficerBloc>().add(OfficerLoadAllRequested());
+    context.read<CustomerBloc>().add(CustomerLoadAllRequested());
   }
 
   @override
@@ -58,21 +64,54 @@ class _ConversationFormPageState extends State<ConversationFormPage>
     super.dispose();
   }
 
-  /// Maps ActorEntity list to the flat Map format the form uses.
-  List<Map<String, String>> _toContactMaps(ActorState actorState) {
-    if (actorState is! ActorListLoaded) return _contacts;
-    return actorState.items.map((a) {
-      // Derive role from actorTypes labels; fallback to 'unknown'
-      final typeLabels = a.actorTypes
-          .map((t) => t.label.toLowerCase())
-          .toList();
-      final role = typeLabels.any((l) => l.contains('officer'))
-          ? 'officer'
-          : typeLabels.any((l) => l.contains('customer'))
-          ? 'customer'
-          : (typeLabels.isNotEmpty ? typeLabels.first : 'unknown');
-      return {'id': a.id, 'name': a.displayName, 'role': role};
-    }).toList();
+  void _rebuildContacts() {
+    final currentUserId = context.read<ConversationBloc>().currentUserId;
+    final contacts = <Map<String, String>>[];
+
+    // Officers from OfficerBloc (real API: orgs/{orgId}/members)
+    final officerState = context.read<OfficerBloc>().state;
+    if (officerState is OfficerListLoaded) {
+      for (final o in officerState.items) {
+        if (o.actorId.isEmpty || o.actorId == currentUserId) continue;
+        contacts.add({
+          'id': o.actorId,
+          'name': o.displayName,
+          'role': 'officer',
+        });
+      }
+    }
+
+    // Customers from CustomerBloc
+    final customerState = context.read<CustomerBloc>().state;
+    if (customerState is CustomerListLoaded) {
+      for (final c in customerState.items) {
+        if (c.id == currentUserId) continue;
+        contacts.add({'id': c.id, 'name': c.name, 'role': 'customer'});
+      }
+    }
+
+    // Org members from ActorBloc — fallback for any not already listed
+    final actorState = context.read<ActorBloc>().state;
+    if (actorState is ActorListLoaded) {
+      final existingIds = contacts.map((c) => c['id']).toSet();
+      for (final a in actorState.items) {
+        if (a.id == currentUserId) continue;
+        if (existingIds.contains(a.id)) continue;
+        final typeLabels = a.actorTypes
+            .map((t) => t.label.toLowerCase())
+            .toList();
+        final role = typeLabels.any((l) => l.contains('officer'))
+            ? 'officer'
+            : typeLabels.any((l) => l.contains('customer'))
+            ? 'customer'
+            : typeLabels.any((l) => l.contains('owner') || l.contains('admin'))
+            ? 'officer'
+            : (typeLabels.isNotEmpty ? typeLabels.first : 'unknown');
+        contacts.add({'id': a.id, 'name': a.displayName, 'role': role});
+      }
+    }
+
+    setState(() => _contacts = contacts);
   }
 
   bool get _canSubmit {
@@ -136,60 +175,66 @@ class _ConversationFormPageState extends State<ConversationFormPage>
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width > 600;
 
-    // Sync contacts from ActorBloc whenever state changes
-    return BlocListener<ActorBloc, ActorState>(
-      listener: (ctx, actorState) {
-        final loaded = _toContactMaps(actorState);
-        if (loaded.isNotEmpty) setState(() => _contacts = loaded);
-      },
-      child: BlocListener<ConversationBloc, ConversationState>(
-        listener: (ctx, state) {
-          if (state is ConversationNewCreated) {
-            ctx.go(AppRouter.conversationDetailPath(state.conversationId));
-          }
-          if (state is ConversationFailure) {
-            ScaffoldMessenger.of(
-              ctx,
-            ).showSnackBar(SnackBar(content: Text(state.message)));
-          }
-          if (state is ConversationBroadcastSuccess) {
-            ScaffoldMessenger.of(ctx).showSnackBar(
-              SnackBar(
-                content: Text('Sent to ${state.sentCount} conversations'),
-              ),
-            );
-            ctx.go('/conversations');
-          }
-        },
-        child: Scaffold(
-          appBar: AppBar(
-            title: const Text('New'),
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () => context.go('/conversations'),
-            ),
-            bottom: TabBar(
-              controller: _tabController,
-              tabs: const [
-                Tab(text: 'Conversation'),
-                Tab(text: 'Broadcast'),
-              ],
-            ),
-          ),
-          body: BlocBuilder<ConversationBloc, ConversationState>(
-            builder: (ctx, state) {
-              if (state is ConversationLoading) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              return TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildNewConversationTab(context, isWide),
-                  _buildBroadcastTab(context, isWide),
-                ],
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<ActorBloc, ActorState>(
+          listener: (_, __) => _rebuildContacts(),
+        ),
+        BlocListener<OfficerBloc, OfficerState>(
+          listener: (_, __) => _rebuildContacts(),
+        ),
+        BlocListener<CustomerBloc, CustomerState>(
+          listener: (_, __) => _rebuildContacts(),
+        ),
+        BlocListener<ConversationBloc, ConversationState>(
+          listener: (ctx, state) {
+            if (state is ConversationNewCreated) {
+              ctx.go(AppRouter.conversationDetailPath(state.conversationId));
+            }
+            if (state is ConversationFailure) {
+              ScaffoldMessenger.of(
+                ctx,
+              ).showSnackBar(SnackBar(content: Text(state.message)));
+            }
+            if (state is ConversationBroadcastSuccess) {
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                SnackBar(
+                  content: Text('Sent to ${state.sentCount} conversations'),
+                ),
               );
-            },
+              ctx.go('/conversations');
+            }
+          },
+        ),
+      ],
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('New'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.go('/conversations'),
           ),
+          bottom: TabBar(
+            controller: _tabController,
+            tabs: const [
+              Tab(text: 'Conversation'),
+              Tab(text: 'Broadcast'),
+            ],
+          ),
+        ),
+        body: BlocBuilder<ConversationBloc, ConversationState>(
+          builder: (ctx, state) {
+            if (state is ConversationLoading) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            return TabBarView(
+              controller: _tabController,
+              children: [
+                _buildNewConversationTab(context, isWide),
+                _buildBroadcastTab(context, isWide),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -352,7 +397,6 @@ class _ConversationFormPageState extends State<ConversationFormPage>
 
   Widget _buildBroadcastTab(BuildContext context, bool isWide) {
     final cs = Theme.of(context).colorScheme;
-    // Drive existing conversations from BLoC state (no mock needed)
     final convBloc = context.read<ConversationBloc>();
     final convState = convBloc.state;
     final currentUserId = convBloc.currentUserId;
@@ -787,12 +831,12 @@ class _ContactTile extends StatelessWidget {
           radius: 18,
           backgroundColor: color.withValues(alpha: 0.15),
           child: Text(
-            contact['name']![0],
+            (contact['name'] ?? '?')[0].toUpperCase(),
             style: TextStyle(color: color, fontWeight: FontWeight.w600),
           ),
         ),
         title: Text(
-          contact['name']!,
+          contact['name'] ?? '',
           style: TextStyle(
             fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
           ),

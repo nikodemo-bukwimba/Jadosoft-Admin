@@ -20,6 +20,7 @@
 import 'package:dio/dio.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/actor_model.dart';
+import '../../../../core/context/org_context.dart';
 
 abstract class ActorRemoteDataSource {
   Future<List<ActorModel>> getAll({
@@ -38,7 +39,11 @@ abstract class ActorRemoteDataSource {
 
 class ActorRemoteDataSourceImpl implements ActorRemoteDataSource {
   final Dio _dio;
-  ActorRemoteDataSourceImpl({required Dio dio}) : _dio = dio;
+  final OrgContext _orgContext;
+
+  ActorRemoteDataSourceImpl({required Dio dio, required OrgContext orgContext})
+    : _dio = dio,
+      _orgContext = orgContext;
 
   // ── LIST ─────────────────────────────────────────────────
 
@@ -51,36 +56,70 @@ class ActorRemoteDataSourceImpl implements ActorRemoteDataSource {
     int? page,
   }) async {
     try {
+      final orgId = _orgContext.effectiveOrgId;
       final queryParams = <String, dynamic>{};
       if (status != null) queryParams['status'] = status;
       if (search != null) queryParams['search'] = search;
-      if (typeId != null) queryParams['type_id'] = typeId;
       if (perPage != null) queryParams['per_page'] = perPage;
       if (page != null) queryParams['page'] = page;
 
       final response = await _dio.get(
-        'actors',
+        'orgs/$orgId/members',
         queryParameters: queryParams.isNotEmpty ? queryParams : null,
       );
 
       final raw = response.data;
-      if (raw == null) {
-        throw const ServerException('Empty response from /actors');
-      }
+      if (raw == null)
+        throw const ServerException('Empty response from orgs/members');
 
-      // Unwrap: HMSCP returns { "data": [...], "links": {}, "meta": {} }
       final List<dynamic> items;
       if (raw is Map<String, dynamic> && raw.containsKey('data')) {
         items = raw['data'] as List<dynamic>;
       } else if (raw is List) {
-        // Fallback — raw list (shouldn't happen, but safe)
         items = raw;
       } else {
-        throw const ServerException('Unexpected response format from /actors');
+        throw const ServerException(
+          'Unexpected response format from orgs/members',
+        );
       }
 
+      final now = DateTime.now().toIso8601String();
+
       return items
-          .map((e) => ActorModel.fromJson(e as Map<String, dynamic>))
+          .where(
+            (e) =>
+                e is Map<String, dynamic> &&
+                e['user'] is Map &&
+                e['user']['actor'] is Map,
+          )
+          .map((e) {
+            final membership = e as Map<String, dynamic>;
+            final actor = Map<String, dynamic>.from(
+              membership['user']['actor'] as Map<String, dynamic>,
+            );
+            final orgRole = membership['org_role'] as Map<String, dynamic>?;
+
+            // Ensure required date fields exist
+            actor.putIfAbsent('created_at', () => now);
+            actor.putIfAbsent('updated_at', () => now);
+
+            // Inject orgRole as synthetic actor_type if actor_types is empty
+            // ActorTypeModel expects int id — use 0 as synthetic fallback
+            final existingTypes = actor['actor_types'] as List?;
+            if ((existingTypes == null || existingTypes.isEmpty) &&
+                orgRole != null) {
+              final roleName = orgRole['name'] as String? ?? 'member';
+              actor['actor_types'] = [
+                {
+                  'id': 0,
+                  'code': roleName.toLowerCase().replaceAll(' ', '_'),
+                  'label': roleName,
+                },
+              ];
+            }
+
+            return ActorModel.fromJson(actor);
+          })
           .toList();
     } on DioException catch (e) {
       throw _mapDioException(e);

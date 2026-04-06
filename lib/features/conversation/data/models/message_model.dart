@@ -32,9 +32,10 @@ class MessageModel extends MessageEntity {
     final reactions = rawReactions.map((r) {
       final m = r as Map<String, dynamic>;
       return MessageReaction(
-        emoji: m['emoji'] ?? '',
-        userId: m['user_id'] ?? '',
-        userName: m['user_name'] ?? '',
+        emoji: m['emoji'] as String? ?? '',
+        // API uses actor_id not user_id
+        userId: m['actor_id'] as String? ?? m['user_id'] as String? ?? '',
+        userName: m['user_name'] as String? ?? '',
       );
     }).toList();
 
@@ -42,27 +43,55 @@ class MessageModel extends MessageEntity {
     final receipts = rawReceipts.map((r) {
       final m = r as Map<String, dynamic>;
       return ReadReceipt(
-        userId: m['user_id'] ?? '',
-        userName: m['user_name'] ?? '',
+        userId: m['actor_id'] as String? ?? m['user_id'] as String? ?? '',
+        userName: m['user_name'] as String? ?? '',
         readAt: m['read_at'] != null
-            ? DateTime.parse(m['read_at'])
+            ? DateTime.parse(m['read_at'] as String)
             : DateTime.now(),
       );
     }).toList();
 
+    // API uses sender_actor_id, fallback to sender_id
+    final senderId =
+        j['sender_actor_id'] as String? ?? j['sender_id'] as String? ?? '';
+
+    // API uses conversation_id for DMs, group_id for groups
+    final conversationId =
+        j['conversation_id'] as String? ?? j['group_id'] as String? ?? '';
+
+    // API uses created_at (DirectMessage has $timestamps = false),
+    // fallback to sent_at for forward compatibility
+    DateTime sentAt;
+    if (j['sent_at'] != null) {
+      sentAt = DateTime.parse(j['sent_at'] as String);
+    } else if (j['created_at'] != null) {
+      sentAt = DateTime.parse(j['created_at'] as String);
+    } else {
+      sentAt = DateTime.now();
+    }
+
+    // API uses content_type, fallback to type
+    final contentType = j['content_type'] as String? ?? j['type'] as String?;
+
+    // API uses status field for delivery, fallback to delivery_status
+    final deliveryStr =
+        j['status'] as String? ?? j['delivery_status'] as String?;
+
+    // sender_name may not be in the API response — use actor_id as fallback
+    final senderName =
+        j['sender_name'] as String? ?? j['sender_actor_id'] as String? ?? '';
+
     return MessageModel(
       id: j['id'] as String? ?? '',
-      conversationId: j['conversation_id'] as String? ?? '',
-      senderId: j['sender_id'] as String? ?? '',
-      senderName: j['sender_name'] as String? ?? '',
+      conversationId: conversationId,
+      senderId: senderId,
+      senderName: senderName,
       senderRole: j['sender_role'] as String? ?? 'unknown',
-      type: _parseType(j['type'] as String?),
+      type: _parseType(contentType),
       content: j['content'] as String? ?? '',
       imageUrl: j['image_url'] as String?,
-      deliveryStatus: _parseDelivery(j['delivery_status'] as String?),
-      sentAt: j['sent_at'] != null
-          ? DateTime.parse(j['sent_at'] as String)
-          : DateTime.now(),
+      deliveryStatus: _parseDelivery(deliveryStr),
+      sentAt: sentAt,
       replyToId: j['reply_to_id'] as String?,
       replyToSenderName: j['reply_to_sender_name'] as String?,
       replyToContent: j['reply_to_content'] as String?,
@@ -101,7 +130,7 @@ class MessageModel extends MessageEntity {
         .map(
           (r) => {
             'emoji': r.emoji,
-            'user_id': r.userId,
+            'actor_id': r.userId,
             'user_name': r.userName,
           },
         )
@@ -114,7 +143,7 @@ class MessageModel extends MessageEntity {
     'read_receipts': readReceipts
         .map(
           (r) => {
-            'user_id': r.userId,
+            'actor_id': r.userId,
             'user_name': r.userName,
             'read_at': r.readAt.toIso8601String(),
           },
@@ -128,9 +157,10 @@ class MessageModel extends MessageEntity {
   static MessageType _parseType(String? v) => switch (v) {
     'image' => MessageType.image,
     'system' => MessageType.system,
-    'voice' => MessageType.voice,
+    'audio' || 'voice' => MessageType.voice,
     _ => MessageType.text,
   };
+
   static DeliveryStatus _parseDelivery(String? v) => switch (v) {
     'sending' => DeliveryStatus.sending,
     'sent' => DeliveryStatus.sent,

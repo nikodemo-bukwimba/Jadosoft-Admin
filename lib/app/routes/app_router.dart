@@ -817,6 +817,14 @@ class AppRouter {
                     create: (_) =>
                         sl<ActorBloc>()..add(ActorLoadAllRequested()),
                   ),
+                  BlocProvider(
+                    create: (_) =>
+                        sl<OfficerBloc>()..add(OfficerLoadAllRequested()),
+                  ),
+                  BlocProvider(
+                    create: (_) =>
+                        sl<CustomerBloc>()..add(CustomerLoadAllRequested()),
+                  ),
                 ],
                 child: const ConversationFormPage(
                   mode: ConversationFormMode.create,
@@ -850,6 +858,14 @@ class AppRouter {
                       create: (_) =>
                           sl<ActorBloc>()..add(ActorLoadAllRequested()),
                     ),
+                    BlocProvider(
+                      create: (_) =>
+                          sl<OfficerBloc>()..add(OfficerLoadAllRequested()),
+                    ),
+                    BlocProvider(
+                      create: (_) =>
+                          sl<CustomerBloc>()..add(CustomerLoadAllRequested()),
+                    ),
                   ],
                   child: ConversationFormPage(
                     mode: ConversationFormMode.edit,
@@ -858,7 +874,6 @@ class AppRouter {
                 );
               },
             ),
-
             // --- Phase 8 — Orders (L3) ---------------------
             GoRoute(
               path: orderList,

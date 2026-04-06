@@ -4,24 +4,13 @@ import '../models/conversation_model.dart';
 import '../models/message_model.dart';
 import '../../domain/entities/message_entity.dart';
 
-/// Full datasource interface for Nexora Communications API.
-///
-/// Extends the original Maishell CRUD interface with all message
-/// operations. The BLoC should inject this instead of hardcoding
-/// ConversationMockDataSource.
-///
-/// Scope logic: DM conversations use /communications/conversations/{id}/...
-///              Group conversations use /communications/groups/{id}/...
-///              The datasource resolves the scope from conversation type.
 abstract class ConversationRemoteDataSource {
-  // ── Original CRUD (Maishell) ──────────────────────────────
   Future<List<ConversationModel>> getAll();
   Future<ConversationModel> getById(String id);
   Future<ConversationModel> create(Map<String, dynamic> data);
   Future<ConversationModel> update(String id, Map<String, dynamic> data);
   Future<void> delete(String id);
 
-  // ── Messages ──────────────────────────────────────────────
   Future<List<MessageModel>> getMessages(String convId, {int perPage = 50});
   Future<MessageModel> sendMessage({
     required String convId,
@@ -38,31 +27,23 @@ abstract class ConversationRemoteDataSource {
   Future<void> deleteMessage(String convId, String msgId);
   Future<void> markAsRead(String convId);
 
-  // ── Reactions ─────────────────────────────────────────────
   Future<void> addReaction(String convId, String msgId, String emoji);
 
-  // ── Pins 🔴 MISSING API ──────────────────────────────────
   Future<void> togglePin(String convId, String msgId);
   List<MessageModel> getPinnedMessages(String convId);
 
-  // ── Stars 🔴 MISSING API ─────────────────────────────────
   Future<void> toggleStar(String convId, String msgId);
   List<MessageModel> getStarredMessages();
 
-  // ── Edit 🔴 MISSING API ──────────────────────────────────
   Future<void> editMessage(String convId, String msgId, String newContent);
 
-  // ── Read Receipts ─────────────────────────────────────────
   Future<List<ReadReceipt>> getReadReceipts(String convId, String msgId);
 
-  // ── Search (client-side for now) ──────────────────────────
   List<MessageModel> searchMessages(String convId, String query);
 
-  // ── Conversation management ───────────────────────────────
   Future<void> closeConversation(String convId);
   Future<void> reopenConversation(String convId);
 
-  // ── Group participants ────────────────────────────────────
   Future<void> addParticipant(
     String convId,
     String pId,
@@ -71,10 +52,8 @@ abstract class ConversationRemoteDataSource {
   );
   Future<void> removeParticipant(String convId, String pId, String name);
 
-  // ── Broadcast ─────────────────────────────────────────────
   Future<int> broadcastMessage(List<String> convIds, String content);
 
-  // ── Private reply from group ──────────────────────────────
   Future<String> createPrivateFromGroup(
     String participantId,
     String participantName,
@@ -82,31 +61,17 @@ abstract class ConversationRemoteDataSource {
     String? message,
   );
 
-  // ── Typing (no-op for REST, real implementation via WebSocket) ──
-  // Typing indicators are client-side events dispatched via WebSocket/Pusher.
-  // The datasource does not handle them — the BLoC manages typing state directly.
-
-  // ── Callbacks for auto-reply simulation (mock only) ───────
   void Function(String conversationId, MessageModel message)? onAutoReply;
   void Function(String conversationId, String senderName)? onTypingStart;
   void Function(String conversationId)? onTypingStop;
 }
 
-/// Production implementation wired to Nexora Communications API.
-///
-/// Endpoints used:
-///   DMs:        /api/v1/communications/conversations/...
-///   Groups:     /api/v1/communications/groups/...
-///   Broadcasts: /api/v1/communications/broadcasts/...
-///   Presence:   /api/v1/communications/presence/...
-///   Reactions:  /api/v1/communications/messages/{scope}/{id}/react
 class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   final Dio _dio;
   ConversationRemoteDataSourceImpl({required Dio dio}) : _dio = dio;
 
   static const _base = 'communications';
 
-  // Callbacks (unused in production — mock-only feature)
   @override
   void Function(String, MessageModel)? onAutoReply;
   @override
@@ -114,26 +79,119 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   @override
   void Function(String)? onTypingStop;
 
-  // ── Track conversation types for scope resolution ─────────
-  final Map<String, String> _typeCache =
-      {}; // convId → 'direct' | 'group' | 'broadcast'
+  final Map<String, String> _typeCache = {};
 
   String _scope(String convId) =>
       _typeCache[convId] == 'group' ? 'groups' : 'conversations';
+
   String _msgScope(String convId) =>
       _typeCache[convId] == 'group' ? 'group' : 'dm';
+
+  // ── Normalizers ───────────────────────────────────────────
+
+  /// Normalizes DirectConversation API shape → ConversationModel shape.
+  /// The API returns initiator_actor_id / recipient_actor_id, not participants[].
+  Map<String, dynamic> _normalizeDirect(Map<String, dynamic> j) {
+    // Already has a non-empty participants array — no normalization needed
+    final existing = j['participants'] as List?;
+    if (existing != null && existing.isNotEmpty) return j;
+
+    final initiatorId = j['initiator_actor_id'] as String? ?? '';
+    final recipientId = j['recipient_actor_id'] as String? ?? '';
+    final now = DateTime.now().toIso8601String();
+
+    return {
+      ...j,
+      'type': 'direct',
+      'status': j['status'] as String? ?? 'open',
+      'unread_count': j['unread_count'] ?? 0,
+      'created_at': j['created_at'] ?? now,
+      'participants': [
+        {
+          'id': initiatorId,
+          'name': j['initiator_name'] as String? ?? initiatorId,
+          'role': j['initiator_role'] as String? ?? 'unknown',
+          'joined_at': now,
+          'online_status': 'offline',
+          'last_seen_at': null,
+        },
+        {
+          'id': recipientId,
+          'name': j['recipient_name'] as String? ?? recipientId,
+          'role': j['recipient_role'] as String? ?? 'unknown',
+          'joined_at': now,
+          'online_status': 'offline',
+          'last_seen_at': null,
+        },
+      ],
+    };
+  }
+
+  /// Normalizes Group API shape → ConversationModel shape.
+  /// Group participants use actor_id not id.
+  Map<String, dynamic> _normalizeGroup(Map<String, dynamic> j) {
+    final rawP = j['participants'] as List<dynamic>? ?? [];
+    final now = DateTime.now().toIso8601String();
+
+    final participants = rawP.map((p) {
+      final m = p as Map<String, dynamic>;
+      // Group participants use actor_id field
+      final id = m['actor_id'] as String? ?? m['id'] as String? ?? '';
+      return {
+        'id': id,
+        'name': m['name'] as String? ?? id,
+        'role': m['role'] as String? ?? 'member',
+        'joined_at': m['created_at'] as String? ?? now,
+        'online_status': 'offline',
+        'last_seen_at': null,
+      };
+    }).toList();
+
+    return {
+      ...j,
+      'type': 'group',
+      'status': j['status'] as String? ?? 'open',
+      'title': j['name'] as String? ?? j['title'] as String?,
+      'participants': participants,
+      'unread_count': j['unread_count'] ?? 0,
+      'created_at': j['created_at'] ?? now,
+    };
+  }
 
   // ── CRUD ──────────────────────────────────────────────────
 
   @override
   Future<List<ConversationModel>> getAll() async {
     try {
-      final r = await _dio.get('communications/conversations');
-      final items = (r.data['data'] as List? ?? []).map((e) {
-        _typeCache[e['id']] = 'direct';
-        return ConversationModel.fromJson(e as Map<String, dynamic>);
+      final dmFuture = _dio.get('$_base/conversations');
+      final groupFuture = _dio.get('$_base/groups');
+      final results = await Future.wait([dmFuture, groupFuture]);
+
+      final dms = (results[0].data['data'] as List? ?? []).map((e) {
+        final map = e as Map<String, dynamic>;
+        _typeCache[map['id'] as String? ?? ''] = 'direct';
+        return ConversationModel.fromJson(_normalizeDirect(map));
       }).toList();
-      return items;
+
+      // Groups index returns a flat list (Collection, not paginated)
+      final groupRaw = results[1].data;
+      final groupList = groupRaw is List
+          ? groupRaw
+          : (groupRaw is Map ? (groupRaw['data'] as List? ?? []) : <dynamic>[]);
+
+      final groups = groupList.map((e) {
+        final map = e as Map<String, dynamic>;
+        _typeCache[map['id'] as String? ?? ''] = 'group';
+        return ConversationModel.fromJson(_normalizeGroup(map));
+      }).toList();
+
+      final all = [...dms, ...groups];
+      all.sort(
+        (a, b) => (b.lastMessageAt ?? b.createdAt).compareTo(
+          a.lastMessageAt ?? a.createdAt,
+        ),
+      );
+      return all;
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -144,9 +202,18 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     try {
       final scope = _scope(id);
       final r = await _dio.get('$_base/$scope/$id');
-      _typeCache[id] =
-          (r.data['type'] as String?) ?? _typeCache[id] ?? 'direct';
-      return ConversationModel.fromJson(r.data as Map<String, dynamic>);
+      final data = r.data as Map<String, dynamic>;
+
+      // Update type cache from response if available
+      final typeFromApi = data['type'] as String?;
+      if (typeFromApi != null) {
+        _typeCache[id] = typeFromApi == 'group' ? 'group' : 'direct';
+      }
+
+      final normalized = _typeCache[id] == 'group'
+          ? _normalizeGroup(data)
+          : _normalizeDirect(data);
+      return ConversationModel.fromJson(normalized);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -156,20 +223,47 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   Future<ConversationModel> create(Map<String, dynamic> data) async {
     try {
       final type = data['type'] as String? ?? 'direct';
-      final endpoint = type == 'group'
-          ? '$_base/groups'
-          : '$_base/conversations';
-      final body = type == 'group'
-          ? data
-          : {
-              'recipient_actor_id':
-                  data['recipient_actor_id'] ??
-                  data['participants']?.first?['id'],
-            };
-      final r = await _dio.post(endpoint, data: body);
-      final id = r.data['id'] as String? ?? '';
-      _typeCache[id] = type;
-      return ConversationModel.fromJson(r.data as Map<String, dynamic>);
+
+      if (type == 'group') {
+        final participants = data['participants'] as List<dynamic>? ?? [];
+        // API only needs name + participant_ids (creator added automatically)
+        final participantIds = participants
+            .map((p) => (p as Map<String, dynamic>)['id'] as String?)
+            .where((id) => id != null && id!.isNotEmpty)
+            .toList();
+
+        final body = <String, dynamic>{
+          'name': data['title'] ?? data['name'] ?? 'Group Chat',
+          if (data['description'] != null) 'description': data['description'],
+          'participant_ids': participantIds,
+        };
+
+        final r = await _dio.post('$_base/groups', data: body);
+        final responseData = r.data as Map<String, dynamic>;
+        // Response may wrap in 'group' key
+        final groupData = responseData['group'] is Map
+            ? responseData['group'] as Map<String, dynamic>
+            : responseData;
+        final newId = groupData['id'] as String? ?? '';
+        _typeCache[newId] = 'group';
+        return ConversationModel.fromJson(_normalizeGroup(groupData));
+      } else {
+        // Direct conversation — API only needs recipient_actor_id
+        final participants = data['participants'] as List<dynamic>? ?? [];
+        final recipientId =
+            data['recipient_actor_id'] as String? ??
+            participants
+                .map((p) => (p as Map<String, dynamic>)['id'] as String?)
+                .where((id) => id != null && id!.isNotEmpty)
+                .firstOrNull;
+
+        final body = <String, dynamic>{'recipient_actor_id': recipientId};
+        final r = await _dio.post('$_base/conversations', data: body);
+        final conv = r.data as Map<String, dynamic>;
+        final newId = conv['id'] as String? ?? '';
+        _typeCache[newId] = 'direct';
+        return ConversationModel.fromJson(_normalizeDirect(conv));
+      }
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -180,7 +274,10 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     try {
       final scope = _scope(id);
       final r = await _dio.patch('$_base/$scope/$id', data: data);
-      return ConversationModel.fromJson(r.data as Map<String, dynamic>);
+      final normalized = _typeCache[id] == 'group'
+          ? _normalizeGroup(r.data as Map<String, dynamic>)
+          : _normalizeDirect(r.data as Map<String, dynamic>);
+      return ConversationModel.fromJson(normalized);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -209,12 +306,17 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         '$_base/$scope/$convId/messages',
         queryParameters: {'per_page': perPage},
       );
-      final data = r.data is Map
-          ? (r.data['data'] as List? ?? [])
-          : (r.data as List? ?? []);
-      return data
+      final raw = r.data;
+      final list = raw is Map
+          ? (raw['data'] as List? ?? [])
+          : (raw as List? ?? []);
+
+      final messages = list
           .map((e) => MessageModel.fromJson(e as Map<String, dynamic>))
           .toList();
+
+      // API returns newest-first (desc) — reverse to chronological for UI
+      return messages.reversed.toList();
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -249,7 +351,11 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       };
 
       final r = await _dio.post('$_base/$scope/$convId/messages', data: body);
-      return MessageModel.fromJson(r.data as Map<String, dynamic>);
+      // Response wraps message in 'data' key
+      final msgData = r.data is Map && (r.data as Map).containsKey('data')
+          ? r.data['data'] as Map<String, dynamic>
+          : r.data as Map<String, dynamic>;
+      return MessageModel.fromJson(msgData);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -290,7 +396,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     }
   }
 
-  // ── Pins 🔴 MISSING API — calls will 404 until Laravel implements ──
+  // ── Pins ──────────────────────────────────────────────────
 
   @override
   Future<void> togglePin(String convId, String msgId) async {
@@ -303,13 +409,9 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   }
 
   @override
-  List<MessageModel> getPinnedMessages(String convId) {
-    // 🔴 MISSING API — returns empty until endpoint is built
-    // When available: GET /communications/{scope}/{convId}/pinned
-    return [];
-  }
+  List<MessageModel> getPinnedMessages(String convId) => [];
 
-  // ── Stars 🔴 MISSING API ─────────────────────────────────
+  // ── Stars ─────────────────────────────────────────────────
 
   @override
   Future<void> toggleStar(String convId, String msgId) async {
@@ -322,12 +424,9 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   }
 
   @override
-  List<MessageModel> getStarredMessages() {
-    // 🔴 MISSING API — returns empty until endpoint is built
-    return [];
-  }
+  List<MessageModel> getStarredMessages() => [];
 
-  // ── Edit 🔴 MISSING API ──────────────────────────────────
+  // ── Edit ──────────────────────────────────────────────────
 
   @override
   Future<void> editMessage(
@@ -368,16 +467,12 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     }
   }
 
-  // ── Search (client-side) ──────────────────────────────────
+  // ── Search ────────────────────────────────────────────────
 
   @override
-  List<MessageModel> searchMessages(String convId, String query) {
-    // Client-side search — operates on already-loaded messages.
-    // Server-side search would use GET .../search?q= when available.
-    return [];
-  }
+  List<MessageModel> searchMessages(String convId, String query) => [];
 
-  // ── Conversation management 🔴 MISSING API ───────────────
+  // ── Conversation management ───────────────────────────────
 
   @override
   Future<void> closeConversation(String convId) async {
@@ -456,15 +551,14 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     String? message,
   ) async {
     try {
-      // Create or retrieve DM with that participant
       final r = await _dio.post(
         '$_base/conversations',
         data: {'recipient_actor_id': participantId},
       );
-      final convId = r.data['id'] as String;
+      final conv = r.data as Map<String, dynamic>;
+      final convId = conv['id'] as String? ?? '';
       _typeCache[convId] = 'direct';
 
-      // Send first message if provided
       if (message != null && message.isNotEmpty) {
         await _dio.post(
           '$_base/conversations/$convId/messages',
@@ -477,10 +571,13 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     }
   }
 
+  // ── Helpers ───────────────────────────────────────────────
+
   String _msg(DioException e) {
     final data = e.response?.data;
-    if (data is Map<String, dynamic> && data['message'] is String)
+    if (data is Map<String, dynamic> && data['message'] is String) {
       return data['message'] as String;
+    }
     return 'An error occurred. Please try again.';
   }
 }
