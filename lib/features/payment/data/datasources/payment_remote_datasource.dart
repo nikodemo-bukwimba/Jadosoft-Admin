@@ -5,10 +5,10 @@ import '../models/payment_model.dart';
 
 abstract class PaymentRemoteDataSource {
   Future<List<PaymentModel>> getAll();
-  Future<PaymentModel>       getById(String id);
-  Future<PaymentModel>       create(Map<String, dynamic> data);
-  Future<PaymentModel>       update(String id, Map<String, dynamic> data);
-  Future<void>               delete(String id);
+  Future<PaymentModel> getById(String id);
+  Future<PaymentModel> create(Map<String, dynamic> data);
+  Future<PaymentModel> update(String id, Map<String, dynamic> data);
+  Future<void> delete(String id);
 }
 
 class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
@@ -18,10 +18,11 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
   PaymentRemoteDataSourceImpl({
     required Dio dio,
     required OrgContext orgContext,
-  })  : _dio = dio,
-        _orgContext = orgContext;
+  }) : _dio = dio,
+       _orgContext = orgContext;
 
-  String get _base => '/commerce/${_orgContext.effectiveOrgId}/payments';
+  String get _base =>
+      '/finance/actors/${_orgContext.actorId ?? _orgContext.effectiveOrgId}/payments';
 
   @override
   Future<List<PaymentModel>> getAll() async {
@@ -39,7 +40,7 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
   @override
   Future<PaymentModel> getById(String id) async {
     try {
-      final response = await _dio.get('$_base/$id');
+      final response = await _dio.get('/finance/payments/$id');
       final data = response.data['data'] ?? response.data;
       return PaymentModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
@@ -50,8 +51,9 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
   @override
   Future<PaymentModel> create(Map<String, dynamic> data) async {
     try {
-      final response = await _dio.post(_base, data: data);
-      final body = response.data['data'] ?? response.data;
+      final response = await _dio.post('/finance/payments', data: data);
+      final body =
+          response.data['data'] ?? response.data['payment'] ?? response.data;
       return PaymentModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);

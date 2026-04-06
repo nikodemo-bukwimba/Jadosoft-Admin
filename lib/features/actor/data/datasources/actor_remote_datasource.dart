@@ -59,7 +59,7 @@ class ActorRemoteDataSourceImpl implements ActorRemoteDataSource {
       if (page != null) queryParams['page'] = page;
 
       final response = await _dio.get(
-        '/actors',
+        'actors',
         queryParameters: queryParams.isNotEmpty ? queryParams : null,
       );
 
@@ -92,8 +92,8 @@ class ActorRemoteDataSourceImpl implements ActorRemoteDataSource {
   @override
   Future<ActorModel> getById(String id) async {
     try {
-      final response = await _dio.get('/actors/$id');
-      final body = _unwrapSingle(response.data, '/actors/$id');
+      final response = await _dio.get('actors/$id');
+      final body = _unwrapSingle(response.data, 'actors/$id');
       return ActorModel.fromJson(body);
     } on DioException catch (e) {
       throw _mapDioException(e);
@@ -105,8 +105,8 @@ class ActorRemoteDataSourceImpl implements ActorRemoteDataSource {
   @override
   Future<ActorModel> create(Map<String, dynamic> data) async {
     try {
-      final response = await _dio.post('/actors', data: data);
-      final body = _unwrapSingle(response.data, '/actors');
+      final response = await _dio.post('actors', data: data);
+      final body = _unwrapSingle(response.data, 'actors');
       return ActorModel.fromJson(body);
     } on DioException catch (e) {
       throw _mapDioException(e);
@@ -118,8 +118,8 @@ class ActorRemoteDataSourceImpl implements ActorRemoteDataSource {
   @override
   Future<ActorModel> update(String id, Map<String, dynamic> data) async {
     try {
-      final response = await _dio.put('/actors/$id', data: data);
-      final body = _unwrapSingle(response.data, '/actors/$id');
+      final response = await _dio.put('actors/$id', data: data);
+      final body = _unwrapSingle(response.data, 'actors/$id');
       return ActorModel.fromJson(body);
     } on DioException catch (e) {
       throw _mapDioException(e);
@@ -131,7 +131,7 @@ class ActorRemoteDataSourceImpl implements ActorRemoteDataSource {
   @override
   Future<void> delete(String id) async {
     try {
-      await _dio.delete('/actors/$id');
+      await _dio.delete('actors/$id');
     } on DioException catch (e) {
       throw _mapDioException(e);
     }
@@ -142,8 +142,8 @@ class ActorRemoteDataSourceImpl implements ActorRemoteDataSource {
   @override
   Future<ActorModel> restore(String id) async {
     try {
-      final response = await _dio.post('/actors/$id/restore');
-      final body = _unwrapSingle(response.data, '/actors/$id/restore');
+      final response = await _dio.post('actors/$id/restore');
+      final body = _unwrapSingle(response.data, 'actors/$id/restore');
       return ActorModel.fromJson(body);
     } on DioException catch (e) {
       throw _mapDioException(e);

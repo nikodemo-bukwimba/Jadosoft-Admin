@@ -1,4 +1,5 @@
 ﻿import '../../domain/entities/order_entity.dart';
+import 'dart:convert';
 
 class OrderModel extends OrderEntity {
   const OrderModel({
@@ -9,6 +10,9 @@ class OrderModel extends OrderEntity {
     super.paymentRef,
     required super.status,
     required super.createdAt,
+    super.paymentStatus = 'unpaid',
+    super.paymentVerifiedBy,
+    super.paymentVerifiedAt,
   });
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
@@ -32,13 +36,29 @@ class OrderModel extends OrderEntity {
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
           : DateTime.now(),
+      paymentStatus:
+          _meta(json)['payment_status']?.toString() ??
+          json['payment_status']?.toString() ??
+          'unpaid',
+      paymentVerifiedBy:
+          _meta(json)['payment_verified_by']?.toString() ??
+          json['payment_verified_by']?.toString(),
+      paymentVerifiedAt:
+          (_meta(json)['payment_verified_at'] ?? json['payment_verified_at']) !=
+              null
+          ? DateTime.tryParse(
+              (_meta(json)['payment_verified_at'] ??
+                      json['payment_verified_at'])
+                  .toString(),
+            )
+          : null,
     );
   }
 
   static String _mapStatus(String s) => switch (s) {
-    'pending' => 'draft', // map Nexora pending → our draft
+    'pending' => 'draft',
     'confirmed' => 'confirmed',
-    'processing' => 'confirmed', // treat processing same as confirmed
+    'processing' => 'confirmed',
     'shipped' => 'shipped',
     'delivered' => 'delivered',
     'cancelled' => 'cancelled',
@@ -76,6 +96,10 @@ class OrderModel extends OrderEntity {
     'payment_ref': paymentRef,
     'status': status,
     'created_at': createdAt.toIso8601String(),
+    'payment_status': paymentStatus,
+    if (paymentVerifiedBy != null) 'payment_verified_by': paymentVerifiedBy,
+    if (paymentVerifiedAt != null)
+      'payment_verified_at': paymentVerifiedAt!.toIso8601String(),
   };
 
   factory OrderModel.fromEntity(OrderEntity entity) {
@@ -87,6 +111,22 @@ class OrderModel extends OrderEntity {
       paymentRef: entity.paymentRef,
       status: entity.status,
       createdAt: entity.createdAt,
+      paymentStatus: entity.paymentStatus,
+      paymentVerifiedBy: entity.paymentVerifiedBy,
+      paymentVerifiedAt: entity.paymentVerifiedAt,
     );
+  }
+
+  static Map<String, dynamic> _meta(Map<String, dynamic> json) {
+    final raw = json['metadata'];
+    if (raw == null) return {};
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is String) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) return decoded;
+      } catch (_) {}
+    }
+    return {};
   }
 }

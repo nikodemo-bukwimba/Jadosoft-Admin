@@ -2,7 +2,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../app/routes/app_router.dart';
-import '../../data/datasources/conversation_mock_datasource.dart';
 import '../../domain/entities/conversation_entity.dart';
 import '../../domain/entities/message_entity.dart';
 import '../bloc/conversation_bloc.dart';
@@ -33,12 +32,13 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients)
+      if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
         );
+      }
     });
   }
 
@@ -60,14 +60,16 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final bloc = context.read<ConversationBloc>();
+    final currentUserId = bloc.currentUserId;
 
     return BlocConsumer<ConversationBloc, ConversationState>(
       listener: (context, state) {
         if (state is ConversationChatLoaded) _scrollToBottom();
-        if (state is ConversationFailure)
+        if (state is ConversationFailure) {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(SnackBar(content: Text(state.message)));
+        }
         if (state is ConversationOperationSuccess) {
           ScaffoldMessenger.of(
             context,
@@ -78,13 +80,15 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
           final newId = state.conversationId;
           context.go('/conversations');
           Future.delayed(const Duration(milliseconds: 100), () {
-            if (context.mounted)
+            if (context.mounted) {
               context.go(AppRouter.conversationDetailPath(newId));
+            }
           });
         }
-        if (state is ConversationReadReceiptsLoaded)
+        if (state is ConversationReadReceiptsLoaded) {
           _showReadReceiptsDialog(context, state.receipts);
-        if (state is ConversationBroadcastSuccess)
+        }
+        if (state is ConversationBroadcastSuccess) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -92,14 +96,16 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
               ),
             ),
           );
+        }
       },
       builder: (context, state) {
-        if (state is ConversationLoading)
+        if (state is ConversationLoading) {
           return Scaffold(
             appBar: AppBar(),
             body: const Center(child: CircularProgressIndicator()),
           );
-        if (state is! ConversationChatLoaded)
+        }
+        if (state is! ConversationChatLoaded) {
           return Scaffold(
             appBar: AppBar(),
             body: Center(
@@ -113,10 +119,11 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
               ),
             ),
           );
+        }
 
         final conv = state.conversation;
         final msgs = state.messages;
-        final isAdmin = conv.hasParticipant(kAdminId);
+        final isAdmin = conv.hasParticipant(currentUserId);
         final isClosed = conv.status == ConversationStatus.closed;
         final isGroup = conv.type == ConversationType.group;
         final showNames = isGroup || !isAdmin;
@@ -131,6 +138,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                 context,
                 bloc,
                 conv,
+                currentUserId,
                 isGroup,
                 isClosed,
                 isAdmin,
@@ -310,13 +318,15 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                                           (state.typingUser != null ? 1 : 0),
                                       itemBuilder: (ctx, i) {
                                         if (i == msgs.length &&
-                                            state.typingUser != null)
+                                            state.typingUser != null) {
                                           return TypingIndicator(
                                             senderName: state.typingUser!,
                                           );
+                                        }
                                         final msg = msgs[i];
                                         return MessageBubble(
                                           message: msg,
+                                          currentUserId: currentUserId,
                                           showSenderName: showNames,
                                           showDateSeparator: _showDateSep(
                                             msgs,
@@ -372,6 +382,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                                                   context,
                                                   bloc,
                                                   m,
+                                                  currentUserId,
                                                 )
                                               : null,
                                           onEdit: isAdmin
@@ -421,8 +432,9 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                                       imageUrl, {
                                       List<String>? mentionedUserIds,
                                     }) {
-                                      if (content.isEmpty && imageUrl == null)
+                                      if (content.isEmpty && imageUrl == null) {
                                         return;
+                                      }
                                       bloc.add(
                                         ConversationSendMessageRequested(
                                           conversationId: conv.id,
@@ -481,10 +493,12 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                   if (showPanel)
                     ChatSidePanel(
                       conversation: conv,
+                      currentUserId: currentUserId,
                       messages: msgs,
                       pinnedMessages: state.pinnedMessages ?? [],
                       searchResults: state.searchResults,
                       searchQuery: state.searchQuery,
+                      // availableContacts: injected from ActorBloc if needed
                       onSearch: (q) => bloc.add(
                         ConversationSearchMessages(
                           conversationId: conv.id,
@@ -530,6 +544,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
     BuildContext ctx,
     ConversationBloc bloc,
     ConversationEntity conv,
+    String currentUserId,
     bool isGroup,
     bool isClosed,
     bool isAdmin,
@@ -555,7 +570,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  conv.displayName(kAdminId),
+                  conv.displayName(currentUserId),
                   style: Theme.of(
                     ctx,
                   ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
@@ -565,7 +580,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                 Text(
                   isGroup
                       ? '${conv.participants.length} members • ${conv.onlineCount} online'
-                      : conv.subtitle(kAdminId),
+                      : conv.subtitle(currentUserId),
                   style: Theme.of(
                     ctx,
                   ).textTheme.labelSmall?.copyWith(color: cs.outline),
@@ -587,11 +602,12 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
         if (!isWide)
           IconButton(
             icon: const Icon(Icons.info_outline),
-            onPressed: () => _showMobileSidePanel(ctx, bloc, conv),
+            onPressed: () =>
+                _showMobileSidePanel(ctx, bloc, conv, currentUserId),
           ),
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert),
-          onSelected: (v) => _handleMenu(ctx, bloc, v, conv),
+          onSelected: (v) => _handleMenu(ctx, bloc, v, conv, currentUserId),
           itemBuilder: (_) => [
             if (isAdmin && isGroup && !isClosed)
               const PopupMenuItem(
@@ -674,6 +690,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
     ConversationBloc bloc,
     String action,
     ConversationEntity conv,
+    String currentUserId,
   ) {
     switch (action) {
       case 'close':
@@ -697,13 +714,11 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
           () => bloc.add(ConversationDeleteRequested(conv.id)),
         );
       case 'add':
-        _showMobileSidePanel(ctx, bloc, conv);
       case 'remove':
-        _showMobileSidePanel(ctx, bloc, conv);
       case 'members':
-        _showMobileSidePanel(ctx, bloc, conv);
+        _showMobileSidePanel(ctx, bloc, conv, currentUserId);
       case 'broadcast':
-        _showBroadcastDialog(ctx, bloc);
+        _showBroadcastDialog(ctx, bloc, currentUserId);
     }
   }
 
@@ -711,6 +726,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
     BuildContext ctx,
     ConversationBloc bloc,
     ConversationEntity conv,
+    String currentUserId,
   ) {
     showModalBottomSheet(
       context: ctx,
@@ -734,6 +750,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
             return SafeArea(
               child: ChatSidePanel(
                 conversation: state.conversation,
+                currentUserId: currentUserId,
                 messages: state.messages,
                 pinnedMessages: state.pinnedMessages ?? [],
                 searchResults: state.searchResults,
@@ -820,12 +837,33 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
     );
   }
 
+  /// Forward dialog — drives conversation list from BLoC state.
+  /// No mock datasource reference.
   void _showForwardDialog(
     BuildContext ctx,
     ConversationBloc bloc,
     MessageEntity msg,
+    String currentUserId,
   ) {
-    final convs = ConversationMockDataSource().getAdminConversations();
+    final convState = bloc.state;
+    final List<ConversationEntity> convs;
+    if (convState is ConversationListLoaded) {
+      convs = convState.items
+          .where((c) => c.hasParticipant(currentUserId))
+          .toList();
+    } else if (convState is ConversationChatLoaded) {
+      convs = [convState.conversation];
+    } else {
+      convs = [];
+    }
+
+    if (convs.isEmpty) {
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(content: Text('No conversations to forward to')),
+      );
+      return;
+    }
+
     showDialog(
       context: ctx,
       builder: (d) => AlertDialog(
@@ -838,7 +876,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                 .map(
                   (c) => ListTile(
                     title: Text(
-                      c.displayName(kAdminId),
+                      c.displayName(currentUserId),
                       style: const TextStyle(fontSize: 13),
                     ),
                     subtitle: Text(c.id, style: const TextStyle(fontSize: 10)),
@@ -855,7 +893,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                       ScaffoldMessenger.of(ctx).showSnackBar(
                         SnackBar(
                           content: Text(
-                            'Forwarded to ${c.displayName(kAdminId)}',
+                            'Forwarded to ${c.displayName(currentUserId)}',
                           ),
                         ),
                       );
@@ -916,12 +954,22 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
     );
   }
 
-  void _showBroadcastDialog(BuildContext ctx, ConversationBloc bloc) {
-    final mockDs = ConversationMockDataSource();
-    final existingConvs = mockDs.getAdminConversations();
-    final allContacts = mockDs.getAvailableContacts();
+  /// Broadcast dialog — drives conversation list from BLoC state.
+  /// No mock datasource reference.
+  void _showBroadcastDialog(
+    BuildContext ctx,
+    ConversationBloc bloc,
+    String currentUserId,
+  ) {
+    final convState = bloc.state;
+    final List<ConversationEntity> existingConvs =
+        convState is ConversationListLoaded
+        ? convState.items.where((c) => c.hasParticipant(currentUserId)).toList()
+        : convState is ConversationChatLoaded
+        ? [convState.conversation]
+        : [];
+
     final selected = <String>{};
-    final newContactIds = <String>{};
     final msgController = TextEditingController();
 
     showDialog(
@@ -931,7 +979,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
           title: const Text('Broadcast Message'),
           content: SizedBox(
             width: 380,
-            height: 450,
+            height: 400,
             child: Column(
               children: [
                 TextField(
@@ -944,85 +992,52 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Existing Conversations (${selected.length})',
+                  'Conversations (${selected.length} selected)',
                   style: const TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
                 ),
                 const SizedBox(height: 4),
-                Expanded(
-                  flex: 3,
-                  child: ListView(
-                    children: existingConvs
-                        .map(
-                          (c) => CheckboxListTile(
-                            dense: true,
-                            value: selected.contains(c.id),
-                            title: Text(
-                              c.displayName(kAdminId),
-                              style: const TextStyle(fontSize: 13),
+                if (existingConvs.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text(
+                      'No conversations loaded.\nGo back to the list first.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: ListView(
+                      children: existingConvs
+                          .map(
+                            (c) => CheckboxListTile(
+                              dense: true,
+                              value: selected.contains(c.id),
+                              title: Text(
+                                c.displayName(currentUserId),
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              subtitle: Text(
+                                c.type == ConversationType.group
+                                    ? 'Group'
+                                    : 'Direct',
+                                style: const TextStyle(fontSize: 10),
+                              ),
+                              onChanged: (v) => setState2(() {
+                                if (v == true) {
+                                  selected.add(c.id);
+                                } else {
+                                  selected.remove(c.id);
+                                }
+                              }),
                             ),
-                            subtitle: Text(
-                              c.type == ConversationType.group
-                                  ? 'Group'
-                                  : 'Direct',
-                              style: const TextStyle(fontSize: 10),
-                            ),
-                            onChanged: (v) => setState2(() {
-                              if (v == true)
-                                selected.add(c.id);
-                              else
-                                selected.remove(c.id);
-                            }),
-                          ),
-                        )
-                        .toList(),
+                          )
+                          .toList(),
+                    ),
                   ),
-                ),
-                const Divider(),
-                Text(
-                  'New Recipients (${newContactIds.length})',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Expanded(
-                  flex: 2,
-                  child: ListView(
-                    children: allContacts
-                        .where(
-                          (c) => !existingConvs.any(
-                            (conv) =>
-                                conv.type == ConversationType.direct &&
-                                conv.hasParticipant(c['id']!),
-                          ),
-                        )
-                        .map(
-                          (c) => CheckboxListTile(
-                            dense: true,
-                            value: newContactIds.contains(c['id']),
-                            title: Text(
-                              c['name']!,
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                            subtitle: Text(
-                              c['role']!.toUpperCase(),
-                              style: const TextStyle(fontSize: 10),
-                            ),
-                            onChanged: (v) => setState2(() {
-                              if (v == true)
-                                newContactIds.add(c['id']!);
-                              else
-                                newContactIds.remove(c['id']!);
-                            }),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
               ],
             ),
           ),
@@ -1033,42 +1048,18 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
             ),
             FilledButton(
               onPressed:
-                  (selected.isNotEmpty || newContactIds.isNotEmpty) &&
-                      msgController.text.trim().isNotEmpty
+                  selected.isNotEmpty && msgController.text.trim().isNotEmpty
                   ? () {
                       Navigator.pop(d);
-                      if (selected.isNotEmpty) {
-                        bloc.add(
-                          ConversationBroadcastRequested(
-                            conversationIds: selected.toList(),
-                            content: msgController.text.trim(),
-                          ),
-                        );
-                      }
-                      for (final contactId in newContactIds) {
-                        final contact = allContacts.firstWhere(
-                          (c) => c['id'] == contactId,
-                        );
-                        bloc.add(
-                          ConversationStartNewRequested(
-                            type: 'direct',
-                            participants: [contact],
-                            firstMessage: msgController.text.trim(),
-                          ),
-                        );
-                      }
-                      if (newContactIds.isNotEmpty) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Creating ${newContactIds.length} new conversations...',
-                            ),
-                          ),
-                        );
-                      }
+                      bloc.add(
+                        ConversationBroadcastRequested(
+                          conversationIds: selected.toList(),
+                          content: msgController.text.trim(),
+                        ),
+                      );
                     }
                   : null,
-              child: Text('Send (${selected.length + newContactIds.length})'),
+              child: Text('Send (${selected.length})'),
             ),
           ],
         ),
@@ -1131,8 +1122,9 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
     final diff = today.difference(d).inDays;
     if (diff == 0) return 'Today';
     if (diff == 1) return 'Yesterday';
-    if (diff < 7)
+    if (diff < 7) {
       return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][dt.weekday - 1];
+    }
     return '${dt.day}/${dt.month}/${dt.year}';
   }
 }

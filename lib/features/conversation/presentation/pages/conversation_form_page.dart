@@ -2,7 +2,9 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../app/routes/app_router.dart';
-import '../../data/datasources/conversation_mock_datasource.dart';
+import '../../../actor/presentation/bloc/actor_bloc.dart';
+import '../../../actor/presentation/bloc/actor_event.dart';
+import '../../../actor/presentation/bloc/actor_state.dart';
 import '../../domain/entities/conversation_entity.dart';
 import '../bloc/conversation_bloc.dart';
 import '../bloc/conversation_event.dart';
@@ -24,10 +26,8 @@ class _ConversationFormPageState extends State<ConversationFormPage>
   final _titleController = TextEditingController();
   final _messageController = TextEditingController();
   final _broadcastMsgController = TextEditingController();
-  // ── conversation tab search ──
   final _contactSearchCtrl = TextEditingController();
   String _contactSearch = '';
-  // ── broadcast tab search ──
   final _broadcastSearchCtrl = TextEditingController();
   String _broadcastSearch = '';
 
@@ -35,13 +35,16 @@ class _ConversationFormPageState extends State<ConversationFormPage>
   final Set<String> _selectedIds = {};
   final Set<String> _broadcastConvIds = {};
   final Set<String> _broadcastNewContactIds = {};
-  late final List<Map<String, String>> _contacts;
+
+  // Contacts are loaded from ActorBloc — no mock dependency.
+  List<Map<String, String>> _contacts = [];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _contacts = ConversationMockDataSource().getAvailableContacts();
+    // Trigger actor list load to populate contacts
+    context.read<ActorBloc>().add(ActorLoadAllRequested());
   }
 
   @override
@@ -53,6 +56,23 @@ class _ConversationFormPageState extends State<ConversationFormPage>
     _contactSearchCtrl.dispose();
     _broadcastSearchCtrl.dispose();
     super.dispose();
+  }
+
+  /// Maps ActorEntity list to the flat Map format the form uses.
+  List<Map<String, String>> _toContactMaps(ActorState actorState) {
+    if (actorState is! ActorListLoaded) return _contacts;
+    return actorState.items.map((a) {
+      // Derive role from actorTypes labels; fallback to 'unknown'
+      final typeLabels = a.actorTypes
+          .map((t) => t.label.toLowerCase())
+          .toList();
+      final role = typeLabels.any((l) => l.contains('officer'))
+          ? 'officer'
+          : typeLabels.any((l) => l.contains('customer'))
+          ? 'customer'
+          : (typeLabels.isNotEmpty ? typeLabels.first : 'unknown');
+      return {'id': a.id, 'name': a.displayName, 'role': role};
+    }).toList();
   }
 
   bool get _canSubmit {
@@ -115,51 +135,61 @@ class _ConversationFormPageState extends State<ConversationFormPage>
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width > 600;
-    return BlocListener<ConversationBloc, ConversationState>(
-      listener: (ctx, state) {
-        if (state is ConversationNewCreated) {
-          ctx.go(AppRouter.conversationDetailPath(state.conversationId));
-        }
-        if (state is ConversationFailure) {
-          ScaffoldMessenger.of(
-            ctx,
-          ).showSnackBar(SnackBar(content: Text(state.message)));
-        }
-        if (state is ConversationBroadcastSuccess) {
-          ScaffoldMessenger.of(ctx).showSnackBar(
-            SnackBar(content: Text('Sent to ${state.sentCount} conversations')),
-          );
-          ctx.go('/conversations');
-        }
+
+    // Sync contacts from ActorBloc whenever state changes
+    return BlocListener<ActorBloc, ActorState>(
+      listener: (ctx, actorState) {
+        final loaded = _toContactMaps(actorState);
+        if (loaded.isNotEmpty) setState(() => _contacts = loaded);
       },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('New'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => context.go('/conversations'),
-          ),
-          bottom: TabBar(
-            controller: _tabController,
-            tabs: const [
-              Tab(text: 'Conversation'),
-              Tab(text: 'Broadcast'),
-            ],
-          ),
-        ),
-        body: BlocBuilder<ConversationBloc, ConversationState>(
-          builder: (ctx, state) {
-            if (state is ConversationLoading) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            return TabBarView(
-              controller: _tabController,
-              children: [
-                _buildNewConversationTab(context, isWide),
-                _buildBroadcastTab(context, isWide),
-              ],
+      child: BlocListener<ConversationBloc, ConversationState>(
+        listener: (ctx, state) {
+          if (state is ConversationNewCreated) {
+            ctx.go(AppRouter.conversationDetailPath(state.conversationId));
+          }
+          if (state is ConversationFailure) {
+            ScaffoldMessenger.of(
+              ctx,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+          }
+          if (state is ConversationBroadcastSuccess) {
+            ScaffoldMessenger.of(ctx).showSnackBar(
+              SnackBar(
+                content: Text('Sent to ${state.sentCount} conversations'),
+              ),
             );
-          },
+            ctx.go('/conversations');
+          }
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('New'),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => context.go('/conversations'),
+            ),
+            bottom: TabBar(
+              controller: _tabController,
+              tabs: const [
+                Tab(text: 'Conversation'),
+                Tab(text: 'Broadcast'),
+              ],
+            ),
+          ),
+          body: BlocBuilder<ConversationBloc, ConversationState>(
+            builder: (ctx, state) {
+              if (state is ConversationLoading) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildNewConversationTab(context, isWide),
+                  _buildBroadcastTab(context, isWide),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -251,50 +281,37 @@ class _ConversationFormPageState extends State<ConversationFormPage>
                 ],
               ),
               const SizedBox(height: 8),
-              // ── Contact search ──
-              TextField(
+              _buildContactSearch(
                 controller: _contactSearchCtrl,
-                decoration: InputDecoration(
-                  hintText: 'Search contacts...',
-                  prefixIcon: const Icon(Icons.search, size: 20),
-                  suffixIcon: _contactSearch.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear, size: 18),
-                          onPressed: () {
-                            _contactSearchCtrl.clear();
-                            setState(() => _contactSearch = '');
-                          },
-                        )
-                      : null,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  isDense: true,
-                ),
                 onChanged: (v) => setState(() => _contactSearch = v),
               ),
               const SizedBox(height: 8),
-              ..._buildFilteredContactTiles(
-                role: 'officer',
-                label: 'Officers',
-                icon: Icons.badge,
-                color: Colors.teal,
-                selected: _selectedIds,
-                onTap: (id) => _toggle(id),
-              ),
-              const SizedBox(height: 8),
-              ..._buildFilteredContactTiles(
-                role: 'customer',
-                label: 'Customers',
-                icon: Icons.storefront,
-                color: Colors.orange,
-                selected: _selectedIds,
-                onTap: (id) => _toggle(id),
-              ),
+              if (_contacts.isEmpty)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else ...[
+                ..._buildFilteredContactTiles(
+                  role: 'officer',
+                  label: 'Officers',
+                  icon: Icons.badge,
+                  color: Colors.teal,
+                  selected: _selectedIds,
+                  onTap: (id) => _toggle(id),
+                ),
+                const SizedBox(height: 8),
+                ..._buildFilteredContactTiles(
+                  role: 'customer',
+                  label: 'Customers',
+                  icon: Icons.storefront,
+                  color: Colors.orange,
+                  selected: _selectedIds,
+                  onTap: (id) => _toggle(id),
+                ),
+              ],
               const SizedBox(height: 24),
               Text(
                 'First Message (Optional)',
@@ -333,20 +350,30 @@ class _ConversationFormPageState extends State<ConversationFormPage>
     );
   }
 
-  // Fix #4: Broadcast tab with existing conversations at top, all contacts below
   Widget _buildBroadcastTab(BuildContext context, bool isWide) {
     final cs = Theme.of(context).colorScheme;
-    final mockDs = ConversationMockDataSource();
-    final existingConvs = mockDs.getAdminConversations();
+    // Drive existing conversations from BLoC state (no mock needed)
+    final convBloc = context.read<ConversationBloc>();
+    final convState = convBloc.state;
+    final currentUserId = convBloc.currentUserId;
+    final List<ConversationEntity> existingConvs =
+        convState is ConversationListLoaded
+        ? convState.items.where((c) => c.hasParticipant(currentUserId)).toList()
+        : [];
+
     final existingDirectParticipantIds = existingConvs
         .where((c) => c.type == ConversationType.direct)
         .expand(
-          (c) => c.participants.where((p) => p.id != kAdminId).map((p) => p.id),
+          (c) => c.participants
+              .where((p) => p.id != currentUserId)
+              .map((p) => p.id),
         )
         .toSet();
+
     final newContacts = _contacts
         .where((c) => !existingDirectParticipantIds.contains(c['id']))
         .toList();
+
     final totalSelected =
         _broadcastConvIds.length + _broadcastNewContactIds.length;
 
@@ -358,7 +385,6 @@ class _ConversationFormPageState extends State<ConversationFormPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Broadcast message
               Text(
                 'Broadcast Message',
                 style: Theme.of(
@@ -382,8 +408,6 @@ class _ConversationFormPageState extends State<ConversationFormPage>
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 24),
-
-              // Existing conversations
               Text(
                 'Existing Conversations',
                 style: Theme.of(
@@ -398,30 +422,9 @@ class _ConversationFormPageState extends State<ConversationFormPage>
                 ).textTheme.bodySmall?.copyWith(color: cs.outline),
               ),
               const SizedBox(height: 8),
-              // ── Broadcast search (covers both convs & new contacts) ──
-              TextField(
+              _buildContactSearch(
                 controller: _broadcastSearchCtrl,
-                decoration: InputDecoration(
-                  hintText: 'Search conversations or contacts...',
-                  prefixIcon: const Icon(Icons.search, size: 20),
-                  suffixIcon: _broadcastSearch.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear, size: 18),
-                          onPressed: () {
-                            _broadcastSearchCtrl.clear();
-                            setState(() => _broadcastSearch = '');
-                          },
-                        )
-                      : null,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  isDense: true,
-                ),
+                hint: 'Search conversations or contacts...',
                 onChanged: (v) => setState(() => _broadcastSearch = v),
               ),
               const SizedBox(height: 8),
@@ -430,7 +433,7 @@ class _ConversationFormPageState extends State<ConversationFormPage>
                     (c) =>
                         _broadcastSearch.isEmpty ||
                         c
-                            .displayName(kAdminId)
+                            .displayName(currentUserId)
                             .toLowerCase()
                             .contains(_broadcastSearch.toLowerCase()),
                   )
@@ -461,7 +464,7 @@ class _ConversationFormPageState extends State<ConversationFormPage>
                           child: c.type == ConversationType.group
                               ? Icon(Icons.group, size: 16, color: cs.primary)
                               : Text(
-                                  c.displayName(kAdminId)[0],
+                                  c.displayName(currentUserId)[0],
                                   style: TextStyle(
                                     color: cs.primary,
                                     fontWeight: FontWeight.w600,
@@ -469,7 +472,7 @@ class _ConversationFormPageState extends State<ConversationFormPage>
                                 ),
                         ),
                         title: Text(
-                          c.displayName(kAdminId),
+                          c.displayName(currentUserId),
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: _broadcastConvIds.contains(c.id)
@@ -500,10 +503,7 @@ class _ConversationFormPageState extends State<ConversationFormPage>
                       ),
                     ),
                   ),
-
               const SizedBox(height: 24),
-
-              // New contacts (no existing conversation)
               if (newContacts.isNotEmpty) ...[
                 Text(
                   'New Recipients',
@@ -583,26 +583,49 @@ class _ConversationFormPageState extends State<ConversationFormPage>
         if (_selectedIds.contains(id)) {
           _selectedIds.remove(id);
         } else {
-          _selectedIds.clear();
-          _selectedIds.add(id);
+          _selectedIds
+            ..clear()
+            ..add(id);
         }
       } else {
         if (_selectedIds.contains(id)) {
           _selectedIds.remove(id);
-        } else if (_selectedIds.length < 10)
-          // ignore: curly_braces_in_flow_control_structures
+        } else if (_selectedIds.length < 10) {
           _selectedIds.add(id);
-        else
-          // ignore: curly_braces_in_flow_control_structures
+        } else {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(const SnackBar(content: Text('Max 10 participants')));
+        }
       }
     });
   }
 
-  /// Renders a labelled section + filtered [_ContactTile] rows.
-  /// [contacts] defaults to [_contacts]; [query] defaults to [_contactSearch].
+  Widget _buildContactSearch({
+    required TextEditingController controller,
+    String hint = 'Search contacts...',
+    required void Function(String) onChanged,
+  }) => TextField(
+    controller: controller,
+    decoration: InputDecoration(
+      hintText: hint,
+      prefixIcon: const Icon(Icons.search, size: 20),
+      suffixIcon: controller.text.isNotEmpty
+          ? IconButton(
+              icon: const Icon(Icons.clear, size: 18),
+              onPressed: () {
+                controller.clear();
+                onChanged('');
+              },
+            )
+          : null,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      isDense: true,
+    ),
+    onChanged: onChanged,
+  );
+
   List<Widget> _buildFilteredContactTiles({
     required String role,
     required String label,
@@ -638,6 +661,8 @@ class _ConversationFormPageState extends State<ConversationFormPage>
     ];
   }
 }
+
+// ── Supporting widgets ────────────────────────────────────────────────────────
 
 class _TypeCard extends StatelessWidget {
   final IconData icon;

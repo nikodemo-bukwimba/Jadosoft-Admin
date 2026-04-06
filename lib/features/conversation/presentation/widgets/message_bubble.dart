@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../data/datasources/conversation_mock_datasource.dart';
 import '../../domain/entities/message_entity.dart';
 
 class MessageBubble extends StatefulWidget {
   final MessageEntity message;
+  final String currentUserId;
   final bool showSenderName;
   final bool showDateSeparator;
   final String? dateSeparatorLabel;
@@ -18,11 +18,12 @@ class MessageBubble extends StatefulWidget {
   final void Function(MessageEntity message)? onEdit;
   final void Function(String messageId)? onViewReadReceipts;
   final void Function(String participantId, String name, String role)?
-  onPrivateReply;
+      onPrivateReply;
 
   const MessageBubble({
     super.key,
     required this.message,
+    required this.currentUserId,
     this.showSenderName = false,
     this.showDateSeparator = false,
     this.dateSeparatorLabel,
@@ -45,7 +46,8 @@ class _MessageBubbleState extends State<MessageBubble> {
   double _dragOffset = 0;
   bool _triggered = false;
   static const _threshold = 60.0;
-  bool get _isMe => widget.message.senderId == kAdminId;
+
+  bool get _isMe => widget.message.senderId == widget.currentUserId;
 
   void _onDragUpdate(DragUpdateDetails d) {
     if (widget.onReply == null) return;
@@ -185,16 +187,17 @@ class _MessageBubbleState extends State<MessageBubble> {
     IconData icon,
     String label,
     Color color,
-  ) => PopupMenuItem(
-    value: val,
-    child: Row(
-      children: [
-        Icon(icon, size: 18, color: color),
-        const SizedBox(width: 10),
-        Text(label, style: TextStyle(color: color)),
-      ],
-    ),
-  );
+  ) =>
+      PopupMenuItem(
+        value: val,
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: 10),
+            Text(label, style: TextStyle(color: color)),
+          ],
+        ),
+      );
 
   void _confirmDelete(BuildContext ctx) {
     showDialog(
@@ -262,7 +265,9 @@ class _MessageBubbleState extends State<MessageBubble> {
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
                               color: Theme.of(context).colorScheme.primary
-                                  .withValues(alpha: _triggered ? 0.2 : 0.1),
+                                  .withValues(
+                                    alpha: _triggered ? 0.2 : 0.1,
+                                  ),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
@@ -296,8 +301,10 @@ class _MessageBubbleState extends State<MessageBubble> {
     final br = BorderRadius.only(
       topLeft: const Radius.circular(16),
       topRight: const Radius.circular(16),
-      bottomLeft: _isMe ? const Radius.circular(16) : const Radius.circular(4),
-      bottomRight: _isMe ? const Radius.circular(4) : const Radius.circular(16),
+      bottomLeft:
+          _isMe ? const Radius.circular(16) : const Radius.circular(4),
+      bottomRight:
+          _isMe ? const Radius.circular(4) : const Radius.circular(16),
     );
 
     return Align(
@@ -502,7 +509,8 @@ class _MessageBubbleState extends State<MessageBubble> {
                   padding: const EdgeInsets.only(top: 2),
                   child: Wrap(
                     spacing: 4,
-                    children: _groupReactions(msg).entries
+                    children: _groupReactions(msg)
+                        .entries
                         .map(
                           (e) => GestureDetector(
                             onTap: () => widget.onReact?.call(msg.id, e.key),
@@ -515,8 +523,10 @@ class _MessageBubbleState extends State<MessageBubble> {
                                 color: cs.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color:
-                                      e.value.any((r) => r.userId == kAdminId)
+                                  color: e.value.any(
+                                    (r) =>
+                                        r.userId == widget.currentUserId,
+                                  )
                                       ? cs.primary
                                       : cs.outlineVariant.withValues(
                                           alpha: 0.3,
@@ -548,8 +558,9 @@ class _MessageBubbleState extends State<MessageBubble> {
       final regex = RegExp(r'@\w+');
       int last = 0;
       for (final m in regex.allMatches(text)) {
-        if (m.start > last)
+        if (m.start > last) {
           spans.add(TextSpan(text: text.substring(last, m.start)));
+        }
         spans.add(
           TextSpan(
             text: m.group(0),
@@ -566,17 +577,19 @@ class _MessageBubbleState extends State<MessageBubble> {
       return Text.rich(
         TextSpan(
           children: spans,
-          style: Theme.of(
-            ctx,
-          ).textTheme.bodyMedium?.copyWith(color: cs.onSurface, height: 1.3),
+          style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+            color: cs.onSurface,
+            height: 1.3,
+          ),
         ),
       );
     }
     return Text(
       msg.content,
-      style: Theme.of(
-        ctx,
-      ).textTheme.bodyMedium?.copyWith(color: cs.onSurface, height: 1.3),
+      style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+        color: cs.onSurface,
+        height: 1.3,
+      ),
     );
   }
 
@@ -589,11 +602,11 @@ class _MessageBubbleState extends State<MessageBubble> {
   }
 
   Color _roleColor(String role, ColorScheme cs) => switch (role) {
-    'admin' => cs.primary,
-    'officer' => Colors.teal,
-    'customer' => Colors.orange,
-    _ => cs.outline,
-  };
+        'admin' => cs.primary,
+        'officer' => Colors.teal,
+        'customer' => Colors.orange,
+        _ => cs.outline,
+      };
 }
 
 class _VoiceNote extends StatelessWidget {
@@ -700,21 +713,22 @@ class _Receipt extends StatelessWidget {
   const _Receipt({required this.status, required this.color});
   @override
   Widget build(BuildContext ctx) => switch (status) {
-    DeliveryStatus.sending => Icon(
-      Icons.access_time,
-      size: 13,
-      color: color.outline,
-    ),
-    DeliveryStatus.sent => Icon(Icons.check, size: 13, color: color.outline),
-    DeliveryStatus.delivered => Icon(
-      Icons.done_all,
-      size: 13,
-      color: color.outline,
-    ),
-    DeliveryStatus.read => const Icon(
-      Icons.done_all,
-      size: 13,
-      color: Colors.blue,
-    ),
-  };
+        DeliveryStatus.sending => Icon(
+            Icons.access_time,
+            size: 13,
+            color: color.outline,
+          ),
+        DeliveryStatus.sent =>
+          Icon(Icons.check, size: 13, color: color.outline),
+        DeliveryStatus.delivered => Icon(
+            Icons.done_all,
+            size: 13,
+            color: color.outline,
+          ),
+        DeliveryStatus.read => const Icon(
+            Icons.done_all,
+            size: 13,
+            color: Colors.blue,
+          ),
+      };
 }

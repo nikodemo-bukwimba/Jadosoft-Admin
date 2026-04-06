@@ -19,7 +19,8 @@ class ActivityLogRemoteDataSourceImpl implements ActivityLogRemoteDataSource {
   }) : _dio = dio,
        _orgContext = orgContext;
 
-  String get _base => '/pharma/${_orgContext.effectiveOrgId}/activity-logs';
+  String get _base =>
+      '/platform/orgs/${_orgContext.effectiveOrgId}/activity-logs';
 
   @override
   Future<List<ActivityLogModel>> getAll() async {

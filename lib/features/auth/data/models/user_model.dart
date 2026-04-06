@@ -49,6 +49,7 @@ class PermissionModel extends PermissionEntity {
 class UserModel extends UserEntity {
   const UserModel({
     required super.id, // String — Laravel ULID
+    super.actorId,
     required super.name,
     required super.email,
     super.phone,
@@ -80,6 +81,7 @@ class UserModel extends UserEntity {
     return UserModel(
       // ULID — always a String, never cast to int
       id: json['id'].toString(),
+      actorId: json['actor_id']?.toString(),
 
       name: json['name'] as String? ?? json['username'] as String? ?? '',
       email: json['email'] as String,
@@ -112,6 +114,7 @@ class UserModel extends UserEntity {
 
   Map<String, dynamic> toJson() => {
     'id': id,
+    'actor_id': actorId,
     'name': name,
     'email': email,
     'phone': phone,

@@ -1,5 +1,4 @@
 ﻿import '../../domain/entities/conversation_entity.dart';
-import '../../domain/entities/message_entity.dart';
 import '../../domain/usecases/create_conversation_usecase.dart';
 
 abstract class ConversationEvent {}

@@ -53,12 +53,16 @@ class OrgContext {
   static const String _activeBranchIdKey = 'active_branch_id';
   static const String _activeBranchNameKey = 'active_branch_name';
   static const String _orgRoleKey = 'org_role';
+  static const String _actorIdKey = 'actor_id';
+  static const String _actorNameKey = 'actor_name';
 
   String? _rootOrgId;
   String? _rootOrgName;
   String? _activeBranchId;
   String? _activeBranchName;
   OrgRole _orgRole = OrgRole.unknown;
+  String? _actorId;
+  String? _actorName;
 
   OrgContext({required SecureStorageService storage}) : _storage = storage;
 
@@ -93,6 +97,9 @@ class OrgContext {
 
   /// Whether viewing all branches (org admin, no branch filter).
   bool get isViewingAllBranches => isOrgAdmin && !hasBranch;
+
+  String? get actorId => _actorId;
+  String? get actorName => _actorName;
 
   /// The org ID to use for org-scoped API calls.
   ///
@@ -130,13 +137,19 @@ class OrgContext {
     required String id,
     required String name,
     required OrgRole role,
+    String? actorId,
+    String? actorName,
   }) async {
     _rootOrgId = id;
     _rootOrgName = name;
     _orgRole = role;
+    _actorId = actorId;
+    _actorName = actorName;
     await _storage.write(_rootOrgIdKey, id);
     await _storage.write(_rootOrgNameKey, name);
     await _storage.write(_orgRoleKey, role.name);
+    if (actorId != null) await _storage.write(_actorIdKey, actorId);
+    if (actorName != null) await _storage.write(_actorNameKey, actorName);
   }
 
   /// Switches active branch (org admin filtering).
@@ -162,6 +175,8 @@ class OrgContext {
     _rootOrgName = await _storage.read(_rootOrgNameKey);
     _activeBranchId = await _storage.read(_activeBranchIdKey);
     _activeBranchName = await _storage.read(_activeBranchNameKey);
+    _actorId = await _storage.read(_actorIdKey);
+    _actorName = await _storage.read(_actorNameKey);
 
     final roleStr = await _storage.read(_orgRoleKey);
     _orgRole = OrgRole.values.firstWhere(
@@ -177,6 +192,10 @@ class OrgContext {
     _activeBranchId = null;
     _activeBranchName = null;
     _orgRole = OrgRole.unknown;
+    _actorId = null;
+    _actorName = null;
+    await _storage.delete(_actorIdKey);
+    await _storage.delete(_actorNameKey);
     await _storage.delete(_rootOrgIdKey);
     await _storage.delete(_rootOrgNameKey);
     await _storage.delete(_activeBranchIdKey);

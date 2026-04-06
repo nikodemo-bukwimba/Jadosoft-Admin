@@ -7,16 +7,18 @@ import '../../domain/usecases/get_order_usecase.dart';
 import '../../domain/usecases/get_all_order_usecase.dart';
 import '../../domain/usecases/update_order_usecase.dart';
 import '../../domain/value_objects/order_status.dart';
+import '../../domain/usecases/mark_order_paid_usecase.dart';
 import 'order_event.dart';
 import 'order_state.dart';
 
 class OrderBloc extends Bloc<OrderEvent, OrderState> {
-  final GetAllOrderUseCase  getAllUseCase;
-  final GetOrderUseCase     getUseCase;
-  final CreateOrderUseCase  createUseCase;
-  final UpdateOrderUseCase  updateUseCase;
-  final DeleteOrderUseCase  deleteUseCase;
-  final OrderDomainService  domainService;
+  final GetAllOrderUseCase getAllUseCase;
+  final GetOrderUseCase getUseCase;
+  final CreateOrderUseCase createUseCase;
+  final UpdateOrderUseCase updateUseCase;
+  final DeleteOrderUseCase deleteUseCase;
+  final OrderDomainService domainService;
+  final MarkOrderPaidUseCase markPaidUseCase;
 
   OrderBloc({
     required this.getAllUseCase,
@@ -25,6 +27,7 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     required this.updateUseCase,
     required this.deleteUseCase,
     required this.domainService,
+    required this.markPaidUseCase,
   }) : super(OrderInitial()) {
     on<OrderLoadAllRequested>(_onLoadAll);
     on<OrderLoadOneRequested>(_onLoadOne);
@@ -36,22 +39,26 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     on<OrderShipRequested>(_onShip);
     on<OrderDeliverRequested>(_onDeliver);
     on<OrderCancelRequested>(_onCancel);
+    on<OrderMarkPaidRequested>(_onMarkPaid);
   }
 
   Future<void> _onLoadAll(
-      OrderLoadAllRequested event, Emitter<OrderState> emit) async {
+    OrderLoadAllRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await getAllUseCase(NoParams());
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (items) => items.isEmpty
-          ? emit(OrderEmpty())
-          : emit(OrderListLoaded(items)),
+      (items) =>
+          items.isEmpty ? emit(OrderEmpty()) : emit(OrderListLoaded(items)),
     );
   }
 
   Future<void> _onLoadOne(
-      OrderLoadOneRequested event, Emitter<OrderState> emit) async {
+    OrderLoadOneRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await getUseCase(GetOrderParams(id: event.id));
     result.fold(
@@ -61,7 +68,9 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
   }
 
   Future<void> _onCreate(
-      OrderCreateRequested event, Emitter<OrderState> emit) async {
+    OrderCreateRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await createUseCase(event.params);
     result.fold(
@@ -71,7 +80,9 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
   }
 
   Future<void> _onUpdate(
-      OrderUpdateRequested event, Emitter<OrderState> emit) async {
+    OrderUpdateRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await updateUseCase(UpdateOrderParams(entity: event.entity));
     result.fold(
@@ -81,7 +92,9 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
   }
 
   Future<void> _onDelete(
-      OrderDeleteRequested event, Emitter<OrderState> emit) async {
+    OrderDeleteRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await deleteUseCase(DeleteOrderParams(id: event.id));
     result.fold(
@@ -91,7 +104,9 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
   }
 
   Future<void> _onConfirm(
-      OrderConfirmRequested event, Emitter<OrderState> emit) async {
+    OrderConfirmRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -99,14 +114,16 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     );
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (entity) => emit(OrderOperationSuccess(
-        'Confirm Order successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        OrderOperationSuccess('Confirm Order successful', updatedItem: entity),
+      ),
     );
   }
+
   Future<void> _onShip(
-      OrderShipRequested event, Emitter<OrderState> emit) async {
+    OrderShipRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -114,14 +131,16 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     );
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (entity) => emit(OrderOperationSuccess(
-        'Ship Order successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        OrderOperationSuccess('Ship Order successful', updatedItem: entity),
+      ),
     );
   }
+
   Future<void> _onDeliver(
-      OrderDeliverRequested event, Emitter<OrderState> emit) async {
+    OrderDeliverRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -129,14 +148,16 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     );
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (entity) => emit(OrderOperationSuccess(
-        'Mark Delivered successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        OrderOperationSuccess('Mark Delivered successful', updatedItem: entity),
+      ),
     );
   }
+
   Future<void> _onCancel(
-      OrderCancelRequested event, Emitter<OrderState> emit) async {
+    OrderCancelRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -144,10 +165,21 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     );
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (entity) => emit(OrderOperationSuccess(
-        'Cancel Order successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        OrderOperationSuccess('Cancel Order successful', updatedItem: entity),
+      ),
+    );
+  }
+
+  Future<void> _onMarkPaid(
+    OrderMarkPaidRequested event,
+    Emitter<OrderState> emit,
+  ) async {
+    emit(OrderLoading());
+    final result = await markPaidUseCase(event.params);
+    result.fold(
+      (f) => emit(OrderFailure(f.message)),
+      (order) => emit(OrderDetailLoaded(order)),
     );
   }
 }

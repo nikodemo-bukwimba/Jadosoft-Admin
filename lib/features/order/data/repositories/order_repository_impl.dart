@@ -57,9 +57,17 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Either<Failure, OrderEntity>> update(OrderEntity entity) async {
     try {
-      final model = OrderModel.fromEntity(entity);
-      final result = await _remoteDataSource.update(entity.id, model.toJson());
-      return Right(result);
+      // Payment status update — uses dedicated patch
+      if (entity.paymentStatus == 'paid') {
+        final result = await _remoteDataSource.markPaid(
+          entity.id,
+          entity.paymentVerifiedBy ?? 'admin',
+          entity.paymentRef,
+        );
+        return Right(result);
+      }
+      // General update (no-op for other fields — Nexora orders are status-transition only)
+      return Right(await _remoteDataSource.getById(entity.id));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {

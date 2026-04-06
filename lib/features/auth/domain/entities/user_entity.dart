@@ -32,7 +32,8 @@ class PermissionEntity {
 }
 
 class UserEntity {
-  final String id; // ULID — always a String
+  final String id;
+  final String? actorId; // ← ADD — platform actor ULID
   final String name;
   final String email;
   final String? phone;
@@ -41,11 +42,12 @@ class UserEntity {
   final RoleEntity? primaryRole;
   final List<RoleEntity> roles;
   final bool hasActiveSubscription;
-  final String subscriptionStatus; // 'active' | 'expired' | 'none'
+  final String subscriptionStatus;
   final DateTime? createdAt;
 
   const UserEntity({
     required this.id,
+    this.actorId, // ← ADD
     required this.name,
     required this.email,
     this.phone,
@@ -58,11 +60,7 @@ class UserEntity {
     this.createdAt,
   });
 
-  /// Display name falls back to email if name is empty.
   String get displayName => name.isNotEmpty ? name : email;
 
-  /// Whether this user has a specific role by name.
-  /// USE FOR DISPLAY ONLY (badge, label, greeting).
-  /// For UI gating, use RbacExtensions.can('permission.slug').
   bool hasRole(String roleName) => roles.any((r) => r.name == roleName);
 }

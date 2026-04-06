@@ -13,6 +13,7 @@ abstract class OrderRemoteDataSource {
   Future<OrderModel> ship(String id);
   Future<OrderModel> deliver(String id);
   Future<OrderModel> cancel(String id);
+  Future<OrderModel> markPaid(String id, String actorId, String? paymentRef);
 }
 
 class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
@@ -159,5 +160,28 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
       return data['message'] as String;
     }
     return 'An error occurred. Please try again.';
+  }
+
+  @override
+  Future<OrderModel> markPaid(
+    String id,
+    String actorId,
+    String? paymentRef,
+  ) async {
+    try {
+      final response = await _dio.patch(
+        '/commerce/orders/$id',
+        data: {
+          'payment_status': 'paid',
+          'payment_verified_by': actorId,
+          'payment_verified_at': DateTime.now().toIso8601String(),
+          if (paymentRef != null) 'payment_ref': paymentRef,
+        },
+      );
+      final data = response.data['order'] ?? response.data;
+      return OrderModel.fromJson(data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
   }
 }

@@ -1,5 +1,4 @@
 import '../../domain/entities/daily_report_entity.dart';
-import '../../domain/value_objects/daily_report_status.dart';
 
 class DailyReportModel extends DailyReportEntity {
   const DailyReportModel({

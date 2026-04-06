@@ -9,6 +9,10 @@ class OrderEntity extends Equatable {
   final String? paymentRef;
   final String status;
   final DateTime createdAt;
+  // ── Payment audit fields ──────────────────────────────────
+  final String paymentStatus;      // unpaid | paid | partial | refunded
+  final String? paymentVerifiedBy; // actor ID who toggled, or 'system'
+  final DateTime? paymentVerifiedAt;
 
   const OrderEntity({
     required this.id,
@@ -18,6 +22,9 @@ class OrderEntity extends Equatable {
     this.paymentRef,
     required this.status,
     required this.createdAt,
+    this.paymentStatus = 'unpaid',
+    this.paymentVerifiedBy,
+    this.paymentVerifiedAt,
   });
 
   OrderEntity copyWith({
@@ -28,6 +35,9 @@ class OrderEntity extends Equatable {
     String? paymentRef,
     String? status,
     DateTime? createdAt,
+    String? paymentStatus,
+    String? paymentVerifiedBy,
+    DateTime? paymentVerifiedAt,
   }) {
     return OrderEntity(
       id: id ?? this.id,
@@ -37,9 +47,15 @@ class OrderEntity extends Equatable {
       paymentRef: paymentRef ?? this.paymentRef,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
+      paymentVerifiedBy: paymentVerifiedBy ?? this.paymentVerifiedBy,
+      paymentVerifiedAt: paymentVerifiedAt ?? this.paymentVerifiedAt,
     );
   }
 
   @override
-  List<Object?> get props => [id, customerId, items, total, paymentRef, status, createdAt];
+  List<Object?> get props => [
+    id, customerId, items, total, paymentRef, status, createdAt,
+    paymentStatus, paymentVerifiedBy, paymentVerifiedAt,
+  ];
 }

@@ -140,7 +140,7 @@ import 'package:admin_panel/features/daily_report/presentation/bloc/daily_report
 
 // Phase 8 ? Conversations (L1)
 import 'package:admin_panel/features/conversation/data/datasources/conversation_remote_datasource.dart';
-import 'package:admin_panel/features/conversation/data/datasources/conversation_mock_datasource.dart';
+// import 'package:admin_panel/features/conversation/data/datasources/conversation_mock_datasource.dart';
 import 'package:admin_panel/features/conversation/data/repositories/conversation_repository_impl.dart';
 import 'package:admin_panel/features/conversation/domain/repositories/conversation_repository.dart';
 import 'package:admin_panel/features/conversation/domain/usecases/get_all_conversation_usecase.dart';
@@ -303,7 +303,7 @@ import 'package:admin_panel/features/organization/data/repositories/organization
 import 'package:admin_panel/features/organization/domain/repositories/organization_repository.dart';
 import 'package:admin_panel/features/organization/presentation/bloc/organization_bloc.dart';
 
-import '../../core/context/org_context.dart';
+import 'package:admin_panel/features/order/domain/usecases/mark_order_paid_usecase.dart';
 
 final sl = GetIt.instance;
 
@@ -515,9 +515,9 @@ Future<void> initDependencies() async {
   // sl.registerLazySingleton<CustomerRemoteDataSource>(
   //   () => CustomerMockDataSource(),
   // );
-//   sl.registerLazySingleton<CustomerRemoteDataSource>(
-//   () => CustomerRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
-// );
+  //   sl.registerLazySingleton<CustomerRemoteDataSource>(
+  //   () => CustomerRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
+  // );
   sl.registerLazySingleton<CustomerRemoteDataSource>(
     () => CustomerRemoteDataSourceImpl(
       dio: sl<Dio>(),
@@ -730,9 +730,9 @@ Future<void> initDependencies() async {
   // Phase 8: Communication & Commerce
   // ----------------------------------------------------------
 
-  // Seq 14 ? Conversations (L1)
+  // Seq 14 — Conversations (L1)
   sl.registerLazySingleton<ConversationRemoteDataSource>(
-    () => ConversationMockDataSource(),
+    () => ConversationRemoteDataSourceImpl(dio: sl<Dio>()),
   );
   sl.registerLazySingleton<ConversationRepository>(
     () => ConversationRepositoryImpl(remoteDataSource: sl()),
@@ -742,6 +742,8 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton(() => CreateConversationUseCase(sl()));
   sl.registerLazySingleton(() => UpdateConversationUseCase(sl()));
   sl.registerLazySingleton(() => DeleteConversationUseCase(sl()));
+
+  final _activeSession = await sl<AuthLocalDataSource>().getActiveSession();
   sl.registerFactory<ConversationBloc>(
     () => ConversationBloc(
       getAllUseCase: sl(),
@@ -749,6 +751,11 @@ Future<void> initDependencies() async {
       createUseCase: sl(),
       updateUseCase: sl(),
       deleteUseCase: sl(),
+      dataSource: sl(),
+      currentUserId:
+          _activeSession?.user.actorId ?? _activeSession?.user.id ?? '',
+      currentUserName: _activeSession?.user.name ?? '',
+      currentUserRole: _activeSession?.user.primaryRole?.slug ?? 'admin',
     ),
   );
 
@@ -774,6 +781,7 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton(() => DeductProductQuantityUseCase(sl()));
   sl.registerLazySingleton(() => UpdateOrderUseCase(sl()));
   sl.registerLazySingleton(() => DeleteOrderUseCase(sl()));
+  sl.registerLazySingleton(() => MarkOrderPaidUseCase(sl()));
   sl.registerFactory<OrderBloc>(
     () => OrderBloc(
       getAllUseCase: sl(),
@@ -782,6 +790,7 @@ Future<void> initDependencies() async {
       updateUseCase: sl(),
       deleteUseCase: sl(),
       domainService: sl(),
+      markPaidUseCase: sl(), // ← ADD
     ),
   );
 
@@ -912,13 +921,13 @@ Future<void> initDependencies() async {
 
   // Seq 21 — Activity Logs (L1)
   // DEVELOPMENT (mock — active now):
-  sl.registerLazySingleton<ActivityLogRemoteDataSource>(
-    () => ActivityLogMockDataSource(),
-  );
-  // PRODUCTION (real — swap when Laravel API is ready):
   // sl.registerLazySingleton<ActivityLogRemoteDataSource>(
-  //   () => ActivityLogRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
+  //   () => ActivityLogMockDataSource(),
   // );
+  // PRODUCTION (real — swap when Laravel API is ready):
+  sl.registerLazySingleton<ActivityLogRemoteDataSource>(
+    () => ActivityLogRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
+  );
   sl.registerLazySingleton<ActivityLogRepository>(
     () => ActivityLogRepositoryImpl(remoteDataSource: sl()),
   );

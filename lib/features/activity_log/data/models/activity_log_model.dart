@@ -17,33 +17,35 @@ class ActivityLogModel extends ActivityLogEntity {
 
   factory ActivityLogModel.fromJson(Map<String, dynamic> json) {
     return ActivityLogModel(
-      id: json['id'] as String,
-      actorId: json['actor_id'] as String,
-      actorName: json['actor_name'] as String,
-      actorRole: json['actor_role'] as String,
-      action: json['action'] as String,
-      entityType: json['entity_type'] as String,
-      entityId: json['entity_id'] as String,
+      id: (json['id'] ?? '').toString(),
+      actorId: (json['actor_id'] ?? '').toString(),
+      actorName: (json['actor_name'] ?? '').toString(),
+      actorRole: (json['actor_role'] ?? '').toString(),
+      action: (json['action'] ?? '').toString(),
+      entityType: (json['entity_type'] ?? '').toString(),
+      entityId: (json['entity_id'] ?? '').toString(),
       entitySnapshot: json['entity_snapshot'] as Map<String, dynamic>?,
       ipAddress: json['ip_address'] as String?,
       userAgent: json['user_agent'] as String?,
-      occurredAt: DateTime.parse(json['occurred_at'] as String),
+      occurredAt: json['occurred_at'] != null
+          ? DateTime.tryParse(json['occurred_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'actor_id': actorId,
-        'actor_name': actorName,
-        'actor_role': actorRole,
-        'action': action,
-        'entity_type': entityType,
-        'entity_id': entityId,
-        'entity_snapshot': entitySnapshot,
-        'ip_address': ipAddress,
-        'user_agent': userAgent,
-        'occurred_at': occurredAt.toIso8601String(),
-      };
+    'id': id,
+    'actor_id': actorId,
+    'actor_name': actorName,
+    'actor_role': actorRole,
+    'action': action,
+    'entity_type': entityType,
+    'entity_id': entityId,
+    'entity_snapshot': entitySnapshot,
+    'ip_address': ipAddress,
+    'user_agent': userAgent,
+    'occurred_at': occurredAt.toIso8601String(),
+  };
 
   factory ActivityLogModel.fromEntity(ActivityLogEntity entity) {
     return ActivityLogModel(

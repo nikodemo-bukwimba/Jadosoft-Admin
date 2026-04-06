@@ -810,8 +810,14 @@ class AppRouter {
             ),
             GoRoute(
               path: conversationCreate,
-              builder: (_, _) => BlocProvider(
-                create: (_) => sl<ConversationBloc>(),
+              builder: (_, _) => MultiBlocProvider(
+                providers: [
+                  BlocProvider(create: (_) => sl<ConversationBloc>()),
+                  BlocProvider(
+                    create: (_) =>
+                        sl<ActorBloc>()..add(ActorLoadAllRequested()),
+                  ),
+                ],
                 child: const ConversationFormPage(
                   mode: ConversationFormMode.create,
                 ),
@@ -833,10 +839,18 @@ class AppRouter {
               path: conversationEdit,
               builder: (_, s) {
                 final id = s.pathParameters['id'] ?? '';
-                return BlocProvider(
-                  create: (_) =>
-                      sl<ConversationBloc>()
-                        ..add(ConversationLoadOneRequested(id)),
+                return MultiBlocProvider(
+                  providers: [
+                    BlocProvider(
+                      create: (_) =>
+                          sl<ConversationBloc>()
+                            ..add(ConversationLoadOneRequested(id)),
+                    ),
+                    BlocProvider(
+                      create: (_) =>
+                          sl<ActorBloc>()..add(ActorLoadAllRequested()),
+                    ),
+                  ],
                   child: ConversationFormPage(
                     mode: ConversationFormMode.edit,
                     id: id,

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../app/routes/app_router.dart';
-import '../../data/datasources/conversation_mock_datasource.dart';
 import '../../domain/entities/conversation_entity.dart';
 import '../../domain/entities/message_entity.dart';
 
 class ChatSidePanel extends StatefulWidget {
   final ConversationEntity conversation;
+  final String currentUserId;
   final List<MessageEntity> messages;
   final List<MessageEntity> pinnedMessages;
   final void Function(String query)? onSearch;
@@ -20,9 +20,14 @@ class ChatSidePanel extends StatefulWidget {
   final String? searchQuery;
   final void Function(String messageId)? onScrollToMessage;
 
+  // Available contacts for the Add Member sheet — sourced from ActorBloc
+  // at the page level and passed down. Empty list disables the add button.
+  final List<Map<String, String>> availableContacts;
+
   const ChatSidePanel({
     super.key,
     required this.conversation,
+    required this.currentUserId,
     required this.messages,
     this.pinnedMessages = const [],
     this.onSearch,
@@ -33,6 +38,7 @@ class ChatSidePanel extends StatefulWidget {
     this.searchResults,
     this.searchQuery,
     this.onScrollToMessage,
+    this.availableContacts = const [],
   });
 
   @override
@@ -60,7 +66,7 @@ class _ChatSidePanelState extends State<ChatSidePanel>
     super.dispose();
   }
 
-  bool get _isAdmin => widget.conversation.hasParticipant(kAdminId);
+  bool get _isAdmin => widget.conversation.hasParticipant(widget.currentUserId);
   bool get _isGroup => widget.conversation.type == ConversationType.group;
 
   @override
@@ -95,7 +101,7 @@ class _ChatSidePanelState extends State<ChatSidePanel>
                   child: _isGroup
                       ? Icon(Icons.group, size: 28, color: cs.primary)
                       : Text(
-                          conv.displayName(kAdminId)[0],
+                          conv.displayName(widget.currentUserId)[0],
                           style: TextStyle(
                             fontSize: 24,
                             color: cs.primary,
@@ -105,7 +111,7 @@ class _ChatSidePanelState extends State<ChatSidePanel>
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  conv.displayName(kAdminId),
+                  conv.displayName(widget.currentUserId),
                   style: Theme.of(
                     context,
                   ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
@@ -119,9 +125,9 @@ class _ChatSidePanelState extends State<ChatSidePanel>
                       context,
                     ).textTheme.labelSmall?.copyWith(color: cs.outline),
                   )
-                else if (conv.otherParticipant(kAdminId) != null)
+                else if (conv.otherParticipant(widget.currentUserId) != null)
                   _OnlineIndicator(
-                    participant: conv.otherParticipant(kAdminId)!,
+                    participant: conv.otherParticipant(widget.currentUserId)!,
                   ),
                 const SizedBox(height: 4),
                 Text(
@@ -152,13 +158,16 @@ class _ChatSidePanelState extends State<ChatSidePanel>
               children: [
                 _InfoTab(
                   conversation: conv,
+                  currentUserId: widget.currentUserId,
                   messages: widget.messages,
                   isAdmin: _isAdmin,
                 ),
                 if (_isGroup)
                   _MembersTab(
                     conversation: conv,
+                    currentUserId: widget.currentUserId,
                     isAdmin: _isAdmin,
+                    availableContacts: widget.availableContacts,
                     onAdd: widget.onAddParticipant,
                     onRemove: widget.onRemoveParticipant,
                     onPrivateMessage: widget.onPrivateMessage,
@@ -221,18 +230,21 @@ class _OnlineIndicator extends StatelessWidget {
 
 class _InfoTab extends StatelessWidget {
   final ConversationEntity conversation;
+  final String currentUserId;
   final List<MessageEntity> messages;
   final bool isAdmin;
+
   const _InfoTab({
     required this.conversation,
+    required this.currentUserId,
     required this.messages,
     required this.isAdmin,
   });
+
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final isGroup = conversation.type == ConversationType.group;
-    final other = conversation.otherParticipant(kAdminId);
+    final other = conversation.otherParticipant(currentUserId);
     final imageCount = messages.where((m) => m.isImage).length;
 
     return ListView(
@@ -286,8 +298,6 @@ class _InfoTab extends StatelessWidget {
           'Starred',
           messages.where((m) => m.isStarred).length.toString(),
         ),
-
-        // Fix #5: View Full Profile navigates to officer/customer detail
         if (!isGroup && isAdmin && other != null) ...[
           const SizedBox(height: 24),
           Text(
@@ -377,13 +387,18 @@ class _InfoTab extends StatelessWidget {
 
 class _MembersTab extends StatelessWidget {
   final ConversationEntity conversation;
+  final String currentUserId;
   final bool isAdmin;
+  final List<Map<String, String>> availableContacts;
   final void Function(String, String, String)? onAdd;
   final void Function(String, String)? onRemove;
   final void Function(String, String, String)? onPrivateMessage;
+
   const _MembersTab({
     required this.conversation,
+    required this.currentUserId,
     required this.isAdmin,
+    required this.availableContacts,
     this.onAdd,
     this.onRemove,
     this.onPrivateMessage,
@@ -409,7 +424,7 @@ class _MembersTab extends StatelessWidget {
             ),
           ),
         ...conversation.participants.map((p) {
-          final isMe = p.id == kAdminId;
+          final isMe = p.id == currentUserId;
           final isOnline = p.onlineStatus == OnlineStatus.online;
           return ListTile(
             dense: true,
@@ -477,8 +492,9 @@ class _MembersTab extends StatelessWidget {
                     icon: const Icon(Icons.more_vert, size: 18),
                     onSelected: (v) {
                       if (v == 'remove') onRemove?.call(p.id, p.name);
-                      if (v == 'private')
+                      if (v == 'private') {
                         onPrivateMessage?.call(p.id, p.name, p.role);
+                      }
                     },
                     itemBuilder: (_) => [
                       const PopupMenuItem(
@@ -503,9 +519,8 @@ class _MembersTab extends StatelessWidget {
   }
 
   void _showAddSheet(BuildContext context) {
-    final contacts = ConversationMockDataSource().getAvailableContacts();
     final existingIds = conversation.participants.map((p) => p.id).toSet();
-    final available = contacts
+    final available = availableContacts
         .where((c) => !existingIds.contains(c['id']))
         .toList();
     if (available.isEmpty) {
@@ -577,7 +592,6 @@ class _MembersTab extends StatelessWidget {
   };
 }
 
-// Fix #2: Pinned tab taps scroll to message
 class _PinnedTab extends StatelessWidget {
   final List<MessageEntity> pinnedMessages;
   final void Function(String messageId)? onTap;
@@ -585,7 +599,7 @@ class _PinnedTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    if (pinnedMessages.isEmpty)
+    if (pinnedMessages.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -596,6 +610,7 @@ class _PinnedTab extends StatelessWidget {
           ],
         ),
       );
+    }
     return ListView(
       padding: const EdgeInsets.all(8),
       children: pinnedMessages
@@ -644,7 +659,6 @@ class _PinnedTab extends StatelessWidget {
       '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
 }
 
-// Fix #2: Search results tap scroll to message
 class _SearchTab extends StatelessWidget {
   final TextEditingController searchController;
   final void Function(String)? onSearch;
@@ -652,6 +666,7 @@ class _SearchTab extends StatelessWidget {
   final List<MessageEntity>? results;
   final String? query;
   final void Function(String messageId)? onTapResult;
+
   const _SearchTab({
     required this.searchController,
     this.onSearch,
@@ -660,6 +675,7 @@ class _SearchTab extends StatelessWidget {
     this.query,
     this.onTapResult,
   });
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;

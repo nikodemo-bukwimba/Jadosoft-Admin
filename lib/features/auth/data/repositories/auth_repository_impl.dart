@@ -77,6 +77,16 @@ class AuthRepositoryImpl implements AuthRepository {
       //     //   _orgContext.setRootOrg(id: orgId, name: orgName, role: OrgRole.orgAdmin);
       //     // For now, restore from last saved context:
       await _orgContext.restore();
+      final actorId = meResponse.user.actorId;
+      if (_orgContext.hasOrg && actorId != null) {
+        await _orgContext.setRootOrg(
+          id: _orgContext.rootOrgId!,
+          name: _orgContext.rootOrgName ?? '',
+          role: _orgContext.orgRole,
+          actorId: actorId,
+          actorName: meResponse.user.name,
+        );
+      }
 
       return Right(finalSession);
     } on AuthException catch (e) {
@@ -258,6 +268,16 @@ class AuthRepositoryImpl implements AuthRepository {
         savedAt: DateTime.now(),
       );
       await _local.saveSession(updated);
+      final actorId = meResponse.user.actorId;
+      if (_orgContext.hasOrg && actorId != null) {
+        await _orgContext.setRootOrg(
+          id: _orgContext.rootOrgId!,
+          name: _orgContext.rootOrgName ?? '',
+          role: _orgContext.orgRole,
+          actorId: actorId,
+          actorName: meResponse.user.name,
+        );
+      }
       return Right(updated);
     } on AuthException catch (e) {
       return Left(AuthFailure(e.message));

@@ -6,6 +6,9 @@ import '../../domain/entities/order_entity.dart';
 import '../../domain/value_objects/order_status.dart';
 import '../bloc/order_bloc.dart';
 import '../bloc/order_event.dart';
+import '../widgets/order_payment_card.dart';
+import '../../../../core/context/org_context.dart';
+import '../../../../config/di/injection_container.dart';
 import '../bloc/order_state.dart';
 import '../widgets/order_status_badge.dart';
 
@@ -120,6 +123,16 @@ class _OrderBody extends StatelessWidget {
           // ── Order Items ────────────────────────────────────
           _ItemsCard(items: item.items),
           const SizedBox(height: 16),
+          OrderPaymentCard(
+            order: item,
+            currentActorId:
+                sl<OrgContext>().actorId ?? sl<OrgContext>().effectiveOrgId,
+            currentActorName:
+                sl<OrgContext>().actorName ??
+                sl<OrgContext>().rootOrgName ??
+                'Admin',
+          ),
+          const SizedBox(height: 80),
 
           // ── View payment button ────────────────────────────
           if (hasPayment)

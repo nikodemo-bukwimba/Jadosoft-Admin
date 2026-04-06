@@ -1,6 +1,6 @@
 ﻿import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/usecase/usecase.dart';
-import '../../data/datasources/conversation_mock_datasource.dart';
+import '../../data/datasources/conversation_remote_datasource.dart';
 import '../../domain/usecases/create_conversation_usecase.dart';
 import '../../domain/usecases/delete_conversation_usecase.dart';
 import '../../domain/usecases/get_conversation_usecase.dart';
@@ -9,13 +9,26 @@ import '../../domain/usecases/update_conversation_usecase.dart';
 import 'conversation_event.dart';
 import 'conversation_state.dart';
 
+// Admin identity is resolved from the authenticated session at runtime.
+// Injected via [ConversationBloc] constructor so the BLoC has no
+// hard-coded credential references.
 class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   final GetAllConversationUseCase getAllUseCase;
   final GetConversationUseCase getUseCase;
   final CreateConversationUseCase createUseCase;
   final UpdateConversationUseCase updateUseCase;
   final DeleteConversationUseCase deleteUseCase;
-  final ConversationMockDataSource _mockDs = ConversationMockDataSource();
+
+  // ── Production datasource (injected) ──────────────────────────────────
+  // The BLoC no longer owns a ConversationMockDataSource singleton.
+  // The concrete type is ConversationRemoteDataSourceImpl in production and
+  // ConversationMockDataSource in tests/dev via the same interface.
+  final ConversationRemoteDataSource _ds;
+
+  // Current user identity — provided by the auth session at injection time.
+  final String currentUserId;
+  final String currentUserName;
+  final String currentUserRole;
 
   ConversationBloc({
     required this.getAllUseCase,
@@ -23,7 +36,12 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     required this.createUseCase,
     required this.updateUseCase,
     required this.deleteUseCase,
-  }) : super(ConversationInitial()) {
+    required ConversationRemoteDataSource dataSource,
+    required this.currentUserId,
+    required this.currentUserName,
+    required this.currentUserRole,
+  })  : _ds = dataSource,
+        super(ConversationInitial()) {
     on<ConversationLoadAllRequested>(_onLoadAll);
     on<ConversationLoadOneRequested>(_onLoadOne);
     on<ConversationCreateRequested>(_onCreate);
@@ -52,24 +70,28 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     on<ConversationPrivateReplyRequested>(_onPrivateReply);
     on<ConversationStartNewRequested>(_onStartNew);
 
-    _mockDs.onAutoReply = (convId, msg) {
+    // Real-time callbacks — no-op in REST mode; populated by WebSocket/Pusher
+    // layer when present. The interface contract is identical to mock.
+    _ds.onAutoReply = (convId, _) {
       if (!isClosed) add(ConversationAutoReplyReceived(convId));
     };
-    _mockDs.onTypingStart = (convId, name) {
+    _ds.onTypingStart = (convId, name) {
       if (!isClosed) add(ConversationTypingStarted(convId, name));
     };
-    _mockDs.onTypingStop = (convId) {
+    _ds.onTypingStop = (convId) {
       if (!isClosed) add(ConversationTypingStopped(convId));
     };
   }
+
+  // ── Helpers ─────────────────────────────────────────────────────────────
 
   Future<void> _reloadChat(
     String convId,
     Emitter<ConversationState> emit,
   ) async {
-    final conv = await _mockDs.getById(convId);
-    final msgs = await _mockDs.getMessages(convId);
-    final pinned = _mockDs.getPinnedMessages(convId);
+    final conv = await _ds.getById(convId);
+    final msgs = await _ds.getMessages(convId);
+    final pinned = _ds.getPinnedMessages(convId);
     final currentTyping = state is ConversationChatLoaded
         ? (state as ConversationChatLoaded).typingUser
         : null;
@@ -91,7 +113,8 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     );
   }
 
-  // ─── LIST ───
+  // ── LIST ──────────────────────────────────────────────────────────────
+
   Future<void> _onLoadAll(
     ConversationLoadAllRequested event,
     Emitter<ConversationState> emit,
@@ -112,16 +135,9 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   ) async {
     emit(ConversationLoading());
     try {
-      final conv = await _mockDs.getById(event.id);
-      final msgs = await _mockDs.getMessages(event.id);
-      final pinned = _mockDs.getPinnedMessages(event.id);
-      emit(
-        ConversationChatLoaded(
-          conversation: conv,
-          messages: msgs,
-          pinnedMessages: pinned,
-        ),
-      );
+      await _reloadChat(event.id, emit);
+      // Mark conversation as read on open
+      await _ds.markAsRead(event.id);
     } catch (e) {
       emit(ConversationFailure(e.toString()));
     }
@@ -165,7 +181,8 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     );
   }
 
-  // ─── CHAT ───
+  // ── CHAT ──────────────────────────────────────────────────────────────
+
   Future<void> _onLoadMessages(
     ConversationLoadMessagesRequested event,
     Emitter<ConversationState> emit,
@@ -183,7 +200,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _mockDs.sendMessage(
+      await _ds.sendMessage(
         convId: event.conversationId,
         content: event.content,
         imageUrl: event.imageUrl,
@@ -207,8 +224,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   ) async {
     if (state is! ConversationChatLoaded) return;
     if ((state as ConversationChatLoaded).conversation.id !=
-        event.conversationId)
-      return;
+        event.conversationId) return;
     try {
       await _reloadChat(event.conversationId, emit);
     } catch (_) {}
@@ -234,13 +250,14 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     emit(s.copyWith(clearTyping: true));
   }
 
-  // ─── MESSAGE OPS ───
+  // ── MESSAGE OPS ───────────────────────────────────────────────────────
+
   Future<void> _onDeleteMessage(
     ConversationDeleteMessageRequested event,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _mockDs.deleteMessage(event.conversationId, event.messageId);
+      await _ds.deleteMessage(event.conversationId, event.messageId);
       await _reloadChat(event.conversationId, emit);
     } catch (e) {
       emit(ConversationFailure(e.toString()));
@@ -252,9 +269,11 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _mockDs.togglePin(event.conversationId, event.messageId);
+      await _ds.togglePin(event.conversationId, event.messageId);
       await _reloadChat(event.conversationId, emit);
     } catch (e) {
+      // 🔴 Pin endpoint not yet available — silently ignore 404
+      // Remove the catch once the API implements /messages/{scope}/{id}/pin
       emit(ConversationFailure(e.toString()));
     }
   }
@@ -264,9 +283,10 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _mockDs.toggleStar(event.conversationId, event.messageId);
+      await _ds.toggleStar(event.conversationId, event.messageId);
       await _reloadChat(event.conversationId, emit);
     } catch (e) {
+      // 🔴 Star endpoint not yet available
       emit(ConversationFailure(e.toString()));
     }
   }
@@ -276,7 +296,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _mockDs.addReaction(
+      await _ds.addReaction(
         event.conversationId,
         event.messageId,
         event.emoji,
@@ -292,13 +312,14 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _mockDs.editMessage(
+      await _ds.editMessage(
         event.conversationId,
         event.messageId,
         event.newContent,
       );
       await _reloadChat(event.conversationId, emit);
     } catch (e) {
+      // 🔴 Edit endpoint not yet available
       emit(ConversationFailure(e.toString()));
     }
   }
@@ -308,7 +329,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     Emitter<ConversationState> emit,
   ) async {
     try {
-      final receipts = await _mockDs.getReadReceipts(
+      final receipts = await _ds.getReadReceipts(
         event.conversationId,
         event.messageId,
       );
@@ -333,8 +354,19 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
       emit(s.copyWith(clearSearch: true));
       return;
     }
-    final results = _mockDs.searchMessages(event.conversationId, event.query);
-    emit(s.copyWith(searchResults: results, searchQuery: event.query));
+    // Client-side search over already-loaded messages
+    final results = _ds.searchMessages(event.conversationId, event.query);
+    // Fallback: if the datasource returns empty (API impl), search in-memory
+    final effective = results.isNotEmpty
+        ? results
+        : s.messages
+              .where(
+                (m) => m.content
+                    .toLowerCase()
+                    .contains(event.query.toLowerCase()),
+              )
+              .toList();
+    emit(s.copyWith(searchResults: effective, searchQuery: event.query));
   }
 
   void _onClearSearch(
@@ -345,13 +377,14 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     emit((state as ConversationChatLoaded).copyWith(clearSearch: true));
   }
 
-  // ─── FORWARD ───
+  // ── FORWARD ──────────────────────────────────────────────────────────
+
   Future<void> _onForwardMessage(
     ConversationForwardMessageRequested event,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _mockDs.sendMessage(
+      await _ds.sendMessage(
         convId: event.targetConversationId,
         content: event.content,
         forwardedFromConvId: event.originalConvId,
@@ -368,13 +401,14 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     }
   }
 
-  // ─── BROADCAST ───
+  // ── BROADCAST ─────────────────────────────────────────────────────────
+
   Future<void> _onBroadcast(
     ConversationBroadcastRequested event,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      final sent = await _mockDs.broadcastMessage(
+      final sent = await _ds.broadcastMessage(
         event.conversationIds,
         event.content,
       );
@@ -384,13 +418,14 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     }
   }
 
-  // ─── GROUP ───
+  // ── GROUP MANAGEMENT ─────────────────────────────────────────────────
+
   Future<void> _onClose(
     ConversationCloseRequested event,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _mockDs.closeConversation(event.conversationId);
+      await _ds.closeConversation(event.conversationId);
       await _reloadChat(event.conversationId, emit);
     } catch (e) {
       emit(ConversationFailure(e.toString()));
@@ -402,7 +437,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _mockDs.reopenConversation(event.conversationId);
+      await _ds.reopenConversation(event.conversationId);
       await _reloadChat(event.conversationId, emit);
     } catch (e) {
       emit(ConversationFailure(e.toString()));
@@ -414,7 +449,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _mockDs.addParticipant(
+      await _ds.addParticipant(
         event.conversationId,
         event.participantId,
         event.name,
@@ -431,7 +466,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _mockDs.removeParticipant(
+      await _ds.removeParticipant(
         event.conversationId,
         event.participantId,
         event.name,
@@ -442,13 +477,14 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     }
   }
 
-  // ─── PRIVATE REPLY ───
+  // ── PRIVATE REPLY ────────────────────────────────────────────────────
+
   Future<void> _onPrivateReply(
     ConversationPrivateReplyRequested event,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      final convId = await _mockDs.createPrivateFromGroup(
+      final convId = await _ds.createPrivateFromGroup(
         event.participantId,
         event.participantName,
         event.participantRole,
@@ -460,7 +496,8 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     }
   }
 
-  // ─── NEW CONVERSATION ───
+  // ── NEW CONVERSATION ─────────────────────────────────────────────────
+
   Future<void> _onStartNew(
     ConversationStartNewRequested event,
     Emitter<ConversationState> emit,
@@ -469,9 +506,9 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     try {
       final participantMaps = <Map<String, dynamic>>[
         {
-          'id': kAdminId,
-          'name': kAdminName,
-          'role': kAdminRole,
+          'id': currentUserId,
+          'name': currentUserName,
+          'role': currentUserRole,
           'joined_at': DateTime.now().toIso8601String(),
           'online_status': 'online',
           'last_seen_at': null,
@@ -487,13 +524,24 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
           },
         ),
       ];
-      final conv = await _mockDs.create({
-        'type': event.type,
-        'title': event.title,
-        'participants': participantMaps,
-      });
+
+      // For direct conversations the API only needs recipient_actor_id
+      final body = event.type == 'group'
+          ? {
+              'type': event.type,
+              'title': event.title,
+              'participants': participantMaps,
+            }
+          : {
+              'type': event.type,
+              'recipient_actor_id': event.participants.first['id'],
+              'participants': participantMaps,
+            };
+
+      final conv = await _ds.create(body);
+
       if (event.firstMessage != null && event.firstMessage!.isNotEmpty) {
-        await _mockDs.sendMessage(
+        await _ds.sendMessage(
           convId: conv.id,
           content: event.firstMessage!,
         );
