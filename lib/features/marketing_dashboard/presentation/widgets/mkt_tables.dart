@@ -11,7 +11,6 @@ class MktOfficerLeaderboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // Build name lookup
     final nameMap = <String, String>{};
     for (final o in projection.allOfficers) {
       nameMap[o.userId] = o.displayName;
@@ -29,10 +28,24 @@ class MktOfficerLeaderboard extends StatelessWidget {
       title: 'Officer Leaderboard',
       subtitle: '${entries.length} officers ranked by visits',
       child: entries.isEmpty
-          ? const Center(
+          ? Center(
               child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('No data'),
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.badge_outlined,
+                      size: 36,
+                      color: cs.outlineVariant,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No visit data yet',
+                      style: TextStyle(color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ),
               ),
             )
           : Column(
@@ -184,10 +197,24 @@ class MktTopCustomers extends StatelessWidget {
       title: 'Most Visited Customers',
       subtitle: 'By visit frequency',
       child: top.isEmpty
-          ? const Center(
+          ? Center(
               child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('No data'),
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.storefront_outlined,
+                      size: 36,
+                      color: cs.outlineVariant,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No visit data yet',
+                      style: TextStyle(color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ),
               ),
             )
           : Column(
@@ -267,12 +294,12 @@ class MktActivityHeatmap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // Build name lookup from allOfficers
     final nameMap = <String, String>{};
     for (final o in projection.allOfficers) {
       nameMap[o.userId] = o.displayName;
     }
-    final officers = projection.visitsByOfficer.keys.toList();
+
+    // Build matrix from real visit data only — no fallback
     final Map<String, Map<String, int>> matrix = {};
     for (final v in projection.recentVisits) {
       final name = nameMap[v.officerId] ?? v.officerId;
@@ -280,13 +307,7 @@ class MktActivityHeatmap extends StatelessWidget {
       final dayName = _days[v.visitDate.weekday - 1];
       matrix[name]![dayName] = (matrix[name]![dayName] ?? 0) + 1;
     }
-    if (matrix.isEmpty && officers.isNotEmpty) {
-      for (final off in officers.take(4)) {
-        final name = nameMap[off] ?? off;
-        matrix[name] = {};
-        for (final day in _days) matrix[name]![day] = (day.hashCode % 5).abs();
-      }
-    }
+
     final allVals = matrix.values.expand((m) => m.values).toList();
     final maxVal = allVals.isEmpty
         ? 1
@@ -295,113 +316,139 @@ class MktActivityHeatmap extends StatelessWidget {
     return DashCard(
       title: 'Visit Heatmap',
       subtitle: 'Officer activity by day',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const SizedBox(width: 80),
-              ..._days.map(
-                (d) => Expanded(
-                  child: Text(
-                    d,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (matrix.isEmpty)
-            const Padding(padding: EdgeInsets.all(16), child: Text('No data'))
-          else
-            ...matrix.entries.map(
-              (e) => Padding(
-                padding: const EdgeInsets.only(bottom: 5),
-                child: Row(
+      child: matrix.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 32),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    SizedBox(
-                      width: 80,
-                      child: Text(
-                        e.key,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 10),
-                      ),
+                    Icon(
+                      Icons.grid_view_outlined,
+                      size: 36,
+                      color: cs.outlineVariant,
                     ),
-                    ..._days.map((day) {
-                      final count = e.value[day] ?? 0;
-                      final intensity = maxVal > 0 ? count / maxVal : 0.0;
-                      return Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 2),
-                          child: Tooltip(
-                            message: '${e.key} · $day: $count visits',
-                            child: Container(
-                              height: 26,
-                              decoration: BoxDecoration(
-                                color: count == 0
-                                    ? cs.surfaceContainerHighest
-                                    : cs.primary.withValues(
-                                        alpha: 0.12 + intensity * 0.78,
-                                      ),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: count > 0
-                                  ? Center(
-                                      child: Text(
-                                        '$count',
-                                        style: TextStyle(
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.w700,
-                                          color: intensity > 0.5
-                                              ? Colors.white
-                                              : cs.primary,
-                                        ),
-                                      ),
-                                    )
-                                  : null,
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No visit data yet',
+                      style: TextStyle(color: cs.onSurfaceVariant),
+                    ),
                   ],
                 ),
               ),
-            ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              Text(
-                'Low ',
-                style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
-              ),
-              ...List.generate(
-                5,
-                (i) => Container(
-                  width: 14,
-                  height: 14,
-                  margin: const EdgeInsets.symmetric(horizontal: 1),
-                  decoration: BoxDecoration(
-                    color: cs.primary.withValues(alpha: 0.12 + i * 0.18),
-                    borderRadius: BorderRadius.circular(3),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const SizedBox(width: 80),
+                    ..._days.map(
+                      (d) => Expanded(
+                        child: Text(
+                          d,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ...matrix.entries.map(
+                  (e) => Padding(
+                    padding: const EdgeInsets.only(bottom: 5),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 80,
+                          child: Text(
+                            e.key,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                        ),
+                        ..._days.map((day) {
+                          final count = e.value[day] ?? 0;
+                          final intensity = maxVal > 0 ? count / maxVal : 0.0;
+                          return Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                              ),
+                              child: Tooltip(
+                                message: '${e.key} · $day: $count visits',
+                                child: Container(
+                                  height: 26,
+                                  decoration: BoxDecoration(
+                                    color: count == 0
+                                        ? cs.surfaceContainerHighest
+                                        : cs.primary.withValues(
+                                            alpha: 0.12 + intensity * 0.78,
+                                          ),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: count > 0
+                                      ? Center(
+                                          child: Text(
+                                            '$count',
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w700,
+                                              color: intensity > 0.5
+                                                  ? Colors.white
+                                                  : cs.primary,
+                                            ),
+                                          ),
+                                        )
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              Text(
-                ' High',
-                style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
-              ),
-            ],
-          ),
-        ],
-      ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Low ',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    ...List.generate(
+                      5,
+                      (i) => Container(
+                        width: 14,
+                        height: 14,
+                        margin: const EdgeInsets.symmetric(horizontal: 1),
+                        decoration: BoxDecoration(
+                          color: cs.primary.withValues(alpha: 0.12 + i * 0.18),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ),
+                    Text(
+                      ' High',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
     );
   }
 }
@@ -416,7 +463,6 @@ class MktActivityFeed extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final visits = projection.recentVisits.take(8).toList();
-    // Name lookup
     final nameMap = <String, String>{};
     for (final o in projection.allOfficers) {
       nameMap[o.userId] = o.displayName;
@@ -426,10 +472,24 @@ class MktActivityFeed extends StatelessWidget {
       title: 'Recent Activity',
       subtitle: 'Latest field visits',
       child: visits.isEmpty
-          ? const Center(
+          ? Center(
               child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('No activity'),
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.history_outlined,
+                      size: 36,
+                      color: cs.outlineVariant,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No activity yet',
+                      style: TextStyle(color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ),
               ),
             )
           : Column(

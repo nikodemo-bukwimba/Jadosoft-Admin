@@ -1,7 +1,14 @@
-﻿import 'package:flutter/material.dart';
+﻿// promotion_detail_page.dart
+// Product names are no longer resolved from the mock datasource.
+// The detail page shows product IDs as-is (the real product name
+// resolution belongs in a dedicated Product feature bloc/repository).
+// For display, productId is shown with a truncated label.
+// When the Product feature (Seq 7) is wired, replace _productLabel()
+// with a lookup from ProductBloc/cache.
+
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import '../../data/datasources/promotion_mock_datasource.dart';
 import '../../data/models/promotion_model.dart';
 import '../../domain/entities/promotion_entity.dart';
 import '../../domain/value_objects/promotion_status.dart';
@@ -24,12 +31,22 @@ class PromotionDetailPage extends StatelessWidget {
               backgroundColor: Colors.green,
             ),
           );
+          // Reload this detail only — do NOT fire LoadAll which overwrites state
           if (state.updatedItem != null) {
-            context
-                .read<PromotionBloc>()
-                .add(PromotionLoadOneRequested(state.updatedItem!.id));
+            context.read<PromotionBloc>().add(
+              PromotionLoadOneRequested(state.updatedItem!.id),
+            );
           }
         }
+        if (state is PromotionFailure) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
+
         if (state is PromotionFailure) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -84,8 +101,7 @@ class _DetailView extends StatelessWidget {
         actions: [
           if (status == PromotionStatus.draft)
             IconButton(
-              onPressed: () =>
-                  context.go('/promotions/${item.id}/edit'),
+              onPressed: () => context.go('/promotions/${item.id}/edit'),
               icon: const Icon(Icons.edit_outlined),
               tooltip: 'Edit',
             ),
@@ -122,18 +138,22 @@ class _DetailView extends StatelessWidget {
                         runSpacing: 12,
                         children: [
                           _InfoBlock(
-                              label: 'Start Date',
-                              value: _fmtDate(item.startDate)),
+                            label: 'Start Date',
+                            value: _fmtDate(item.startDate),
+                          ),
                           _InfoBlock(
-                              label: 'End Date',
-                              value: _fmtDate(item.endDate)),
+                            label: 'End Date',
+                            value: _fmtDate(item.endDate),
+                          ),
                           _InfoBlock(
-                              label: 'Duration',
-                              value:
-                                  '${item.endDate.difference(item.startDate).inDays} days'),
+                            label: 'Duration',
+                            value:
+                                '${item.endDate.difference(item.startDate).inDays} days',
+                          ),
                           _InfoBlock(
-                              label: 'Created',
-                              value: _fmtDate(item.createdAt)),
+                            label: 'Created',
+                            value: _fmtDate(item.createdAt),
+                          ),
                         ],
                       ),
                       if (item.description != null) ...[
@@ -142,8 +162,9 @@ class _DetailView extends StatelessWidget {
                         const SizedBox(height: 12),
                         Text(
                           item.description!,
-                          style: theme.textTheme.bodyMedium
-                              ?.copyWith(height: 1.6),
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            height: 1.6,
+                          ),
                         ),
                       ],
                     ],
@@ -162,26 +183,27 @@ class _DetailView extends StatelessWidget {
                       final color = c == 'sms'
                           ? Colors.orange
                           : c == 'whatsapp'
-                              ? const Color(0xFF25D366)
-                              : Colors.indigo;
+                          ? const Color(0xFF25D366)
+                          : Colors.indigo;
                       final icon = c == 'sms'
                           ? Icons.sms_outlined
                           : c == 'whatsapp'
-                              ? Icons.chat_outlined
-                              : Icons.notifications_outlined;
+                          ? Icons.chat_outlined
+                          : Icons.notifications_outlined;
                       final label = c == 'sms'
                           ? 'SMS'
                           : c == 'whatsapp'
-                              ? 'WhatsApp Business API'
-                              : 'In-App';
+                          ? 'WhatsApp Business API'
+                          : 'In-App';
                       return Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 8),
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: color.withOpacity(0.10),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                              color: color.withOpacity(0.35)),
+                          border: Border.all(color: color.withOpacity(0.35)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -191,9 +213,10 @@ class _DetailView extends StatelessWidget {
                             Text(
                               label,
                               style: TextStyle(
-                                  fontSize: 13,
-                                  color: color,
-                                  fontWeight: FontWeight.w600),
+                                fontSize: 13,
+                                color: color,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ],
                         ),
@@ -205,8 +228,7 @@ class _DetailView extends StatelessWidget {
 
                 // ── Products ──────────────────────────────────
                 _SectionCard(
-                  title:
-                      'Promoted Products (${item.productIds.length})',
+                  title: 'Promoted Products (${item.productIds.length})',
                   icon: Icons.medication_outlined,
                   child: Column(
                     children: item.productIds
@@ -229,8 +251,18 @@ class _DetailView extends StatelessWidget {
 
   String _fmtDate(DateTime d) {
     const m = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${m[d.month - 1]} ${d.day}, ${d.year}';
   }
@@ -256,8 +288,7 @@ class _BroadcastBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.check_circle_outline,
-              color: Colors.green, size: 22),
+          const Icon(Icons.check_circle_outline, color: Colors.green, size: 22),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -272,7 +303,11 @@ class _BroadcastBanner extends StatelessWidget {
                 ),
                 if (sentAt != null)
                   Text(
-                    'Dispatched via ${model.channels.map((c) => c == 'sms' ? 'SMS' : c == 'whatsapp' ? 'WhatsApp' : 'In-App').join(' & ')} on ${_fmtDateTime(sentAt)}',
+                    'Dispatched via ${model.channels.map((c) => c == 'sms'
+                        ? 'SMS'
+                        : c == 'whatsapp'
+                        ? 'WhatsApp'
+                        : 'In-App').join(' & ')} on ${_fmtDateTime(sentAt)}',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: Colors.green.shade600,
                     ),
@@ -289,8 +324,18 @@ class _BroadcastBanner extends StatelessWidget {
     final h = d.hour.toString().padLeft(2, '0');
     final min = d.minute.toString().padLeft(2, '0');
     const m = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${m[d.month - 1]} ${d.day}, ${d.year} at $h:$min';
   }
@@ -307,8 +352,8 @@ class _ActionButtons extends StatelessWidget {
   Widget build(BuildContext context) {
     final canActivate = status == PromotionStatus.draft;
     final canEnd = status == PromotionStatus.active;
-    final canCancel = status == PromotionStatus.draft ||
-        status == PromotionStatus.active;
+    final canCancel =
+        status == PromotionStatus.draft || status == PromotionStatus.active;
 
     if (!canActivate && !canEnd && !canCancel) {
       return const SizedBox.shrink();
@@ -318,8 +363,7 @@ class _ActionButtons extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-            color: Theme.of(context).colorScheme.outlineVariant),
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -328,10 +372,9 @@ class _ActionButtons extends StatelessWidget {
           children: [
             Text(
               'Admin Actions',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -344,15 +387,15 @@ class _ActionButtons extends StatelessWidget {
                     icon: const Icon(Icons.rocket_launch_outlined),
                     label: const Text('Activate & Broadcast'),
                     style: FilledButton.styleFrom(
-                        backgroundColor: Colors.green),
+                      backgroundColor: Colors.green,
+                    ),
                   ),
                 if (canEnd)
                   FilledButton.icon(
                     onPressed: () => _confirmEnd(context),
                     icon: const Icon(Icons.stop_circle_outlined),
                     label: const Text('End Promotion'),
-                    style: FilledButton.styleFrom(
-                        backgroundColor: Colors.blue),
+                    style: FilledButton.styleFrom(backgroundColor: Colors.blue),
                   ),
                 if (canCancel)
                   OutlinedButton.icon(
@@ -360,8 +403,9 @@ class _ActionButtons extends StatelessWidget {
                     icon: const Icon(Icons.cancel_outlined),
                     label: const Text('Cancel'),
                     style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        side: const BorderSide(color: Colors.red)),
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
+                    ),
                   ),
               ],
             ),
@@ -387,25 +431,28 @@ class _ActionButtons extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Activating this promotion will immediately:',
-            ),
+            const Text('Activating this promotion will immediately:'),
             const SizedBox(height: 12),
-            _bulletPoint('Send SMS to all registered customers'
-                ' via Vodacom/Airtel gateway',
-                Icons.sms_outlined, Colors.orange),
+            _bulletPoint(
+              'Send SMS to all registered customers'
+              ' via Vodacom/Airtel gateway',
+              Icons.sms_outlined,
+              Colors.orange,
+            ),
             const SizedBox(height: 6),
             _bulletPoint(
-                'Send WhatsApp messages via WhatsApp Business API',
-                Icons.chat_outlined,
-                const Color(0xFF25D366)),
+              'Send WhatsApp messages via WhatsApp Business API',
+              Icons.chat_outlined,
+              const Color(0xFF25D366),
+            ),
             const SizedBox(height: 12),
             const Text(
               'This action cannot be undone. The broadcast will go out immediately.',
               style: TextStyle(
-                  fontSize: 12,
-                  fontStyle: FontStyle.italic,
-                  color: Colors.grey),
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+                color: Colors.grey,
+              ),
             ),
           ],
         ),
@@ -415,8 +462,7 @@ class _ActionButtons extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: Colors.green),
+            style: FilledButton.styleFrom(backgroundColor: Colors.green),
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Activate & Broadcast'),
           ),
@@ -442,15 +488,15 @@ class _ActionButtons extends StatelessWidget {
           ],
         ),
         content: const Text(
-            'This will mark the promotion as ended. No further broadcasts will be sent.'),
+          'This will mark the promotion as ended. No further broadcasts will be sent.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style:
-                FilledButton.styleFrom(backgroundColor: Colors.blue),
+            style: FilledButton.styleFrom(backgroundColor: Colors.blue),
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('End Promotion'),
           ),
@@ -476,15 +522,15 @@ class _ActionButtons extends StatelessWidget {
           ],
         ),
         content: const Text(
-            'This will cancel the promotion. This action cannot be undone.'),
+          'This will cancel the promotion. This action cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Back'),
           ),
           FilledButton(
-            style:
-                FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Cancel Promotion'),
           ),
@@ -503,9 +549,7 @@ class _ActionButtons extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: color),
         const SizedBox(width: 8),
-        Expanded(
-            child: Text(text,
-                style: const TextStyle(fontSize: 13))),
+        Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
       ],
     );
   }
@@ -520,6 +564,8 @@ class _ProductRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Product name resolution: shows the product ID until the Product
+    // feature (Seq 7) exposes a name cache. The ID is the ULID from Nexora.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
@@ -531,20 +577,17 @@ class _ProductRow extends StatelessWidget {
               color: theme.colorScheme.primary.withOpacity(0.08),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Icon(Icons.medication_outlined,
-                size: 16, color: theme.colorScheme.primary),
+            child: Icon(
+              Icons.medication_outlined,
+              size: 16,
+              color: theme.colorScheme.primary,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              PromotionMockDataSource.productName(productId),
+              productId, // replaced by product name cache when Product feature is live
               style: theme.textTheme.bodyMedium,
-            ),
-          ),
-          Text(
-            productId,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -583,14 +626,13 @@ class _SectionCard extends StatelessWidget {
         children: [
           Container(
             width: double.infinity,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: color.withOpacity(0.06),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(12)),
-              border: Border(
-                  bottom: BorderSide(color: color.withOpacity(0.2))),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
+              border: Border(bottom: BorderSide(color: color.withOpacity(0.2))),
             ),
             child: Row(
               children: [

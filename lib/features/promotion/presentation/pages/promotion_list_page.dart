@@ -27,16 +27,17 @@ class _PromotionListPageState extends State<PromotionListPage> {
     var r = items;
     if (_filterStatus != null) {
       r = r
-          .where((e) =>
-              PromotionStatusX.fromString(e.status) == _filterStatus)
+          .where((e) => PromotionStatusX.fromString(e.status) == _filterStatus)
           .toList();
     }
     if (_search.isNotEmpty) {
       final q = _search.toLowerCase();
       r = r
-          .where((e) =>
-              e.title.toLowerCase().contains(q) ||
-              (e.description ?? '').toLowerCase().contains(q))
+          .where(
+            (e) =>
+                e.title.toLowerCase().contains(q) ||
+                (e.description ?? '').toLowerCase().contains(q),
+          )
           .toList();
     }
     return r;
@@ -47,6 +48,14 @@ class _PromotionListPageState extends State<PromotionListPage> {
     final theme = Theme.of(context);
 
     return BlocListener<PromotionBloc, PromotionState>(
+      listenWhen: (previous, state) {
+        if (state is PromotionOperationSuccess) {
+          // If updatedItem is set, this came from a detail-page transition
+          // (End/Cancel/Activate). Don't reload the list from here.
+          return state.updatedItem == null;
+        }
+        return state is PromotionFailure;
+      },
       listener: (context, state) {
         if (state is PromotionOperationSuccess) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -55,15 +64,13 @@ class _PromotionListPageState extends State<PromotionListPage> {
               backgroundColor: Colors.green,
             ),
           );
-          context
-              .read<PromotionBloc>()
-              .add(PromotionLoadAllRequested());
+          context.read<PromotionBloc>().add(PromotionLoadAllRequested());
         }
         if (state is PromotionFailure) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(state.message),
-              backgroundColor: theme.colorScheme.error,
+              backgroundColor: Theme.of(context).colorScheme.error,
             ),
           );
         }
@@ -81,17 +88,16 @@ class _PromotionListPageState extends State<PromotionListPage> {
               tooltip: 'Filter by status',
               onSelected: (v) => setState(() => _filterStatus = v),
               itemBuilder: (_) => [
-                const PopupMenuItem(
-                    value: null, child: Text('All statuses')),
-                ...PromotionStatus.values.map((s) => PopupMenuItem(
-                      value: s,
-                      child: Text(s.displayName),
-                    )),
+                const PopupMenuItem(value: null, child: Text('All statuses')),
+                ...PromotionStatus.values.map(
+                  (s) => PopupMenuItem(value: s, child: Text(s.displayName)),
+                ),
               ],
             ),
             _ViewToggle(
-                current: _viewMode,
-                onChanged: (v) => setState(() => _viewMode = v)),
+              current: _viewMode,
+              onChanged: (v) => setState(() => _viewMode = v),
+            ),
             const SizedBox(width: 8),
           ],
         ),
@@ -108,24 +114,25 @@ class _PromotionListPageState extends State<PromotionListPage> {
                 hintText: 'Search promotions…',
                 leading: const Icon(Icons.search, size: 20),
                 padding: const WidgetStatePropertyAll(
-                    EdgeInsets.symmetric(horizontal: 16)),
+                  EdgeInsets.symmetric(horizontal: 16),
+                ),
                 onChanged: (v) => setState(() => _search = v),
               ),
             ),
             if (_filterStatus != null)
               Padding(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 4),
+                  horizontal: 16,
+                  vertical: 4,
+                ),
                 child: Row(
                   children: [
                     FilterChip(
                       label: Text(_filterStatus!.displayName),
                       selected: true,
-                      onSelected: (_) =>
-                          setState(() => _filterStatus = null),
+                      onSelected: (_) => setState(() => _filterStatus = null),
                       deleteIcon: const Icon(Icons.close, size: 14),
-                      onDeleted: () =>
-                          setState(() => _filterStatus = null),
+                      onDeleted: () => setState(() => _filterStatus = null),
                     ),
                   ],
                 ),
@@ -134,15 +141,14 @@ class _PromotionListPageState extends State<PromotionListPage> {
               child: BlocBuilder<PromotionBloc, PromotionState>(
                 builder: (context, state) {
                   if (state is PromotionLoading) {
-                    return const Center(
-                        child: CircularProgressIndicator());
+                    return const Center(child: CircularProgressIndicator());
                   }
                   if (state is PromotionFailure) {
                     return _ErrorView(
                       message: state.message,
-                      onRetry: () => context
-                          .read<PromotionBloc>()
-                          .add(PromotionLoadAllRequested()),
+                      onRetry: () => context.read<PromotionBloc>().add(
+                        PromotionLoadAllRequested(),
+                      ),
                     );
                   }
                   if (state is PromotionEmpty) {
@@ -169,9 +175,8 @@ class _PromotionListPageState extends State<PromotionListPage> {
     switch (_viewMode) {
       case _ViewMode.cards:
         return RefreshIndicator(
-          onRefresh: () async => context
-              .read<PromotionBloc>()
-              .add(PromotionLoadAllRequested()),
+          onRefresh: () async =>
+              context.read<PromotionBloc>().add(PromotionLoadAllRequested()),
           child: ListView.builder(
             padding: const EdgeInsets.only(bottom: 80),
             itemCount: items.length,
@@ -180,14 +185,13 @@ class _PromotionListPageState extends State<PromotionListPage> {
         );
       case _ViewMode.list:
         return RefreshIndicator(
-          onRefresh: () async => context
-              .read<PromotionBloc>()
-              .add(PromotionLoadAllRequested()),
+          onRefresh: () async =>
+              context.read<PromotionBloc>().add(PromotionLoadAllRequested()),
           child: ListView.separated(
             padding: const EdgeInsets.only(bottom: 80, top: 8),
             itemCount: items.length,
-            separatorBuilder: (_, __) => Divider(
-                height: 1, color: theme.colorScheme.outlineVariant),
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, color: theme.colorScheme.outlineVariant),
             itemBuilder: (_, i) => PromotionListRow(item: items[i]),
           ),
         );
@@ -256,22 +260,22 @@ class _EmptyView extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.campaign_outlined,
-              size: 56, color: Theme.of(context).colorScheme.outline),
+          Icon(
+            Icons.campaign_outlined,
+            size: 56,
+            color: Theme.of(context).colorScheme.outline,
+          ),
           const SizedBox(height: 16),
           Text(
-            filtered
-                ? 'No promotions match your filter'
-                : 'No promotions yet',
+            filtered ? 'No promotions match your filter' : 'No promotions yet',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
           Text(
             'Tap + to create your first promotion.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color:
-                      Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -290,13 +294,15 @@ class _ErrorView extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error_outline,
-              size: 48, color: Theme.of(context).colorScheme.error),
+          Icon(
+            Icons.error_outline,
+            size: 48,
+            color: Theme.of(context).colorScheme.error,
+          ),
           const SizedBox(height: 12),
           Text(message, textAlign: TextAlign.center),
           const SizedBox(height: 16),
-          FilledButton.tonal(
-              onPressed: onRetry, child: const Text('Retry')),
+          FilledButton.tonal(onPressed: onRetry, child: const Text('Retry')),
         ],
       ),
     );

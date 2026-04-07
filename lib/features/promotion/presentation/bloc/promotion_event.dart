@@ -31,11 +31,18 @@ class PromotionActivateRequested extends PromotionEvent {
   final String id;
   PromotionActivateRequested(this.id);
 }
+
 class PromotionEndRequested extends PromotionEvent {
   final String id;
   PromotionEndRequested(this.id);
 }
+
 class PromotionCancelRequested extends PromotionEvent {
   final String id;
   PromotionCancelRequested(this.id);
+}
+
+class PromotionStatusOverridden extends PromotionEvent {
+  final PromotionEntity entity;
+  PromotionStatusOverridden(this.entity);
 }

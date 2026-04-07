@@ -4,9 +4,6 @@ import '../projections/sales_dashboard_projection.dart';
 import '../providers/order_data_provider.dart';
 import '../providers/payment_data_provider.dart';
 import '../providers/product_data_provider.dart';
-import '../../../order/domain/entities/order_entity.dart';
-import '../../../payment/domain/entities/payment_entity.dart';
-import '../../../product/domain/entities/product_entity.dart';
 
 class GetSalesDashboardUseCase {
   final OrderDataProvider _orderProvider;
@@ -55,6 +52,7 @@ class GetSalesDashboardUseCase {
       () => throw StateError('unreachable'),
     );
 
+    // Orders
     final totalOrders = orderList.length;
     final totalRevenue = orderList.fold<double>(0.0, (s, e) => s + e.total);
     final averageOrderValue = orderList.isEmpty
@@ -63,16 +61,23 @@ class GetSalesDashboardUseCase {
 
     final ordersByStatus = <String, int>{};
     for (final e in orderList) {
-      final key = e.status;
-      ordersByStatus[key] = (ordersByStatus[key] ?? 0) + 1;
+      ordersByStatus[e.status] = (ordersByStatus[e.status] ?? 0) + 1;
     }
 
+    // Payments — real counts from PaymentEntity.provider
     final confirmedPayments = paymentList.length;
+    final paymentsByProvider = <String, int>{};
+    for (final p in paymentList) {
+      final key = p.provider.toLowerCase();
+      paymentsByProvider[key] = (paymentsByProvider[key] ?? 0) + 1;
+    }
 
-    final sortedrecentOrders = List.of(orderList)
+    // Recent orders
+    final sortedRecentOrders = List.of(orderList)
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    final recentOrders = sortedrecentOrders.take(5).toList();
+    final recentOrders = sortedRecentOrders.take(5).toList();
 
+    // Products
     final productCount = productList.length;
     final featuredProductCount = productList
         .where((p) => p.isFeatured == true || p.isFeatured == 'true')
@@ -85,6 +90,7 @@ class GetSalesDashboardUseCase {
         averageOrderValue: averageOrderValue,
         ordersByStatus: ordersByStatus,
         confirmedPayments: confirmedPayments,
+        paymentsByProvider: paymentsByProvider,
         recentOrders: recentOrders,
         productCount: productCount,
         featuredProductCount: featuredProductCount,

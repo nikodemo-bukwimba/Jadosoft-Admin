@@ -9,9 +9,8 @@ import '../datasources/promotion_remote_datasource.dart';
 class PromotionRepositoryImpl implements PromotionRepository {
   final PromotionRemoteDataSource _remoteDataSource;
 
-  PromotionRepositoryImpl({
-    required PromotionRemoteDataSource remoteDataSource,
-  })  :         _remoteDataSource = remoteDataSource;
+  PromotionRepositoryImpl({required PromotionRemoteDataSource remoteDataSource})
+    : _remoteDataSource = remoteDataSource;
 
   @override
   Future<Either<Failure, List<PromotionEntity>>> getAll() async {
@@ -40,7 +39,9 @@ class PromotionRepositoryImpl implements PromotionRepository {
   }
 
   @override
-  Future<Either<Failure, PromotionEntity>> create(PromotionEntity entity) async {
+  Future<Either<Failure, PromotionEntity>> create(
+    PromotionEntity entity,
+  ) async {
     try {
       final model = PromotionModel.fromEntity(entity);
       final result = await _remoteDataSource.create(model.toJson());
@@ -53,10 +54,18 @@ class PromotionRepositoryImpl implements PromotionRepository {
   }
 
   @override
-  Future<Either<Failure, PromotionEntity>> update(PromotionEntity entity) async {
+  Future<Either<Failure, PromotionEntity>> update(
+    PromotionEntity entity,
+  ) async {
     try {
       final model = PromotionModel.fromEntity(entity);
       final result = await _remoteDataSource.update(entity.id, model.toJson());
+      // For terminal local statuses (ended, cancelled) Nexora returns 'sent'/'failed'
+      // which would map back to active/cancelled. Preserve the locally-requested status.
+      const localOnlyStatuses = {'ended', 'cancelled'};
+      if (localOnlyStatuses.contains(entity.status)) {
+        return Right(result.copyWith(status: entity.status));
+      }
       return Right(result);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
@@ -77,7 +86,7 @@ class PromotionRepositoryImpl implements PromotionRepository {
     }
   }
 
-    @override
+  @override
   Future<Either<Failure, PromotionEntity>> publish(String id) async {
     try {
       final result = await _remoteDataSource.publish(id);

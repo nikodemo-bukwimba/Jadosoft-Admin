@@ -9,6 +9,9 @@ class MarketingDashboardProjection extends Equatable {
   final int totalVisits;
   final Map<String, int> visitsByOfficer;
   final double planComplianceRate;
+  final int approvedPlanCount;
+  final int pendingPlanCount;
+  final int rejectedPlanCount;
   final int dailyReportSubmissionRate;
   final int totalCustomers;
   final int customersVisitedThisMonth;
@@ -21,6 +24,9 @@ class MarketingDashboardProjection extends Equatable {
     required this.totalVisits,
     required this.visitsByOfficer,
     required this.planComplianceRate,
+    required this.approvedPlanCount,
+    required this.pendingPlanCount,
+    required this.rejectedPlanCount,
     required this.dailyReportSubmissionRate,
     required this.totalCustomers,
     required this.customersVisitedThisMonth,
@@ -35,6 +41,9 @@ class MarketingDashboardProjection extends Equatable {
     totalVisits,
     visitsByOfficer,
     planComplianceRate,
+    approvedPlanCount,
+    pendingPlanCount,
+    rejectedPlanCount,
     dailyReportSubmissionRate,
     totalCustomers,
     customersVisitedThisMonth,

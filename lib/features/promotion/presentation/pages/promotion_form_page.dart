@@ -1,10 +1,16 @@
-﻿import 'package:flutter/material.dart';
+﻿// promotion_form_page.dart
+// Products are fetched from the real Nexora Commerce Products endpoint:
+//   GET /api/v1/products?org_id={orgId}&per_page=200
+// No hardcoded product map. Products load on page init via _loadProducts().
+
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
-import '../../data/datasources/promotion_mock_datasource.dart';
+import '../../../../core/context/org_context.dart';
 import '../../domain/entities/promotion_entity.dart';
 import '../../domain/usecases/create_promotion_usecase.dart';
-import '../../domain/usecases/update_promotion_usecase.dart';
 import '../../../../core/widgets/searchable_picker_sheet.dart';
 import '../bloc/promotion_bloc.dart';
 import '../bloc/promotion_event.dart';
@@ -32,17 +38,75 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
   final List<String> _selectedChannels = ['sms', 'whatsapp'];
 
   bool _populated = false;
+  PromotionEntity? _originalEntity; // ← ADD
 
-  // All available products from mock
-  static const Map<String, String> _allProducts = {
-    'prod-001': 'Amoxicillin 500mg Capsules',
-    'prod-002': 'Artemether/Lumefantrine 20/120mg',
-    'prod-003': 'Ibuprofen 400mg Tablets',
-    'prod-004': 'Vitamin C 1000mg Effervescent',
-    'prod-005': 'Multivitamin & Minerals Complex',
-    'prod-006': 'Metronidazole 400mg Tablets',
-    'prod-007': 'Oral Rehydration Salts (ORS)',
-  };
+  // ── Product catalogue (loaded from API) ───────────────────
+  Map<String, String> _productMap = {};
+  bool _productsLoading = true;
+  String? _productsError;
+
+  @override
+  void initState() {
+    super.initState();
+    _startDate = DateTime.now();
+    _endDate = DateTime.now().add(const Duration(days: 7));
+    _loadProducts();
+
+    // Populate immediately from current bloc state if already loaded
+    // This handles the case where bloc state is PromotionDetailLoaded
+    // before the page is built (navigating from detail → edit).
+    if (widget.mode == PromotionFormNode.edit) {
+      final currentState = context.read<PromotionBloc>().state;
+      if (currentState is PromotionDetailLoaded) {
+        _populate(currentState.item);
+      }
+    }
+  }
+
+  /// Fetches products from Nexora Commerce Products endpoint.
+  /// Maps id → name for the picker.
+  Future<void> _loadProducts() async {
+    setState(() {
+      _productsLoading = true;
+      _productsError = null;
+    });
+    try {
+      final dio = GetIt.instance<Dio>();
+      final orgContext = GetIt.instance<OrgContext>();
+
+      final res = await dio.get(
+        '/commerce/orgs/${orgContext.effectiveOrgId}/products',
+        queryParameters: {'per_page': 200, 'status': 'active'},
+      );
+
+      final raw = res.data;
+      final List<dynamic> items = raw is Map
+          ? (raw['data'] ?? raw['products'] ?? []) as List
+          : raw as List;
+
+      final map = <String, String>{};
+      for (final item in items.cast<Map<String, dynamic>>()) {
+        final id = item['id']?.toString() ?? '';
+        final name =
+            item['name'] as String? ?? item['product_name'] as String? ?? id;
+        if (id.isNotEmpty) map[id] = name;
+      }
+
+      if (mounted) {
+        setState(() {
+          _productMap = map;
+          _productsLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _productsLoading = false;
+          _productsError = 'Failed to load products. Tap to retry.';
+        });
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -54,6 +118,7 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
   void _populate(PromotionEntity item) {
     if (_populated) return;
     _populated = true;
+    _originalEntity = item;
     _titleCtrl.text = item.title;
     _descCtrl.text = item.description ?? '';
     _startDate = item.startDate;
@@ -73,6 +138,12 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
     final isWide = MediaQuery.of(context).size.width > 768;
 
     return BlocConsumer<PromotionBloc, PromotionState>(
+      listenWhen: (_, state) =>
+          state is PromotionOperationSuccess || state is PromotionFailure,
+      buildWhen: (previous, state) =>
+          state is PromotionOperationSuccess ||
+          state is PromotionFailure ||
+          (isEdit && state is PromotionDetailLoaded),
       listener: (context, state) {
         if (state is PromotionOperationSuccess) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -93,7 +164,6 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
         }
       },
       builder: (context, state) {
-        // Pre-populate for edit mode
         if (isEdit && state is PromotionDetailLoaded) {
           _populate(state.item);
         }
@@ -103,275 +173,259 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
             title: Text(isEdit ? 'Edit Promotion' : 'New Promotion'),
             centerTitle: false,
           ),
-          body: state is PromotionLoading
-              ? const Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isWide ? 48 : 16,
-                    vertical: 16,
-                  ),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 760),
-                      child: Form(
-                        key: _formKey,
+          body: SingleChildScrollView(
+            // ← removed PromotionLoading check here
+            padding: EdgeInsets.symmetric(
+              horizontal: isWide ? 48 : 16,
+              vertical: 16,
+            ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _SectionCard(
+                        title: 'Promotion Details',
+                        icon: Icons.campaign_outlined,
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            // ── Basic Info ─────────────────────
-                            _SectionCard(
-                              title: 'Promotion Details',
-                              icon: Icons.campaign_outlined,
-                              child: Column(
+                            TextFormField(
+                              controller: _titleCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Title *',
+                                hintText: 'e.g. October Antibiotics Campaign',
+                                border: OutlineInputBorder(),
+                              ),
+                              validator: (v) {
+                                if (v == null || v.trim().isEmpty) {
+                                  return 'Title is required';
+                                }
+                                if (v.trim().length < 3) {
+                                  return 'At least 3 characters';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 14),
+                            TextFormField(
+                              controller: _descCtrl,
+                              maxLines: 3,
+                              decoration: const InputDecoration(
+                                labelText: 'Description',
+                                hintText:
+                                    'Optional — describe the promotion goal and target audience',
+                                border: OutlineInputBorder(),
+                                alignLabelWithHint: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      _SectionCard(
+                        title: 'Date Range',
+                        icon: Icons.date_range_outlined,
+                        child: isWide
+                            ? Row(
                                 children: [
-                                  TextFormField(
-                                    controller: _titleCtrl,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Title *',
-                                      hintText:
-                                          'e.g. October Antibiotics Campaign',
-                                      border: OutlineInputBorder(),
+                                  Expanded(
+                                    child: _DateField(
+                                      label: 'Start Date',
+                                      value: _startDate,
+                                      onChanged: (d) =>
+                                          setState(() => _startDate = d),
                                     ),
-                                    validator: (v) {
-                                      if (v == null || v.trim().isEmpty) {
-                                        return 'Title is required';
-                                      }
-                                      if (v.trim().length < 3) {
-                                        return 'At least 3 characters';
-                                      }
-                                      return null;
-                                    },
                                   ),
-                                  const SizedBox(height: 14),
-                                  TextFormField(
-                                    controller: _descCtrl,
-                                    maxLines: 3,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Description',
-                                      hintText:
-                                          'Optional — describe the promotion goal and target audience',
-                                      border: OutlineInputBorder(),
-                                      alignLabelWithHint: true,
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: _DateField(
+                                      label: 'End Date',
+                                      value: _endDate,
+                                      firstDate: _startDate,
+                                      onChanged: (d) =>
+                                          setState(() => _endDate = d),
                                     ),
                                   ),
                                 ],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-
-                            // ── Date Range ─────────────────────
-                            _SectionCard(
-                              title: 'Date Range',
-                              icon: Icons.date_range_outlined,
-                              child: isWide
-                                  ? Row(
-                                      children: [
-                                        Expanded(
-                                          child: _DateField(
-                                            label: 'Start Date',
-                                            value: _startDate,
-                                            onChanged: (d) =>
-                                                setState(() => _startDate = d),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                          child: _DateField(
-                                            label: 'End Date',
-                                            value: _endDate,
-                                            firstDate: _startDate,
-                                            onChanged: (d) =>
-                                                setState(() => _endDate = d),
-                                          ),
-                                        ),
-                                      ],
-                                    )
-                                  : Column(
-                                      children: [
-                                        _DateField(
-                                          label: 'Start Date',
-                                          value: _startDate,
-                                          onChanged: (d) =>
-                                              setState(() => _startDate = d),
-                                        ),
-                                        const SizedBox(height: 12),
-                                        _DateField(
-                                          label: 'End Date',
-                                          value: _endDate,
-                                          firstDate: _startDate,
-                                          onChanged: (d) =>
-                                              setState(() => _endDate = d),
-                                        ),
-                                      ],
-                                    ),
-                            ),
-                            const SizedBox(height: 12),
-
-                            // ── Channels ───────────────────────
-                            _SectionCard(
-                              title: 'Broadcast Channels',
-                              icon: Icons.cell_tower_outlined,
-                              child: Column(
+                              )
+                            : Column(
                                 children: [
-                                  _ChannelToggle(
-                                    channel: 'sms',
-                                    label: 'SMS',
-                                    subtitle: 'Vodacom / Airtel / Yas gateway',
-                                    icon: Icons.sms_outlined,
-                                    color: Colors.orange,
-                                    selected: _selectedChannels.contains('sms'),
-                                    onToggle: (v) => setState(() {
-                                      if (v) {
-                                        _selectedChannels.add('sms');
-                                      } else {
-                                        _selectedChannels.remove('sms');
-                                      }
-                                    }),
+                                  _DateField(
+                                    label: 'Start Date',
+                                    value: _startDate,
+                                    onChanged: (d) =>
+                                        setState(() => _startDate = d),
                                   ),
-                                  const SizedBox(height: 8),
-                                  _ChannelToggle(
-                                    channel: 'whatsapp',
-                                    label: 'WhatsApp',
-                                    subtitle: 'WhatsApp Business API',
-                                    icon: Icons.chat_outlined,
-                                    color: const Color(0xFF25D366),
-                                    selected: _selectedChannels.contains(
-                                      'whatsapp',
-                                    ),
-                                    onToggle: (v) => setState(() {
-                                      if (v) {
-                                        _selectedChannels.add('whatsapp');
-                                      } else {
-                                        _selectedChannels.remove('whatsapp');
-                                      }
-                                    }),
-                                  ),
-                                  if (_selectedChannels.isEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 8),
-                                      child: Text(
-                                        'Select at least one channel',
-                                        style: TextStyle(
-                                          color: theme.colorScheme.error,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-
-                            // ── Products ───────────────────────
-                            _SectionCard(
-                              title:
-                                  'Products to Promote (${_selectedProducts.length} selected)',
-                              icon: Icons.medication_outlined,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (_selectedProducts.isNotEmpty)
-                                    Wrap(
-                                      spacing: 6,
-                                      runSpacing: 4,
-                                      children: _selectedProducts
-                                          .map(
-                                            (id) => Chip(
-                                              label: Text(
-                                                _allProducts[id] ?? id,
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                              onDeleted: () => setState(
-                                                () => _selectedProducts.remove(
-                                                  id,
-                                                ),
-                                              ),
-                                              materialTapTargetSize:
-                                                  MaterialTapTargetSize
-                                                      .shrinkWrap,
-                                              visualDensity:
-                                                  VisualDensity.compact,
-                                            ),
-                                          )
-                                          .toList(),
-                                    ),
-                                  const SizedBox(height: 8),
-                                  OutlinedButton.icon(
-                                    onPressed: () async {
-                                      final result =
-                                          await showSearchableMultiPicker<
-                                            String
-                                          >(
-                                            context: context,
-                                            title: 'Select Products',
-                                            hint: 'Search products...',
-                                            items: _allProducts.entries
-                                                .map(
-                                                  (e) => (
-                                                    value: e.key,
-                                                    label: e.value,
-                                                    subtitle: e.key,
-                                                  ),
-                                                )
-                                                .toList(),
-                                            selected: _selectedProducts.toSet(),
-                                          );
-                                      if (result != null)
-                                        setState(() {
-                                          _selectedProducts.clear();
-                                          _selectedProducts.addAll(result);
-                                        });
-                                    },
-                                    icon: const Icon(Icons.add, size: 18),
-                                    label: const Text('Select Products'),
-                                    style: OutlinedButton.styleFrom(
-                                      visualDensity: VisualDensity.compact,
-                                    ),
+                                  const SizedBox(height: 12),
+                                  _DateField(
+                                    label: 'End Date',
+                                    value: _endDate,
+                                    firstDate: _startDate,
+                                    onChanged: (d) =>
+                                        setState(() => _endDate = d),
                                   ),
                                 ],
                               ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      _SectionCard(
+                        title: 'Broadcast Channels',
+                        icon: Icons.cell_tower_outlined,
+                        child: Column(
+                          children: [
+                            _ChannelToggle(
+                              channel: 'sms',
+                              label: 'SMS',
+                              subtitle: 'Vodacom / Airtel / Yas gateway',
+                              icon: Icons.sms_outlined,
+                              color: Colors.orange,
+                              selected: _selectedChannels.contains('sms'),
+                              onToggle: (v) => setState(() {
+                                if (v) {
+                                  _selectedChannels.add('sms');
+                                } else {
+                                  _selectedChannels.remove('sms');
+                                }
+                              }),
                             ),
-                            if (_selectedProducts.isEmpty)
+                            const SizedBox(height: 8),
+                            _ChannelToggle(
+                              channel: 'whatsapp',
+                              label: 'WhatsApp',
+                              subtitle: 'WhatsApp Business API',
+                              icon: Icons.chat_outlined,
+                              color: const Color(0xFF25D366),
+                              selected: _selectedChannels.contains('whatsapp'),
+                              onToggle: (v) => setState(() {
+                                if (v) {
+                                  _selectedChannels.add('whatsapp');
+                                } else {
+                                  _selectedChannels.remove('whatsapp');
+                                }
+                              }),
+                            ),
+                            if (_selectedChannels.isEmpty)
                               Padding(
-                                padding: const EdgeInsets.only(top: 4),
+                                padding: const EdgeInsets.only(top: 8),
                                 child: Text(
-                                  'Select at least one product',
+                                  'Select at least one channel',
                                   style: TextStyle(
                                     color: theme.colorScheme.error,
                                     fontSize: 12,
                                   ),
                                 ),
                               ),
-                            const SizedBox(height: 24),
-
-                            // ── Submit ─────────────────────────
-                            SizedBox(
-                              height: 48,
-                              child: FilledButton(
-                                onPressed: _submit,
-                                child: Text(
-                                  isEdit ? 'Save Changes' : 'Create Promotion',
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 32),
                           ],
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 12),
+
+                      _SectionCard(
+                        title:
+                            'Products to Promote (${_selectedProducts.length} selected)',
+                        icon: Icons.medication_outlined,
+                        child: _productsLoading
+                            ? const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                      SizedBox(width: 10),
+                                      Text(
+                                        'Loading products…',
+                                        style: TextStyle(fontSize: 13),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            : _productsError != null
+                            ? _ProductsErrorState(
+                                message: _productsError!,
+                                onRetry: _loadProducts,
+                              )
+                            : _ProductPickerField(
+                                selectedProducts: _selectedProducts,
+                                productMap: _productMap,
+                                onChanged: (selected) => setState(() {
+                                  _selectedProducts.clear();
+                                  _selectedProducts.addAll(selected);
+                                }),
+                              ),
+                      ),
+                      if (_selectedProducts.isEmpty &&
+                          !_productsLoading &&
+                          _productsError == null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'Select at least one product',
+                            style: TextStyle(
+                              color: theme.colorScheme.error,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 24),
+
+                      // ── Submit button with its own loading state ──
+                      BlocBuilder<PromotionBloc, PromotionState>(
+                        buildWhen: (_, state) =>
+                            state is PromotionLoading ||
+                            state is PromotionFailure ||
+                            state is PromotionOperationSuccess,
+                        builder: (context, state) {
+                          final isSubmitting = state is PromotionLoading;
+                          return SizedBox(
+                            height: 48,
+                            child: FilledButton(
+                              onPressed: isSubmitting ? null : _submit,
+                              child: isSubmitting
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Text(
+                                      isEdit
+                                          ? 'Save Changes'
+                                          : 'Create Promotion',
+                                    ),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 32),
+                    ],
                   ),
                 ),
+              ),
+            ),
+          ),
         );
       },
     );
   }
 
   void _submit() {
-    // Validate manually for non-form fields
     if (_selectedProducts.isEmpty || _selectedChannels.isEmpty) {
-      setState(() {}); // trigger rebuild to show error messages
+      setState(() {});
       return;
     }
     if (!_formKey.currentState!.validate()) return;
@@ -380,21 +434,26 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
     final isEdit = widget.mode == PromotionFormNode.edit;
 
     if (isEdit) {
-      // Need the current entity from state
-      final state = bloc.state;
-      if (state is PromotionDetailLoaded) {
-        final updated = state.item.copyWith(
-          title: _titleCtrl.text.trim(),
-          description: _descCtrl.text.trim().isEmpty
-              ? null
-              : _descCtrl.text.trim(),
-          productIds: List<String>.from(_selectedProducts),
-          startDate: _startDate,
-          endDate: _endDate,
-          channels: List<String>.from(_selectedChannels),
+      if (_originalEntity == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not save. Please go back and try again.'),
+            backgroundColor: Colors.red,
+          ),
         );
-        bloc.add(PromotionUpdateRequested(updated));
+        return;
       }
+      final updated = _originalEntity!.copyWith(
+        title: _titleCtrl.text.trim(),
+        description: _descCtrl.text.trim().isEmpty
+            ? null
+            : _descCtrl.text.trim(),
+        productIds: List<String>.from(_selectedProducts),
+        startDate: _startDate,
+        endDate: _endDate,
+        channels: List<String>.from(_selectedChannels),
+      );
+      bloc.add(PromotionUpdateRequested(updated));
     } else {
       bloc.add(
         PromotionCreateRequested(
@@ -411,6 +470,111 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
         ),
       );
     }
+  }
+}
+
+// ─── Product Picker Field ──────────────────────────────────────────────────
+
+class _ProductPickerField extends StatelessWidget {
+  final List<String> selectedProducts;
+  final Map<String, String> productMap;
+  final ValueChanged<List<String>> onChanged;
+
+  const _ProductPickerField({
+    required this.selectedProducts,
+    required this.productMap,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (selectedProducts.isNotEmpty)
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: selectedProducts
+                .map(
+                  (id) => Chip(
+                    label: Text(
+                      productMap[id] ?? id,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    onDeleted: () {
+                      final updated = List<String>.from(selectedProducts)
+                        ..remove(id);
+                      onChanged(updated);
+                    },
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                )
+                .toList(),
+          ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: productMap.isEmpty
+              ? null
+              : () async {
+                  final result = await showSearchableMultiPicker<String>(
+                    context: context,
+                    title: 'Select Products',
+                    hint: 'Search products…',
+                    items: productMap.entries
+                        .map(
+                          (e) =>
+                              (value: e.key, label: e.value, subtitle: e.key),
+                        )
+                        .toList(),
+                    selected: selectedProducts.toSet(),
+                  );
+                  if (result != null) onChanged(result.toList());
+                },
+          icon: const Icon(Icons.add, size: 18),
+          label: Text(
+            productMap.isEmpty ? 'No products available' : 'Select Products',
+          ),
+          style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Products error/retry state ────────────────────────────────────────────
+
+class _ProductsErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  const _ProductsErrorState({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(
+            Icons.warning_amber_outlined,
+            size: 18,
+            color: Theme.of(context).colorScheme.error,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
+    );
   }
 }
 

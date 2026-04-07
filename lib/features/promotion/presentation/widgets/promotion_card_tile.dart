@@ -1,8 +1,13 @@
+// promotion_card_tile.dart
+// Removed all references to PromotionMockDataSource.productName().
+// Product IDs are displayed as-is on the card chips until the Product
+// feature (Seq 7) provides a name cache.
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../data/models/promotion_model.dart';
 import '../../domain/entities/promotion_entity.dart';
 import '../../domain/value_objects/promotion_status.dart';
-import '../../data/datasources/promotion_mock_datasource.dart';
 import '../widgets/promotion_status_badge.dart';
 
 class PromotionCardTile extends StatelessWidget {
@@ -15,6 +20,7 @@ class PromotionCardTile extends StatelessWidget {
     final status = PromotionStatusX.fromString(item.status);
     final isActive = status == PromotionStatus.active;
     final isDraft = status == PromotionStatus.draft;
+    final model = item is PromotionModel ? item as PromotionModel : null;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -90,59 +96,46 @@ class PromotionCardTile extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 10),
-              // Products
-              Wrap(
-                spacing: 5,
-                runSpacing: 4,
-                children: item.productIds.take(3).map((id) {
-                  return Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      PromotionMockDataSource.productName(id),
-                      style: theme.textTheme.labelSmall?.copyWith(
-                          fontSize: 10),
-                    ),
-                  );
-                }).toList()
-                  ..addAll(item.productIds.length > 3
-                      ? [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme
-                                  .surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              '+${item.productIds.length - 3} more',
-                              style: theme.textTheme.labelSmall
-                                  ?.copyWith(fontSize: 10),
-                            ),
-                          )
-                        ]
-                      : []),
-              ),
+              // Products — show count chip + first 2 IDs
+              // Names will be enriched when Product feature (Seq 7) is live
+              if (item.productIds.isNotEmpty)
+                Wrap(
+                  spacing: 5,
+                  runSpacing: 4,
+                  children: [
+                    ...item.productIds.take(2).map((id) => _productChip(id, theme)),
+                    if (item.productIds.length > 2)
+                      _productChip('+${item.productIds.length - 2} more', theme),
+                  ],
+                ),
               const SizedBox(height: 10),
               // Footer
               Row(
                 children: [
-                  // Channels
                   ..._channelIcons(item.channels, theme),
                   const Spacer(),
-                  // Broadcast count (active/ended)
-                  if (!isDraft && item is dynamic)
-                    _broadcastCount(item, theme),
+                  if (!isDraft && model != null)
+                    _broadcastCount(model, theme),
                 ],
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _productChip(String label, ThemeData theme) {
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelSmall?.copyWith(fontSize: 10),
       ),
     );
   }
@@ -192,9 +185,8 @@ class PromotionCardTile extends StatelessWidget {
     }).toList();
   }
 
-  Widget _broadcastCount(PromotionEntity item, ThemeData theme) {
-    // Access targetCount from PromotionModel if available
-    final count = (item as dynamic).targetCount as int? ?? 0;
+  Widget _broadcastCount(PromotionModel model, ThemeData theme) {
+    final count = model.targetCount;
     if (count == 0) return const SizedBox.shrink();
     return Row(
       mainAxisSize: MainAxisSize.min,

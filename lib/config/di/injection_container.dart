@@ -606,11 +606,11 @@ Future<void> initDependencies() async {
   // Phase 6: Promotions (L3) ? domainService required
   // ----------------------------------------------------------
 
+  // sl.registerLazySingleton<PromotionRemoteDataSource>(
+  //   () => PromotionMockDataSource(),
+  // );
   sl.registerLazySingleton<PromotionRemoteDataSource>(
-    // DEVELOPMENT (mock — active now):
-    () => PromotionMockDataSource(),
-    // PRODUCTION (real — swap when Laravel API is ready):
-    // () => PromotionRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
+    () => PromotionRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
   );
   sl.registerLazySingleton<PromotionRepository>(
     () => PromotionRepositoryImpl(remoteDataSource: sl()),

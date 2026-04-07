@@ -1,8 +1,12 @@
+// promotion_tiles.dart
+// Removed all references to PromotionMockDataSource.productName().
+// Product IDs are displayed as-is until the Product feature (Seq 7)
+// provides a name cache/repository.
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../domain/entities/promotion_entity.dart';
 import '../../domain/value_objects/promotion_status.dart';
-import '../../data/datasources/promotion_mock_datasource.dart';
 import '../widgets/promotion_status_badge.dart';
 
 // ─── List Row ──────────────────────────────────────────────────────────────
@@ -22,7 +26,6 @@ class PromotionListRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
-            // Icon
             Container(
               width: 36,
               height: 36,
@@ -30,19 +33,22 @@ class PromotionListRow extends StatelessWidget {
                 color: status.color.withOpacity(0.10),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(Icons.campaign_outlined,
-                  size: 18, color: status.color),
+              child: Icon(
+                Icons.campaign_outlined,
+                size: 18,
+                color: status.color,
+              ),
             ),
             const SizedBox(width: 12),
-            // Content
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     item.title,
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -67,8 +73,18 @@ class PromotionListRow extends StatelessWidget {
 
   String _fmtDate(DateTime d) {
     const m = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${m[d.month - 1]} ${d.day}';
   }
@@ -91,8 +107,7 @@ class PromotionTableRow extends StatelessWidget {
   Widget _buildHeader(ThemeData theme) {
     return Container(
       color: theme.colorScheme.surfaceContainerHighest,
-      padding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
         children: [
           _hcell('Title', flex: 3, theme: theme),
@@ -109,40 +124,41 @@ class PromotionTableRow extends StatelessWidget {
     final e = item!;
     final status = PromotionStatusX.fromString(e.status);
 
+    // Product IDs truncated to 2 visible + overflow count.
+    // Full names will be shown when Product feature cache is available.
+    final productDisplay = e.productIds.isEmpty
+        ? '—'
+        : e.productIds.take(2).join(', ') +
+              (e.productIds.length > 2 ? ' +${e.productIds.length - 2}' : '');
+
     return InkWell(
       onTap: () => context.go('/promotions/${e.id}'),
       child: Container(
         decoration: BoxDecoration(
           border: Border(
-            bottom:
-                BorderSide(color: theme.colorScheme.outlineVariant),
+            bottom: BorderSide(color: theme.colorScheme.outlineVariant),
           ),
         ),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
             Expanded(
               flex: 3,
               child: Text(
                 e.title,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
             Expanded(
               flex: 2,
               child: Text(
-                e.productIds
-                    .take(2)
-                    .map(PromotionMockDataSource.productName)
-                    .join(', ')
-                    + (e.productIds.length > 2
-                        ? ' +${e.productIds.length - 2}'
-                        : ''),
+                productDisplay,
                 style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant),
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -150,14 +166,17 @@ class PromotionTableRow extends StatelessWidget {
               flex: 2,
               child: Text(
                 e.channels
-                    .map((c) => c == 'sms'
-                        ? 'SMS'
-                        : c == 'whatsapp'
-                            ? 'WhatsApp'
-                            : 'In-App')
+                    .map(
+                      (c) => c == 'sms'
+                          ? 'SMS'
+                          : c == 'whatsapp'
+                          ? 'WhatsApp'
+                          : 'In-App',
+                    )
                     .join(', '),
                 style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant),
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
             Expanded(
@@ -165,7 +184,8 @@ class PromotionTableRow extends StatelessWidget {
               child: Text(
                 '${_fmtDate(e.startDate)} – ${_fmtDate(e.endDate)}',
                 style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant),
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
             Expanded(
@@ -195,8 +215,18 @@ class PromotionTableRow extends StatelessWidget {
 
   String _fmtDate(DateTime d) {
     const m = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${m[d.month - 1]} ${d.day}';
   }

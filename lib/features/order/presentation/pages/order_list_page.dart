@@ -23,7 +23,7 @@ class OrderListPage extends StatefulWidget {
 }
 
 class _OrderListPageState extends State<OrderListPage> {
-  _ViewMode _viewMode = _ViewMode.list;
+  _ViewMode _viewMode = _ViewMode.cards;
   OrderStatus? _filterStatus;
   String _search = '';
 

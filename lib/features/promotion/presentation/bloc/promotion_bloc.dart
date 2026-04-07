@@ -11,12 +11,12 @@ import 'promotion_event.dart';
 import 'promotion_state.dart';
 
 class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
-  final GetAllPromotionUseCase  getAllUseCase;
-  final GetPromotionUseCase     getUseCase;
-  final CreatePromotionUseCase  createUseCase;
-  final UpdatePromotionUseCase  updateUseCase;
-  final DeletePromotionUseCase  deleteUseCase;
-  final PromotionDomainService  domainService;
+  final GetAllPromotionUseCase getAllUseCase;
+  final GetPromotionUseCase getUseCase;
+  final CreatePromotionUseCase createUseCase;
+  final UpdatePromotionUseCase updateUseCase;
+  final DeletePromotionUseCase deleteUseCase;
+  final PromotionDomainService domainService;
 
   PromotionBloc({
     required this.getAllUseCase,
@@ -35,10 +35,15 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
     on<PromotionActivateRequested>(_onActivate);
     on<PromotionEndRequested>(_onEnd);
     on<PromotionCancelRequested>(_onCancel);
+    on<PromotionStatusOverridden>(
+      (event, emit) => emit(PromotionDetailLoaded(event.entity)),
+    );
   }
 
   Future<void> _onLoadAll(
-      PromotionLoadAllRequested event, Emitter<PromotionState> emit) async {
+    PromotionLoadAllRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
     emit(PromotionLoading());
     final result = await getAllUseCase(NoParams());
     result.fold(
@@ -50,7 +55,9 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
   }
 
   Future<void> _onLoadOne(
-      PromotionLoadOneRequested event, Emitter<PromotionState> emit) async {
+    PromotionLoadOneRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
     emit(PromotionLoading());
     final result = await getUseCase(GetPromotionParams(id: event.id));
     result.fold(
@@ -60,9 +67,12 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
   }
 
   Future<void> _onCreate(
-      PromotionCreateRequested event, Emitter<PromotionState> emit) async {
+    PromotionCreateRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
     emit(PromotionLoading());
     final result = await createUseCase(event.params);
+    if (emit.isDone) return;
     result.fold(
       (f) => emit(PromotionFailure(f.message)),
       (_) => emit(PromotionOperationSuccess('Promotion created successfully')),
@@ -70,9 +80,14 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
   }
 
   Future<void> _onUpdate(
-      PromotionUpdateRequested event, Emitter<PromotionState> emit) async {
+    PromotionUpdateRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
     emit(PromotionLoading());
-    final result = await updateUseCase(UpdatePromotionParams(entity: event.entity));
+    final result = await updateUseCase(
+      UpdatePromotionParams(entity: event.entity),
+    );
+    if (emit.isDone) return;
     result.fold(
       (f) => emit(PromotionFailure(f.message)),
       (_) => emit(PromotionOperationSuccess('Promotion updated successfully')),
@@ -80,58 +95,78 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
   }
 
   Future<void> _onDelete(
-      PromotionDeleteRequested event, Emitter<PromotionState> emit) async {
+    PromotionDeleteRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
     emit(PromotionLoading());
     final result = await deleteUseCase(DeletePromotionParams(id: event.id));
+    if (emit.isDone) return;
     result.fold(
       (f) => emit(PromotionFailure(f.message)),
       (_) => emit(PromotionOperationSuccess('Promotion deleted successfully')),
     );
   }
 
-  Future<void> _onActivate(
-      PromotionActivateRequested event, Emitter<PromotionState> emit) async {
-    emit(PromotionLoading());
-    final result = await domainService.transition(
-      id: event.id,
-      targetStatus: PromotionStatus.active,
-    );
-    result.fold(
-      (f) => emit(PromotionFailure(f.message)),
-      (entity) => emit(PromotionOperationSuccess(
-        'Activate Promotion successful',
-        updatedItem: entity,
-      )),
-    );
-  }
   Future<void> _onEnd(
-      PromotionEndRequested event, Emitter<PromotionState> emit) async {
+    PromotionEndRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
     emit(PromotionLoading());
     final result = await domainService.transition(
       id: event.id,
       targetStatus: PromotionStatus.ended,
     );
+    if (emit.isDone) return;
     result.fold(
       (f) => emit(PromotionFailure(f.message)),
-      (entity) => emit(PromotionOperationSuccess(
-        'End Promotion successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        PromotionOperationSuccess(
+          'End Promotion successful',
+          updatedItem: entity,
+        ),
+      ),
     );
   }
+
   Future<void> _onCancel(
-      PromotionCancelRequested event, Emitter<PromotionState> emit) async {
+    PromotionCancelRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
     emit(PromotionLoading());
     final result = await domainService.transition(
       id: event.id,
       targetStatus: PromotionStatus.cancelled,
     );
+    if (emit.isDone) return;
     result.fold(
       (f) => emit(PromotionFailure(f.message)),
-      (entity) => emit(PromotionOperationSuccess(
-        'Cancel Promotion successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        PromotionOperationSuccess(
+          'Cancel Promotion successful',
+          updatedItem: entity,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _onActivate(
+    PromotionActivateRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
+    emit(PromotionLoading());
+    final result = await domainService.transition(
+      id: event.id,
+      targetStatus: PromotionStatus.active,
+    );
+    if (emit.isDone) return;
+    result.fold(
+      (f) => emit(PromotionFailure(f.message)),
+      (entity) => emit(
+        PromotionOperationSuccess(
+          'Activate Promotion successful',
+          updatedItem: entity,
+        ),
+      ),
     );
   }
 }

@@ -1,27 +1,22 @@
 ﻿// promotion_remote_datasource.dart
 // ─────────────────────────────────────────────────────────────
-// Replaces the Maishell stub entirely.
-// Keeps the abstract interface IDENTICAL — only the impl changes.
-//
 // Nexora endpoint mapping:
 //   GET    /api/v1/pharma/orgs/{orgId}/product-updates   → getAll()
 //   POST   /api/v1/pharma/orgs/{orgId}/product-updates   → create()
 //   GET    /api/v1/pharma/product-updates/{id}           → getById()
 //   PATCH  /api/v1/pharma/product-updates/{id}           → update()
-//   POST   /api/v1/pharma/product-updates/{id}/publish   → used by DomainService for activate
-//   DELETE not available — cancel/end via PATCH status   → delete() soft-cancels
+//   POST   /api/v1/pharma/product-updates/{id}/publish   → publish()
+//   DELETE not available — cancel via PATCH status:failed, end via soft PATCH
 //
-// Field mapping:
-//   title          → title
-//   description    → body
-//   productIds     → product_ids
-//   channels       → send_sms / send_whatsapp / send_in_app booleans
-//   status         → draft·sending·sent·failed  (mapped to draft·active·cancelled)
-//   targetCount    → total_recipients
-//   broadcastSentAt→ sent_at
-//   startDate/endDate → stored in metadata (Nexora has no date range concept)
+// Status mapping (Nexora → local):
+//   draft           → draft
+//   sending | sent  → active
+//   failed          → cancelled
 //
-// OrgContext: uses effectiveOrgId (org-scoped resource).
+// Status mapping (local → Nexora PATCH):
+//   ended     → Nexora has no "ended" concept; use 'sent' to close out
+//   cancelled → 'failed'  (only valid terminal Nexora status for cancellation)
+//   (active transitions go through publish(), never through update())
 // ─────────────────────────────────────────────────────────────
 
 import 'package:dio/dio.dart';
@@ -35,7 +30,6 @@ abstract class PromotionRemoteDataSource {
   Future<PromotionModel>       create(Map<String, dynamic> data);
   Future<PromotionModel>       update(String id, Map<String, dynamic> data);
   Future<void>                 delete(String id);
-  // publish() is called by DomainService directly for the activate transition
   Future<PromotionModel>       publish(String id);
 }
 
@@ -57,16 +51,14 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
   PromotionModel _fromNexora(Map<String, dynamic> j) {
     final meta = (j['metadata'] as Map<String, dynamic>?) ?? {};
 
-    // channels: reconstruct from send_* booleans
     final channels = <String>[
       if (j['send_sms'] == true) 'sms',
       if (j['send_whatsapp'] == true) 'whatsapp',
       if (j['send_in_app'] == true) 'in_app',
     ];
 
-    // status mapping
     final nexoraStatus = j['status'] as String? ?? 'draft';
-    final localStatus = _mapStatus(nexoraStatus);
+    final localStatus = _mapStatusFromNexora(nexoraStatus);
 
     return PromotionModel(
       id:          j['id']?.toString() ?? '',
@@ -92,17 +84,31 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
     );
   }
 
-  /// Nexora status → local PromotionStatus name
-  String _mapStatus(String s) => switch (s) {
+  /// Nexora status string → local PromotionStatus name
+  String _mapStatusFromNexora(String s) => switch (s) {
     'sending' || 'sent' => 'active',
     'failed'            => 'cancelled',
-    _                   => s, // draft passes through
+    _                   => s, // 'draft' passes through
+  };
+
+  // ── Local status → Nexora PATCH status ────────────────────
+  //
+  // Nexora only accepts: draft | sending | sent | failed
+  //
+  // local 'ended'     → 'sent'   (broadcast completed / campaign over)
+  // local 'cancelled' → 'failed' (campaign was aborted)
+  //
+  // Note: 'active' is NEVER patched here — it goes through publish().
+  String _mapStatusToNexora(String localStatus) => switch (localStatus) {
+    'ended'     => 'sent',
+    'cancelled' => 'failed',
+    _           => localStatus, // 'draft' is the only other passthrough
   };
 
   // ── PromotionModel data → Nexora create body ───────────────
 
   Map<String, dynamic> _toCreateBody(Map<String, dynamic> d) {
-    final channels = List<String>.from(d['channels'] as List? ?? []);
+    final channels  = List<String>.from(d['channels'] as List? ?? []);
     final startDate = d['start_date'] ?? d['startDate'];
     final endDate   = d['end_date']   ?? d['endDate'];
 
@@ -125,7 +131,7 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
   // ── PromotionModel data → Nexora PATCH body ─────────────────
 
   Map<String, dynamic> _toUpdateBody(Map<String, dynamic> d) {
-    final channels = List<String>.from(d['channels'] as List? ?? []);
+    final channels  = List<String>.from(d['channels'] as List? ?? []);
     final startDate = d['start_date'] ?? d['startDate'];
     final endDate   = d['end_date']   ?? d['endDate'];
 
@@ -142,8 +148,11 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
       },
     };
 
-    // Allow status passthrough for end/cancel (local-only transitions)
-    if (d['status'] != null) body['status'] = d['status'];
+    // FIX: always translate local status to a Nexora-valid status string.
+    // Without this, sending 'ended' or 'cancelled' causes a 422/500 from Nexora.
+    if (d['status'] != null) {
+      body['status'] = _mapStatusToNexora(d['status'] as String);
+    }
 
     return body;
   }
@@ -226,8 +235,7 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
 
   @override
   Future<void> delete(String id) async {
-    // Nexora has no hard DELETE for product-updates.
-    // Soft-cancel by patching status to failed (closest equivalent).
+    // Nexora has no hard DELETE — soft-cancel by patching status to 'failed'.
     try {
       await _dio.patch(
         '/pharma/product-updates/$id',
