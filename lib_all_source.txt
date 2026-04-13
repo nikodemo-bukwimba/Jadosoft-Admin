@@ -1,7 +1,7 @@
 ﻿// ================================================================
 // lib_all_source.txt
-// Generated : 2026-04-13 08:23:28
-// Files     : 583
+// Generated : 2026-04-13 17:19:39
+// Files     : 585
 // Usage     : Upload to Claude Project documents as reference.
 // ================================================================
 
@@ -112,6 +112,9 @@ import '../../features/auth/presentation/pages/register_page.dart';
 import '../../features/dashboard/presentation/pages/dashboard_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
 import '../../features/auth/presentation/bloc/auth_event.dart';
+import '../../features/auth/presentation/pages/wrong_app_page.dart';
+import '../../features/auth/presentation/pages/pending_activation_page.dart';
+import '../../core/rbac/rbac_extensions.dart';
 // hide HomeTab — it is also defined in shell_page_home_tab.dart
 import '../shell/shell_page_home_tab.dart';
 import '../shell/shell_nav_items.dart';
@@ -261,6 +264,8 @@ class AppRouter {
   static const String login = '/login';
   static const String register = '/register';
   static const String accountPicker = '/account-picker';
+  static const String wrongApp = '/wrong-app';
+  static const String pendingActivation = '/pending-activation';
   static const String home = '/home';
   static const String dashboard = '/dashboard';
   static const String profile = '/profile';
@@ -422,6 +427,15 @@ class AppRouter {
               ),
             );
           },
+        ),
+        GoRoute(
+          path: wrongApp,
+          builder: (_, __) => const WrongAppPage(officerInAdminApp: true),
+        ),
+
+        GoRoute(
+          path: pendingActivation,
+          builder: (_, __) => const PendingActivationPage(),
         ),
 
         GoRoute(
@@ -1159,17 +1173,41 @@ class AppRouter {
   }
 
   // -- Redirect logic ---------------------------------------
-  static const _authRoutes = {login, register, accountPicker};
   static String? _redirect(AuthState authState, String location) {
-    final isAuthRoute = _authRoutes.contains(location);
+    const authRoutes = {login, register, accountPicker, wrongApp};
+    final isAuthRoute = authRoutes.contains(location);
     final isShellRoute = !isAuthRoute && location != splash;
 
+    if (authState is AuthAuthenticated) {
+      final hasNoRole =
+          !authState.isAdminAppRole && !authState.isOfficerAppRole;
+
+      // Only block pure field officers from admin app
+      // Branch managers are allowed in admin app too
+      final isPureOfficerInAdminApp =
+          authState.isOfficerAppRole && !authState.isAdminAppRole;
+
+      if (isShellRoute && hasNoRole && location != pendingActivation) {
+        return pendingActivation;
+      }
+      if (isShellRoute && isPureOfficerInAdminApp) return wrongApp;
+
+      if ((location == pendingActivation || location == wrongApp) &&
+          !hasNoRole &&
+          !isPureOfficerInAdminApp) {
+        return home;
+      }
+
+      if (location == splash) return home;
+      return null;
+    }
+
+    final isAuthRoute2 = {login, register, accountPicker}.contains(location);
     return switch (authState) {
       AuthInitial() => location == splash ? null : splash,
       AuthLoading() => isShellRoute ? splash : null,
-      AuthAuthenticated() => location == splash ? home : null,
       AuthAccountsUpdated() => location == splash ? home : null,
-      AuthNeedsAccountPicker() => isAuthRoute ? null : accountPicker,
+      AuthNeedsAccountPicker() => isAuthRoute2 ? null : accountPicker,
       AuthUnauthenticated() =>
         isShellRoute || location == splash ? login : null,
       AuthSwitching() => null,
@@ -3828,6 +3866,8 @@ enum OrgRole {
   /// Manages one branch only. Approves plans/reports for branch officers.
   branchAdmin,
 
+  fieldOfficer,
+
   /// Unknown — fallback until /auth/me provides membership data.
   unknown,
 }
@@ -3884,6 +3924,8 @@ class OrgContext {
 
   /// Whether viewing all branches (org admin, no branch filter).
   bool get isViewingAllBranches => isOrgAdmin && !hasBranch;
+
+  bool get isFieldOfficer => _orgRole == OrgRole.fieldOfficer;
 
   String? get actorId => _actorId;
   String? get actorName => _actorName;
@@ -8137,78 +8179,73 @@ class DashboardGuard extends StatelessWidget {
 
 // === FILE: lib/core/rbac/rbac_extensions.dart ===
 // rbac_extensions.dart
-// ─────────────────────────────────────────────────────────────
-// Extension methods on AuthAuthenticated.
-//
-// TWO SEPARATE CONCERNS:
-//
-//   1. GATING (show/hide, enable/disable)
-//      → Use can() / canAny() / canAll() with PERMISSION slugs.
-//      Permission slugs match the backend's PlatformPermissionSeeder.
-//      Convention: 'module.action' (e.g. 'dashboard.view')
-//
-//   2. DISPLAY (badge color, label, greeting)
-//      → Use hasRole() / primaryRoleName with ROLE names.
-//      Role names match the backend's platform_roles.name column.
-//
-// Generator integration:
-//   feature.config.json declares "permission": "actor_types"
-//   Generator wires: auth.can('actor_types.view')
-//   No Dart code changes needed when adding features.
-// ─────────────────────────────────────────────────────────────
-
 import 'package:jadosoft_admin/features/auth/presentation/bloc/auth_state.dart';
+// Officer app: change import package name to jadosoft_officer
 
 extension RbacExtensions on AuthAuthenticated {
-  // ═════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════
   // GATING — permission checks (primary mechanism)
-  // ═════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════
 
   /// True if the active user has the given permission slug.
-  bool can(String permissionSlug) => true; // TODO: restore when permissions API ready
+  /// Reads from the permissions list fetched from GET /auth/me at login.
+  bool can(String permissionSlug) =>
+      activeSession.permissions.any((p) => p.slug == permissionSlug);
 
-  /// True if the active user has ALL of the given permission slugs.
   bool canAll(List<String> slugs) => slugs.every((slug) => can(slug));
 
-  /// True if the active user has ANY of the given permission slugs.
   bool canAny(List<String> slugs) => slugs.any((slug) => can(slug));
 
-  /// True if user can access the admin dashboard.
-  /// Permission slug 'dashboard.view' is defined in PlatformPermissionSeeder.
   bool get canViewDashboard => can('dashboard.view');
 
-  // ═════════════════════════════════════════════════════════════
-  // DISPLAY — role checks (badge, label, greeting ONLY)
-  //
-  // ⚠ NEVER use these for show/hide or enable/disable logic.
-  //   Use can() with a permission slug instead.
-  //
-  // Role names below match platform_roles.name from the backend
-  // seeder (super_admin, support_agent, auditor, platform_ops).
-  // ═════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════
+  // APP-TYPE ROUTING — role slug checks
+  // Used ONLY by the router redirect to enforce app boundaries.
+  // Never use these for UI show/hide — always use can() for that.
+  // ══════════════════════════════════════════════════════════
 
-  /// True if the active user has a role with the given name.
-  /// FOR DISPLAY ONLY — badge color, role label, greeting text.
+  /// The primary role slug, lowercased. Empty string if no role assigned.
+  String get _primarySlug =>
+      activeSession.user.primaryRole?.slug.toLowerCase() ?? '';
+
+  /// True if this account belongs to an admin-type role.
+  /// Admin roles are allowed in the admin app only.
+  bool get isAdminAppRole =>
+      _primarySlug.contains('admin') ||
+      _primarySlug.contains('super') ||
+      _primarySlug.contains('support') ||
+      _primarySlug.contains('auditor') ||
+      _primarySlug.contains('ops') ||
+      _primarySlug == 'owner' || // ADD
+      _primarySlug == 'branch_manager';
+
+  /// True if this account belongs to an officer-type role.
+  /// Officer roles are allowed in the officer app only.
+  bool get isOfficerAppRole =>
+      _primarySlug.contains('officer') ||
+      _primarySlug == 'junior_officer' || // ADD
+      _primarySlug.contains('field') ||
+      _primarySlug.contains('pharma_rep') ||
+      _primarySlug.contains('sales_rep');
+
+  // ══════════════════════════════════════════════════════════
+  // DISPLAY — role checks (badge, label, greeting ONLY)
+  // ⚠ NEVER use these for show/hide or routing.
+  // ══════════════════════════════════════════════════════════
+
   bool hasRole(String roleName) =>
       activeSession.user.roles.any((r) => r.name == roleName);
 
-  /// True if the active user has ANY of the given role names.
   bool hasAnyRole(List<String> names) => names.any((name) => hasRole(name));
 
-  /// True if user holds the super_admin platform role.
-  /// FOR DISPLAY ONLY — e.g. dashboard shows different badge color.
   bool get isSuperAdmin => hasRole('super_admin');
 
-  /// User's display name from active session.
   String get displayName => activeSession.user.displayName;
 
-  /// Primary role name for display (greeting, badge).
   String get primaryRoleName => activeSession.user.primaryRole?.name ?? 'User';
 
-  /// Total permission count — useful for debug/profile pages.
   int get permissionCount => activeSession.permissions.length;
 
-  /// All permission slugs as a flat set — useful for bulk checks.
   Set<String> get permissionSlugs =>
       activeSession.permissions.map((p) => p.slug).toSet();
 }
@@ -16515,26 +16552,26 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
 
 // === FILE: lib/features/auth/data/datasources/auth_remote_datasource.dart ===
 // auth_remote_datasource.dart
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // All calls go through the shared Dio instance.
 //
 // ENDPOINTS:
-//   POST /auth/login    → { user: {...}, token: "..." }
-//   POST /auth/register → { user: {...}, token: "..." }
-//   POST /auth/logout   → 204
-//   GET  /auth/me       → { data: { user + roles + permissions } }
+//   POST /auth/login    â†’ { user: {...}, token: "..." }
+//   POST /auth/register â†’ { user: {...}, token: "..." }
+//   POST /auth/logout   â†’ 204
+//   GET  /auth/me       â†’ { data: { user + roles + permissions } }
 //
-// REMOVED: GET /me/roles — this endpoint never existed in the
+// REMOVED: GET /me/roles â€” this endpoint never existed in the
 // HMSCP API. Roles and permissions are now returned inline by
 // GET /auth/me as part of the user resource.
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/user_model.dart';
 
-/// Raw data returned from GET /auth/me — contains user, roles,
+/// Raw data returned from GET /auth/me â€” contains user, roles,
 /// and permissions all in one response.
 class AuthMeResponse {
   final UserModel user;
@@ -16568,7 +16605,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   final Dio _dio;
   AuthRemoteDataSourceImpl(this._dio);
 
-  // ── POST /auth/login ──────────────────────────────────────
+  // â”€â”€ POST /auth/login â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   @override
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
@@ -16582,7 +16619,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         debugPrint('[AUTH] Login response keys: ${body.keys.toList()}');
         final token = _extractToken(body);
         debugPrint(
-          '[AUTH] Token extracted: ${token != null ? "YES (${token.length} chars)" : "NO — check response shape"}',
+          '[AUTH] Token extracted: ${token != null ? "YES (${token.length} chars)" : "NO â€” check response shape"}',
         );
       }
 
@@ -16592,7 +16629,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     }
   }
 
-  // ── POST /auth/register ───────────────────────────────────
+  // â”€â”€ POST /auth/register â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   @override
   Future<Map<String, dynamic>> register({
     required String name,
@@ -16618,7 +16655,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         debugPrint('[AUTH] Register response keys: ${body.keys.toList()}');
         final token = _extractToken(body);
         debugPrint(
-          '[AUTH] Token extracted: ${token != null ? "YES" : "NO — check response shape"}',
+          '[AUTH] Token extracted: ${token != null ? "YES" : "NO â€” check response shape"}',
         );
       }
 
@@ -16628,7 +16665,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     }
   }
 
-  // ── POST /auth/logout ─────────────────────────────────────
+  // â”€â”€ POST /auth/logout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   @override
   Future<void> logout() async {
     try {
@@ -16639,7 +16676,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     }
   }
 
-  // ── GET /auth/me ──────────────────────────────────────────
+  // â”€â”€ GET /auth/me â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Returns user + roles + permissions in one call.
   //
   // Expected response shape:
@@ -16649,35 +16686,33 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   @override
   Future<AuthMeResponse> getAuthMe() async {
     try {
-      final response = await _dio.get('/auth/me');
+      final response = await _dio.get(
+        '/auth/me',
+        queryParameters: {'org_id': '01KM3J1485S5T17RXQ6JRWF8JR'},
+      );
       final raw = response.data;
 
-      if (raw == null) {
+      if (raw == null)
         throw const ServerException('Empty response from /auth/me');
-      }
 
-      // Unwrap: may be nested under 'data' or flat
-      final Map<String, dynamic> body;
-      if (raw is Map<String, dynamic>) {
-        body = raw.containsKey('data') && raw['data'] is Map<String, dynamic>
-            ? raw['data'] as Map<String, dynamic>
-            : raw;
-      } else {
+      if (raw is! Map<String, dynamic>) {
         throw const ServerException('Unexpected response format from /auth/me');
       }
 
-      // Parse user (roles embedded in user JSON too)
-      final user = UserModel.fromJson(body);
+      // NEW: response is { user: {...}, permissions: [...] }
+      // Extract user object and permissions separately
+      final userJson =
+          raw['user'] as Map<String, dynamic>? ??
+          raw; // fallback to flat if no 'user' key
+      final user = UserModel.fromJson(userJson);
 
-      // Parse permissions — may be at top level of the response
-      final rawPerms = body['permissions'] as List<dynamic>? ?? [];
+      // Permissions are at TOP LEVEL, not inside user
+      final rawPerms = raw['permissions'] as List<dynamic>? ?? [];
       final permissions = rawPerms
           .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
           .toList();
 
-      // Roles are already parsed inside UserModel.fromJson,
-      // but we also extract them here for the auth flow.
-      final rawRoles = body['roles'] as List<dynamic>? ?? [];
+      final rawRoles = userJson['roles'] as List<dynamic>? ?? [];
       final roles = rawRoles
           .map((r) => RoleModel.fromJson(r as Map<String, dynamic>))
           .toList();
@@ -16695,7 +16730,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     }
   }
 
-  // ── Token extraction ──────────────────────────────────────
+  // â”€â”€ Token extraction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   static String? extractToken(Map<String, dynamic> body) => _extractToken(body);
 
   static String? _extractToken(Map<String, dynamic> body) {
@@ -16709,7 +16744,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     return null;
   }
 
-  // ── Helpers ───────────────────────────────────────────────
+  // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Map<String, dynamic> _parseBody(Response response) {
     final data = response.data;
@@ -16782,64 +16817,60 @@ class AccountSessionModel extends AccountSession {
         .toList();
 
     return AccountSessionModel(
-      token:       json['token'] as String,
-      user:        UserModel.fromJson(json['user'] as Map<String, dynamic>),
+      token: json['token'] as String,
+      user: UserModel.fromJson(json['user'] as Map<String, dynamic>),
       permissions: permissions,
-      savedAt:     DateTime.parse(json['saved_at'] as String),
+      savedAt: DateTime.parse(json['saved_at'] as String),
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'token':       token,
-        'user':        UserModel(
-          id:                   user.id,
-          name:                 user.name,
-          email:                user.email,
-          phone:                user.phone,
-          isActive:             user.isActive,
-          emailVerifiedAt:      user.emailVerifiedAt,
-          primaryRole:          user.primaryRole,
-          roles:                user.roles,
-          hasActiveSubscription: user.hasActiveSubscription,
-          subscriptionStatus:   user.subscriptionStatus,
-          createdAt:            user.createdAt,
-        ).toJson(),
-        'permissions': permissions
-            .map((p) => PermissionModel(
-                  id:   p.id,
-                  name: p.name,
-                  slug: p.slug,
-                ).toJson())
-            .toList(),
-        'saved_at': savedAt.toIso8601String(),
-      };
+    'token': token,
+    'user': UserModel(
+      id: user.id,
+      actorId: user.actorId, // ADD — was missing
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      isActive: user.isActive,
+      emailVerifiedAt: user.emailVerifiedAt,
+      primaryRole: user.primaryRole,
+      roles: user.roles,
+      hasActiveSubscription: user.hasActiveSubscription,
+      subscriptionStatus: user.subscriptionStatus,
+      createdAt: user.createdAt,
+    ).toJson(),
+    'permissions': permissions
+        .map(
+          (p) => PermissionModel(id: p.id, name: p.name, slug: p.slug).toJson(),
+        )
+        .toList(),
+    'saved_at': savedAt.toIso8601String(),
+  };
 
   /// Encode to JSON string for secure storage.
   String toJsonString() => jsonEncode(toJson());
 
   /// Decode from JSON string read from secure storage.
   factory AccountSessionModel.fromJsonString(String raw) =>
-      AccountSessionModel.fromJson(
-        jsonDecode(raw) as Map<String, dynamic>,
-      );
+      AccountSessionModel.fromJson(jsonDecode(raw) as Map<String, dynamic>);
 
   /// Create from a fresh login response + fetched roles.
   factory AccountSessionModel.fromLoginResponse({
-    required String                token,
-    required UserModel             user,
+    required String token,
+    required UserModel user,
     required List<PermissionEntity> permissions,
-  }) =>
-      AccountSessionModel(
-        token:       token,
-        user:        user,
-        permissions: permissions,
-        savedAt:     DateTime.now(),
-      );
+  }) => AccountSessionModel(
+    token: token,
+    user: user,
+    permissions: permissions,
+    savedAt: DateTime.now(),
+  );
 }
 
 
 // === FILE: lib/features/auth/data/models/user_model.dart ===
-// user_model.dart
+// Admin app user_model.dart
 // ─────────────────────────────────────────────────────────────
 // CHANGE: UserModel.id is now String (Laravel uses ULIDs).
 // RoleModel / PermissionModel keep int ids (standard auto-increment)
@@ -16860,9 +16891,8 @@ class RoleModel extends RoleEntity {
   });
 
   factory RoleModel.fromJson(Map<String, dynamic> json) => RoleModel(
-    id: int.parse(json['id'].toString()),
+    id: json['id']?.toString() ?? '', // was int.parse(...)
     name: json['name'] as String? ?? '',
-    // platform_roles has no slug column — fall back to name
     slug: json['slug'] as String? ?? json['name'] as String? ?? '',
   );
 
@@ -16878,9 +16908,8 @@ class PermissionModel extends PermissionEntity {
 
   factory PermissionModel.fromJson(Map<String, dynamic> json) =>
       PermissionModel(
-        id: int.parse(json['id'].toString()),
+        id: json['id']?.toString() ?? '', // was int.parse(...)
         name: json['name'] as String? ?? '',
-        // platform_permissions has a slug column, but defend anyway
         slug: json['slug'] as String? ?? json['name'] as String? ?? '',
       );
 
@@ -17319,7 +17348,7 @@ class AccountSession {
 
 
 // === FILE: lib/features/auth/domain/entities/user_entity.dart ===
-// user_entity.dart
+//admin app user_entity.dart
 // ─────────────────────────────────────────────────────────────
 // Pure Dart — zero Flutter or Drift imports.
 // Shape mirrors the Laravel API /user and toApiArray() response.
@@ -17333,18 +17362,16 @@ class AccountSession {
 // ─────────────────────────────────────────────────────────────
 
 class RoleEntity {
-  final int id;
+  final String id; // was int
   final String name;
   final String slug;
-
   const RoleEntity({required this.id, required this.name, required this.slug});
 }
 
 class PermissionEntity {
-  final int id;
+  final String id; // was int
   final String name;
   final String slug;
-
   const PermissionEntity({
     required this.id,
     required this.name,
@@ -17736,15 +17763,15 @@ import 'auth_event.dart';
 import 'auth_state.dart';
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
-  final LoginUseCase          _login;
-  final RegisterUseCase       _register;
-  final LogoutUseCase         _logout;
-  final LogoutAccountUseCase  _logoutAccount;
-  final SwitchAccountUseCase  _switchAccount;
-  final GetActiveSessionUseCase   _getActiveSession;
-  final GetSavedAccountsUseCase   _getSavedAccounts;
-  final RefreshSessionUseCase     _refreshSession;
-  final OrgContext             _orgContext;           // FIX: added
+  final LoginUseCase _login;
+  final RegisterUseCase _register;
+  final LogoutUseCase _logout;
+  final LogoutAccountUseCase _logoutAccount;
+  final SwitchAccountUseCase _switchAccount;
+  final GetActiveSessionUseCase _getActiveSession;
+  final GetSavedAccountsUseCase _getSavedAccounts;
+  final RefreshSessionUseCase _refreshSession;
+  final OrgContext _orgContext; // FIX: added
 
   AuthBloc({
     required LoginUseCase login,
@@ -17755,16 +17782,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     required GetActiveSessionUseCase getActiveSession,
     required GetSavedAccountsUseCase getSavedAccounts,
     required RefreshSessionUseCase refreshSession,
-    required OrgContext orgContext,                   // FIX: added
-  }) : _login           = login,
-       _register        = register,
-       _logout          = logout,
-       _logoutAccount   = logoutAccount,
-       _switchAccount   = switchAccount,
+    required OrgContext orgContext, // FIX: added
+  }) : _login = login,
+       _register = register,
+       _logout = logout,
+       _logoutAccount = logoutAccount,
+       _switchAccount = switchAccount,
        _getActiveSession = getActiveSession,
        _getSavedAccounts = getSavedAccounts,
-       _refreshSession  = refreshSession,
-       _orgContext      = orgContext,                 // FIX: added
+       _refreshSession = refreshSession,
+       _orgContext = orgContext, // FIX: added
        super(AuthInitial()) {
     on<AuthCheckRequested>(_onCheckRequested);
     on<AuthLoginRequested>(_onLoginRequested);
@@ -17784,15 +17811,20 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   //   'branch_admin'        → OrgRole.branchAdmin
   //   anything else         → OrgRole.orgAdmin (admin app default)
   Future<void> _applyOrgContext(AccountSession session) async {
-    final roleSlug = session.user.primaryRole?.slug.toLowerCase() ?? '';
-    final role = roleSlug.contains('branch')
+    final slug = session.user.primaryRole?.slug.toLowerCase() ?? '';
+
+    final role = slug == 'branch_manager'
         ? OrgRole.branchAdmin
-        : OrgRole.orgAdmin;
+        : slug.contains('officer') || slug == 'junior_officer'
+        ? OrgRole.fieldOfficer
+        : OrgRole.orgAdmin; // owner, admin, super → orgAdmin
 
     await _orgContext.setRootOrg(
-      id:   AppConstants.orgId,
+      id: AppConstants.orgId,
       name: 'Barick Pharmacy',
       role: role,
+      actorId: session.user.actorId,
+      actorName: session.user.name,
     );
   }
 
@@ -17871,7 +17903,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session);           // FIX
+        await _applyOrgContext(session); // FIX
 
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
@@ -17908,7 +17940,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session);           // FIX
+        await _applyOrgContext(session); // FIX
 
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
@@ -17937,7 +17969,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (_) async {
-        await _orgContext.clear();                 // FIX
+        await _orgContext.clear(); // FIX
 
         final accountsResult = await _getSavedAccounts(NoParams());
         final remaining = accountsResult.fold<List<AccountSession>>(
@@ -17971,7 +18003,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         );
 
         if (remaining.isEmpty) {
-          await _orgContext.clear();               // FIX
+          await _orgContext.clear(); // FIX
           emit(AuthUnauthenticated());
           return;
         }
@@ -18019,7 +18051,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         });
       },
       (newSession) async {
-        await _applyOrgContext(newSession);        // FIX
+        await _applyOrgContext(newSession); // FIX
 
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
@@ -18041,7 +18073,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     AuthAccountsRefreshRequested event,
     Emitter<AuthState> emit,
   ) async {
-    final sessionResult  = await _getActiveSession(NoParams());
+    final sessionResult = await _getActiveSession(NoParams());
     final accountsResult = await _getSavedAccounts(NoParams());
 
     sessionResult.fold((_) => emit(AuthUnauthenticated()), (session) {
@@ -18081,7 +18113,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session);           // FIX
+        await _applyOrgContext(session); // FIX
 
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
@@ -18098,6 +18130,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     );
   }
 }
+
 
 // === FILE: lib/features/auth/presentation/bloc/auth_event.dart ===
 // auth_event.dart
@@ -19296,6 +19329,90 @@ class _RegisterLink extends StatelessWidget {
 }
 
 
+// === FILE: lib/features/auth/presentation/pages/pending_activation_page.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../bloc/auth_bloc.dart';
+import '../bloc/auth_event.dart';
+
+class PendingActivationPage extends StatelessWidget {
+  const PendingActivationPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: scheme.secondaryContainer,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(
+                      Icons.hourglass_top_rounded,
+                      size: 40,
+                      color: scheme.onSecondaryContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Text(
+                    'Account Pending Activation',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Your account has been created but has not been '
+                    'assigned a role yet.\n\n'
+                    'Please contact your administrator to activate '
+                    'your account.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Refresh — in case admin just assigned the role
+                  OutlinedButton.icon(
+                    onPressed: () => context
+                        .read<AuthBloc>()
+                        .add(AuthSessionRefreshRequested()),
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Check Again'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton.icon(
+                    onPressed: () =>
+                        context.read<AuthBloc>().add(AuthLogoutRequested()),
+                    icon: const Icon(Icons.logout, size: 18),
+                    label: const Text('Sign Out'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: scheme.error,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // === FILE: lib/features/auth/presentation/pages/register_page.dart ===
 // register_page.dart
 import 'package:flutter/material.dart';
@@ -19592,6 +19709,92 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 }
 
+
+// === FILE: lib/features/auth/presentation/pages/wrong_app_page.dart ===
+// wrong_app_page.dart
+// Shown when a user logs into the wrong app for their role.
+// Admin logging into officer app, or officer logging into admin app.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../bloc/auth_bloc.dart';
+import '../bloc/auth_event.dart';
+
+class WrongAppPage extends StatelessWidget {
+  /// true  → officer/unknown role tried to open the ADMIN app
+  /// false → admin role tried to open the OFFICER app
+  final bool officerInAdminApp;
+
+  const WrongAppPage({super.key, required this.officerInAdminApp});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: scheme.errorContainer,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(
+                      Icons.no_accounts_outlined,
+                      size: 40,
+                      color: scheme.onErrorContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Text(
+                    'Access Denied',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: scheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    officerInAdminApp
+                        ? 'Your account does not have admin access.\n\n'
+                          'Please use the Officer App to continue.'
+                        : 'Admin accounts cannot log into the Officer App.\n\n'
+                          'Please use the Admin App to continue.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                  FilledButton.icon(
+                    onPressed: () =>
+                        context.read<AuthBloc>().add(AuthLogoutRequested()),
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Sign Out'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: scheme.error,
+                      foregroundColor: scheme.onError,
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 // === FILE: lib/features/auth/presentation/widgets/account_switcher_sheet.dart ===
 // account_switcher_sheet.dart

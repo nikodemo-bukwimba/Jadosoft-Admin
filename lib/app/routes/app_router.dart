@@ -1089,20 +1089,20 @@ class AppRouter {
     if (authState is AuthAuthenticated) {
       final hasNoRole =
           !authState.isAdminAppRole && !authState.isOfficerAppRole;
-      final isOfficerInAdminApp =
+
+      // Only block pure field officers from admin app
+      // Branch managers are allowed in admin app too
+      final isPureOfficerInAdminApp =
           authState.isOfficerAppRole && !authState.isAdminAppRole;
 
-      // No role assigned yet — pending activation
       if (isShellRoute && hasNoRole && location != pendingActivation) {
         return pendingActivation;
       }
-      // Officer trying to use admin app
-      if (isShellRoute && isOfficerInAdminApp) return wrongApp;
+      if (isShellRoute && isPureOfficerInAdminApp) return wrongApp;
 
-      // Clear pending/wrong-app pages once role is valid
       if ((location == pendingActivation || location == wrongApp) &&
           !hasNoRole &&
-          !isOfficerInAdminApp) {
+          !isPureOfficerInAdminApp) {
         return home;
       }
 
