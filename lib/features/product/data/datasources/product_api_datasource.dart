@@ -1,3 +1,5 @@
+// Admin app product api datasource
+// 
 // product_api_datasource.dart
 // ─────────────────────────────────────────────────────────────
 // Nexora Commerce Products API implementation.
@@ -74,10 +76,12 @@ class ProductApiDataSource implements ProductRemoteDataSource {
 
   Map<String, dynamic> _unwrapProduct(dynamic raw) {
     if (raw is Map<String, dynamic>) {
-      if (raw.containsKey('product'))
+      if (raw.containsKey('product')) {
         return raw['product'] as Map<String, dynamic>;
-      if (raw.containsKey('data') && raw['data'] is Map)
+      }
+      if (raw.containsKey('data') && raw['data'] is Map) {
         return raw['data'] as Map<String, dynamic>;
+      }
       return raw;
     }
     return {};

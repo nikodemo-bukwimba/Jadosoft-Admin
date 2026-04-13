@@ -1,24 +1,24 @@
-// auth_remote_datasource.dart
-// ─────────────────────────────────────────────────────────────
+﻿// auth_remote_datasource.dart
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // All calls go through the shared Dio instance.
 //
 // ENDPOINTS:
-//   POST /auth/login    → { user: {...}, token: "..." }
-//   POST /auth/register → { user: {...}, token: "..." }
-//   POST /auth/logout   → 204
-//   GET  /auth/me       → { data: { user + roles + permissions } }
+//   POST /auth/login    â†’ { user: {...}, token: "..." }
+//   POST /auth/register â†’ { user: {...}, token: "..." }
+//   POST /auth/logout   â†’ 204
+//   GET  /auth/me       â†’ { data: { user + roles + permissions } }
 //
-// REMOVED: GET /me/roles — this endpoint never existed in the
+// REMOVED: GET /me/roles â€” this endpoint never existed in the
 // HMSCP API. Roles and permissions are now returned inline by
 // GET /auth/me as part of the user resource.
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/user_model.dart';
 
-/// Raw data returned from GET /auth/me — contains user, roles,
+/// Raw data returned from GET /auth/me â€” contains user, roles,
 /// and permissions all in one response.
 class AuthMeResponse {
   final UserModel user;
@@ -52,7 +52,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   final Dio _dio;
   AuthRemoteDataSourceImpl(this._dio);
 
-  // ── POST /auth/login ──────────────────────────────────────
+  // â”€â”€ POST /auth/login â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   @override
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
@@ -66,7 +66,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         debugPrint('[AUTH] Login response keys: ${body.keys.toList()}');
         final token = _extractToken(body);
         debugPrint(
-          '[AUTH] Token extracted: ${token != null ? "YES (${token.length} chars)" : "NO — check response shape"}',
+          '[AUTH] Token extracted: ${token != null ? "YES (${token.length} chars)" : "NO â€” check response shape"}',
         );
       }
 
@@ -76,7 +76,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     }
   }
 
-  // ── POST /auth/register ───────────────────────────────────
+  // â”€â”€ POST /auth/register â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   @override
   Future<Map<String, dynamic>> register({
     required String name,
@@ -102,7 +102,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         debugPrint('[AUTH] Register response keys: ${body.keys.toList()}');
         final token = _extractToken(body);
         debugPrint(
-          '[AUTH] Token extracted: ${token != null ? "YES" : "NO — check response shape"}',
+          '[AUTH] Token extracted: ${token != null ? "YES" : "NO â€” check response shape"}',
         );
       }
 
@@ -112,7 +112,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     }
   }
 
-  // ── POST /auth/logout ─────────────────────────────────────
+  // â”€â”€ POST /auth/logout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   @override
   Future<void> logout() async {
     try {
@@ -123,7 +123,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     }
   }
 
-  // ── GET /auth/me ──────────────────────────────────────────
+  // â”€â”€ GET /auth/me â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Returns user + roles + permissions in one call.
   //
   // Expected response shape:
@@ -133,35 +133,33 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   @override
   Future<AuthMeResponse> getAuthMe() async {
     try {
-      final response = await _dio.get('/auth/me');
+      final response = await _dio.get(
+        '/auth/me',
+        queryParameters: {'org_id': '01KM3J1485S5T17RXQ6JRWF8JR'},
+      );
       final raw = response.data;
 
-      if (raw == null) {
+      if (raw == null)
         throw const ServerException('Empty response from /auth/me');
-      }
 
-      // Unwrap: may be nested under 'data' or flat
-      final Map<String, dynamic> body;
-      if (raw is Map<String, dynamic>) {
-        body = raw.containsKey('data') && raw['data'] is Map<String, dynamic>
-            ? raw['data'] as Map<String, dynamic>
-            : raw;
-      } else {
+      if (raw is! Map<String, dynamic>) {
         throw const ServerException('Unexpected response format from /auth/me');
       }
 
-      // Parse user (roles embedded in user JSON too)
-      final user = UserModel.fromJson(body);
+      // NEW: response is { user: {...}, permissions: [...] }
+      // Extract user object and permissions separately
+      final userJson =
+          raw['user'] as Map<String, dynamic>? ??
+          raw; // fallback to flat if no 'user' key
+      final user = UserModel.fromJson(userJson);
 
-      // Parse permissions — may be at top level of the response
-      final rawPerms = body['permissions'] as List<dynamic>? ?? [];
+      // Permissions are at TOP LEVEL, not inside user
+      final rawPerms = raw['permissions'] as List<dynamic>? ?? [];
       final permissions = rawPerms
           .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
           .toList();
 
-      // Roles are already parsed inside UserModel.fromJson,
-      // but we also extract them here for the auth flow.
-      final rawRoles = body['roles'] as List<dynamic>? ?? [];
+      final rawRoles = userJson['roles'] as List<dynamic>? ?? [];
       final roles = rawRoles
           .map((r) => RoleModel.fromJson(r as Map<String, dynamic>))
           .toList();
@@ -179,7 +177,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     }
   }
 
-  // ── Token extraction ──────────────────────────────────────
+  // â”€â”€ Token extraction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   static String? extractToken(Map<String, dynamic> body) => _extractToken(body);
 
   static String? _extractToken(Map<String, dynamic> body) {
@@ -193,7 +191,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     return null;
   }
 
-  // ── Helpers ───────────────────────────────────────────────
+  // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Map<String, dynamic> _parseBody(Response response) {
     final data = response.data;

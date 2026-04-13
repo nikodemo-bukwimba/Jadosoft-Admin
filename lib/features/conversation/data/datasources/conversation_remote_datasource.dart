@@ -1,4 +1,6 @@
+// === FILE: lib/features/conversation/data/datasources/conversation_remote_datasource.dart ===
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/conversation_model.dart';
 import '../models/message_model.dart';
@@ -150,6 +152,27 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     }
   }
 
+  /// Unwraps a standard Laravel JSON resource response.
+  /// API responses may be: `{...fields}`, `{"data": {...fields}}`,
+  /// `{"group": {...fields}}`, or `{"data": {"group": {...fields}}}`.
+  Map<String, dynamic> _unwrapResponse(dynamic raw, {String? wrapperKey}) {
+    if (raw is! Map<String, dynamic>) return <String, dynamic>{};
+    // Check for nested wrapper key first (e.g. 'group')
+    if (wrapperKey != null && raw[wrapperKey] is Map) {
+      return raw[wrapperKey] as Map<String, dynamic>;
+    }
+    // Standard Laravel 'data' wrapper
+    if (raw.containsKey('data') && raw['data'] is Map<String, dynamic>) {
+      final inner = raw['data'] as Map<String, dynamic>;
+      // Could be {"data": {"group": {...}}}
+      if (wrapperKey != null && inner[wrapperKey] is Map) {
+        return inner[wrapperKey] as Map<String, dynamic>;
+      }
+      return inner;
+    }
+    return raw;
+  }
+
   String _scope(String convId) =>
       _typeCache[convId] == 'group' ? 'groups' : 'conversations';
 
@@ -160,6 +183,14 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
 
   /// Normalizes DirectConversation API shape → ConversationModel shape.
   Map<String, dynamic> _normalizeDirect(Map<String, dynamic> j) {
+    // ── Debug: log raw API data for DM normalization ──
+    debugPrint(
+      '  [_normalizeDirect] id=${j['id']} '
+      'initiator=${j['initiator_actor_id']} '
+      'recipient=${j['recipient_actor_id']} '
+      'keys=${j.keys.take(10).join(',')}',
+    );
+
     final existing = j['participants'] as List?;
     if (existing != null && existing.isNotEmpty) {
       // Cache names from existing participants
@@ -382,16 +413,12 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       Map<String, dynamic> data;
       try {
         final r = await _dio.get('$_base/$primaryScope/$id');
-        data = r.data is Map<String, dynamic>
-            ? r.data as Map<String, dynamic>
-            : (r.data['data'] as Map<String, dynamic>? ?? r.data);
+        data = _unwrapResponse(r.data);
       } on DioException catch (e) {
         // If 404 and we didn't have a cached type, try the other scope
         if (e.response?.statusCode == 404 && cachedType == null) {
           final r2 = await _dio.get('$_base/$fallbackScope/$id');
-          data = r2.data is Map<String, dynamic>
-              ? r2.data as Map<String, dynamic>
-              : (r2.data['data'] as Map<String, dynamic>? ?? r2.data);
+          data = _unwrapResponse(r2.data);
         } else {
           rethrow;
         }
@@ -449,10 +476,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         };
 
         final r = await _dio.post('$_base/groups', data: body);
-        final responseData = r.data as Map<String, dynamic>;
-        final groupData = responseData['group'] is Map
-            ? responseData['group'] as Map<String, dynamic>
-            : responseData;
+        final groupData = _unwrapResponse(r.data, wrapperKey: 'group');
         final newId = groupData['id'] as String? ?? '';
         _typeCache[newId] = 'group';
         return ConversationModel.fromJson(_normalizeGroup(groupData));
@@ -475,7 +499,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
 
         final body = <String, dynamic>{'recipient_actor_id': recipientId};
         final r = await _dio.post('$_base/conversations', data: body);
-        final conv = r.data as Map<String, dynamic>;
+        final conv = _unwrapResponse(r.data);
         final newId = conv['id'] as String? ?? '';
         _typeCache[newId] = 'direct';
         return ConversationModel.fromJson(_normalizeDirect(conv));
@@ -490,9 +514,10 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     try {
       final scope = _scope(id);
       final r = await _dio.patch('$_base/$scope/$id', data: data);
+      final unwrapped = _unwrapResponse(r.data);
       final normalized = _typeCache[id] == 'group'
-          ? _normalizeGroup(r.data as Map<String, dynamic>)
-          : _normalizeDirect(r.data as Map<String, dynamic>);
+          ? _normalizeGroup(unwrapped)
+          : _normalizeDirect(unwrapped);
       return ConversationModel.fromJson(normalized);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -576,9 +601,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       };
 
       final r = await _dio.post('$_base/$scope/$convId/messages', data: body);
-      final msgData = r.data is Map && (r.data as Map).containsKey('data')
-          ? r.data['data'] as Map<String, dynamic>
-          : r.data as Map<String, dynamic>;
+      final msgData = _unwrapResponse(r.data);
 
       // Resolve sender name
       final senderId =
@@ -799,7 +822,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         '$_base/conversations',
         data: {'recipient_actor_id': participantId},
       );
-      final conv = r.data as Map<String, dynamic>;
+      final conv = _unwrapResponse(r.data);
       final convId = conv['id'] as String? ?? '';
       _typeCache[convId] = 'direct';
 

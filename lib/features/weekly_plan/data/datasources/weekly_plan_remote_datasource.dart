@@ -23,12 +23,12 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   }) : _dio = dio,
        _orgContext = orgContext;
 
-  String get _base => '/pharma/${_orgContext.effectiveOrgId}/plans';
+  String get _orgBase => '/pharma/orgs/${_orgContext.effectiveOrgId}/plans';
 
   @override
   Future<List<WeeklyPlanModel>> getAll() async {
     try {
-      final response = await _dio.get(_base);
+      final response = await _dio.get(_orgBase);
       final data = (response.data['data'] ?? response.data) as List;
       return data
           .map((e) => WeeklyPlanModel.fromJson(e as Map<String, dynamic>))
@@ -41,7 +41,7 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   @override
   Future<WeeklyPlanModel> getById(String id) async {
     try {
-      final response = await _dio.get('$_base/$id');
+      final response = await _dio.get('$_orgBase/$id');
       final data = response.data['data'] ?? response.data;
       return WeeklyPlanModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
@@ -52,7 +52,7 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   @override
   Future<WeeklyPlanModel> create(Map<String, dynamic> data) async {
     try {
-      final response = await _dio.post(_base, data: data);
+      final response = await _dio.post(_orgBase, data: data);
       final body = response.data['data'] ?? response.data;
       return WeeklyPlanModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
@@ -62,8 +62,21 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
 
   @override
   Future<WeeklyPlanModel> update(String id, Map<String, dynamic> data) async {
+    final newStatus = data['status'] as String?;
     try {
-      final response = await _dio.put('$_base/$id', data: data);
+      late final Response response;
+      if (newStatus == 'approved') {
+        response = await _dio.post('/pharma/plans/$id/approve');
+      } else if (newStatus == 'rejected') {
+        final reviewNotes = data['review_notes'] as String?;
+        response = await _dio.post(
+          '/pharma/plans/$id/reject',
+          data: reviewNotes != null ? {'reason': reviewNotes} : null,
+        );
+      } else {
+        // No general update endpoint — re-fetch current state.
+        return await getById(id);
+      }
       final body = response.data['data'] ?? response.data;
       return WeeklyPlanModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
@@ -74,7 +87,7 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   @override
   Future<void> delete(String id) async {
     try {
-      await _dio.delete('$_base/$id');
+      await _dio.delete('$_orgBase/$id');
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -84,7 +97,7 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   Future<WeeklyPlanModel> approve(String id, {String? notes}) async {
     try {
       final response = await _dio.post(
-        '$_base/$id/approve',
+        '$_orgBase/$id/approve',
         data: notes != null ? {'notes': notes} : {},
       );
       final body = response.data['data'] ?? response.data;
@@ -98,7 +111,7 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   Future<WeeklyPlanModel> reject(String id, {required String notes}) async {
     try {
       final response = await _dio.post(
-        '$_base/$id/reject',
+        '$_orgBase/$id/reject',
         data: {'notes': notes},
       );
       final body = response.data['data'] ?? response.data;

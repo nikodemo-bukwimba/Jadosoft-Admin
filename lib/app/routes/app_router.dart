@@ -20,6 +20,9 @@ import '../../features/auth/presentation/pages/register_page.dart';
 import '../../features/dashboard/presentation/pages/dashboard_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
 import '../../features/auth/presentation/bloc/auth_event.dart';
+import '../../features/auth/presentation/pages/wrong_app_page.dart';
+import '../../features/auth/presentation/pages/pending_activation_page.dart';
+import '../../core/rbac/rbac_extensions.dart';
 // hide HomeTab — it is also defined in shell_page_home_tab.dart
 import '../shell/shell_page_home_tab.dart';
 import '../shell/shell_nav_items.dart';
@@ -169,6 +172,8 @@ class AppRouter {
   static const String login = '/login';
   static const String register = '/register';
   static const String accountPicker = '/account-picker';
+  static const String wrongApp = '/wrong-app';
+  static const String pendingActivation = '/pending-activation';
   static const String home = '/home';
   static const String dashboard = '/dashboard';
   static const String profile = '/profile';
@@ -330,6 +335,15 @@ class AppRouter {
               ),
             );
           },
+        ),
+        GoRoute(
+          path: wrongApp,
+          builder: (_, __) => const WrongAppPage(officerInAdminApp: true),
+        ),
+
+        GoRoute(
+          path: pendingActivation,
+          builder: (_, __) => const PendingActivationPage(),
         ),
 
         GoRoute(
@@ -1067,17 +1081,41 @@ class AppRouter {
   }
 
   // -- Redirect logic ---------------------------------------
-  static const _authRoutes = {login, register, accountPicker};
   static String? _redirect(AuthState authState, String location) {
-    final isAuthRoute = _authRoutes.contains(location);
+    const authRoutes = {login, register, accountPicker, wrongApp};
+    final isAuthRoute = authRoutes.contains(location);
     final isShellRoute = !isAuthRoute && location != splash;
 
+    if (authState is AuthAuthenticated) {
+      final hasNoRole =
+          !authState.isAdminAppRole && !authState.isOfficerAppRole;
+      final isOfficerInAdminApp =
+          authState.isOfficerAppRole && !authState.isAdminAppRole;
+
+      // No role assigned yet — pending activation
+      if (isShellRoute && hasNoRole && location != pendingActivation) {
+        return pendingActivation;
+      }
+      // Officer trying to use admin app
+      if (isShellRoute && isOfficerInAdminApp) return wrongApp;
+
+      // Clear pending/wrong-app pages once role is valid
+      if ((location == pendingActivation || location == wrongApp) &&
+          !hasNoRole &&
+          !isOfficerInAdminApp) {
+        return home;
+      }
+
+      if (location == splash) return home;
+      return null;
+    }
+
+    final isAuthRoute2 = {login, register, accountPicker}.contains(location);
     return switch (authState) {
       AuthInitial() => location == splash ? null : splash,
       AuthLoading() => isShellRoute ? splash : null,
-      AuthAuthenticated() => location == splash ? home : null,
       AuthAccountsUpdated() => location == splash ? home : null,
-      AuthNeedsAccountPicker() => isAuthRoute ? null : accountPicker,
+      AuthNeedsAccountPicker() => isAuthRoute2 ? null : accountPicker,
       AuthUnauthenticated() =>
         isShellRoute || location == splash ? login : null,
       AuthSwitching() => null,

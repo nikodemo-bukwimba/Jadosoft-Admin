@@ -1,3 +1,5 @@
+// admin app product remote datasource
+
 import 'package:dio/dio.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/product_model.dart';

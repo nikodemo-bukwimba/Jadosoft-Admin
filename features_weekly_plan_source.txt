@@ -1,9 +1,12 @@
 ﻿// ================================================================
 // features_weekly_plan_source.txt
-// Generated : 2026-03-24 15:30:45
-// Files     : 24
+// Generated : 2026-04-08 23:25:48
+// Files     : 25
 // Usage     : Upload to Claude Project documents as reference.
 // ================================================================
+
+// === FILE: lib/features/weekly_plan/data/datasources/weekly_plan_api_datasource.dart ===
+
 
 // === FILE: lib/features/weekly_plan/data/datasources/weekly_plan_mock_datasource.dart ===
 import '../models/weekly_plan_model.dart';
@@ -12,24 +15,41 @@ import 'weekly_plan_remote_datasource.dart';
 class WeeklyPlanMockDataSource implements WeeklyPlanRemoteDataSource {
   static final List<Map<String, dynamic>> _store = [
     {
-      'id': 'wp-001', 'officer_id': 'off-001', 'week_start': '2026-03-09T00:00:00.000Z', 'week_end': '2026-03-15T23:59:59.000Z',
-      'planned_customer_ids': ['cust-001', 'cust-003'], 'planned_activities': 'Visit Mbeya City Pharmacy for Q2 pricing review. Follow up Tukuyu Health Store on pending order.',
-      'notes': 'Priority: close Paracetamol bulk deal', 'status': 'submitted', 'submitted_at': '2026-03-08T18:00:00.000Z', 'reviewed_at': null, 'created_at': '2026-03-07T10:00:00.000Z',
+      'id': 'wp-001', 'officer_id': 'off-001',
+      'week_start': '2026-03-09T00:00:00.000Z', 'week_end': '2026-03-15T23:59:59.000Z',
+      'planned_customer_ids': ['cust-001', 'cust-003'],
+      'planned_activities': 'Visit Mbeya City Pharmacy for Q2 pricing review. Follow up Tukuyu Health Store on pending order.',
+      'notes': 'Priority: close Paracetamol bulk deal', 'status': 'submitted',
+      'submitted_at': '2026-03-08T18:00:00.000Z', 'reviewed_at': null,
+      'review_notes': null, 'created_at': '2026-03-07T10:00:00.000Z',
     },
     {
-      'id': 'wp-002', 'officer_id': 'off-002', 'week_start': '2026-03-09T00:00:00.000Z', 'week_end': '2026-03-15T23:59:59.000Z',
-      'planned_customer_ids': ['cust-002', 'cust-006'], 'planned_activities': 'Routine stock check at Uyole Medical. Introduce new Omeprazole line to Soweto Health Point.',
-      'notes': null, 'status': 'approved', 'submitted_at': '2026-03-08T17:30:00.000Z', 'reviewed_at': '2026-03-09T08:00:00.000Z', 'created_at': '2026-03-07T09:00:00.000Z',
+      'id': 'wp-002', 'officer_id': 'off-002',
+      'week_start': '2026-03-09T00:00:00.000Z', 'week_end': '2026-03-15T23:59:59.000Z',
+      'planned_customer_ids': ['cust-002', 'cust-006'],
+      'planned_activities': 'Routine stock check at Uyole Medical. Introduce new Omeprazole line to Soweto Health Point.',
+      'notes': null, 'status': 'approved',
+      'submitted_at': '2026-03-08T17:30:00.000Z', 'reviewed_at': '2026-03-09T08:00:00.000Z',
+      'review_notes': 'Good plan, proceed.', 'created_at': '2026-03-07T09:00:00.000Z',
     },
     {
-      'id': 'wp-003', 'officer_id': 'off-003', 'week_start': '2026-03-09T00:00:00.000Z', 'week_end': '2026-03-15T23:59:59.000Z',
-      'planned_customer_ids': ['cust-004'], 'planned_activities': 'Demo Hydrocortisone cream at Forest Hill Pharmacy.',
-      'notes': 'Only 1 customer planned — needs more targets', 'status': 'rejected', 'submitted_at': '2026-03-08T16:00:00.000Z', 'reviewed_at': '2026-03-09T09:00:00.000Z', 'created_at': '2026-03-07T11:00:00.000Z',
+      'id': 'wp-003', 'officer_id': 'off-003',
+      'week_start': '2026-03-09T00:00:00.000Z', 'week_end': '2026-03-15T23:59:59.000Z',
+      'planned_customer_ids': ['cust-004'],
+      'planned_activities': 'Demo Hydrocortisone cream at Forest Hill Pharmacy.',
+      'notes': 'Only 1 customer planned — needs more targets', 'status': 'rejected',
+      'submitted_at': '2026-03-08T16:00:00.000Z', 'reviewed_at': '2026-03-09T09:00:00.000Z',
+      'review_notes': 'Too few customers. Resubmit with at least 3 targets.',
+      'created_at': '2026-03-07T11:00:00.000Z',
     },
     {
-      'id': 'wp-004', 'officer_id': 'off-006', 'week_start': '2026-03-16T00:00:00.000Z', 'week_end': '2026-03-22T23:59:59.000Z',
-      'planned_customer_ids': ['cust-005', 'cust-006', 'cust-001'], 'planned_activities': 'Expand coverage to Igawa area. Collect pending payments from Soweto. Introduce supplements line to Mbeya City.',
-      'notes': 'Aiming for 3 new orders this week', 'status': 'draft', 'submitted_at': null, 'reviewed_at': null, 'created_at': '2026-03-13T08:00:00.000Z',
+      'id': 'wp-004', 'officer_id': 'off-006',
+      'week_start': '2026-03-16T00:00:00.000Z', 'week_end': '2026-03-22T23:59:59.000Z',
+      'planned_customer_ids': ['cust-005', 'cust-006', 'cust-001'],
+      'planned_activities': 'Expand coverage to Igawa area. Collect pending payments from Soweto. Introduce supplements line to Mbeya City.',
+      'notes': 'Aiming for 3 new orders this week', 'status': 'draft',
+      'submitted_at': null, 'reviewed_at': null,
+      'review_notes': null, 'created_at': '2026-03-13T08:00:00.000Z',
     },
   ];
 
@@ -37,17 +57,36 @@ class WeeklyPlanMockDataSource implements WeeklyPlanRemoteDataSource {
   Future<void> _simulateDelay() => Future.delayed(const Duration(milliseconds: 400));
 
   @override
-  Future<List<WeeklyPlanModel>> getAll() async { await _simulateDelay(); return _store.map((e) => WeeklyPlanModel.fromJson(e)).toList(); }
+  Future<List<WeeklyPlanModel>> getAll() async {
+    await _simulateDelay();
+    return _store.map((e) => WeeklyPlanModel.fromJson(e)).toList();
+  }
+
   @override
-  Future<WeeklyPlanModel> getById(String id) async { await _simulateDelay(); return WeeklyPlanModel.fromJson(_store.firstWhere((e) => e['id'] == id, orElse: () => throw Exception('Plan not found'))); }
+  Future<WeeklyPlanModel> getById(String id) async {
+    await _simulateDelay();
+    return WeeklyPlanModel.fromJson(
+      _store.firstWhere((e) => e['id'] == id, orElse: () => throw Exception('Plan not found')),
+    );
+  }
+
   @override
   Future<WeeklyPlanModel> create(Map<String, dynamic> data) async {
     await _simulateDelay();
     final id = _idCounter++;
-    final n = {'id': 'wp-${id.toString().padLeft(3, '0')}', ...data, 'status': 'draft', 'submitted_at': null, 'reviewed_at': null, 'created_at': DateTime.now().toIso8601String()};
+    final n = {
+      'id': 'wp-${id.toString().padLeft(3, '0')}',
+      ...data,
+      'status': 'draft',
+      'submitted_at': null,
+      'reviewed_at': null,
+      'review_notes': null,
+      'created_at': DateTime.now().toIso8601String(),
+    };
     _store.add(n);
     return WeeklyPlanModel.fromJson(n);
   }
+
   @override
   Future<WeeklyPlanModel> update(String id, Map<String, dynamic> data) async {
     await _simulateDelay();
@@ -56,32 +95,75 @@ class WeeklyPlanMockDataSource implements WeeklyPlanRemoteDataSource {
     _store[i] = {..._store[i], ...data, 'id': id, 'created_at': _store[i]['created_at']};
     return WeeklyPlanModel.fromJson(_store[i]);
   }
+
   @override
-  Future<void> delete(String id) async { await _simulateDelay(); _store.removeWhere((e) => e['id'] == id); }
+  Future<void> delete(String id) async {
+    await _simulateDelay();
+    _store.removeWhere((e) => e['id'] == id);
+  }
+
+  @override
+  Future<WeeklyPlanModel> approve(String id, {String? notes}) async {
+    await _simulateDelay();
+    final i = _store.indexWhere((e) => e['id'] == id);
+    if (i == -1) throw Exception('Plan not found');
+    _store[i] = {
+      ..._store[i],
+      'status': 'approved',
+      'reviewed_at': DateTime.now().toIso8601String(),
+      'review_notes': notes,
+    };
+    return WeeklyPlanModel.fromJson(_store[i]);
+  }
+
+  @override
+  Future<WeeklyPlanModel> reject(String id, {required String notes}) async {
+    await _simulateDelay();
+    final i = _store.indexWhere((e) => e['id'] == id);
+    if (i == -1) throw Exception('Plan not found');
+    _store[i] = {
+      ..._store[i],
+      'status': 'rejected',
+      'reviewed_at': DateTime.now().toIso8601String(),
+      'review_notes': notes,
+    };
+    return WeeklyPlanModel.fromJson(_store[i]);
+  }
 }
 
 // === FILE: lib/features/weekly_plan/data/datasources/weekly_plan_remote_datasource.dart ===
 import 'package:dio/dio.dart';
 import '../../../../core/error/exceptions.dart';
+import '../../../../core/context/org_context.dart';
 import '../models/weekly_plan_model.dart';
 
 abstract class WeeklyPlanRemoteDataSource {
   Future<List<WeeklyPlanModel>> getAll();
-  Future<WeeklyPlanModel>       getById(String id);
-  Future<WeeklyPlanModel>       create(Map<String, dynamic> data);
-  Future<WeeklyPlanModel>       update(String id, Map<String, dynamic> data);
-  Future<void>                delete(String id);
+  Future<WeeklyPlanModel> getById(String id);
+  Future<WeeklyPlanModel> create(Map<String, dynamic> data);
+  Future<WeeklyPlanModel> update(String id, Map<String, dynamic> data);
+  Future<void> delete(String id);
+  Future<WeeklyPlanModel> approve(String id, {String? notes});
+  Future<WeeklyPlanModel> reject(String id, {required String notes});
 }
 
 class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   final Dio _dio;
-  WeeklyPlanRemoteDataSourceImpl({required Dio dio}) : _dio = dio;
+  final OrgContext _orgContext;
+
+  WeeklyPlanRemoteDataSourceImpl({
+    required Dio dio,
+    required OrgContext orgContext,
+  }) : _dio = dio,
+       _orgContext = orgContext;
+
+  String get _base => '/pharma/${_orgContext.effectiveOrgId}/plans';
 
   @override
   Future<List<WeeklyPlanModel>> getAll() async {
     try {
-      final response = await _dio.get('/weekly-plans');
-      final data = response.data as List;
+      final response = await _dio.get(_base);
+      final data = (response.data['data'] ?? response.data) as List;
       return data
           .map((e) => WeeklyPlanModel.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -93,8 +175,9 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   @override
   Future<WeeklyPlanModel> getById(String id) async {
     try {
-      final response = await _dio.get('/weekly-plans/$id');
-      return WeeklyPlanModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.get('$_base/$id');
+      final data = response.data['data'] ?? response.data;
+      return WeeklyPlanModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -103,8 +186,9 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   @override
   Future<WeeklyPlanModel> create(Map<String, dynamic> data) async {
     try {
-      final response = await _dio.post('/weekly-plans', data: data);
-      return WeeklyPlanModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.post(_base, data: data);
+      final body = response.data['data'] ?? response.data;
+      return WeeklyPlanModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -113,8 +197,9 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   @override
   Future<WeeklyPlanModel> update(String id, Map<String, dynamic> data) async {
     try {
-      final response = await _dio.put('/weekly-plans/$id', data: data);
-      return WeeklyPlanModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.put('$_base/$id', data: data);
+      final body = response.data['data'] ?? response.data;
+      return WeeklyPlanModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -123,7 +208,35 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   @override
   Future<void> delete(String id) async {
     try {
-      await _dio.delete('/weekly-plans/$id');
+      await _dio.delete('$_base/$id');
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<WeeklyPlanModel> approve(String id, {String? notes}) async {
+    try {
+      final response = await _dio.post(
+        '$_base/$id/approve',
+        data: notes != null ? {'notes': notes} : {},
+      );
+      final body = response.data['data'] ?? response.data;
+      return WeeklyPlanModel.fromJson(body as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<WeeklyPlanModel> reject(String id, {required String notes}) async {
+    try {
+      final response = await _dio.post(
+        '$_base/$id/reject',
+        data: {'notes': notes},
+      );
+      final body = response.data['data'] ?? response.data;
+      return WeeklyPlanModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -154,35 +267,36 @@ class WeeklyPlanModel extends WeeklyPlanEntity {
     required super.status,
     super.submittedAt,
     super.reviewedAt,
+    super.reviewNotes,
     required super.createdAt,
   });
 
-  factory WeeklyPlanModel.fromJson(Map<String, dynamic> json) =>
-      WeeklyPlanModel(
-        id: json['id']?.toString() ?? '',
-        officerId: json['officer_id']?.toString() ?? '',
-        weekStart: json['week_start'] != null
-            ? DateTime.parse(json['week_start'].toString())
-            : DateTime.now(),
-        weekEnd: json['week_end'] != null
-            ? DateTime.parse(json['week_end'].toString())
-            : DateTime.now(),
-        plannedCustomerIds: json['planned_customer_ids'] != null
-            ? List<String>.from(json['planned_customer_ids'] as List)
-            : null,
-        plannedActivities: json['planned_activities'] as String?,
-        notes: json['notes'] as String?,
-        status: json['status'] as String? ?? 'draft',
-        submittedAt: json['submitted_at'] != null
-            ? DateTime.parse(json['submitted_at'].toString())
-            : null,
-        reviewedAt: json['reviewed_at'] != null
-            ? DateTime.parse(json['reviewed_at'].toString())
-            : null,
-        createdAt: json['created_at'] != null
-            ? DateTime.parse(json['created_at'].toString())
-            : DateTime.now(),
-      );
+  factory WeeklyPlanModel.fromJson(Map<String, dynamic> json) => WeeklyPlanModel(
+    id: json['id']?.toString() ?? '',
+    officerId: json['officer_id']?.toString() ?? '',
+    weekStart: json['week_start'] != null
+        ? DateTime.parse(json['week_start'].toString())
+        : DateTime.now(),
+    weekEnd: json['week_end'] != null
+        ? DateTime.parse(json['week_end'].toString())
+        : DateTime.now(),
+    plannedCustomerIds: json['planned_customer_ids'] != null
+        ? List<String>.from(json['planned_customer_ids'] as List)
+        : null,
+    plannedActivities: json['planned_activities'] as String?,
+    notes: json['notes'] as String?,
+    status: json['status'] as String? ?? 'draft',
+    submittedAt: json['submitted_at'] != null
+        ? DateTime.parse(json['submitted_at'].toString())
+        : null,
+    reviewedAt: json['reviewed_at'] != null
+        ? DateTime.parse(json['reviewed_at'].toString())
+        : null,
+    reviewNotes: json['review_notes'] as String?,
+    createdAt: json['created_at'] != null
+        ? DateTime.parse(json['created_at'].toString())
+        : DateTime.now(),
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -195,6 +309,7 @@ class WeeklyPlanModel extends WeeklyPlanEntity {
     'status': status,
     'submitted_at': submittedAt?.toIso8601String(),
     'reviewed_at': reviewedAt?.toIso8601String(),
+    'review_notes': reviewNotes,
     'created_at': createdAt.toIso8601String(),
   };
 
@@ -209,10 +324,10 @@ class WeeklyPlanModel extends WeeklyPlanEntity {
     status: e.status,
     submittedAt: e.submittedAt,
     reviewedAt: e.reviewedAt,
+    reviewNotes: e.reviewNotes,
     createdAt: e.createdAt,
   );
 }
-
 
 // === FILE: lib/features/weekly_plan/data/repositories/weekly_plan_repository_impl.dart ===
 import 'package:dartz/dartz.dart';
@@ -226,15 +341,13 @@ import '../datasources/weekly_plan_remote_datasource.dart';
 class WeeklyPlanRepositoryImpl implements WeeklyPlanRepository {
   final WeeklyPlanRemoteDataSource _remoteDataSource;
 
-  WeeklyPlanRepositoryImpl({
-    required WeeklyPlanRemoteDataSource remoteDataSource,
-  })  :         _remoteDataSource = remoteDataSource;
+  WeeklyPlanRepositoryImpl({required WeeklyPlanRemoteDataSource remoteDataSource})
+      : _remoteDataSource = remoteDataSource;
 
   @override
   Future<Either<Failure, List<WeeklyPlanEntity>>> getAll() async {
     try {
-      final result = await _remoteDataSource.getAll();
-      return Right(result);
+      return Right(await _remoteDataSource.getAll());
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } on NetworkException catch (e) {
@@ -247,8 +360,7 @@ class WeeklyPlanRepositoryImpl implements WeeklyPlanRepository {
   @override
   Future<Either<Failure, WeeklyPlanEntity>> getById(String id) async {
     try {
-      final result = await _remoteDataSource.getById(id);
-      return Right(result);
+      return Right(await _remoteDataSource.getById(id));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
@@ -260,8 +372,7 @@ class WeeklyPlanRepositoryImpl implements WeeklyPlanRepository {
   Future<Either<Failure, WeeklyPlanEntity>> create(WeeklyPlanEntity entity) async {
     try {
       final model = WeeklyPlanModel.fromEntity(entity);
-      final result = await _remoteDataSource.create(model.toJson());
-      return Right(result);
+      return Right(await _remoteDataSource.create(model.toJson()));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
@@ -273,8 +384,7 @@ class WeeklyPlanRepositoryImpl implements WeeklyPlanRepository {
   Future<Either<Failure, WeeklyPlanEntity>> update(WeeklyPlanEntity entity) async {
     try {
       final model = WeeklyPlanModel.fromEntity(entity);
-      final result = await _remoteDataSource.update(entity.id, model.toJson());
-      return Right(result);
+      return Right(await _remoteDataSource.update(entity.id, model.toJson()));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
@@ -293,8 +403,29 @@ class WeeklyPlanRepositoryImpl implements WeeklyPlanRepository {
       return Left(GenericFailure(e.toString()));
     }
   }
-}
 
+  @override
+  Future<Either<Failure, WeeklyPlanEntity>> approve(String id, {String? notes}) async {
+    try {
+      return Right(await _remoteDataSource.approve(id, notes: notes));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, WeeklyPlanEntity>> reject(String id, {required String notes}) async {
+    try {
+      return Right(await _remoteDataSource.reject(id, notes: notes));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+}
 
 // === FILE: lib/features/weekly_plan/domain/entities/weekly_plan_entity.dart ===
 import 'package:equatable/equatable.dart';
@@ -310,26 +441,41 @@ class WeeklyPlanEntity extends Equatable {
   final String status;
   final DateTime? submittedAt;
   final DateTime? reviewedAt;
+  final String? reviewNotes;
   final DateTime createdAt;
 
   const WeeklyPlanEntity({
-    required this.id, required this.officerId, required this.weekStart,
-    required this.weekEnd, this.plannedCustomerIds, this.plannedActivities,
-    this.notes, required this.status, this.submittedAt, this.reviewedAt,
+    required this.id,
+    required this.officerId,
+    required this.weekStart,
+    required this.weekEnd,
+    this.plannedCustomerIds,
+    this.plannedActivities,
+    this.notes,
+    required this.status,
+    this.submittedAt,
+    this.reviewedAt,
+    this.reviewNotes,
     required this.createdAt,
   });
 
   WeeklyPlanEntity copyWith({
     String? id, String? officerId, DateTime? weekStart, DateTime? weekEnd,
     List<String>? plannedCustomerIds, String? plannedActivities, String? notes,
-    String? status, DateTime? submittedAt, DateTime? reviewedAt, DateTime? createdAt,
+    String? status, DateTime? submittedAt, DateTime? reviewedAt,
+    String? reviewNotes, DateTime? createdAt,
   }) => WeeklyPlanEntity(
-    id: id ?? this.id, officerId: officerId ?? this.officerId,
-    weekStart: weekStart ?? this.weekStart, weekEnd: weekEnd ?? this.weekEnd,
+    id: id ?? this.id,
+    officerId: officerId ?? this.officerId,
+    weekStart: weekStart ?? this.weekStart,
+    weekEnd: weekEnd ?? this.weekEnd,
     plannedCustomerIds: plannedCustomerIds ?? this.plannedCustomerIds,
     plannedActivities: plannedActivities ?? this.plannedActivities,
-    notes: notes ?? this.notes, status: status ?? this.status,
-    submittedAt: submittedAt ?? this.submittedAt, reviewedAt: reviewedAt ?? this.reviewedAt,
+    notes: notes ?? this.notes,
+    status: status ?? this.status,
+    submittedAt: submittedAt ?? this.submittedAt,
+    reviewedAt: reviewedAt ?? this.reviewedAt,
+    reviewNotes: reviewNotes ?? this.reviewNotes,
     createdAt: createdAt ?? this.createdAt,
   );
 
@@ -377,53 +523,48 @@ abstract class WeeklyPlanRepository {
   Future<Either<Failure, WeeklyPlanEntity>>       getById(String id);
   Future<Either<Failure, WeeklyPlanEntity>>       create(WeeklyPlanEntity entity);
   Future<Either<Failure, WeeklyPlanEntity>>       update(WeeklyPlanEntity entity);
-  Future<Either<Failure, void>>                 delete(String id);
+  Future<Either<Failure, void>>                   delete(String id);
+  Future<Either<Failure, WeeklyPlanEntity>>       approve(String id, {String? notes});
+  Future<Either<Failure, WeeklyPlanEntity>>       reject(String id, {required String notes});
 }
-
 
 // === FILE: lib/features/weekly_plan/domain/services/weekly_plan_domain_service.dart ===
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../entities/weekly_plan_entity.dart';
-import '../guards/weekly_plan_transition_guard.dart';
 import '../repositories/weekly_plan_repository.dart';
 import '../value_objects/weekly_plan_status.dart';
 
 class WeeklyPlanDomainService {
   final WeeklyPlanRepository repository;
-  final WeeklyPlanTransitionGuard guard;
 
-  WeeklyPlanDomainService({
-    required this.repository,
-    required this.guard,
-  });
+  WeeklyPlanDomainService({required this.repository});
 
-  /// Performs a status transition: load, guard, apply, persist.
   Future<Either<Failure, WeeklyPlanEntity>> transition({
     required String id,
     required WeeklyPlanStatus targetStatus,
+    String? notes,
   }) async {
-    // 1. Load
-    final loadResult = await repository.getById(id);
-    if (loadResult.isLeft()) return loadResult;
-    final entity = loadResult.getOrElse(() => throw StateError('unreachable'));
-
-    // 2. Guard
-final guardResult = guard.validate(
-  current: WeeklyPlanStatusX.fromString(entity.status),
-  target:  targetStatus,
-);
-    if (guardResult.isLeft()) {
-      return guardResult.fold((f) => Left(f), (_) => throw StateError('unreachable'));
+    switch (targetStatus) {
+      case WeeklyPlanStatus.approved:
+        return repository.approve(id, notes: notes);
+      case WeeklyPlanStatus.rejected:
+        if (notes == null || notes.trim().isEmpty) {
+          return const Left(ValidationFailure('Rejection reason is required'));
+        }
+        return repository.reject(id, notes: notes);
+      case WeeklyPlanStatus.submitted:
+        // Resubmit: update status to submitted via update
+        final loadResult = await repository.getById(id);
+        return loadResult.fold(
+          Left.new,
+          (entity) => repository.update(entity.copyWith(status: 'submitted')),
+        );
+      default:
+        return const Left(ValidationFailure('Transition not supported'));
     }
-    final validTarget = guardResult.getOrElse(() => throw StateError('unreachable'));
-
-    // 3. Apply + Persist
-    final updated = entity.copyWith(status: validTarget.name);
-    return repository.update(updated);
   }
 }
-
 
 // === FILE: lib/features/weekly_plan/domain/usecases/create_weekly_plan_usecase.dart ===
 import 'package:dartz/dartz.dart';
@@ -621,12 +762,12 @@ import 'weekly_plan_event.dart';
 import 'weekly_plan_state.dart';
 
 class WeeklyPlanBloc extends Bloc<WeeklyPlanEvent, WeeklyPlanState> {
-  final GetAllWeeklyPlanUseCase  getAllUseCase;
-  final GetWeeklyPlanUseCase     getUseCase;
-  final CreateWeeklyPlanUseCase  createUseCase;
-  final UpdateWeeklyPlanUseCase  updateUseCase;
-  final DeleteWeeklyPlanUseCase  deleteUseCase;
-  final WeeklyPlanDomainService  domainService;
+  final GetAllWeeklyPlanUseCase getAllUseCase;
+  final GetWeeklyPlanUseCase getUseCase;
+  final CreateWeeklyPlanUseCase createUseCase;
+  final UpdateWeeklyPlanUseCase updateUseCase;
+  final DeleteWeeklyPlanUseCase deleteUseCase;
+  final WeeklyPlanDomainService domainService;
 
   WeeklyPlanBloc({
     required this.getAllUseCase,
@@ -648,7 +789,9 @@ class WeeklyPlanBloc extends Bloc<WeeklyPlanEvent, WeeklyPlanState> {
   }
 
   Future<void> _onLoadAll(
-      WeeklyPlanLoadAllRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanLoadAllRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
     final result = await getAllUseCase(NoParams());
     result.fold(
@@ -660,7 +803,9 @@ class WeeklyPlanBloc extends Bloc<WeeklyPlanEvent, WeeklyPlanState> {
   }
 
   Future<void> _onLoadOne(
-      WeeklyPlanLoadOneRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanLoadOneRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
     final result = await getUseCase(GetWeeklyPlanParams(id: event.id));
     result.fold(
@@ -670,67 +815,89 @@ class WeeklyPlanBloc extends Bloc<WeeklyPlanEvent, WeeklyPlanState> {
   }
 
   Future<void> _onCreate(
-      WeeklyPlanCreateRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanCreateRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
     final result = await createUseCase(event.params);
     result.fold(
       (f) => emit(WeeklyPlanFailure(f.message)),
-      (_) => emit(WeeklyPlanOperationSuccess('WeeklyPlan created successfully')),
+      (_) =>
+          emit(WeeklyPlanOperationSuccess('WeeklyPlan created successfully')),
     );
   }
 
   Future<void> _onUpdate(
-      WeeklyPlanUpdateRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanUpdateRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
-    final result = await updateUseCase(UpdateWeeklyPlanParams(entity: event.entity));
+    final result = await updateUseCase(
+      UpdateWeeklyPlanParams(entity: event.entity),
+    );
     result.fold(
       (f) => emit(WeeklyPlanFailure(f.message)),
-      (_) => emit(WeeklyPlanOperationSuccess('WeeklyPlan updated successfully')),
+      (_) =>
+          emit(WeeklyPlanOperationSuccess('WeeklyPlan updated successfully')),
     );
   }
 
   Future<void> _onDelete(
-      WeeklyPlanDeleteRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanDeleteRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
     final result = await deleteUseCase(DeleteWeeklyPlanParams(id: event.id));
     result.fold(
       (f) => emit(WeeklyPlanFailure(f.message)),
-      (_) => emit(WeeklyPlanOperationSuccess('WeeklyPlan deleted successfully')),
+      (_) =>
+          emit(WeeklyPlanOperationSuccess('WeeklyPlan deleted successfully')),
     );
   }
 
   Future<void> _onApprove(
-      WeeklyPlanApproveRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanApproveRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
     final result = await domainService.transition(
       id: event.id,
       targetStatus: WeeklyPlanStatus.approved,
+      notes: event.notes,
     );
     result.fold(
       (f) => emit(WeeklyPlanFailure(f.message)),
-      (entity) => emit(WeeklyPlanOperationSuccess(
-        'Approve Plan successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        WeeklyPlanOperationSuccess(
+          'Plan approved successfully',
+          updatedItem: entity,
+        ),
+      ),
     );
   }
+
   Future<void> _onReject(
-      WeeklyPlanRejectRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanRejectRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
     final result = await domainService.transition(
       id: event.id,
       targetStatus: WeeklyPlanStatus.rejected,
+      notes: event.notes,
     );
     result.fold(
       (f) => emit(WeeklyPlanFailure(f.message)),
-      (entity) => emit(WeeklyPlanOperationSuccess(
-        'Reject Plan successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        WeeklyPlanOperationSuccess('Plan rejected', updatedItem: entity),
+      ),
     );
   }
+
   Future<void> _onResubmit(
-      WeeklyPlanResubmitRequested event, Emitter<WeeklyPlanState> emit) async {
+    WeeklyPlanResubmitRequested event,
+    Emitter<WeeklyPlanState> emit,
+  ) async {
     emit(WeeklyPlanLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -738,10 +905,12 @@ class WeeklyPlanBloc extends Bloc<WeeklyPlanEvent, WeeklyPlanState> {
     );
     result.fold(
       (f) => emit(WeeklyPlanFailure(f.message)),
-      (entity) => emit(WeeklyPlanOperationSuccess(
-        'Resubmit Plan successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        WeeklyPlanOperationSuccess(
+          'Resubmit Plan successful',
+          updatedItem: entity,
+        ),
+      ),
     );
   }
 }
@@ -779,11 +948,13 @@ class WeeklyPlanFormReset extends WeeklyPlanEvent {}
 
 class WeeklyPlanApproveRequested extends WeeklyPlanEvent {
   final String id;
-  WeeklyPlanApproveRequested(this.id);
+  final String? notes;
+  WeeklyPlanApproveRequested(this.id, {this.notes});
 }
 class WeeklyPlanRejectRequested extends WeeklyPlanEvent {
   final String id;
-  WeeklyPlanRejectRequested(this.id);
+  final String notes;
+  WeeklyPlanRejectRequested(this.id, {required this.notes});
 }
 class WeeklyPlanResubmitRequested extends WeeklyPlanEvent {
   final String id;
@@ -846,11 +1017,21 @@ class WeeklyPlanDetailPage extends StatelessWidget {
   const WeeklyPlanDetailPage({super.key});
 
   Future<String> _officerName(String id) async {
-    try { return (await OfficerMockDataSource().getById(id)).name; } catch (_) { return id; }
+    try {
+      return (await OfficerMockDataSource().getById(id)).displayName;
+    } catch (_) {
+      return id;
+    }
   }
+
   Future<String> _customerName(String id) async {
-    try { return (await CustomerMockDataSource().getById(id)).businessName; } catch (_) { return id; }
+    try {
+      return (await CustomerMockDataSource().getById(id)).name;
+    } catch (_) {
+      return id;
+    }
   }
+
   String _fmtDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
 
   @override
@@ -862,17 +1043,40 @@ class WeeklyPlanDetailPage extends StatelessWidget {
         listener: (c, s) {
           if (s is WeeklyPlanOperationSuccess) {
             ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message)));
-            if (s.updatedItem != null) c.read<WeeklyPlanBloc>().add(WeeklyPlanLoadOneRequested(s.updatedItem!.id));
-            else c.pop();
+            if (s.updatedItem != null) {
+              c.read<WeeklyPlanBloc>().add(WeeklyPlanLoadOneRequested(s.updatedItem!.id));
+            } else {
+              c.pop();
+            }
           }
-          if (s is WeeklyPlanFailure) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message), backgroundColor: scheme.error));
+          if (s is WeeklyPlanFailure) {
+            ScaffoldMessenger.of(c).showSnackBar(
+              SnackBar(content: Text(s.message), backgroundColor: scheme.error),
+            );
+          }
         },
         builder: (c, s) {
-          if (s is WeeklyPlanLoading || s is WeeklyPlanInitial) return const Center(child: CircularProgressIndicator());
-          if (s is WeeklyPlanFailure) return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(Icons.error_outline, size: 48, color: scheme.error), const SizedBox(height: 16), Text(s.message),
-            const SizedBox(height: 16), FilledButton.icon(onPressed: () => c.pop(), icon: const Icon(Icons.arrow_back), label: const Text('Go Back')),
-          ]));
+          if (s is WeeklyPlanLoading || s is WeeklyPlanInitial) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (s is WeeklyPlanFailure) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: scheme.error),
+                  const SizedBox(height: 16),
+                  Text(s.message),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => c.pop(),
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('Go Back'),
+                  ),
+                ],
+              ),
+            );
+          }
           if (s is WeeklyPlanDetailLoaded) return _body(context, s.item);
           return const SizedBox.shrink();
         },
@@ -886,99 +1090,299 @@ class WeeklyPlanDetailPage extends StatelessWidget {
     final isWide = MediaQuery.of(context).size.width >= 600;
 
     return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(horizontal: isWide ? MediaQuery.of(context).size.width * 0.1 : 16, vertical: 16),
-      child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Header
-        Card(child: Padding(padding: const EdgeInsets.all(20), child: Row(children: [
-          CircleAvatar(radius: 28, backgroundColor: st.color.withValues(alpha: 0.15),
-            child: Icon(Icons.calendar_month, color: st.color, size: 28)),
-          const SizedBox(width: 16),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${_fmtDate(item.weekStart)} – ${_fmtDate(item.weekEnd)}',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 4),
-            FutureBuilder<String>(future: _officerName(item.officerId),
-              builder: (_, s) => Text(s.data ?? '...', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.primary, fontWeight: FontWeight.w600))),
-            const SizedBox(height: 6),
-            Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: st.color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12), border: Border.all(color: st.color.withValues(alpha: 0.4))),
-              child: Text(st.displayName, style: TextStyle(color: st.color, fontSize: 12, fontWeight: FontWeight.w600))),
-          ])),
-        ]))),
-        const SizedBox(height: 12),
+      padding: EdgeInsets.symmetric(
+        horizontal: isWide ? MediaQuery.of(context).size.width * 0.1 : 16,
+        vertical: 16,
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 28,
+                      backgroundColor: st.color.withValues(alpha: 0.15),
+                      child: Icon(Icons.calendar_month, color: st.color, size: 28),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${_fmtDate(item.weekStart)} – ${_fmtDate(item.weekEnd)}',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 4),
+                          FutureBuilder<String>(
+                            future: _officerName(item.officerId),
+                            builder: (_, s) => Text(
+                              s.data ?? '...',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: scheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: st.color.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: st.color.withValues(alpha: 0.4)),
+                            ),
+                            child: Text(
+                              st.displayName,
+                              style: TextStyle(color: st.color, fontSize: 12, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
 
-        // Admin Actions
-        _actions(context, item, st),
+            // Admin Actions
+            _actions(context, item, st),
 
-        // Planned Activities
-        if (item.plannedActivities != null && item.plannedActivities!.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Planned Activities', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
-            const Divider(height: 20),
-            Text(item.plannedActivities!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5)),
-          ]))),
-        ],
+            // Planned Activities
+            if (item.plannedActivities != null && item.plannedActivities!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Planned Activities',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const Divider(height: 20),
+                      Text(
+                        item.plannedActivities!,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
 
-        // Target Customers
-        if (item.plannedCustomerIds != null && item.plannedCustomerIds!.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Target Customers (${item.plannedCustomerIds!.length})', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
-            const Divider(height: 20),
-            ...item.plannedCustomerIds!.map((cId) => Padding(padding: const EdgeInsets.symmetric(vertical: 4),
-              child: FutureBuilder<String>(future: _customerName(cId),
-                builder: (_, s) => Row(children: [
-                  Icon(Icons.store, size: 18, color: scheme.onSurfaceVariant), const SizedBox(width: 10),
-                  Text(s.data ?? '...', style: Theme.of(context).textTheme.bodyMedium),
-                ])))),
-          ]))),
-        ],
+            // Target Customers
+            if (item.plannedCustomerIds != null && item.plannedCustomerIds!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Target Customers (${item.plannedCustomerIds!.length})',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const Divider(height: 20),
+                      ...item.plannedCustomerIds!.map(
+                        (cId) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: FutureBuilder<String>(
+                            future: _customerName(cId),
+                            builder: (_, s) => Row(
+                              children: [
+                                Icon(Icons.store, size: 18, color: scheme.onSurfaceVariant),
+                                const SizedBox(width: 10),
+                                Text(s.data ?? '...', style: Theme.of(context).textTheme.bodyMedium),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
 
-        // Details
-        const SizedBox(height: 12),
-        Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Plan Details', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
-          const Divider(height: 24),
-          if (item.notes != null && item.notes!.isNotEmpty) _row(context, Icons.notes, 'Notes', item.notes!),
-          if (item.submittedAt != null) _row(context, Icons.upload, 'Submitted', _fmtDate(item.submittedAt!)),
-          if (item.reviewedAt != null) _row(context, Icons.rate_review, 'Reviewed', _fmtDate(item.reviewedAt!)),
-          _row(context, Icons.calendar_today, 'Created', _fmtDate(item.createdAt)),
-          _row(context, Icons.fingerprint, 'ID', item.id),
-        ]))),
-        const SizedBox(height: 80),
-      ])),
+            // Details
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Plan Details',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Divider(height: 24),
+                    if (item.notes != null && item.notes!.isNotEmpty)
+                      _row(context, Icons.notes, 'Notes', item.notes!),
+                    if (item.submittedAt != null)
+                      _row(context, Icons.upload, 'Submitted', _fmtDate(item.submittedAt!)),
+                    if (item.reviewedAt != null)
+                      _row(context, Icons.rate_review, 'Reviewed', _fmtDate(item.reviewedAt!)),
+                    _row(context, Icons.calendar_today, 'Created', _fmtDate(item.createdAt)),
+                    _row(context, Icons.fingerprint, 'ID', item.id),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 80),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _actions(BuildContext context, WeeklyPlanEntity item, WeeklyPlanStatus st) {
     final actions = <Widget>[];
     if (st == WeeklyPlanStatus.submitted) {
-      actions.add(_btn(context, Icons.check_circle_outline, 'Approve', Colors.green,
-        () => context.read<WeeklyPlanBloc>().add(WeeklyPlanApproveRequested(item.id))));
-      actions.add(_btn(context, Icons.cancel_outlined, 'Reject', Colors.red,
-        () => context.read<WeeklyPlanBloc>().add(WeeklyPlanRejectRequested(item.id))));
+      actions.add(
+        _btn(
+          context,
+          Icons.check_circle_outline,
+          'Approve',
+          Colors.green,
+          () => context.read<WeeklyPlanBloc>().add(WeeklyPlanApproveRequested(item.id)),
+        ),
+      );
+      actions.add(
+        _btn(
+          context,
+          Icons.cancel_outlined,
+          'Reject',
+          Colors.red,
+          () async {
+            final notesCtl = TextEditingController();
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (_) => AlertDialog(
+                title: const Text('Reject Plan'),
+                content: TextField(
+                  controller: notesCtl,
+                  decoration: const InputDecoration(
+                    labelText: 'Reason *',
+                    hintText: 'Explain why this plan is rejected',
+                  ),
+                  maxLines: 3,
+                  autofocus: true,
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                    ),
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Reject'),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed == true && notesCtl.text.trim().isNotEmpty) {
+              if (context.mounted) {
+                context.read<WeeklyPlanBloc>().add(
+                  WeeklyPlanRejectRequested(item.id, notes: notesCtl.text.trim()),
+                );
+              }
+            }
+          },
+        ),
+      );
     }
-    if (st == WeeklyPlanStatus.rejected) actions.add(_btn(context, Icons.replay, 'Resubmit', Colors.blue,
-      () => context.read<WeeklyPlanBloc>().add(WeeklyPlanResubmitRequested(item.id))));
+    if (st == WeeklyPlanStatus.rejected) {
+      actions.add(
+        _btn(
+          context,
+          Icons.replay,
+          'Resubmit',
+          Colors.blue,
+          () => context.read<WeeklyPlanBloc>().add(WeeklyPlanResubmitRequested(item.id)),
+        ),
+      );
+    }
+
     if (actions.isEmpty) return const SizedBox.shrink();
-    return Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Admin Actions', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w700)),
-      const Divider(height: 20), Wrap(spacing: 10, runSpacing: 10, children: actions),
-    ])));
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Admin Actions',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const Divider(height: 20),
+            Wrap(spacing: 10, runSpacing: 10, children: actions),
+          ],
+        ),
+      ),
+    );
   }
 
-  Widget _btn(BuildContext c, IconData icon, String label, Color color, VoidCallback onPressed) => FilledButton.tonalIcon(
-    onPressed: onPressed, icon: Icon(icon, size: 18, color: color), label: Text(label),
-    style: FilledButton.styleFrom(minimumSize: Size.zero, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)));
+  Widget _btn(BuildContext c, IconData icon, String label, Color color, VoidCallback onPressed) =>
+      FilledButton.tonalIcon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18, color: color),
+        label: Text(label),
+        style: FilledButton.styleFrom(
+          minimumSize: Size.zero,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        ),
+      );
 
   Widget _row(BuildContext c, IconData icon, String label, String value) {
     final scheme = Theme.of(c).colorScheme;
-    return Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [
-      Icon(icon, size: 20, color: scheme.onSurfaceVariant), const SizedBox(width: 12),
-      SizedBox(width: 100, child: Text(label, style: Theme.of(c).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant))),
-      Expanded(child: Text(value, style: Theme.of(c).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500))),
-    ]));
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: Theme.of(c).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: Theme.of(c).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -996,7 +1400,11 @@ import '../../../officer/domain/entities/officer_entity.dart';
 class WeeklyPlanFormPage extends StatefulWidget {
   final WeeklyPlanFormNode mode;
   final String? id;
-  const WeeklyPlanFormPage({super.key, this.mode = WeeklyPlanFormNode.create, this.id});
+  const WeeklyPlanFormPage({
+    super.key,
+    this.mode = WeeklyPlanFormNode.create,
+    this.id,
+  });
   @override
   State<WeeklyPlanFormPage> createState() => _WeeklyPlanFormPageState();
 }
@@ -1014,20 +1422,37 @@ class _WeeklyPlanFormPageState extends State<WeeklyPlanFormPage> {
   bool _loading = true;
 
   @override
-  void initState() { super.initState(); _loadOfficers(); }
+  void initState() {
+    super.initState();
+    _loadOfficers();
+  }
 
   Future<void> _loadOfficers() async {
-    try { final o = await OfficerMockDataSource().getAll(); if (mounted) setState(() { _officers = o; _loading = false; }); }
-    catch (_) { if (mounted) setState(() => _loading = false); }
+    try {
+      final response = await OfficerMockDataSource().getAll();
+      if (mounted) {
+        setState(() {
+          _officers = response.items;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
-  void dispose() { _activitiesCtl.dispose(); _notesCtl.dispose(); super.dispose(); }
+  void dispose() {
+    _activitiesCtl.dispose();
+    _notesCtl.dispose();
+    super.dispose();
+  }
 
   void _populate(WeeklyPlanState s) {
     if (_isEdit && !_fieldsPopulated && s is WeeklyPlanDetailLoaded) {
       _selectedOfficerId = s.item.officerId;
-      _weekStart = s.item.weekStart; _weekEnd = s.item.weekEnd;
+      _weekStart = s.item.weekStart;
+      _weekEnd = s.item.weekEnd;
       _activitiesCtl.text = s.item.plannedActivities ?? '';
       _notesCtl.text = s.item.notes ?? '';
       _fieldsPopulated = true;
@@ -1035,12 +1460,25 @@ class _WeeklyPlanFormPageState extends State<WeeklyPlanFormPage> {
   }
 
   Future<void> _pickDate(bool isStart) async {
-    final picked = await showDatePicker(context: context, initialDate: (isStart ? _weekStart : _weekEnd) ?? DateTime.now(),
-      firstDate: DateTime(2024), lastDate: DateTime(2030));
-    if (picked != null) setState(() { if (isStart) _weekStart = picked; else _weekEnd = picked; });
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: (isStart ? _weekStart : _weekEnd) ?? DateTime.now(),
+      firstDate: DateTime(2024),
+      lastDate: DateTime(2030),
+    );
+    if (picked != null) {
+      setState(() {
+        if (isStart) {
+          _weekStart = picked;
+        } else {
+          _weekEnd = picked;
+        }
+      });
+    }
   }
 
-  String _fmtDate(DateTime? d) => d != null ? '${d.day}/${d.month}/${d.year}' : 'Select date';
+  String _fmtDate(DateTime? d) =>
+      d != null ? '${d.day}/${d.month}/${d.year}' : 'Select date';
 
   @override
   Widget build(BuildContext context) {
@@ -1052,81 +1490,212 @@ class _WeeklyPlanFormPageState extends State<WeeklyPlanFormPage> {
       body: BlocConsumer<WeeklyPlanBloc, WeeklyPlanState>(
         listener: (c, s) {
           if (s is WeeklyPlanDetailLoaded) setState(() => _populate(s));
-          if (s is WeeklyPlanOperationSuccess) { setState(() => _isSubmitting = false); Navigator.of(c).pop(true); }
-          if (s is WeeklyPlanFailure) { setState(() => _isSubmitting = false); ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message), backgroundColor: scheme.error)); }
+          if (s is WeeklyPlanOperationSuccess) {
+            setState(() => _isSubmitting = false);
+            Navigator.of(c).pop(true);
+          }
+          if (s is WeeklyPlanFailure) {
+            setState(() => _isSubmitting = false);
+            ScaffoldMessenger.of(c).showSnackBar(
+              SnackBar(content: Text(s.message), backgroundColor: scheme.error),
+            );
+          }
         },
         builder: (c, s) {
-          if (_isEdit && s is WeeklyPlanLoading && !_fieldsPopulated) return const Center(child: CircularProgressIndicator());
+          if (_isEdit && s is WeeklyPlanLoading && !_fieldsPopulated) {
+            return const Center(child: CircularProgressIndicator());
+          }
           if (_loading) return const Center(child: CircularProgressIndicator());
 
-          return Form(key: _formKey, child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(horizontal: isWide ? MediaQuery.of(context).size.width * 0.1 : 16, vertical: 16),
-            child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              // Officer
-              DropdownButtonFormField<String>(
-                value: _selectedOfficerId,
-                decoration: const InputDecoration(labelText: 'Officer', border: OutlineInputBorder(), prefixIcon: Icon(Icons.badge_outlined)),
-                items: _officers.where((o) => o.status == 'active').map((o) => DropdownMenuItem(value: o.id, child: Text(o.name))).toList(),
-                onChanged: (v) => setState(() => _selectedOfficerId = v),
-                validator: (v) => v == null || v.isEmpty ? 'Officer is required' : null,
+          return Form(
+            key: _formKey,
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(
+                horizontal: isWide
+                    ? MediaQuery.of(context).size.width * 0.1
+                    : 16,
+                vertical: 16,
               ),
-              const SizedBox(height: 16),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Officer
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedOfficerId,
+                      decoration: const InputDecoration(
+                        labelText: 'Officer',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.badge_outlined),
+                      ),
+                      items: _officers
+                          .where((o) => o.effectiveStatus == 'active')
+                          .map(
+                            (o) => DropdownMenuItem(
+                              value: o.userId,
+                              child: Text(o.displayName),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) => setState(() => _selectedOfficerId = v),
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'Officer is required' : null,
+                    ),
+                    const SizedBox(height: 16),
 
-              // Date range
-              if (isWide) Row(children: [
-                Expanded(child: _dateTile(context, 'Week Start', _weekStart, () => _pickDate(true))),
-                const SizedBox(width: 16),
-                Expanded(child: _dateTile(context, 'Week End', _weekEnd, () => _pickDate(false))),
-              ]) else ...[
-                _dateTile(context, 'Week Start', _weekStart, () => _pickDate(true)),
-                const SizedBox(height: 16),
-                _dateTile(context, 'Week End', _weekEnd, () => _pickDate(false)),
-              ],
-              const SizedBox(height: 16),
+                    // Date range
+                    if (isWide)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _dateTile(
+                              context,
+                              'Week Start',
+                              _weekStart,
+                              () => _pickDate(true),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _dateTile(
+                              context,
+                              'Week End',
+                              _weekEnd,
+                              () => _pickDate(false),
+                            ),
+                          ),
+                        ],
+                      )
+                    else ...[
+                      _dateTile(
+                        context,
+                        'Week Start',
+                        _weekStart,
+                        () => _pickDate(true),
+                      ),
+                      const SizedBox(height: 16),
+                      _dateTile(
+                        context,
+                        'Week End',
+                        _weekEnd,
+                        () => _pickDate(false),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
 
-              TextFormField(controller: _activitiesCtl, decoration: const InputDecoration(labelText: 'Planned Activities', border: OutlineInputBorder(), prefixIcon: Icon(Icons.task_outlined)),
-                maxLines: 4, textCapitalization: TextCapitalization.sentences),
-              const SizedBox(height: 16),
-              TextFormField(controller: _notesCtl, decoration: const InputDecoration(labelText: 'Notes', border: OutlineInputBorder(), prefixIcon: Icon(Icons.notes_outlined)),
-                maxLines: 2, textCapitalization: TextCapitalization.sentences),
-              const SizedBox(height: 32),
+                    TextFormField(
+                      controller: _activitiesCtl,
+                      decoration: const InputDecoration(
+                        labelText: 'Planned Activities',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.task_outlined),
+                      ),
+                      maxLines: 4,
+                      textCapitalization: TextCapitalization.sentences,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _notesCtl,
+                      decoration: const InputDecoration(
+                        labelText: 'Notes',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.notes_outlined),
+                      ),
+                      maxLines: 2,
+                      textCapitalization: TextCapitalization.sentences,
+                    ),
+                    const SizedBox(height: 32),
 
-              FilledButton.icon(onPressed: _isSubmitting ? null : _submit,
-                icon: _isSubmitting ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Icon(_isEdit ? Icons.save : Icons.calendar_month),
-                label: Text(_isEdit ? 'Save Changes' : 'Create Plan')),
-              const SizedBox(height: 32),
-            ]))));
+                    FilledButton.icon(
+                      onPressed: _isSubmitting ? null : _submit,
+                      icon: _isSubmitting
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Icon(_isEdit ? Icons.save : Icons.calendar_month),
+                      label: Text(_isEdit ? 'Save Changes' : 'Create Plan'),
+                    ),
+                    const SizedBox(height: 32),
+                  ],
+                ),
+              ),
+            ),
+          );
         },
       ),
     );
   }
 
-  Widget _dateTile(BuildContext context, String label, DateTime? value, VoidCallback onTap) {
-    return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: InputDecorator(
-      decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), prefixIcon: const Icon(Icons.date_range)),
-      child: Text(_fmtDate(value), style: value != null ? null : Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-    ));
+  Widget _dateTile(
+    BuildContext context,
+    String label,
+    DateTime? value,
+    VoidCallback onTap,
+  ) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+          prefixIcon: const Icon(Icons.date_range),
+        ),
+        child: Text(
+          _fmtDate(value),
+          style: value != null
+              ? null
+              : Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+        ),
+      ),
+    );
   }
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
     if (_weekStart == null || _weekEnd == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select week start and end dates')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select week start and end dates')),
+      );
       return;
     }
     setState(() => _isSubmitting = true);
     if (_isEdit) {
       final s = context.read<WeeklyPlanBloc>().state;
-      if (s is WeeklyPlanDetailLoaded) context.read<WeeklyPlanBloc>().add(WeeklyPlanUpdateRequested(s.item.copyWith(
-        officerId: _selectedOfficerId, weekStart: _weekStart, weekEnd: _weekEnd,
-        plannedActivities: _activitiesCtl.text.trim(), notes: _notesCtl.text.trim())));
+      if (s is WeeklyPlanDetailLoaded) {
+        context.read<WeeklyPlanBloc>().add(
+          WeeklyPlanUpdateRequested(
+            s.item.copyWith(
+              officerId: _selectedOfficerId,
+              weekStart: _weekStart,
+              weekEnd: _weekEnd,
+              plannedActivities: _activitiesCtl.text.trim(),
+              notes: _notesCtl.text.trim(),
+            ),
+          ),
+        );
+      }
     } else {
-      context.read<WeeklyPlanBloc>().add(WeeklyPlanCreateRequested(CreateWeeklyPlanParams(
-        officerId: _selectedOfficerId ?? '', weekStart: _weekStart!, weekEnd: _weekEnd!,
-        plannedActivities: _activitiesCtl.text.trim(), notes: _notesCtl.text.trim())));
+      context.read<WeeklyPlanBloc>().add(
+        WeeklyPlanCreateRequested(
+          CreateWeeklyPlanParams(
+            officerId: _selectedOfficerId ?? '',
+            weekStart: _weekStart!,
+            weekEnd: _weekEnd!,
+            plannedActivities: _activitiesCtl.text.trim(),
+            notes: _notesCtl.text.trim(),
+          ),
+        ),
+      );
     }
   }
 }
+
 
 // === FILE: lib/features/weekly_plan/presentation/pages/weekly_plan_list_page.dart ===
 import 'package:flutter/material.dart';
@@ -1351,7 +1920,7 @@ class WeeklyPlanCardTile extends StatelessWidget {
   const WeeklyPlanCardTile({super.key, required this.item, required this.onTap});
 
   Future<String> _officerName() async {
-    try { return (await OfficerMockDataSource().getById(item.officerId)).name; } catch (_) { return item.officerId; }
+    try { return (await OfficerMockDataSource().getById(item.officerId)).displayName; } catch (_) { return item.officerId; }
   }
 
   @override

@@ -1,7 +1,7 @@
 // get_profile_usecase.dart
 import 'package:dartz/dartz.dart';
-import 'package:admin_panel/core/error/failures.dart';
-import 'package:admin_panel/core/usecase/usecase.dart';
+import 'package:jadosoft_admin/core/error/failures.dart';
+import 'package:jadosoft_admin/core/usecase/usecase.dart';
  
 import '../entities/profile_entity.dart';
 import '../repositories/profile_repository.dart';

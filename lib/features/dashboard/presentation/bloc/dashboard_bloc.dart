@@ -19,7 +19,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:admin_panel/core/usecase/usecase.dart';
+import 'package:jadosoft_admin/core/usecase/usecase.dart';
 
 import '../../domain/entities/dashboard_stats.dart';
 import '../../domain/usecases/get_dashboard_stats_usecase.dart';

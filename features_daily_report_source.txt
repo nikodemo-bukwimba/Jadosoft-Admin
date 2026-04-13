@@ -1,9 +1,12 @@
 ﻿// ================================================================
 // features_daily_report_source.txt
-// Generated : 2026-03-24 17:14:17
-// Files     : 27
+// Generated : 2026-04-08 23:45:19
+// Files     : 28
 // Usage     : Upload to Claude Project documents as reference.
 // ================================================================
+
+// === FILE: lib/features/daily_report/data/datasources/daily_report_api_datasource.dart ===
+
 
 // === FILE: lib/features/daily_report/data/datasources/daily_report_mock_datasource.dart ===
 import '../models/daily_report_model.dart';
@@ -114,7 +117,8 @@ class DailyReportMockDataSource implements DailyReportRemoteDataSource {
       'key_outcomes': 'Addressed customer complaint. Relationship maintained.',
       'challenges_faced':
           'Customer was unhappy about previous delivery. Required extended conversation to resolve.',
-      'next_day_plan': 'Follow up with logistics on Lipa Dawa delivery complaint resolution.',
+      'next_day_plan':
+          'Follow up with logistics on Lipa Dawa delivery complaint resolution.',
       'custom_body': null,
       'is_customized': false,
       'reviewed_by_name': 'Dr. Joseph Barick',
@@ -152,7 +156,7 @@ class DailyReportMockDataSource implements DailyReportRemoteDataSource {
           'promotedProducts': [
             'Amoxicillin 250mg',
             'Metformin 500mg',
-            'Vitamin C 1000mg'
+            'Vitamin C 1000mg',
           ],
           'discussionSummary':
               'Introduced 3 new products. Customer agreed to trial order of 50 units each.',
@@ -172,7 +176,8 @@ class DailyReportMockDataSource implements DailyReportRemoteDataSource {
           'customerGpsLng': '33.4400',
           'visitTime': '11:30',
           'promotedProducts': ['Paracetamol 500mg'],
-          'discussionSummary': 'Routine check-in. Reordering Paracetamol stock.',
+          'discussionSummary':
+              'Routine check-in. Reordering Paracetamol stock.',
           'visitNotes': 'Standard reorder — process this week.',
           'visitImageUrls': [],
           'visitDocumentUrls': [],
@@ -249,7 +254,8 @@ class DailyReportMockDataSource implements DailyReportRemoteDataSource {
           'visitDocumentUrls': [],
         },
       ],
-      'key_outcomes': 'Positive reception of pain management range in Uyole area.',
+      'key_outcomes':
+          'Positive reception of pain management range in Uyole area.',
       'challenges_faced': 'Customer requested competitor comparison data.',
       'next_day_plan': 'Prepare competitor comparison document and revisit.',
       'custom_body':
@@ -295,10 +301,10 @@ class DailyReportMockDataSource implements DailyReportRemoteDataSource {
       'officer_phone': data['officer_phone'],
       'officer_role': data['officer_role'],
       'officer_status': data['officer_status'],
-      'report_number':
-          'RPT-2026-${_idCounter.toString().padLeft(3, '0')}',
+      'report_number': 'RPT-2026-${_idCounter.toString().padLeft(3, '0')}',
       'report_date':
-          data['report_date'] ?? DateTime.now().toIso8601String().substring(0, 10),
+          data['report_date'] ??
+          DateTime.now().toIso8601String().substring(0, 10),
       'submitted_at': null,
       'reviewed_at': null,
       'visited_customers': data['visited_customers'] ?? [],
@@ -332,30 +338,79 @@ class DailyReportMockDataSource implements DailyReportRemoteDataSource {
     await _delay();
     _store.removeWhere((e) => e['id'] == id);
   }
+
+  @override
+  Future<DailyReportModel> approve(
+    String id, {
+    required String feedback,
+  }) async {
+    await _delay();
+    final index = _store.indexWhere((e) => e['id'] == id);
+    if (index == -1) throw Exception('DailyReport not found');
+    _store[index] = {
+      ..._store[index],
+      'status': 'approved',
+      'review_decision': 'approved',
+      'admin_feedback': feedback,
+      'reviewed_at': DateTime.now().toIso8601String(),
+      'reviewed_by_name': 'Dr. Joseph Barick',
+      'reviewed_by_role': 'Head Marketing Officer',
+    };
+    return DailyReportModel.fromJson(Map.from(_store[index]));
+  }
+
+  @override
+  Future<DailyReportModel> reject(String id, {required String feedback}) async {
+    await _delay();
+    final index = _store.indexWhere((e) => e['id'] == id);
+    if (index == -1) throw Exception('DailyReport not found');
+    _store[index] = {
+      ..._store[index],
+      'status': 'rejected',
+      'review_decision': 'rejected',
+      'admin_feedback': feedback,
+      'reviewed_at': DateTime.now().toIso8601String(),
+      'reviewed_by_name': 'Dr. Joseph Barick',
+      'reviewed_by_role': 'Head Marketing Officer',
+    };
+    return DailyReportModel.fromJson(Map.from(_store[index]));
+  }
 }
+
 
 // === FILE: lib/features/daily_report/data/datasources/daily_report_remote_datasource.dart ===
 import 'package:dio/dio.dart';
 import '../../../../core/error/exceptions.dart';
+import '../../../../core/context/org_context.dart';
 import '../models/daily_report_model.dart';
 
 abstract class DailyReportRemoteDataSource {
   Future<List<DailyReportModel>> getAll();
-  Future<DailyReportModel>       getById(String id);
-  Future<DailyReportModel>       create(Map<String, dynamic> data);
-  Future<DailyReportModel>       update(String id, Map<String, dynamic> data);
-  Future<void>                delete(String id);
+  Future<DailyReportModel> getById(String id);
+  Future<DailyReportModel> create(Map<String, dynamic> data);
+  Future<DailyReportModel> update(String id, Map<String, dynamic> data);
+  Future<void> delete(String id);
+  Future<DailyReportModel> approve(String id, {required String feedback});
+  Future<DailyReportModel> reject(String id, {required String feedback});
 }
 
 class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   final Dio _dio;
-  DailyReportRemoteDataSourceImpl({required Dio dio}) : _dio = dio;
+  final OrgContext _orgContext;
+
+  DailyReportRemoteDataSourceImpl({
+    required Dio dio,
+    required OrgContext orgContext,
+  }) : _dio = dio,
+       _orgContext = orgContext;
+
+  String get _base => '/pharma/${_orgContext.effectiveOrgId}/reports';
 
   @override
   Future<List<DailyReportModel>> getAll() async {
     try {
-      final response = await _dio.get('/daily-reports');
-      final data = response.data as List;
+      final response = await _dio.get(_base);
+      final data = (response.data['data'] ?? response.data) as List;
       return data
           .map((e) => DailyReportModel.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -367,8 +422,9 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   @override
   Future<DailyReportModel> getById(String id) async {
     try {
-      final response = await _dio.get('/daily-reports/$id');
-      return DailyReportModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.get('$_base/$id');
+      final data = response.data['data'] ?? response.data;
+      return DailyReportModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -377,8 +433,9 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   @override
   Future<DailyReportModel> create(Map<String, dynamic> data) async {
     try {
-      final response = await _dio.post('/daily-reports', data: data);
-      return DailyReportModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.post(_base, data: data);
+      final body = response.data['data'] ?? response.data;
+      return DailyReportModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -387,8 +444,9 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   @override
   Future<DailyReportModel> update(String id, Map<String, dynamic> data) async {
     try {
-      final response = await _dio.put('/daily-reports/$id', data: data);
-      return DailyReportModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.put('$_base/$id', data: data);
+      final body = response.data['data'] ?? response.data;
+      return DailyReportModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -397,7 +455,38 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   @override
   Future<void> delete(String id) async {
     try {
-      await _dio.delete('/daily-reports/$id');
+      await _dio.delete('$_base/$id');
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<DailyReportModel> approve(
+    String id, {
+    required String feedback,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '$_base/$id/approve',
+        data: {'feedback': feedback},
+      );
+      final body = response.data['data'] ?? response.data;
+      return DailyReportModel.fromJson(body as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<DailyReportModel> reject(String id, {required String feedback}) async {
+    try {
+      final response = await _dio.post(
+        '$_base/$id/reject',
+        data: {'feedback': feedback},
+      );
+      final body = response.data['data'] ?? response.data;
+      return DailyReportModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -415,7 +504,6 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
 
 // === FILE: lib/features/daily_report/data/models/daily_report_model.dart ===
 import '../../domain/entities/daily_report_entity.dart';
-import '../../domain/value_objects/daily_report_status.dart';
 
 class DailyReportModel extends DailyReportEntity {
   const DailyReportModel({
@@ -606,6 +694,28 @@ class DailyReportRepositoryImpl implements DailyReportRepository {
     try {
       await _remoteDataSource.delete(id);
       return const Right(null);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, DailyReportEntity>> approve(String id, {required String feedback}) async {
+    try {
+      return Right(await _remoteDataSource.approve(id, feedback: feedback));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, DailyReportEntity>> reject(String id, {required String feedback}) async {
+    try {
+      return Right(await _remoteDataSource.reject(id, feedback: feedback));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
@@ -870,9 +980,10 @@ abstract class DailyReportRepository {
   Future<Either<Failure, DailyReportEntity>>       getById(String id);
   Future<Either<Failure, DailyReportEntity>>       create(DailyReportEntity entity);
   Future<Either<Failure, DailyReportEntity>>       update(DailyReportEntity entity);
-  Future<Either<Failure, void>>                 delete(String id);
+  Future<Either<Failure, void>>                    delete(String id);
+  Future<Either<Failure, DailyReportEntity>>       approve(String id, {required String feedback});
+  Future<Either<Failure, DailyReportEntity>>       reject(String id, {required String feedback});
 }
-
 
 // === FILE: lib/features/daily_report/domain/services/daily_report_domain_service.dart ===
 import 'package:dartz/dartz.dart';
@@ -888,39 +999,36 @@ class DailyReportDomainService {
 
   DailyReportDomainService({required this.repository, required this.guard});
 
-  /// Performs a status transition: load, guard, apply, persist.
   Future<Either<Failure, DailyReportEntity>> transition({
     required String id,
     required DailyReportStatus targetStatus,
+    String? feedback,
   }) async {
-    // 1. Load
-    final loadResult = await repository.getById(id);
-    if (loadResult.isLeft()) return loadResult;
-    final entity = loadResult.getOrElse(() => throw StateError('unreachable'));
+    switch (targetStatus) {
+      case DailyReportStatus.approved:
+        if (feedback == null || feedback.trim().isEmpty) {
+          return const Left(ValidationFailure('Feedback is required'));
+        }
+        return repository.approve(id, feedback: feedback);
 
-    // 2. Guard
-    final guardResult = guard.validate(
-      current: DailyReportStatusX.fromString(
-        entity.status,
-      ), // was: entity.status
-      target: targetStatus,
-    );
-    if (guardResult.isLeft()) {
-      return guardResult.fold(
-        (f) => Left(f),
-        (_) => throw StateError('unreachable'),
-      );
+      case DailyReportStatus.rejected:
+        if (feedback == null || feedback.trim().isEmpty) {
+          return const Left(ValidationFailure('Feedback is required'));
+        }
+        return repository.reject(id, feedback: feedback);
+
+      case DailyReportStatus.submitted:
+        final loadResult = await repository.getById(id);
+        return loadResult.fold(
+          Left.new,
+          (entity) => repository.update(entity.copyWith(status: 'submitted')),
+        );
+
+      default:
+        return const Left(ValidationFailure('Transition not supported'));
     }
-    final validTarget = guardResult.getOrElse(
-      () => throw StateError('unreachable'),
-    );
-
-    // 3. Apply + Persist
-    final updated = entity.copyWith(status: validTarget.name);
-    return repository.update(updated);
   }
 }
-
 
 // === FILE: lib/features/daily_report/domain/usecases/create_daily_report_usecase.dart ===
 import 'package:dartz/dartz.dart';
@@ -1340,42 +1448,17 @@ class DailyReportBloc extends Bloc<DailyReportEvent, DailyReportState> {
     Emitter<DailyReportState> emit,
   ) async {
     emit(DailyReportLoading());
-
-    // Step 1: transition status
-    final transitionResult = await domainService.transition(
+    final result = await domainService.transition(
       id: event.id,
       targetStatus: DailyReportStatus.approved,
+      feedback: event.feedback,
     );
-
-    // Extract failure or entity — no async inside fold
-    if (transitionResult.isLeft()) {
-      final failure = transitionResult.fold((f) => f, (_) => null)!;
-      emit(DailyReportFailure(failure.message));
-      return;
-    }
-
-    final entity = transitionResult.fold((_) => null, (e) => e)!;
-
-    // Step 2: persist feedback
-    final withFeedback = entity.copyWith(
-      adminFeedback: event.feedback,
-      reviewDecision: 'approved',
-      reviewedAt: DateTime.now(),
-      // TODO: replace with authenticated admin from AuthSession when real API lands
-      reviewedByName: 'Dr. Joseph Barick',
-      reviewedByRole: 'Head Marketing Officer',
-    );
-
-    final updateResult = await updateUseCase(
-      UpdateDailyReportParams(entity: withFeedback),
-    );
-
-    updateResult.fold(
+    result.fold(
       (f) => emit(DailyReportFailure(f.message)),
-      (updated) => emit(
+      (entity) => emit(
         DailyReportOperationSuccess(
           'Report approved successfully',
-          updatedItem: updated,
+          updatedItem: entity,
         ),
       ),
     );
@@ -1386,40 +1469,15 @@ class DailyReportBloc extends Bloc<DailyReportEvent, DailyReportState> {
     Emitter<DailyReportState> emit,
   ) async {
     emit(DailyReportLoading());
-
-    // Step 1: transition status
-    final transitionResult = await domainService.transition(
+    final result = await domainService.transition(
       id: event.id,
       targetStatus: DailyReportStatus.rejected,
+      feedback: event.feedback,
     );
-
-    // Extract failure or entity — no async inside fold
-    if (transitionResult.isLeft()) {
-      final failure = transitionResult.fold((f) => f, (_) => null)!;
-      emit(DailyReportFailure(failure.message));
-      return;
-    }
-
-    final entity = transitionResult.fold((_) => null, (e) => e)!;
-
-    // Step 2: persist feedback
-    final withFeedback = entity.copyWith(
-      adminFeedback: event.feedback,
-      reviewDecision: 'rejected',
-      reviewedAt: DateTime.now(),
-      // TODO: replace with authenticated admin from AuthSession when real API lands
-      reviewedByName: 'Dr. Joseph Barick',
-      reviewedByRole: 'Head Marketing Officer',
-    );
-
-    final updateResult = await updateUseCase(
-      UpdateDailyReportParams(entity: withFeedback),
-    );
-
-    updateResult.fold(
+    result.fold(
       (f) => emit(DailyReportFailure(f.message)),
-      (updated) => emit(
-        DailyReportOperationSuccess('Report rejected', updatedItem: updated),
+      (entity) => emit(
+        DailyReportOperationSuccess('Report rejected', updatedItem: entity),
       ),
     );
   }

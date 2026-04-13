@@ -1,4 +1,5 @@
-﻿import 'package:flutter_bloc/flutter_bloc.dart';
+﻿import 'package:flutter/foundation.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../../data/datasources/conversation_remote_datasource.dart';
 import '../../domain/usecases/create_conversation_usecase.dart';
@@ -37,6 +38,14 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     // FIX #2: Register current user's name in the datasource name cache
     // so that messages sent by this user show their name, not their ULID.
     _ds.registerName(currentUserId, currentUserName);
+
+    // ── Debug: log identity so we can verify participant matching ──
+    debugPrint('╔══════════════════════════════════════════════════╗');
+    debugPrint('║ ConversationBloc — Current User Identity         ║');
+    debugPrint('║ currentUserId:   $currentUserId');
+    debugPrint('║ currentUserName: $currentUserName');
+    debugPrint('║ currentUserRole: $currentUserRole');
+    debugPrint('╚══════════════════════════════════════════════════╝');
 
     on<ConversationLoadAllRequested>(_onLoadAll);
     on<ConversationLoadOneRequested>(_onLoadOne);
@@ -86,6 +95,22 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     final conv = await _ds.getById(convId);
     final msgs = await _ds.getMessages(convId);
     final pinned = _ds.getPinnedMessages(convId);
+
+    // ── Debug: log participant matching ──
+    debugPrint('┌─ _reloadChat($convId) ─────────────────────');
+    debugPrint(
+      '│ type: ${conv.type.name}, participants: ${conv.participants.length}',
+    );
+    for (final p in conv.participants) {
+      final match = p.id.toLowerCase() == currentUserId.toLowerCase();
+      debugPrint(
+        '│  ${match ? "✓" : "✗"} id=${p.id} name=${p.name} role=${p.role}',
+      );
+    }
+    debugPrint(
+      '│ hasParticipant($currentUserId) = ${conv.hasParticipant(currentUserId)}',
+    );
+    debugPrint('└────────────────────────────────────────────');
     final currentTyping = state is ConversationChatLoaded
         ? (state as ConversationChatLoaded).typingUser
         : null;
@@ -115,12 +140,26 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   ) async {
     emit(ConversationLoading());
     final result = await getAllUseCase(NoParams());
-    result.fold(
-      (f) => emit(ConversationFailure(f.message)),
-      (items) => items.isEmpty
+    result.fold((f) => emit(ConversationFailure(f.message)), (items) {
+      // ── Debug: log conversation list matching ──
+      final mine = items.where((c) => c.hasParticipant(currentUserId)).length;
+      final monitored = items.length - mine;
+      debugPrint('┌─ ConversationLoadAll ─────────────────────');
+      debugPrint('│ total=${items.length} mine=$mine monitored=$monitored');
+      debugPrint('│ currentUserId=$currentUserId');
+      if (items.isNotEmpty) {
+        final first = items.first;
+        debugPrint('│ first conv participants:');
+        for (final p in first.participants) {
+          debugPrint('│   id=${p.id} name=${p.name}');
+        }
+      }
+      debugPrint('└────────────────────────────────────────────');
+
+      return items.isEmpty
           ? emit(ConversationEmpty())
-          : emit(ConversationListLoaded(items)),
-    );
+          : emit(ConversationListLoaded(items));
+    });
   }
 
   Future<void> _onLoadOne(

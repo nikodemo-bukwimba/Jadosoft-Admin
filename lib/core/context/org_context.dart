@@ -41,6 +41,8 @@ enum OrgRole {
   /// Manages one branch only. Approves plans/reports for branch officers.
   branchAdmin,
 
+  fieldOfficer,
+
   /// Unknown — fallback until /auth/me provides membership data.
   unknown,
 }
@@ -97,6 +99,8 @@ class OrgContext {
 
   /// Whether viewing all branches (org admin, no branch filter).
   bool get isViewingAllBranches => isOrgAdmin && !hasBranch;
+
+  bool get isFieldOfficer => _orgRole == OrgRole.fieldOfficer;
 
   String? get actorId => _actorId;
   String? get actorName => _actorName;

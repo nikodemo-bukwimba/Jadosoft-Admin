@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.maimarket.adminpanel"
+    namespace = "com.jadosoft.admin"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,7 +20,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.maimarket.adminpanel"
+        applicationId = "com.jadosoft.admin"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -48,3 +48,6 @@ android {
 flutter {
     source = "../.."
 }
+
+
+

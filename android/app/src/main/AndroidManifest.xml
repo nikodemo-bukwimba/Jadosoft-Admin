@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="Admin Panel"
+        android:label="Jadosoft Admin"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -55,3 +55,5 @@
     </intent>
 </queries>
 </manifest>
+
+

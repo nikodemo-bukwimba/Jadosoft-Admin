@@ -8,7 +8,7 @@
 //
 
 import 'package:dio/dio.dart';
-import 'package:admin_panel/core/error/exceptions.dart';
+import 'package:jadosoft_admin/core/error/exceptions.dart';
 
 import '../models/dashboard_stats_model.dart';
 

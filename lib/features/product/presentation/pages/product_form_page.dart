@@ -6,7 +6,9 @@ import '../bloc/product_bloc.dart';
 import '../bloc/product_event.dart';
 import '../bloc/product_state.dart';
 import '../../domain/usecases/create_product_usecase.dart';
-import '../../../category/data/datasources/category_mock_datasource.dart';
+import 'package:get_it/get_it.dart';
+import '../../../category/domain/usecases/get_all_category_usecase.dart';
+import '../../../../core/usecase/usecase.dart';
 import '../../../category/domain/entities/category_entity.dart';
 import '../../../../core/widgets/searchable_picker_sheet.dart';
 import '../widgets/product_image.dart';
@@ -60,15 +62,21 @@ class _ProductFormPageState extends State<ProductFormPage> {
 
   Future<void> _loadCategories() async {
     try {
-      final ds = CategoryMockDataSource();
-      final result = await ds.getAll();
-      final cats = result.items.cast<CategoryEntity>();
-      if (mounted) {
-        setState(() {
-          _categories = cats;
-          _categoriesLoading = false;
-        });
-      }
+      final useCase = GetIt.instance<GetAllCategoryUseCase>();
+      final result = await useCase(NoParams());
+      result.fold(
+        (_) {
+          if (mounted) setState(() => _categoriesLoading = false);
+        },
+        (paginated) {
+          if (mounted) {
+            setState(() {
+              _categories = paginated.items;
+              _categoriesLoading = false;
+            });
+          }
+        },
+      );
     } catch (_) {
       if (mounted) setState(() => _categoriesLoading = false);
     }

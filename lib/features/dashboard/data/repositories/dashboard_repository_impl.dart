@@ -19,11 +19,11 @@ import 'dart:convert';
 
 import 'package:dartz/dartz.dart';
 import 'package:drift/drift.dart' show Value;
-import 'package:admin_panel/core/constants/app_constants.dart';
-import 'package:admin_panel/core/database/app_database.dart';
-import 'package:admin_panel/core/database/dashboard_cache_dao.dart';
-import 'package:admin_panel/core/error/exceptions.dart';
-import 'package:admin_panel/core/error/failures.dart';
+import 'package:jadosoft_admin/core/constants/app_constants.dart';
+import 'package:jadosoft_admin/core/database/app_database.dart';
+import 'package:jadosoft_admin/core/database/dashboard_cache_dao.dart';
+import 'package:jadosoft_admin/core/error/exceptions.dart';
+import 'package:jadosoft_admin/core/error/failures.dart';
 import '../../domain/entities/dashboard_stats.dart';
 import '../../domain/repositories/dashboard_repository.dart';
 import '../datasources/dashboard_remote_datasource.dart';

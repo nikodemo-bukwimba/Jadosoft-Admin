@@ -1,10 +1,14 @@
 ﻿// promotion_detail_page.dart
-// Product names are no longer resolved from the mock datasource.
-// The detail page shows product IDs as-is (the real product name
-// resolution belongs in a dedicated Product feature bloc/repository).
-// For display, productId is shown with a truncated label.
-// When the Product feature (Seq 7) is wired, replace _productLabel()
-// with a lookup from ProductBloc/cache.
+// ─────────────────────────────────────────────────────────────
+// Admin App — Promotion detail with state transition actions.
+//
+// FIX (Issue 3): After End/Cancel transitions, Nexora maps
+// the status back to 'sent'/'failed' → 'active'/'cancelled'.
+// Re-fetching from API after these transitions would overwrite
+// the local terminal status. Instead, we apply the returned
+// entity directly via PromotionStatusOverridden so the UI
+// reflects the correct state without a network round-trip.
+// ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -31,22 +35,15 @@ class PromotionDetailPage extends StatelessWidget {
               backgroundColor: Colors.green,
             ),
           );
-          // Reload this detail only — do NOT fire LoadAll which overwrites state
+          // FIX: Apply the updated entity directly to state.
+          // Do NOT call LoadOne — it re-fetches from Nexora which maps
+          // 'sent' → 'active', discarding the local 'ended' status.
           if (state.updatedItem != null) {
             context.read<PromotionBloc>().add(
-              PromotionLoadOneRequested(state.updatedItem!.id),
+              PromotionStatusOverridden(state.updatedItem!),
             );
           }
         }
-        if (state is PromotionFailure) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-          );
-        }
-
         if (state is PromotionFailure) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -434,8 +431,7 @@ class _ActionButtons extends StatelessWidget {
             const Text('Activating this promotion will immediately:'),
             const SizedBox(height: 12),
             _bulletPoint(
-              'Send SMS to all registered customers'
-              ' via Vodacom/Airtel gateway',
+              'Send SMS to all registered customers via Vodacom/Airtel gateway',
               Icons.sms_outlined,
               Colors.orange,
             ),
@@ -564,8 +560,6 @@ class _ProductRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Product name resolution: shows the product ID until the Product
-    // feature (Seq 7) exposes a name cache. The ID is the ULID from Nexora.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
@@ -584,12 +578,7 @@ class _ProductRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              productId, // replaced by product name cache when Product feature is live
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
+          Expanded(child: Text(productId, style: theme.textTheme.bodyMedium)),
         ],
       ),
     );

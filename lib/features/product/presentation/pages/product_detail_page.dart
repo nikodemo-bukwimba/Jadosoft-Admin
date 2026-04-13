@@ -9,17 +9,18 @@ import '../../domain/entities/product_entity.dart';
 import '../../domain/value_objects/product_status.dart';
 import '../widgets/product_image.dart';
 import '../widgets/product_status_badge.dart';
-import '../../../category/data/datasources/category_mock_datasource.dart';
 import '../widgets/product_confirm_name_dialog.dart';
+import 'package:get_it/get_it.dart';
+import '../../../category/domain/usecases/get_category_usecase.dart';
 
 class ProductDetailPage extends StatelessWidget {
   const ProductDetailPage({super.key});
 
   Future<String> _getCategoryName(String categoryId) async {
     try {
-      final ds = CategoryMockDataSource();
-      final cat = await ds.getById(categoryId);
-      return cat.name;
+      final useCase = GetIt.instance<GetCategoryUseCase>();
+      final result = await useCase(GetCategoryParams(id: categoryId));
+      return result.fold((_) => categoryId, (cat) => cat.name);
     } catch (_) {
       return categoryId;
     }

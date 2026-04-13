@@ -12,8 +12,8 @@
 // ─────────────────────────────────────────────────────────────
 
 import 'package:dio/dio.dart';
-import 'package:admin_panel/core/error/exceptions.dart';
-import 'package:admin_panel/features/auth/data/models/user_model.dart';
+import 'package:jadosoft_admin/core/error/exceptions.dart';
+import 'package:jadosoft_admin/features/auth/data/models/user_model.dart';
 import '../models/profile_model.dart';
 
 abstract class ProfileRemoteDataSource {

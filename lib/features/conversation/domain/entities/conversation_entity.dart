@@ -73,25 +73,32 @@ class ConversationEntity extends Equatable {
     required this.createdAt,
   });
 
-  bool hasParticipant(String userId) => participants.any((p) => p.id == userId);
+  bool hasParticipant(String userId) {
+    final lower = userId.toLowerCase();
+    return participants.any((p) => p.id.toLowerCase() == lower);
+  }
 
   String displayName(String currentUserId) {
     if (type == ConversationType.group) return title ?? 'Group Chat';
-    final other = participants.where((p) => p.id != currentUserId);
+    final lower = currentUserId.toLowerCase();
+    final other = participants.where((p) => p.id.toLowerCase() != lower);
     return other.isNotEmpty ? other.first.name : 'Conversation';
   }
 
   String subtitle(String currentUserId) {
-    if (type == ConversationType.group)
+    if (type == ConversationType.group) {
       return participants.map((p) => p.name).join(', ');
-    final other = participants.where((p) => p.id != currentUserId);
+    }
+    final lower = currentUserId.toLowerCase();
+    final other = participants.where((p) => p.id.toLowerCase() != lower);
     if (other.isEmpty) return '';
     return other.first.lastSeenLabel;
   }
 
   ConversationParticipant? otherParticipant(String currentUserId) {
     if (type == ConversationType.group) return null;
-    final other = participants.where((p) => p.id != currentUserId);
+    final lower = currentUserId.toLowerCase();
+    final other = participants.where((p) => p.id.toLowerCase() != lower);
     return other.isNotEmpty ? other.first : null;
   }
 

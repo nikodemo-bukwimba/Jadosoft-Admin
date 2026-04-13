@@ -32,15 +32,15 @@ import 'auth_event.dart';
 import 'auth_state.dart';
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
-  final LoginUseCase          _login;
-  final RegisterUseCase       _register;
-  final LogoutUseCase         _logout;
-  final LogoutAccountUseCase  _logoutAccount;
-  final SwitchAccountUseCase  _switchAccount;
-  final GetActiveSessionUseCase   _getActiveSession;
-  final GetSavedAccountsUseCase   _getSavedAccounts;
-  final RefreshSessionUseCase     _refreshSession;
-  final OrgContext             _orgContext;           // FIX: added
+  final LoginUseCase _login;
+  final RegisterUseCase _register;
+  final LogoutUseCase _logout;
+  final LogoutAccountUseCase _logoutAccount;
+  final SwitchAccountUseCase _switchAccount;
+  final GetActiveSessionUseCase _getActiveSession;
+  final GetSavedAccountsUseCase _getSavedAccounts;
+  final RefreshSessionUseCase _refreshSession;
+  final OrgContext _orgContext; // FIX: added
 
   AuthBloc({
     required LoginUseCase login,
@@ -51,16 +51,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     required GetActiveSessionUseCase getActiveSession,
     required GetSavedAccountsUseCase getSavedAccounts,
     required RefreshSessionUseCase refreshSession,
-    required OrgContext orgContext,                   // FIX: added
-  }) : _login           = login,
-       _register        = register,
-       _logout          = logout,
-       _logoutAccount   = logoutAccount,
-       _switchAccount   = switchAccount,
+    required OrgContext orgContext, // FIX: added
+  }) : _login = login,
+       _register = register,
+       _logout = logout,
+       _logoutAccount = logoutAccount,
+       _switchAccount = switchAccount,
        _getActiveSession = getActiveSession,
        _getSavedAccounts = getSavedAccounts,
-       _refreshSession  = refreshSession,
-       _orgContext      = orgContext,                 // FIX: added
+       _refreshSession = refreshSession,
+       _orgContext = orgContext, // FIX: added
        super(AuthInitial()) {
     on<AuthCheckRequested>(_onCheckRequested);
     on<AuthLoginRequested>(_onLoginRequested);
@@ -80,15 +80,20 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   //   'branch_admin'        → OrgRole.branchAdmin
   //   anything else         → OrgRole.orgAdmin (admin app default)
   Future<void> _applyOrgContext(AccountSession session) async {
-    final roleSlug = session.user.primaryRole?.slug.toLowerCase() ?? '';
-    final role = roleSlug.contains('branch')
+    final slug = session.user.primaryRole?.slug.toLowerCase() ?? '';
+
+    final role = slug == 'branch_manager'
         ? OrgRole.branchAdmin
-        : OrgRole.orgAdmin;
+        : slug.contains('officer') || slug == 'junior_officer'
+        ? OrgRole.fieldOfficer
+        : OrgRole.orgAdmin; // owner, admin, super → orgAdmin
 
     await _orgContext.setRootOrg(
-      id:   AppConstants.orgId,
+      id: AppConstants.orgId,
       name: 'Barick Pharmacy',
       role: role,
+      actorId: session.user.actorId,
+      actorName: session.user.name,
     );
   }
 
@@ -167,7 +172,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session);           // FIX
+        await _applyOrgContext(session); // FIX
 
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
@@ -204,7 +209,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session);           // FIX
+        await _applyOrgContext(session); // FIX
 
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
@@ -233,7 +238,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (_) async {
-        await _orgContext.clear();                 // FIX
+        await _orgContext.clear(); // FIX
 
         final accountsResult = await _getSavedAccounts(NoParams());
         final remaining = accountsResult.fold<List<AccountSession>>(
@@ -267,7 +272,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         );
 
         if (remaining.isEmpty) {
-          await _orgContext.clear();               // FIX
+          await _orgContext.clear(); // FIX
           emit(AuthUnauthenticated());
           return;
         }
@@ -315,7 +320,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         });
       },
       (newSession) async {
-        await _applyOrgContext(newSession);        // FIX
+        await _applyOrgContext(newSession); // FIX
 
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
@@ -337,7 +342,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     AuthAccountsRefreshRequested event,
     Emitter<AuthState> emit,
   ) async {
-    final sessionResult  = await _getActiveSession(NoParams());
+    final sessionResult = await _getActiveSession(NoParams());
     final accountsResult = await _getSavedAccounts(NoParams());
 
     sessionResult.fold((_) => emit(AuthUnauthenticated()), (session) {
@@ -377,7 +382,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session);           // FIX
+        await _applyOrgContext(session); // FIX
 
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(

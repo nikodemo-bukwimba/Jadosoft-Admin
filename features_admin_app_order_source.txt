@@ -1,7 +1,7 @@
 ﻿// ================================================================
 // features_order_source.txt
-// Generated : 2026-04-03 11:42:16
-// Files     : 30
+// Generated : 2026-04-11 19:15:09
+// Files     : 32
 // Usage     : Upload to Claude Project documents as reference.
 // ================================================================
 
@@ -19,8 +19,20 @@ class OrderMockDataSource implements OrderRemoteDataSource {
       id: 'ord-001',
       customerId: 'cust-001',
       items: [
-        {'productId': 'prod-001', 'name': 'Amoxicillin 500mg', 'qty': 10, 'unitPrice': 2500.0, 'subtotal': 25000.0},
-        {'productId': 'prod-002', 'name': 'Paracetamol 1000mg', 'qty': 5, 'unitPrice': 1200.0, 'subtotal': 6000.0},
+        {
+          'productId': 'prod-001',
+          'name': 'Amoxicillin 500mg',
+          'qty': 10,
+          'unitPrice': 2500.0,
+          'subtotal': 25000.0,
+        },
+        {
+          'productId': 'prod-002',
+          'name': 'Paracetamol 1000mg',
+          'qty': 5,
+          'unitPrice': 1200.0,
+          'subtotal': 6000.0,
+        },
       ],
       total: 31000.0,
       paymentRef: 'MPESA-2024-001',
@@ -31,7 +43,13 @@ class OrderMockDataSource implements OrderRemoteDataSource {
       id: 'ord-002',
       customerId: 'cust-002',
       items: [
-        {'productId': 'prod-003', 'name': 'Metformin 850mg', 'qty': 30, 'unitPrice': 800.0, 'subtotal': 24000.0},
+        {
+          'productId': 'prod-003',
+          'name': 'Metformin 850mg',
+          'qty': 30,
+          'unitPrice': 800.0,
+          'subtotal': 24000.0,
+        },
       ],
       total: 24000.0,
       paymentRef: 'AIRTEL-2024-002',
@@ -42,9 +60,27 @@ class OrderMockDataSource implements OrderRemoteDataSource {
       id: 'ord-003',
       customerId: 'cust-003',
       items: [
-        {'productId': 'prod-004', 'name': 'Omeprazole 20mg', 'qty': 20, 'unitPrice': 1500.0, 'subtotal': 30000.0},
-        {'productId': 'prod-005', 'name': 'Vitamin C 1000mg', 'qty': 10, 'unitPrice': 900.0, 'subtotal': 9000.0},
-        {'productId': 'prod-001', 'name': 'Amoxicillin 500mg', 'qty': 15, 'unitPrice': 2500.0, 'subtotal': 37500.0},
+        {
+          'productId': 'prod-004',
+          'name': 'Omeprazole 20mg',
+          'qty': 20,
+          'unitPrice': 1500.0,
+          'subtotal': 30000.0,
+        },
+        {
+          'productId': 'prod-005',
+          'name': 'Vitamin C 1000mg',
+          'qty': 10,
+          'unitPrice': 900.0,
+          'subtotal': 9000.0,
+        },
+        {
+          'productId': 'prod-001',
+          'name': 'Amoxicillin 500mg',
+          'qty': 15,
+          'unitPrice': 2500.0,
+          'subtotal': 37500.0,
+        },
       ],
       total: 76500.0,
       paymentRef: 'MPESA-2024-003',
@@ -55,7 +91,13 @@ class OrderMockDataSource implements OrderRemoteDataSource {
       id: 'ord-004',
       customerId: 'cust-004',
       items: [
-        {'productId': 'prod-006', 'name': 'Ibuprofen 400mg', 'qty': 25, 'unitPrice': 700.0, 'subtotal': 17500.0},
+        {
+          'productId': 'prod-006',
+          'name': 'Ibuprofen 400mg',
+          'qty': 25,
+          'unitPrice': 700.0,
+          'subtotal': 17500.0,
+        },
       ],
       total: 17500.0,
       paymentRef: null,
@@ -66,8 +108,20 @@ class OrderMockDataSource implements OrderRemoteDataSource {
       id: 'ord-005',
       customerId: 'cust-005',
       items: [
-        {'productId': 'prod-007', 'name': 'Azithromycin 250mg', 'qty': 6, 'unitPrice': 3200.0, 'subtotal': 19200.0},
-        {'productId': 'prod-002', 'name': 'Paracetamol 1000mg', 'qty': 12, 'unitPrice': 1200.0, 'subtotal': 14400.0},
+        {
+          'productId': 'prod-007',
+          'name': 'Azithromycin 250mg',
+          'qty': 6,
+          'unitPrice': 3200.0,
+          'subtotal': 19200.0,
+        },
+        {
+          'productId': 'prod-002',
+          'name': 'Paracetamol 1000mg',
+          'qty': 12,
+          'unitPrice': 1200.0,
+          'subtotal': 14400.0,
+        },
       ],
       total: 33600.0,
       paymentRef: null,
@@ -78,7 +132,13 @@ class OrderMockDataSource implements OrderRemoteDataSource {
       id: 'ord-006',
       customerId: 'cust-001',
       items: [
-        {'productId': 'prod-008', 'name': 'Atorvastatin 40mg', 'qty': 30, 'unitPrice': 1800.0, 'subtotal': 54000.0},
+        {
+          'productId': 'prod-008',
+          'name': 'Atorvastatin 40mg',
+          'qty': 30,
+          'unitPrice': 1800.0,
+          'subtotal': 54000.0,
+        },
       ],
       total: 54000.0,
       paymentRef: 'MPESA-2024-006',
@@ -181,7 +241,33 @@ class OrderMockDataSource implements OrderRemoteDataSource {
     _orders[index] = updated;
     return updated;
   }
+
+  @override
+  Future<OrderModel> markPaid(
+    String id,
+    String actorId,
+    String? paymentRef,
+  ) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    final index = _orders.indexWhere((o) => o.id == id);
+    if (index == -1) throw Exception('Order not found');
+    final updated = OrderModel(
+      id: _orders[index].id,
+      customerId: _orders[index].customerId,
+      items: _orders[index].items,
+      total: _orders[index].total,
+      paymentRef: paymentRef ?? _orders[index].paymentRef,
+      status: _orders[index].status,
+      createdAt: _orders[index].createdAt,
+      paymentStatus: 'paid',
+      paymentVerifiedBy: actorId,
+      paymentVerifiedAt: DateTime.now(),
+    );
+    _orders[index] = updated;
+    return updated;
+  }
 }
+
 
 // === FILE: lib/features/order/data/datasources/order_remote_datasource.dart ===
 import 'package:dio/dio.dart';
@@ -199,6 +285,7 @@ abstract class OrderRemoteDataSource {
   Future<OrderModel> ship(String id);
   Future<OrderModel> deliver(String id);
   Future<OrderModel> cancel(String id);
+  Future<OrderModel> markPaid(String id, String actorId, String? paymentRef);
 }
 
 class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
@@ -346,11 +433,35 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
     }
     return 'An error occurred. Please try again.';
   }
+
+  @override
+  Future<OrderModel> markPaid(
+    String id,
+    String actorId,
+    String? paymentRef,
+  ) async {
+    try {
+      final response = await _dio.patch(
+        '/commerce/orders/$id',
+        data: {
+          'payment_status': 'paid',
+          'payment_verified_by': actorId,
+          'payment_verified_at': DateTime.now().toIso8601String(),
+          if (paymentRef != null) 'payment_ref': paymentRef,
+        },
+      );
+      final data = response.data['order'] ?? response.data;
+      return OrderModel.fromJson(data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
 }
 
 
 // === FILE: lib/features/order/data/models/order_model.dart ===
 import '../../domain/entities/order_entity.dart';
+import 'dart:convert';
 
 class OrderModel extends OrderEntity {
   const OrderModel({
@@ -361,6 +472,9 @@ class OrderModel extends OrderEntity {
     super.paymentRef,
     required super.status,
     required super.createdAt,
+    super.paymentStatus = 'unpaid',
+    super.paymentVerifiedBy,
+    super.paymentVerifiedAt,
   });
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
@@ -384,13 +498,29 @@ class OrderModel extends OrderEntity {
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
           : DateTime.now(),
+      paymentStatus:
+          _meta(json)['payment_status']?.toString() ??
+          json['payment_status']?.toString() ??
+          'unpaid',
+      paymentVerifiedBy:
+          _meta(json)['payment_verified_by']?.toString() ??
+          json['payment_verified_by']?.toString(),
+      paymentVerifiedAt:
+          (_meta(json)['payment_verified_at'] ?? json['payment_verified_at']) !=
+              null
+          ? DateTime.tryParse(
+              (_meta(json)['payment_verified_at'] ??
+                      json['payment_verified_at'])
+                  .toString(),
+            )
+          : null,
     );
   }
 
   static String _mapStatus(String s) => switch (s) {
-    'pending' => 'draft', // map Nexora pending → our draft
+    'pending' => 'draft',
     'confirmed' => 'confirmed',
-    'processing' => 'confirmed', // treat processing same as confirmed
+    'processing' => 'confirmed',
     'shipped' => 'shipped',
     'delivered' => 'delivered',
     'cancelled' => 'cancelled',
@@ -428,6 +558,10 @@ class OrderModel extends OrderEntity {
     'payment_ref': paymentRef,
     'status': status,
     'created_at': createdAt.toIso8601String(),
+    'payment_status': paymentStatus,
+    if (paymentVerifiedBy != null) 'payment_verified_by': paymentVerifiedBy,
+    if (paymentVerifiedAt != null)
+      'payment_verified_at': paymentVerifiedAt!.toIso8601String(),
   };
 
   factory OrderModel.fromEntity(OrderEntity entity) {
@@ -439,7 +573,23 @@ class OrderModel extends OrderEntity {
       paymentRef: entity.paymentRef,
       status: entity.status,
       createdAt: entity.createdAt,
+      paymentStatus: entity.paymentStatus,
+      paymentVerifiedBy: entity.paymentVerifiedBy,
+      paymentVerifiedAt: entity.paymentVerifiedAt,
     );
+  }
+
+  static Map<String, dynamic> _meta(Map<String, dynamic> json) {
+    final raw = json['metadata'];
+    if (raw == null) return {};
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is String) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) return decoded;
+      } catch (_) {}
+    }
+    return {};
   }
 }
 
@@ -504,9 +654,17 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Either<Failure, OrderEntity>> update(OrderEntity entity) async {
     try {
-      final model = OrderModel.fromEntity(entity);
-      final result = await _remoteDataSource.update(entity.id, model.toJson());
-      return Right(result);
+      // Payment status update — uses dedicated patch
+      if (entity.paymentStatus == 'paid') {
+        final result = await _remoteDataSource.markPaid(
+          entity.id,
+          entity.paymentVerifiedBy ?? 'admin',
+          entity.paymentRef,
+        );
+        return Right(result);
+      }
+      // General update (no-op for other fields — Nexora orders are status-transition only)
+      return Right(await _remoteDataSource.getById(entity.id));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
@@ -584,6 +742,10 @@ class OrderEntity extends Equatable {
   final String? paymentRef;
   final String status;
   final DateTime createdAt;
+  // ── Payment audit fields ──────────────────────────────────
+  final String paymentStatus;      // unpaid | paid | partial | refunded
+  final String? paymentVerifiedBy; // actor ID who toggled, or 'system'
+  final DateTime? paymentVerifiedAt;
 
   const OrderEntity({
     required this.id,
@@ -593,6 +755,9 @@ class OrderEntity extends Equatable {
     this.paymentRef,
     required this.status,
     required this.createdAt,
+    this.paymentStatus = 'unpaid',
+    this.paymentVerifiedBy,
+    this.paymentVerifiedAt,
   });
 
   OrderEntity copyWith({
@@ -603,6 +768,9 @@ class OrderEntity extends Equatable {
     String? paymentRef,
     String? status,
     DateTime? createdAt,
+    String? paymentStatus,
+    String? paymentVerifiedBy,
+    DateTime? paymentVerifiedAt,
   }) {
     return OrderEntity(
       id: id ?? this.id,
@@ -612,13 +780,18 @@ class OrderEntity extends Equatable {
       paymentRef: paymentRef ?? this.paymentRef,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
+      paymentVerifiedBy: paymentVerifiedBy ?? this.paymentVerifiedBy,
+      paymentVerifiedAt: paymentVerifiedAt ?? this.paymentVerifiedAt,
     );
   }
 
   @override
-  List<Object?> get props => [id, customerId, items, total, paymentRef, status, createdAt];
+  List<Object?> get props => [
+    id, customerId, items, total, paymentRef, status, createdAt,
+    paymentStatus, paymentVerifiedBy, paymentVerifiedAt,
+  ];
 }
-
 
 // === FILE: lib/features/order/domain/events/order_domain_events.dart ===
 import '../entities/order_entity.dart';
@@ -931,6 +1104,48 @@ class GetOrderUseCase implements UseCase<OrderEntity, GetOrderParams> {
 }
 
 
+// === FILE: lib/features/order/domain/usecases/mark_order_paid_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/order_entity.dart';
+import '../repositories/order_repository.dart';
+
+class MarkOrderPaidParams {
+  final String orderId;
+  final String actorId; // who performed the action
+  final String actorName;
+  final String? paymentRef; // optional reference entered by admin
+
+  const MarkOrderPaidParams({
+    required this.orderId,
+    required this.actorId,
+    required this.actorName,
+    this.paymentRef,
+  });
+}
+
+class MarkOrderPaidUseCase
+    implements UseCase<OrderEntity, MarkOrderPaidParams> {
+  final OrderRepository repository;
+  MarkOrderPaidUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, OrderEntity>> call(MarkOrderPaidParams p) async {
+    final result = await repository.getById(p.orderId);
+    return result.fold((failure) => Left(failure), (order) async {
+      final updated = order.copyWith(
+        paymentStatus: 'paid',
+        paymentVerifiedBy: p.actorId,
+        paymentVerifiedAt: DateTime.now(),
+        paymentRef: p.paymentRef ?? order.paymentRef,
+      );
+      return repository.update(updated);
+    });
+  }
+}
+
+
 // === FILE: lib/features/order/domain/usecases/update_order_usecase.dart ===
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
@@ -1100,16 +1315,18 @@ import '../../domain/usecases/get_order_usecase.dart';
 import '../../domain/usecases/get_all_order_usecase.dart';
 import '../../domain/usecases/update_order_usecase.dart';
 import '../../domain/value_objects/order_status.dart';
+import '../../domain/usecases/mark_order_paid_usecase.dart';
 import 'order_event.dart';
 import 'order_state.dart';
 
 class OrderBloc extends Bloc<OrderEvent, OrderState> {
-  final GetAllOrderUseCase  getAllUseCase;
-  final GetOrderUseCase     getUseCase;
-  final CreateOrderUseCase  createUseCase;
-  final UpdateOrderUseCase  updateUseCase;
-  final DeleteOrderUseCase  deleteUseCase;
-  final OrderDomainService  domainService;
+  final GetAllOrderUseCase getAllUseCase;
+  final GetOrderUseCase getUseCase;
+  final CreateOrderUseCase createUseCase;
+  final UpdateOrderUseCase updateUseCase;
+  final DeleteOrderUseCase deleteUseCase;
+  final OrderDomainService domainService;
+  final MarkOrderPaidUseCase markPaidUseCase;
 
   OrderBloc({
     required this.getAllUseCase,
@@ -1118,6 +1335,7 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     required this.updateUseCase,
     required this.deleteUseCase,
     required this.domainService,
+    required this.markPaidUseCase,
   }) : super(OrderInitial()) {
     on<OrderLoadAllRequested>(_onLoadAll);
     on<OrderLoadOneRequested>(_onLoadOne);
@@ -1129,22 +1347,26 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     on<OrderShipRequested>(_onShip);
     on<OrderDeliverRequested>(_onDeliver);
     on<OrderCancelRequested>(_onCancel);
+    on<OrderMarkPaidRequested>(_onMarkPaid);
   }
 
   Future<void> _onLoadAll(
-      OrderLoadAllRequested event, Emitter<OrderState> emit) async {
+    OrderLoadAllRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await getAllUseCase(NoParams());
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (items) => items.isEmpty
-          ? emit(OrderEmpty())
-          : emit(OrderListLoaded(items)),
+      (items) =>
+          items.isEmpty ? emit(OrderEmpty()) : emit(OrderListLoaded(items)),
     );
   }
 
   Future<void> _onLoadOne(
-      OrderLoadOneRequested event, Emitter<OrderState> emit) async {
+    OrderLoadOneRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await getUseCase(GetOrderParams(id: event.id));
     result.fold(
@@ -1154,7 +1376,9 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
   }
 
   Future<void> _onCreate(
-      OrderCreateRequested event, Emitter<OrderState> emit) async {
+    OrderCreateRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await createUseCase(event.params);
     result.fold(
@@ -1164,7 +1388,9 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
   }
 
   Future<void> _onUpdate(
-      OrderUpdateRequested event, Emitter<OrderState> emit) async {
+    OrderUpdateRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await updateUseCase(UpdateOrderParams(entity: event.entity));
     result.fold(
@@ -1174,7 +1400,9 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
   }
 
   Future<void> _onDelete(
-      OrderDeleteRequested event, Emitter<OrderState> emit) async {
+    OrderDeleteRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await deleteUseCase(DeleteOrderParams(id: event.id));
     result.fold(
@@ -1184,7 +1412,9 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
   }
 
   Future<void> _onConfirm(
-      OrderConfirmRequested event, Emitter<OrderState> emit) async {
+    OrderConfirmRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -1192,14 +1422,16 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     );
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (entity) => emit(OrderOperationSuccess(
-        'Confirm Order successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        OrderOperationSuccess('Confirm Order successful', updatedItem: entity),
+      ),
     );
   }
+
   Future<void> _onShip(
-      OrderShipRequested event, Emitter<OrderState> emit) async {
+    OrderShipRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -1207,14 +1439,16 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     );
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (entity) => emit(OrderOperationSuccess(
-        'Ship Order successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        OrderOperationSuccess('Ship Order successful', updatedItem: entity),
+      ),
     );
   }
+
   Future<void> _onDeliver(
-      OrderDeliverRequested event, Emitter<OrderState> emit) async {
+    OrderDeliverRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -1222,14 +1456,16 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     );
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (entity) => emit(OrderOperationSuccess(
-        'Mark Delivered successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        OrderOperationSuccess('Mark Delivered successful', updatedItem: entity),
+      ),
     );
   }
+
   Future<void> _onCancel(
-      OrderCancelRequested event, Emitter<OrderState> emit) async {
+    OrderCancelRequested event,
+    Emitter<OrderState> emit,
+  ) async {
     emit(OrderLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -1237,10 +1473,21 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     );
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (entity) => emit(OrderOperationSuccess(
-        'Cancel Order successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        OrderOperationSuccess('Cancel Order successful', updatedItem: entity),
+      ),
+    );
+  }
+
+  Future<void> _onMarkPaid(
+    OrderMarkPaidRequested event,
+    Emitter<OrderState> emit,
+  ) async {
+    emit(OrderLoading());
+    final result = await markPaidUseCase(event.params);
+    result.fold(
+      (f) => emit(OrderFailure(f.message)),
+      (order) => emit(OrderDetailLoaded(order)),
     );
   }
 }
@@ -1249,6 +1496,7 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
 // === FILE: lib/features/order/presentation/bloc/order_event.dart ===
 import '../../domain/entities/order_entity.dart';
 import '../../domain/usecases/create_order_usecase.dart';
+import '../../domain/usecases/mark_order_paid_usecase.dart';
 
 abstract class OrderEvent {}
 
@@ -1280,17 +1528,25 @@ class OrderConfirmRequested extends OrderEvent {
   final String id;
   OrderConfirmRequested(this.id);
 }
+
 class OrderShipRequested extends OrderEvent {
   final String id;
   OrderShipRequested(this.id);
 }
+
 class OrderDeliverRequested extends OrderEvent {
   final String id;
   OrderDeliverRequested(this.id);
 }
+
 class OrderCancelRequested extends OrderEvent {
   final String id;
   OrderCancelRequested(this.id);
+}
+
+class OrderMarkPaidRequested extends OrderEvent {
+  final MarkOrderPaidParams params;
+  OrderMarkPaidRequested(this.params);
 }
 
 
@@ -1342,6 +1598,9 @@ import '../../domain/entities/order_entity.dart';
 import '../../domain/value_objects/order_status.dart';
 import '../bloc/order_bloc.dart';
 import '../bloc/order_event.dart';
+import '../widgets/order_payment_card.dart';
+import '../../../../core/context/org_context.dart';
+import '../../../../config/di/injection_container.dart';
 import '../bloc/order_state.dart';
 import '../widgets/order_status_badge.dart';
 
@@ -1456,6 +1715,16 @@ class _OrderBody extends StatelessWidget {
           // ── Order Items ────────────────────────────────────
           _ItemsCard(items: item.items),
           const SizedBox(height: 16),
+          OrderPaymentCard(
+            order: item,
+            currentActorId:
+                sl<OrgContext>().actorId ?? sl<OrgContext>().effectiveOrgId,
+            currentActorName:
+                sl<OrgContext>().actorName ??
+                sl<OrgContext>().rootOrgName ??
+                'Admin',
+          ),
+          const SizedBox(height: 80),
 
           // ── View payment button ────────────────────────────
           if (hasPayment)
@@ -3176,7 +3445,7 @@ class OrderListPage extends StatefulWidget {
 }
 
 class _OrderListPageState extends State<OrderListPage> {
-  _ViewMode _viewMode = _ViewMode.list;
+  _ViewMode _viewMode = _ViewMode.cards;
   OrderStatus? _filterStatus;
   String _search = '';
 
@@ -4031,6 +4300,210 @@ class OrderListRow extends StatelessWidget {
     if (v >= 1000) return '${(v / 1000).toStringAsFixed(1)}K';
     return v.toStringAsFixed(0);
   }
+}
+
+
+// === FILE: lib/features/order/presentation/widgets/order_payment_card.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../domain/entities/order_entity.dart';
+import '../../domain/usecases/mark_order_paid_usecase.dart';
+import '../bloc/order_bloc.dart';
+import '../bloc/order_event.dart';
+import '../../../../core/context/org_context.dart';
+import '../../../../config/di/injection_container.dart'; // Update this path to where OrgContext is defined
+
+class OrderPaymentCard extends StatelessWidget {
+  final OrderEntity order;
+  final String currentActorId;
+  final String currentActorName;
+
+  const OrderPaymentCard({
+    super.key,
+    required this.order,
+    required this.currentActorId,
+    required this.currentActorName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isPaid = order.paymentStatus == 'paid';
+
+    final statusColor = isPaid ? Colors.green : Colors.orange;
+    final statusLabel = isPaid ? 'Paid' : 'Unpaid';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.payments_outlined, size: 18, color: scheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Payment',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: statusColor.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Text(
+                    statusLabel,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            _row(context, 'Amount', 'TZS ${order.total.toStringAsFixed(0)}'),
+            if (order.paymentRef != null && order.paymentRef!.isNotEmpty)
+              _row(context, 'Reference', order.paymentRef!),
+            if (isPaid && order.paymentVerifiedBy != null)
+              _row(
+                context,
+                'Verified by',
+                order.paymentVerifiedBy == sl<OrgContext>().actorId
+                    ? (sl<OrgContext>().actorName ?? order.paymentVerifiedBy!)
+                    : order.paymentVerifiedBy!,
+              ),
+            if (isPaid && order.paymentVerifiedAt != null)
+              // _row(context, 'Verified at', _fmt(order.paymentVerifiedAt!)),
+              Builder(
+                builder: (context) {
+                  final orgContext = sl<OrgContext>();
+                  final verifiedBy =
+                      order.paymentVerifiedBy == orgContext.actorId
+                      ? (orgContext.actorName ?? order.paymentVerifiedBy!)
+                      : order.paymentVerifiedBy!;
+                  return _row(context, 'Verified by', verifiedBy);
+                },
+              ),
+            if (!isPaid && order.status != 'cancelled') ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.check_circle_outline, size: 18),
+                  label: const Text('Mark as Paid'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.green,
+                    side: const BorderSide(color: Colors.green),
+                  ),
+                  onPressed: () => _confirmMarkPaid(context),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _row(BuildContext context, String label, String value) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+          Expanded(
+            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmMarkPaid(BuildContext context) async {
+    final refController = TextEditingController(text: order.paymentRef ?? '');
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Mark Order as Paid?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'You are confirming manual payment of TZS ${order.total.toStringAsFixed(0)}. '
+              'This action will be recorded with your name.',
+              style: Theme.of(ctx).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: refController,
+              decoration: const InputDecoration(
+                labelText: 'Payment Reference (optional)',
+                hintText: 'e.g. MPESA-2026-XXX or Cash',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.tag),
+              ),
+              textCapitalization: TextCapitalization.characters,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.green),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirm Payment'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      context.read<OrderBloc>().add(
+        OrderMarkPaidRequested(
+          MarkOrderPaidParams(
+            orderId: order.id,
+            actorId: currentActorId,
+            actorName: currentActorName,
+            paymentRef: refController.text.trim().isEmpty
+                ? null
+                : refController.text.trim(),
+          ),
+        ),
+      );
+    }
+  }
+
+  String _fmt(DateTime dt) =>
+      '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} '
+      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
 }
 
 

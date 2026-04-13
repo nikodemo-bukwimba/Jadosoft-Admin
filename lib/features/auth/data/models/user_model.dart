@@ -1,4 +1,4 @@
-// user_model.dart
+// Admin app user_model.dart
 // ─────────────────────────────────────────────────────────────
 // CHANGE: UserModel.id is now String (Laravel uses ULIDs).
 // RoleModel / PermissionModel keep int ids (standard auto-increment)
@@ -19,9 +19,8 @@ class RoleModel extends RoleEntity {
   });
 
   factory RoleModel.fromJson(Map<String, dynamic> json) => RoleModel(
-    id: int.parse(json['id'].toString()),
+    id: json['id']?.toString() ?? '', // was int.parse(...)
     name: json['name'] as String? ?? '',
-    // platform_roles has no slug column — fall back to name
     slug: json['slug'] as String? ?? json['name'] as String? ?? '',
   );
 
@@ -37,9 +36,8 @@ class PermissionModel extends PermissionEntity {
 
   factory PermissionModel.fromJson(Map<String, dynamic> json) =>
       PermissionModel(
-        id: int.parse(json['id'].toString()),
+        id: json['id']?.toString() ?? '', // was int.parse(...)
         name: json['name'] as String? ?? '',
-        // platform_permissions has a slug column, but defend anyway
         slug: json['slug'] as String? ?? json['name'] as String? ?? '',
       );
 

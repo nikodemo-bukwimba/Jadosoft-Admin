@@ -11,7 +11,7 @@ class AppConstants {
   // local        → http://localhost:8000/api
   // production   → https://dev.halasoftware.com/api
   //static const String baseUrl = 'http://localhost:8000/api/v1';
-  static const String baseUrl = 'http://192.168.100.101:8000/api/v1/';
+  static const String baseUrl = 'http://192.168.100.119:8000/api/v1/';
   static const String orgId = '01KM3J1485S5T17RXQ6JRWF8JR';
 
   // ── Network timeouts ───────────────────────────────────────

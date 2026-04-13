@@ -25,8 +25,9 @@ class CustomerCardTile extends StatelessWidget {
     try {
       final ds = sl<OfficerRemoteDataSource>();
       final result = await ds.getAll();
-      final match = result.items.where((o) => o.actorId == officerId).firstOrNull
-          ?? result.items.where((o) => o.userId == officerId).firstOrNull;
+      final match =
+          result.items.where((o) => o.actorId == officerId).firstOrNull ??
+          result.items.where((o) => o.userId == officerId).firstOrNull;
       if (match != null) return match.displayName;
       return officerId;
     } catch (_) {
@@ -52,36 +53,47 @@ class CustomerCardTile extends StatelessWidget {
               CircleAvatar(
                 radius: 24,
                 backgroundColor: scheme.primaryContainer.withValues(alpha: 0.5),
-                child: Icon(item.isB2B ? Icons.store : Icons.person, color: scheme.primary, size: 22),
+                child: Icon(
+                  item.isB2B ? Icons.store : Icons.person,
+                  color: scheme.primary,
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     // ── Name + tier chip ──
-                    Row(children: [
-                      Expanded(
-                        child: Text(
-                          item.name,
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.name,
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
-                      _tierChip(context, item.tier),
-                    ]),
+                        _tierChip(context, item.tier),
+                      ],
+                    ),
                     const SizedBox(height: 2),
 
                     // ── Type + category ──
                     _infoRow(
-                      context, Icons.label_outlined,
+                      context,
+                      Icons.label_outlined,
                       '${item.customerType.toUpperCase()}${item.category != null ? ' · ${item.category}' : ''}',
                     ),
 
                     // ── Primary contact person ──
                     if (contact != null)
                       _infoRow(
-                        context, Icons.person_outline,
+                        context,
+                        Icons.person_outline,
                         '${contact.name}${contact.role != null ? ' (${contact.role})' : ''}',
                       ),
 
@@ -91,13 +103,22 @@ class CustomerCardTile extends StatelessWidget {
 
                     // ── Address ──
                     if (item.address != null && item.address!.isNotEmpty)
-                      _infoRow(context, Icons.location_on_outlined, item.address!),
+                      _infoRow(
+                        context,
+                        Icons.location_on_outlined,
+                        item.address!,
+                      ),
 
                     // ── GPS row — tappable when coords exist ──
                     if (item.hasGps)
                       _gpsRow(context)
                     else
-                      _infoRow(context, Icons.gps_not_fixed_outlined, 'No GPS', muted: true),
+                      _infoRow(
+                        context,
+                        Icons.gps_not_fixed_outlined,
+                        'No GPS',
+                        muted: true,
+                      ),
 
                     // ── Assigned officer via FutureBuilder ──
                     FutureBuilder<String>(
@@ -139,7 +160,14 @@ class CustomerCardTile extends StatelessWidget {
         color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(tier, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600)),
+      child: Text(
+        tier,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 
@@ -150,51 +178,69 @@ class CustomerCardTile extends StatelessWidget {
       child: Tooltip(
         message: 'Open in Map',
         child: InkWell(
-          onTap: () => MapLauncher.open(lat: item.latitude!, lng: item.longitude!, label: item.name),
+          onTap: () => MapLauncher.open(
+            lat: item.latitude!,
+            lng: item.longitude!,
+            label: item.name,
+          ),
           borderRadius: BorderRadius.circular(4),
-          child: Row(children: [
-            Icon(Icons.gps_fixed, size: 14, color: scheme.primary),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                '${item.latitude!.toStringAsFixed(4)}, ${item.longitude!.toStringAsFixed(4)}',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: scheme.primary, fontWeight: FontWeight.w600,
-                  decoration: TextDecoration.underline, decorationColor: scheme.primary,
+          child: Row(
+            children: [
+              Icon(Icons.gps_fixed, size: 14, color: scheme.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '${item.latitude!.toStringAsFixed(4)}, ${item.longitude!.toStringAsFixed(4)}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w600,
+                    decoration: TextDecoration.underline,
+                    decorationColor: scheme.primary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                maxLines: 1, overflow: TextOverflow.ellipsis,
               ),
-            ),
-            Icon(Icons.open_in_new, size: 11, color: scheme.primary),
-          ]),
+              Icon(Icons.open_in_new, size: 11, color: scheme.primary),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _infoRow(BuildContext context, IconData icon, String text, {bool isPrimary = false, bool muted = false}) {
+  Widget _infoRow(
+    BuildContext context,
+    IconData icon,
+    String text, {
+    bool isPrimary = false,
+    bool muted = false,
+  }) {
     final scheme = Theme.of(context).colorScheme;
     final color = muted
         ? scheme.onSurfaceVariant.withValues(alpha: 0.4)
         : isPrimary
-            ? scheme.primary
-            : scheme.onSurfaceVariant;
+        ? scheme.primary
+        : scheme.onSurfaceVariant;
     return Padding(
       padding: const EdgeInsets.only(top: 3),
-      child: Row(children: [
-        Icon(icon, size: 14, color: color),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            text,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: color,
-              fontWeight: isPrimary ? FontWeight.w600 : null,
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: color,
+                fontWeight: isPrimary ? FontWeight.w600 : null,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            maxLines: 1, overflow: TextOverflow.ellipsis,
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }

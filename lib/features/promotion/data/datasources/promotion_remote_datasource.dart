@@ -1,4 +1,4 @@
-﻿// promotion_remote_datasource.dart
+﻿// admin app promotion_remote_datasource.dart
 // ─────────────────────────────────────────────────────────────
 // Nexora endpoint mapping:
 //   GET    /api/v1/pharma/orgs/{orgId}/product-updates   → getAll()

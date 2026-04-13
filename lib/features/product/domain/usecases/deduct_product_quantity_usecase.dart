@@ -1,4 +1,4 @@
-import 'package:admin_panel/features/product/domain/repositories/product_repository.dart';
+import 'package:jadosoft_admin/features/product/domain/repositories/product_repository.dart';
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/usecase/usecase.dart';

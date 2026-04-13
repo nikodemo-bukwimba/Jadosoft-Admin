@@ -6,7 +6,7 @@
 
  
 
-import 'package:admin_panel/features/auth/domain/entities/user_entity.dart';
+import 'package:jadosoft_admin/features/auth/domain/entities/user_entity.dart';
 
 class ProfileStats {
   final int    totalSubscriptions;

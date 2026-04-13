@@ -1,4 +1,4 @@
-// user_entity.dart
+//admin app user_entity.dart
 // ─────────────────────────────────────────────────────────────
 // Pure Dart — zero Flutter or Drift imports.
 // Shape mirrors the Laravel API /user and toApiArray() response.
@@ -12,18 +12,16 @@
 // ─────────────────────────────────────────────────────────────
 
 class RoleEntity {
-  final int id;
+  final String id; // was int
   final String name;
   final String slug;
-
   const RoleEntity({required this.id, required this.name, required this.slug});
 }
 
 class PermissionEntity {
-  final int id;
+  final String id; // was int
   final String name;
   final String slug;
-
   const PermissionEntity({
     required this.id,
     required this.name,
