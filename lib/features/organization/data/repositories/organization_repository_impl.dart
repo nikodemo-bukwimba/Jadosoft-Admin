@@ -1,3 +1,4 @@
+// organization_repository_impl.dart
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
@@ -60,19 +61,15 @@ class OrganizationRepositoryImpl implements OrganizationRepository {
   Future<Either<Failure, void>> deleteRole(String orgId, String roleId) =>
       _guard(() => _remote.deleteRole(orgId, roleId));
   @override
-  Future<Either<Failure, Map<String, dynamic>>> acceptInvitation(
-    String token,
-  ) => _guard(() => _remote.acceptInvitation(token));
-  @override
   Future<Either<Failure, void>> syncRolePermissions(
     String orgId,
     String roleId,
     List<String> permissionIds,
   ) => _guard(() => _remote.syncRolePermissions(orgId, roleId, permissionIds));
   @override
-  Future<Either<Failure, List<OrgPermissionEntity>>> getPermissions(
-    String orgId,
-  ) => _guard(() async => await _remote.getPermissions(orgId));
+  Future<Either<Failure, Map<String, dynamic>>> acceptInvitation(
+    String token,
+  ) => _guard(() => _remote.acceptInvitation(token));
   @override
   Future<Either<Failure, List<OrgMemberEntity>>> getMembers(String orgId) =>
       _guard(() async => await _remote.getMembers(orgId));
@@ -90,6 +87,27 @@ class OrganizationRepositoryImpl implements OrganizationRepository {
   @override
   Future<Either<Failure, void>> removeMember(String orgId, String userId) =>
       _guard(() => _remote.removeMember(orgId, userId));
+  @override
+  Future<Either<Failure, void>> assignMemberToBranch(
+    String branchId,
+    Map<String, dynamic> data,
+  ) => _guard(() => _remote.assignMemberToBranch(branchId, data));
+
+  // ── User account management ────────────────────────────────
+  @override
+  Future<Either<Failure, void>> updateUserInfo(
+    String userId,
+    Map<String, dynamic> data,
+  ) => _guard(() => _remote.updateUserInfo(userId, data));
+  @override
+  Future<Either<Failure, void>> updateUserStatus(
+    String userId,
+    String status,
+  ) => _guard(() => _remote.updateUserStatus(userId, status));
+  @override
+  Future<Either<Failure, void>> sendPasswordResetEmail(String email) =>
+      _guard(() => _remote.sendPasswordResetEmail(email));
+
   @override
   Future<Either<Failure, List<DelegationEntity>>> getDelegations(
     String orgId,
@@ -119,8 +137,7 @@ class OrganizationRepositoryImpl implements OrganizationRepository {
     String id,
   ) => _guard(() => _remote.denyPermissionRequest(orgId, id));
   @override
-  Future<Either<Failure, void>> assignMemberToBranch(
-    String branchId,
-    Map<String, dynamic> data,
-  ) => _guard(() => _remote.assignMemberToBranch(branchId, data));
+  Future<Either<Failure, List<OrgPermissionEntity>>> getPermissions(
+    String orgId,
+  ) => _guard(() async => await _remote.getPermissions(orgId));
 }

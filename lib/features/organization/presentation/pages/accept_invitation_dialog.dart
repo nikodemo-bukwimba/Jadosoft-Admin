@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/organization_bloc.dart';
 import '../bloc/organization_event.dart';
-import '../bloc/organization_state.dart';
+
 
 /// Shown alongside the Create Organization option when the user has no org.
 /// Allows entering an invitation token from email to join an existing org.

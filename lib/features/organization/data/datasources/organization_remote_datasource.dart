@@ -1,3 +1,4 @@
+// organization_remote_datasource.dart
 import 'package:dio/dio.dart';
 import '../../../../core/context/org_context.dart';
 import '../../../../core/network/api_paths.dart';
@@ -14,10 +15,9 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
   final OrgContext _orgContext;
 
   OrganizationRemoteDataSource({
-    required Dio dio,
+    required super.dio,
     required OrgContext orgContext,
-  }) : _orgContext = orgContext,
-       super(dio: dio);
+  }) : _orgContext = orgContext;
 
   // ── Organization ──────────────────────────────────────────
 
@@ -54,9 +54,6 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
     try {
       final response = await dio.get(ApiPaths.orgs.tree(orgId));
       final raw = response.data;
-
-      // /tree returns a FLAT list of all orgs in the hierarchy.
-      // Root has type:'root', depth:0. Branches have type:'branch', depth:1.
       final List<dynamic> items = raw is List ? raw : [];
       return items
           .where((e) => (e as Map<String, dynamic>)['type'] == 'branch')
@@ -101,6 +98,7 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
         OrgRoleModel.fromJson,
         dataKey: 'role',
       );
+
   Future<void> deleteRole(String orgId, String roleId) async {
     try {
       await dio.delete('${ApiPaths.orgs.roles(orgId)}/$roleId');
@@ -117,7 +115,7 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
     try {
       await dio.post(
         ApiPaths.orgs.rolePermissions(orgId, roleId),
-        data: {'permission_ids': permissionIds}, // ← key is permission_ids
+        data: {'permission_ids': permissionIds},
       );
     } on DioException catch (e) {
       throw mapDioException(e);
@@ -125,11 +123,17 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
   }
 
   // ── Members ───────────────────────────────────────────────
+  // FIX: requests per_page=200 to get all members (root org tree query).
+  // The backend fix includes branch members when querying root org.
 
   Future<List<OrgMemberModel>> getMembers(String orgId) async {
     try {
-      final response = await dio.get(ApiPaths.orgs.members(orgId));
+      final response = await dio.get(
+        ApiPaths.orgs.members(orgId),
+        queryParameters: {'per_page': 200},
+      );
       final data = response.data;
+      // Paginated response: { data: [...], ... } or flat list
       final List<dynamic> items = data is Map<String, dynamic>
           ? (data['data'] as List<dynamic>? ??
                 data['members'] as List<dynamic>? ??
@@ -143,6 +147,7 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
     }
   }
 
+  /// Invite by email to a SPECIFIC org/branch (orgId = target branch).
   Future<OrgMemberModel> inviteMember(
     String orgId,
     Map<String, dynamic> data,
@@ -150,7 +155,7 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
     '${ApiPaths.orgs.members(orgId)}/invite',
     data,
     OrgMemberModel.fromJson,
-    dataKey: 'member',
+    dataKey: 'invitation',
   );
 
   Future<OrgMemberModel> updateMember(
@@ -166,6 +171,65 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
 
   Future<void> removeMember(String orgId, String userId) =>
       deleteResource(ApiPaths.orgs.member(orgId, userId));
+
+  Future<void> assignMemberToBranch(
+    String branchId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      await dio.post('${ApiPaths.orgs.members(branchId)}/assign', data: data);
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
+  // ── User Account Management ───────────────────────────────
+  // These call platform admin endpoints to update user info.
+
+  /// Update user's display name (actor.display_name) via profile endpoint.
+  /// The platform exposes PATCH /admin/users/{id}/status for status changes.
+  /// For name/email we use a workaround via the actor endpoint if available,
+  /// or fall back to the member update endpoint.
+  Future<void> updateUserInfo(String userId, Map<String, dynamic> data) async {
+    try {
+      // Try admin endpoint first
+      await dio.patch('/admin/users/$userId/info', data: data);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404 || e.response?.statusCode == 405) {
+        // Fallback: update via org membership actor name (best effort)
+        try {
+          await dio.patch(
+            '/actors/${data['actor_id'] ?? userId}',
+            data: {if (data['name'] != null) 'display_name': data['name']},
+          );
+        } on DioException catch (_) {}
+      } else {
+        throw mapDioException(e);
+      }
+    }
+  }
+
+  /// Change user account status: active | suspended | banned.
+  Future<void> updateUserStatus(String userId, String status) async {
+    try {
+      await dio.patch(
+        ApiPaths.admin.userStatus(userId),
+        data: {'status': status},
+      );
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
+  /// Trigger password reset email (uses Fortify's forgot-password endpoint).
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await dio.post('/forgot-password', data: {'email': email});
+    } on DioException catch (e) {
+      // 422 = email not found; surface that clearly
+      throw mapDioException(e);
+    }
+  }
 
   // ── Delegations ───────────────────────────────────────────
 
@@ -229,6 +293,15 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
     dataKey: 'request',
   );
 
+  Future<PermissionRequestModel> denyPermissionRequest(
+    String orgId,
+    String id,
+  ) => postAction(
+    '/orgs/$orgId/permission-requests/$id/deny',
+    PermissionRequestModel.fromJson,
+    dataKey: 'request',
+  );
+
   Future<List<OrgPermissionModel>> getPermissions(String orgId) async {
     try {
       final response = await dio.get(ApiPaths.orgs.permissions(orgId));
@@ -246,15 +319,6 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
     }
   }
 
-  Future<PermissionRequestModel> denyPermissionRequest(
-    String orgId,
-    String id,
-  ) => postAction(
-    '/orgs/$orgId/permission-requests/$id/deny',
-    PermissionRequestModel.fromJson,
-    dataKey: 'request',
-  );
-
   Future<Map<String, dynamic>> acceptInvitation(String token) async {
     try {
       final response = await dio.post('orgs/invitations/$token/accept');
@@ -262,17 +326,6 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
       return data is Map<String, dynamic>
           ? (data['membership'] as Map<String, dynamic>? ?? data)
           : <String, dynamic>{};
-    } on DioException catch (e) {
-      throw mapDioException(e);
-    }
-  }
-
-  Future<void> assignMemberToBranch(
-    String branchId,
-    Map<String, dynamic> data,
-  ) async {
-    try {
-      await dio.post('${ApiPaths.orgs.members(branchId)}/assign', data: data);
     } on DioException catch (e) {
       throw mapDioException(e);
     }

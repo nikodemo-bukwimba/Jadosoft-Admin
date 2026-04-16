@@ -1,17 +1,18 @@
 ﻿// shell_nav_items.dart
 // ─────────────────────────────────────────────────────────────
-// Produces the ordered List<NavItem> consumed by AdaptiveNavShell.
+// FIX: Organization tab was gated on auth.can('org.manage')
+// which does NOT exist in the backend PlatformPermissionSeeder.
 //
-// Each NavItem.path must match a GoRoute inside AppRouter's ShellRoute.
+// The correct approach: show Organization to anyone who has
+// ANY membership permission. The backend org_permission_definitions
+// seeds 'members.view' for all roles including viewer/staff.
+// For users with NO permissions at all (owner role at root with
+// no explicit permission set), we fall back to checking the
+// role slug directly via auth.isAdminAppRole.
 //
-// GATING: Uses permission slugs (auth.can('slug')), never role names.
-// Permission slugs match the backend's PlatformPermissionSeeder.
-//
-// Rules:
-//   - Home  is always [0]  (first)
-//   - Profile is always last
-//   - Permission-gated items use if(auth.can('module.action'))
-//   - Generator appends between GENERATOR TABS markers only
+// GATING RULES:
+//   org tab  → members.view OR isAdminAppRole (owner/manager/etc)
+//   others   → keep existing permission slugs
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
@@ -25,13 +26,9 @@ import '../routes/app_router.dart';
 // ── END GENERATOR FEATURE IMPORTS ────────────────────────────
 
 abstract class ShellNavItems {
-  /// Returns the ordered [NavItem] list for the current session.
-  ///
-  /// [auth] is the resolved [AuthAuthenticated] state.
-  /// Items gated by permission are excluded when the check fails.
   static List<NavItem> buildNavItems({required AuthAuthenticated auth}) {
     return [
-      // ── Always visible — Home ─────────────────────────────────
+      // ── Always visible — Home ─────────────────────────────
       NavItem(
         id: 'home',
         label: 'Home',
@@ -39,21 +36,26 @@ abstract class ShellNavItems {
         path: AppRouter.home,
       ),
 
-      // ── GENERATOR TABS — append only ──────────────────────────
+      // ── GENERATOR TABS — append only ──────────────────────
 
-      // ┌─────────────────────────────────────────────────────────
+      // ┌──────────────────────────────────────────────────────
       // │ ORGANIZATION MANAGEMENT
-      // └─────────────────────────────────────────────────────────
-      if (auth.can('org.manage'))
+      // │ FIX: was auth.can('org.manage') — slug doesn't exist.
+      // │ Show if user has members.view OR is an admin-role user
+      // │ (owner, manager, staff, etc.) who may have no explicit
+      // │ permissions seeded yet.
+      // └──────────────────────────────────────────────────────
+      if (auth.can('members.view') || auth.isAdminAppRole)
         NavItem(
           id: 'organization',
           label: 'Organization',
           icon: Icons.business_outlined,
           path: AppRouter.orgHub,
         ),
-      // ┌─────────────────────────────────────────────────────────
+
+      // ┌──────────────────────────────────────────────────────
       // │ FIELD OPERATIONS
-      // └─────────────────────────────────────────────────────────
+      // └──────────────────────────────────────────────────────
       if (auth.can('officers.view'))
         NavItem(
           id: 'officer',
@@ -78,7 +80,7 @@ abstract class ShellNavItems {
           path: AppRouter.visitList,
         ),
 
-      if (auth.can('weekly_plans.view'))
+      if (auth.can('weeklyplans.view'))
         NavItem(
           id: 'weekly_plan',
           label: 'Weekly Plans',
@@ -86,7 +88,7 @@ abstract class ShellNavItems {
           path: AppRouter.weeklyPlanList,
         ),
 
-      if (auth.can('daily_reports.view'))
+      if (auth.can('reports.view'))
         NavItem(
           id: 'daily_report',
           label: 'Daily Reports',
@@ -94,9 +96,9 @@ abstract class ShellNavItems {
           path: AppRouter.dailyReportList,
         ),
 
-      // ┌─────────────────────────────────────────────────────────
+      // ┌──────────────────────────────────────────────────────
       // │ PRODUCTS & COMMERCE
-      // └─────────────────────────────────────────────────────────
+      // └──────────────────────────────────────────────────────
       if (auth.can('categories.view'))
         NavItem(
           id: 'category',
@@ -137,9 +139,9 @@ abstract class ShellNavItems {
           path: AppRouter.paymentList,
         ),
 
-      // ┌─────────────────────────────────────────────────────────
+      // ┌──────────────────────────────────────────────────────
       // │ COMMUNICATION
-      // └─────────────────────────────────────────────────────────
+      // └──────────────────────────────────────────────────────
       if (auth.can('conversations.view'))
         NavItem(
           id: 'conversation',
@@ -156,9 +158,9 @@ abstract class ShellNavItems {
           path: AppRouter.notificationList,
         ),
 
-      // ┌─────────────────────────────────────────────────────────
+      // ┌──────────────────────────────────────────────────────
       // │ ANALYTICS & REPORTS
-      // └─────────────────────────────────────────────────────────
+      // └──────────────────────────────────────────────────────
       if (auth.can('marketing_dashboard.view'))
         NavItem(
           id: 'marketing_dashboard',
@@ -200,9 +202,9 @@ abstract class ShellNavItems {
           path: AppRouter.actorList,
         ),
 
-      // ── END GENERATOR TABS ────────────────────────────────────
+      // ── END GENERATOR TABS ─────────────────────────────────
 
-      // ── Permission-gated — Dashboard ──────────────────────────
+      // ── Permission-gated — Dashboard ───────────────────────
       if (auth.canViewDashboard)
         NavItem(
           id: 'dashboard',
@@ -211,7 +213,7 @@ abstract class ShellNavItems {
           path: AppRouter.dashboard,
         ),
 
-      // ── Always visible — Profile (always last) ────────────────
+      // ── Always visible — Profile (always last) ──────────────
       NavItem(
         id: 'profile',
         label: 'Profile',

@@ -1,3 +1,4 @@
+// organization_state.dart
 import '../../domain/entities/organization_entity.dart';
 import '../../domain/entities/branch_entity.dart';
 import '../../domain/entities/org_role_entity.dart';
@@ -9,7 +10,6 @@ import '../../domain/entities/org_tree_entity.dart';
 abstract class OrganizationState {}
 
 class OrganizationInitial extends OrganizationState {}
-
 class OrganizationLoading extends OrganizationState {}
 
 class OrganizationFailure extends OrganizationState {
@@ -22,6 +22,12 @@ class OrganizationOperationSuccess extends OrganizationState {
   OrganizationOperationSuccess(this.message);
 }
 
+/// Fired when a user account action succeeded (reset, update info, etc.)
+class UserManagementSuccess extends OrganizationState {
+  final String message;
+  UserManagementSuccess(this.message);
+}
+
 /// No organization exists yet — show create org form.
 class NoOrganizationState extends OrganizationState {}
 
@@ -31,7 +37,7 @@ class OrgCreatedSuccess extends OrganizationState {
   OrgCreatedSuccess(this.org);
 }
 
-/// Invitation accepted — user joined an org. Reload everything.
+/// Invitation accepted — user joined an org.
 class InvitationAccepted extends OrganizationState {
   final String message;
   InvitationAccepted(this.message);

@@ -1,7 +1,4 @@
-// Reads officer-created visits from the pharma API.
-// Admin review/flag transitions are not yet supported by the backend —
-// they need a future endpoint before they can persist.
-
+// === FILE: lib/features/visit/data/datasources/visit_api_datasource.dart ===
 import 'package:dio/dio.dart';
 import '../../../../core/context/org_context.dart';
 import '../../../../core/error/exceptions.dart';
@@ -13,8 +10,8 @@ class VisitApiDataSource implements VisitRemoteDataSource {
   final OrgContext _orgContext;
 
   VisitApiDataSource({required Dio dio, required OrgContext orgContext})
-      : _dio = dio,
-        _orgContext = orgContext;
+    : _dio = dio,
+      _orgContext = orgContext;
 
   String get _orgId => _orgContext.effectiveOrgId;
 
@@ -46,19 +43,35 @@ class VisitApiDataSource implements VisitRemoteDataSource {
     }
   }
 
-  /// Admin does not create visits — officers do via check-in.
   @override
   Future<VisitModel> create(Map<String, dynamic> data) {
     throw UnimplementedError('Admin cannot create visits');
   }
 
-  /// Review/flag transitions — no backend endpoint yet.
-  /// Returns the entity unchanged; UI state is optimistic only.
+  /// Calls review or flag endpoint based on the target status in [data].
+  /// Expects data keys: 'status' ('reviewed'|'flagged'), optionally 'flag_reason'.
   @override
   Future<VisitModel> update(String id, Map<String, dynamic> data) async {
-    // TODO: call PATCH /pharma/visits/{id}/status once backend adds it.
-    // For now, re-fetch so the returned entity is current.
-    return getById(id);
+    final targetStatus = data['status'] as String?;
+    try {
+      if (targetStatus == 'reviewed') {
+        // POST /pharma/visits/{id}/review  — accept the visit
+        final body = <String, dynamic>{};
+        if (data['admin_comment'] != null)
+          body['notes'] = data['admin_comment'];
+        await _dio.post('/pharma/visits/$id/review', data: body);
+      } else if (targetStatus == 'flagged') {
+        // POST /pharma/visits/{id}/flag
+        final body = <String, dynamic>{
+          if (data['flag_reason'] != null) 'reason': data['flag_reason'],
+        };
+        await _dio.post('/pharma/visits/$id/flag', data: body);
+      }
+      // Re-fetch to return up-to-date entity
+      return getById(id);
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
   }
 
   @override
@@ -66,62 +79,89 @@ class VisitApiDataSource implements VisitRemoteDataSource {
     throw UnimplementedError('Admin cannot delete visits');
   }
 
-  // ── Map pharma visit JSON → admin VisitModel ─────────────────
   VisitModel _mapPharmaToAdminModel(Map<String, dynamic> j) {
     final customer = j['customer'] as Map<String, dynamic>?;
-    final officer  = j['officer']  as Map<String, dynamic>?;
+    final officer = j['officer'] as Map<String, dynamic>?;
 
-    // Pharma: check_in_at / check_in_latitude / check_in_longitude
     final visitDateStr = j['check_in_at'] ?? j['visit_date'] ?? j['created_at'];
 
-    // Build a minimal admin-compatible JSON and delegate to VisitModel.fromJson
+    // Resolve officer name: prefer officer.name, fallback to officer_name field
+    final officerName =
+        officer?['name'] as String? ??
+        officer?['display_name'] as String? ??
+        j['officer_name'] as String?;
+
     final mapped = <String, dynamic>{
-      'id':                   j['id']?.toString() ?? '',
-      'customer_id':          j['customer_id']?.toString() ??
-                              customer?['id']?.toString() ?? '',
-      'officer_id':           j['officer_actor_id']?.toString() ??
-                              j['officer_id']?.toString() ??
-                              officer?['id']?.toString() ?? '',
-      'visit_date':           visitDateStr?.toString() ??
-                              DateTime.now().toIso8601String(),
-      'business_name':        customer?['name'] as String? ??
-                              customer?['business_name'] as String? ??
-                              j['business_name'] as String?,
-      'owner_phone':          customer?['phone'] as String? ?? j['owner_phone'],
+      'id': j['id']?.toString() ?? '',
+      'customer_id':
+          j['customer_id']?.toString() ?? customer?['id']?.toString() ?? '',
+      'officer_id':
+          j['officer_actor_id']?.toString() ??
+          j['officer_id']?.toString() ??
+          officer?['id']?.toString() ??
+          '',
+      'visit_date':
+          visitDateStr?.toString() ?? DateTime.now().toIso8601String(),
+      'business_name':
+          customer?['name'] as String? ??
+          customer?['business_name'] as String? ??
+          j['business_name'] as String?,
+      'owner_phone': customer?['phone'] as String? ?? j['owner_phone'],
       'contact_person_phone': j['contact_person_phone'],
-      'business_phone':       j['business_phone'],
-      'notes':                j['notes'],
-      'gps_lat':              j['check_in_latitude'] ?? j['gps_lat'],
-      'gps_lng':              j['check_in_longitude'] ?? j['gps_lng'],
-      'image_urls':           _toStringList(j['image_urls']),
-      'document_urls':        _toStringList(j['document_urls']),
+      'business_phone': j['business_phone'],
+      'notes': j['notes'],
+      'gps_lat': j['check_in_latitude'] ?? j['gps_lat'],
+      'gps_lng': j['check_in_longitude'] ?? j['gps_lng'],
+      'image_urls': _buildImageUrls(j),
+      'document_urls': _toStringList(j['document_urls']),
       'promoted_product_ids': _toStringList(j['promoted_product_ids']),
-      'discussion_summary':   j['discussion_summary'],
-      // Map pharma statuses to admin statuses
-      'status':               _mapStatus(j['status'] as String?),
-      'created_at':           j['created_at']?.toString() ??
-                              DateTime.now().toIso8601String(),
-      'visit_type':           j['visit_type'],
-      'objective':            j['objective'],
-      'outcome':              j['outcome'],
-      'outcome_status':       j['outcome_status'],
-      'duration_minutes':     j['duration_minutes'],
-      'customer_name':        customer?['name'] as String? ?? j['customer_name'],
-      'officer_name':         officer?['name'] as String? ?? j['officer_name'],
-      'flag_reason':          j['flag_reason'],
-      'admin_comments':       j['admin_comments'] ?? <Map<String, dynamic>>[],
+      'discussion_summary': j['discussion_summary'],
+      'status': _mapStatus(j['status'] as String?),
+      'created_at':
+          j['created_at']?.toString() ?? DateTime.now().toIso8601String(),
+      'visit_type': j['visit_type'],
+      'objective': j['objective'],
+      'outcome': j['outcome'],
+      'outcome_status': j['outcome_status'],
+      'duration_minutes': j['duration_minutes'],
+      'customer_name': customer?['name'] as String? ?? j['customer_name'],
+      'officer_name': officerName, // ← Fixed: resolves actual name
+      'flag_reason': j['flag_reason'],
+      'admin_comments': j['admin_comments'] ?? <Map<String, dynamic>>[],
     };
     return VisitModel.fromJson(mapped);
   }
 
-  /// pharma: pending | in_progress | completed | cancelled
-  /// admin:  pending | reviewed | flagged
+  /// pharma: in_progress | completed | cancelled
+  /// admin:  pending (submitted/in review) | reviewed | flagged
   String _mapStatus(String? pharmaStatus) {
-    switch (pharmaStatus) {
-      case 'completed': return 'pending'; // ready for admin review
-      case 'cancelled': return 'pending';
-      default:          return 'pending';
+    return switch (pharmaStatus) {
+      'completed' => 'pending', // completed visit awaits admin review
+      'in_progress' => 'pending',
+      'cancelled' => 'pending',
+      'reviewed' => 'reviewed', // if backend ever returns this
+      'flagged' => 'flagged',
+      _ => 'pending',
+    };
+  }
+
+  /// Build image URL list from pharma attachments structure.
+  List<String>? _buildImageUrls(Map<String, dynamic> j) {
+    // Try attachments array first (full visit detail response)
+    final attachments = j['attachments'] as List?;
+    if (attachments != null && attachments.isNotEmpty) {
+      return attachments
+          .whereType<Map>()
+          .where(
+            (a) =>
+                a['type'] == 'photo' ||
+                (a['mime_type'] as String? ?? '').startsWith('image/'),
+          )
+          .map((a) => a['file_url']?.toString() ?? '')
+          .where((url) => url.isNotEmpty)
+          .toList();
     }
+    return _toStringList(j['image_urls']);
   }
 
   List<String>? _toStringList(dynamic v) {

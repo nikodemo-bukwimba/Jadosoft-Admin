@@ -1,34 +1,32 @@
 ﻿// auth_remote_datasource.dart
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// All calls go through the shared Dio instance.
+// ─────────────────────────────────────────────────────────────
+// FIX 1: getAuthMe() — org_id is now dynamic, not hardcoded.
+//   On first login: no org_id sent → server picks highest-level
+//   membership → returns user.org_id in response → we store it.
+//   On refresh: stored org_id is passed → correct permissions.
 //
-// ENDPOINTS:
-//   POST /auth/login    â†’ { user: {...}, token: "..." }
-//   POST /auth/register â†’ { user: {...}, token: "..." }
-//   POST /auth/logout   â†’ 204
-//   GET  /auth/me       â†’ { data: { user + roles + permissions } }
-//
-// REMOVED: GET /me/roles â€” this endpoint never existed in the
-// HMSCP API. Roles and permissions are now returned inline by
-// GET /auth/me as part of the user resource.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// FIX 2: register() — sends 'name' (→ actor.display_name) and
+//   a generated 'username' (→ users.username).
+// ─────────────────────────────────────────────────────────────
 
+import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/user_model.dart';
 
-/// Raw data returned from GET /auth/me â€” contains user, roles,
-/// and permissions all in one response.
 class AuthMeResponse {
   final UserModel user;
   final List<RoleModel> roles;
   final List<PermissionModel> permissions;
+  // org_id echoed back by the server (membership org). null = no membership.
+  final String? resolvedOrgId;
 
   const AuthMeResponse({
     required this.user,
     required this.roles,
     required this.permissions,
+    this.resolvedOrgId,
   });
 }
 
@@ -42,17 +40,13 @@ abstract class AuthRemoteDataSource {
     String? phone,
   });
   Future<void> logout();
-
-  /// Fetches the full authenticated user profile including roles
-  /// and permissions from GET /auth/me.
-  Future<AuthMeResponse> getAuthMe();
+  Future<AuthMeResponse> getAuthMe({String? orgId});
 }
 
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   final Dio _dio;
   AuthRemoteDataSourceImpl(this._dio);
 
-  // â”€â”€ POST /auth/login â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   @override
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
@@ -61,22 +55,19 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         data: {'email': email, 'password': password},
       );
       final body = _parseBody(response);
-
       if (kDebugMode) {
         debugPrint('[AUTH] Login response keys: ${body.keys.toList()}');
         final token = _extractToken(body);
         debugPrint(
-          '[AUTH] Token extracted: ${token != null ? "YES (${token.length} chars)" : "NO â€” check response shape"}',
+          '[AUTH] Token extracted: ${token != null ? "YES (${token.length} chars)" : "NO — check response shape"}',
         );
       }
-
       return body;
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
   }
 
-  // â”€â”€ POST /auth/register â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   @override
   Future<Map<String, dynamic>> register({
     required String name,
@@ -86,10 +77,12 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     String? phone,
   }) async {
     try {
+      final username = _generateUsername(name);
       final response = await _dio.post(
         '/auth/register',
         data: {
-          'username': name,
+          'name': name, // → actor.display_name (real full name)
+          'username': username, // → users.username (auto-generated)
           'email': email,
           'password': password,
           'password_confirmation': passwordConfirmation,
@@ -97,63 +90,47 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         },
       );
       final body = _parseBody(response);
-
       if (kDebugMode) {
         debugPrint('[AUTH] Register response keys: ${body.keys.toList()}');
-        final token = _extractToken(body);
-        debugPrint(
-          '[AUTH] Token extracted: ${token != null ? "YES" : "NO â€” check response shape"}',
-        );
+        debugPrint('[AUTH] Registered: name=$name, username=$username');
       }
-
       return body;
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
   }
 
-  // â”€â”€ POST /auth/logout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   @override
   Future<void> logout() async {
     try {
       await _dio.post('/auth/logout');
     } on DioException catch (e) {
-      if (e.response?.statusCode == 401) return; // already invalid
+      if (e.response?.statusCode == 401) return;
       throw _handleDioError(e);
     }
   }
 
-  // â”€â”€ GET /auth/me â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Returns user + roles + permissions in one call.
-  //
-  // Expected response shape:
-  //   { "data": { ...user fields, "roles": [...], "permissions": [...] } }
-  // OR flat (no wrapper):
-  //   { ...user fields, "roles": [...], "permissions": [...] }
+  // ── GET /auth/me ──────────────────────────────────────────
+  // orgId = null on first login → server picks highest-level membership.
+  // orgId = stored value on refresh → correct branch permissions.
+  // The backend echoes back user.org_id so we know which org was used.
   @override
-  Future<AuthMeResponse> getAuthMe() async {
+  Future<AuthMeResponse> getAuthMe({String? orgId}) async {
     try {
       final response = await _dio.get(
         '/auth/me',
-        queryParameters: {'org_id': '01KM3J1485S5T17RXQ6JRWF8JR'},
+        queryParameters: orgId != null ? {'org_id': orgId} : null,
       );
       final raw = response.data;
 
       if (raw == null)
         throw const ServerException('Empty response from /auth/me');
-
-      if (raw is! Map<String, dynamic>) {
+      if (raw is! Map<String, dynamic>)
         throw const ServerException('Unexpected response format from /auth/me');
-      }
 
-      // NEW: response is { user: {...}, permissions: [...] }
-      // Extract user object and permissions separately
-      final userJson =
-          raw['user'] as Map<String, dynamic>? ??
-          raw; // fallback to flat if no 'user' key
+      final userJson = raw['user'] as Map<String, dynamic>? ?? raw;
       final user = UserModel.fromJson(userJson);
 
-      // Permissions are at TOP LEVEL, not inside user
       final rawPerms = raw['permissions'] as List<dynamic>? ?? [];
       final permissions = rawPerms
           .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
@@ -164,20 +141,29 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
           .map((r) => RoleModel.fromJson(r as Map<String, dynamic>))
           .toList();
 
+      // The backend now echoes user.org_id — the membership org for this call.
+      final resolvedOrgId =
+          userJson['org_id']?.toString() ?? raw['org_id']?.toString() ?? orgId;
+
       if (kDebugMode) {
         debugPrint(
           '[AUTH] /auth/me: user=${user.email}, '
-          'roles=${roles.length}, permissions=${permissions.length}',
+          'roles=${roles.length}, permissions=${permissions.length}, '
+          'resolved_org_id=$resolvedOrgId',
         );
       }
 
-      return AuthMeResponse(user: user, roles: roles, permissions: permissions);
+      return AuthMeResponse(
+        user: user,
+        roles: roles,
+        permissions: permissions,
+        resolvedOrgId: resolvedOrgId,
+      );
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
   }
 
-  // â”€â”€ Token extraction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   static String? extractToken(Map<String, dynamic> body) => _extractToken(body);
 
   static String? _extractToken(Map<String, dynamic> body) {
@@ -191,21 +177,34 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     return null;
   }
 
-  // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // "John Mwangi" → "john_mwangi_4j2k"
+  String _generateUsername(String fullName) {
+    final base = fullName
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), '')
+        .trim()
+        .replaceAll(RegExp(r'\s+'), '_');
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    final rand = Random();
+    final suffix = List.generate(
+      4,
+      (_) => chars[rand.nextInt(chars.length)],
+    ).join();
+    return '${base}_$suffix';
+  }
 
   Map<String, dynamic> _parseBody(Response response) {
     final data = response.data;
     if (data == null) throw const ServerException('Empty response body');
-    if (data is! Map<String, dynamic>) {
+    if (data is! Map<String, dynamic>)
       throw const ServerException('Unexpected response format');
-    }
     return data;
   }
 
   Exception _handleDioError(DioException e) {
     final statusCode = e.response?.statusCode;
     final responseData = e.response?.data;
-
     String message = 'An error occurred. Please try again.';
     if (responseData is Map<String, dynamic>) {
       if (responseData['message'] is String) {
@@ -218,7 +217,6 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         }
       }
     }
-
     if (statusCode == 401) return AuthException(message);
     if (statusCode == 422) return ServerException(message, statusCode: 422);
     if (e.type == DioExceptionType.connectionTimeout ||

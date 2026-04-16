@@ -1,3 +1,4 @@
+// organization_repository.dart
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../entities/organization_entity.dart';
@@ -49,6 +50,18 @@ abstract class OrganizationRepository {
     Map<String, dynamic> data,
   );
   Future<Either<Failure, void>> removeMember(String orgId, String userId);
+  Future<Either<Failure, void>> assignMemberToBranch(
+    String branchId,
+    Map<String, dynamic> data,
+  );
+
+  // ── User Account Management ───────────────────────────────
+  Future<Either<Failure, void>> updateUserInfo(
+    String userId,
+    Map<String, dynamic> data,
+  );
+  Future<Either<Failure, void>> updateUserStatus(String userId, String status);
+  Future<Either<Failure, void>> sendPasswordResetEmail(String email);
 
   // ── Delegations ───────────────────────────────────────────
   Future<Either<Failure, List<DelegationEntity>>> getDelegations(String orgId);
@@ -73,12 +86,7 @@ abstract class OrganizationRepository {
     String orgId,
     String requestId,
   );
-
   Future<Either<Failure, List<OrgPermissionEntity>>> getPermissions(
     String orgId,
-  );
-  Future<Either<Failure, void>> assignMemberToBranch(
-    String branchId,
-    Map<String, dynamic> data,
   );
 }

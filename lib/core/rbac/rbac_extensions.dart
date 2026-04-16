@@ -1,62 +1,81 @@
-// rbac_extensions.dart
+// rbac_extensions.dart — ADMIN APP
+// ─────────────────────────────────────────────────────────────
+// FIX: isAdminAppRole now covers ALL org-management role slugs
+// created by OrganizationService for Barick Pharmacy:
+//   owner, org_admin, manager, staff, viewer (org roles)
+//   branch_manager (branch-level admin)
+//   super_admin, support_agent, billing_admin (platform staff)
+//
+// Without this fix, users with 'manager'/'staff' slugs were sent
+// to /pending-activation because hasNoRole = true in the router.
+// ─────────────────────────────────────────────────────────────
+
 import 'package:jadosoft_admin/features/auth/presentation/bloc/auth_state.dart';
-// Officer app: change import package name to jadosoft_officer
 
 extension RbacExtensions on AuthAuthenticated {
   // ══════════════════════════════════════════════════════════
-  // GATING — permission checks (primary mechanism)
+  // GATING — permission checks (primary mechanism for UI)
   // ══════════════════════════════════════════════════════════
 
-  /// True if the active user has the given permission slug.
-  /// Reads from the permissions list fetched from GET /auth/me at login.
   bool can(String permissionSlug) =>
       activeSession.permissions.any((p) => p.slug == permissionSlug);
 
-  bool canAll(List<String> slugs) => slugs.every((slug) => can(slug));
-
-  bool canAny(List<String> slugs) => slugs.any((slug) => can(slug));
+  bool canAll(List<String> slugs) => slugs.every(can);
+  bool canAny(List<String> slugs) => slugs.any(can);
 
   bool get canViewDashboard => can('dashboard.view');
 
   // ══════════════════════════════════════════════════════════
   // APP-TYPE ROUTING — role slug checks
-  // Used ONLY by the router redirect to enforce app boundaries.
-  // Never use these for UI show/hide — always use can() for that.
+  // Used ONLY by AppRouter._redirect(). Never use for UI gating.
   // ══════════════════════════════════════════════════════════
 
-  /// The primary role slug, lowercased. Empty string if no role assigned.
   String get _primarySlug =>
       activeSession.user.primaryRole?.slug.toLowerCase() ?? '';
 
-  /// True if this account belongs to an admin-type role.
-  /// Admin roles are allowed in the admin app only.
+  /// True if this role belongs in the ADMIN app.
+  /// Covers every org-management role the backend creates:
+  ///   - Custom org roles:   owner, org_admin, manager, staff, viewer
+  ///   - Branch admin role:  branch_manager
+  ///   - Platform staff:     super_admin, support_agent, billing_admin
   bool get isAdminAppRole =>
-      _primarySlug.contains('admin') ||
+      // Exact matches for org roles created by OrganizationService
+      _primarySlug == 'owner' ||
+      _primarySlug == 'org_admin' ||
+      _primarySlug == 'manager' ||
+      _primarySlug == 'staff' ||
+      _primarySlug == 'viewer' ||
+      _primarySlug == 'branch_manager' ||
+      // Platform staff role exact matches
+      _primarySlug == 'super_admin' ||
+      _primarySlug == 'support_agent' ||
+      _primarySlug == 'billing_admin' ||
+      _primarySlug == 'content_admin' ||
+      // Partial matches for variant spellings / future roles
+      _primarySlug.contains('admin') || // org_admin, branch_admin, super_admin
+      _primarySlug.contains('manager') || // branch_manager, manager
       _primarySlug.contains('super') ||
       _primarySlug.contains('support') ||
       _primarySlug.contains('auditor') ||
-      _primarySlug.contains('ops') ||
-      _primarySlug == 'owner' || // ADD
-      _primarySlug == 'branch_manager';
+      _primarySlug.contains('ops');
 
-  /// True if this account belongs to an officer-type role.
-  /// Officer roles are allowed in the officer app only.
+  /// True if this role belongs in the OFFICER app.
+  /// Branch managers can also use the officer app.
   bool get isOfficerAppRole =>
       _primarySlug.contains('officer') ||
-      _primarySlug == 'junior_officer' || // ADD
+      _primarySlug == 'junior_officer' ||
       _primarySlug.contains('field') ||
       _primarySlug.contains('pharma_rep') ||
       _primarySlug.contains('sales_rep');
 
   // ══════════════════════════════════════════════════════════
-  // DISPLAY — role checks (badge, label, greeting ONLY)
-  // ⚠ NEVER use these for show/hide or routing.
+  // DISPLAY — for labels/badges only. Never use for routing/gating.
   // ══════════════════════════════════════════════════════════
 
   bool hasRole(String roleName) =>
       activeSession.user.roles.any((r) => r.name == roleName);
 
-  bool hasAnyRole(List<String> names) => names.any((name) => hasRole(name));
+  bool hasAnyRole(List<String> names) => names.any(hasRole);
 
   bool get isSuperAdmin => hasRole('super_admin');
 

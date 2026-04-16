@@ -1,25 +1,17 @@
 // auth_bloc.dart
 // ─────────────────────────────────────────────────────────────
-// FIX: OrgContext was never populated after login/session restore,
-// causing every feature that calls orgContext.requireRootOrgId()
-// to throw "Bad state: no org is set" and stay stuck on loading.
+// FIX: _applyOrgContext() no longer uses AppConstants.orgId.
+// Instead it reads the org_id already stored in OrgContext by
+// AuthRepositoryImpl after the /auth/me call. This means branch
+// members and officers get the correct org scope automatically.
 //
-// Changes:
-//   1. OrgContext injected as a dependency.
-//   2. _applyOrgContext() called after every successful auth
-//      (login, register, check, switch, refresh).
-//   3. orgContext.restore() called in _onCheckRequested so a
-//      returning user's org context is recovered from secure
-//      storage without re-login.
-//   4. orgContext.clear() called on logout.
-//
-// Org strategy: Barick Pharmacy is a single-org admin app.
-// AppConstants.orgId is the root org ULID — used directly.
-// Role is derived from the session's primaryRole slug.
+// The role derivation from slug covers all org roles in use:
+//   owner, org_admin, manager, staff, viewer → orgAdmin
+//   branch_manager                           → branchAdmin
+//   officer, field_*, pharma_rep, sales_rep  → fieldOfficer
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../../core/constants/app_constants.dart';
 import '../../../../core/context/org_context.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../../domain/entities/account_session.dart';
@@ -40,7 +32,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final GetActiveSessionUseCase _getActiveSession;
   final GetSavedAccountsUseCase _getSavedAccounts;
   final RefreshSessionUseCase _refreshSession;
-  final OrgContext _orgContext; // FIX: added
+  final OrgContext _orgContext;
 
   AuthBloc({
     required LoginUseCase login,
@@ -51,7 +43,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     required GetActiveSessionUseCase getActiveSession,
     required GetSavedAccountsUseCase getSavedAccounts,
     required RefreshSessionUseCase refreshSession,
-    required OrgContext orgContext, // FIX: added
+    required OrgContext orgContext,
   }) : _login = login,
        _register = register,
        _logout = logout,
@@ -60,7 +52,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
        _getActiveSession = getActiveSession,
        _getSavedAccounts = getSavedAccounts,
        _refreshSession = refreshSession,
-       _orgContext = orgContext, // FIX: added
+       _orgContext = orgContext,
        super(AuthInitial()) {
     on<AuthCheckRequested>(_onCheckRequested);
     on<AuthLoginRequested>(_onLoginRequested);
@@ -72,39 +64,48 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthSessionRefreshRequested>(_onSessionRefreshRequested);
   }
 
-  // ── FIX: populate OrgContext after every successful auth ──
-  //
-  // Barick Pharmacy is single-org: AppConstants.orgId is the root.
-  // Role is derived from the session's primaryRole slug:
-  //   'org_admin' / 'admin' → OrgRole.orgAdmin
-  //   'branch_admin'        → OrgRole.branchAdmin
-  //   anything else         → OrgRole.orgAdmin (admin app default)
+  // ── OrgContext helper ─────────────────────────────────────
+  // The repository already called setRootOrg() with the resolved
+  // org_id after /auth/me. Here we only update the role + actor
+  // fields that come from the session, leaving org_id untouched.
   Future<void> _applyOrgContext(AccountSession session) async {
     final slug = session.user.primaryRole?.slug.toLowerCase() ?? '';
 
     final role = slug == 'branch_manager'
         ? OrgRole.branchAdmin
-        : slug.contains('officer') || slug == 'junior_officer'
-        ? OrgRole.fieldOfficer
-        : OrgRole.orgAdmin; // owner, admin, super → orgAdmin
+        : (slug.contains('officer') ||
+               slug.contains('field') ||
+               slug.contains('pharma_rep') ||
+               slug.contains('sales_rep') ||
+               slug == 'junior_officer')
+            ? OrgRole.fieldOfficer
+            : OrgRole.orgAdmin; // owner, org_admin, manager, staff, viewer
 
-    await _orgContext.setRootOrg(
-      id: AppConstants.orgId,
-      name: 'Barick Pharmacy',
-      role: role,
-      actorId: session.user.actorId,
-      actorName: session.user.name,
-    );
+    // OrgContext already has the correct org_id from the repository.
+    // Restore it to ensure in-memory state matches storage.
+    await _orgContext.restore();
+
+    // Only update if the context has an org_id (set by repository).
+    // If it doesn't (brand new user, no membership), leave as-is —
+    // the router will send them to /pending-activation.
+    if (_orgContext.hasOrg) {
+      await _orgContext.setRootOrg(
+        id: _orgContext.rootOrgId!,
+        name: _orgContext.rootOrgName ?? 'Barick Pharmacy',
+        role: role,
+        actorId: session.user.actorId,
+        actorName: session.user.name.isNotEmpty
+            ? session.user.name
+            : session.user.email,
+      );
+    }
   }
 
-  // ── Helper ────────────────────────────────────────────────
   List<AccountSession> _ensureActiveIncluded(
     AccountSession active,
     List<AccountSession> accounts,
   ) {
-    if (accounts.any((a) => a.user.email == active.user.email)) {
-      return accounts;
-    }
+    if (accounts.any((a) => a.user.email == active.user.email)) return accounts;
     return [active, ...accounts];
   }
 
@@ -114,9 +115,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     emit(AuthLoading());
-
-    // FIX: restore persisted org context so returning users don't
-    // need to re-login for OrgContext to be populated.
     await _orgContext.restore();
 
     final sessionResult = await _getActiveSession(NoParams());
@@ -128,7 +126,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         final accountsResult = await _getSavedAccounts(NoParams());
         final saved = accountsResult.fold<List<AccountSession>>(
           (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
+          (a) => a,
         );
         if (saved.isNotEmpty) {
           emit(AuthNeedsAccountPicker(savedAccounts: saved));
@@ -138,23 +136,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         return;
       }
 
-      // FIX: session exists but org context may not have been
-      // restored yet (first cold start after login on a new device).
-      if (!_orgContext.hasOrg) {
-        await _applyOrgContext(session);
-      }
+      if (!_orgContext.hasOrg) await _applyOrgContext(session);
 
       final accountsResult = await _getSavedAccounts(NoParams());
-      final raw = accountsResult.fold<List<AccountSession>>(
-        (_) => <AccountSession>[],
-        (List<AccountSession> a) => a,
-      );
-      emit(
-        AuthAuthenticated(
-          activeSession: session,
-          savedAccounts: _ensureActiveIncluded(session, raw),
-        ),
-      );
+      final raw = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
+      emit(AuthAuthenticated(
+        activeSession: session,
+        savedAccounts: _ensureActiveIncluded(session, raw),
+      ));
     });
   }
 
@@ -164,27 +153,17 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     emit(AuthLoading());
-
-    final result = await _login(
-      LoginParams(email: event.email, password: event.password),
-    );
-
+    final result = await _login(LoginParams(email: event.email, password: event.password));
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session); // FIX
-
+        await _applyOrgContext(session);
         final accountsResult = await _getSavedAccounts(NoParams());
-        final raw = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
-        );
-        emit(
-          AuthAuthenticated(
-            activeSession: session,
-            savedAccounts: _ensureActiveIncluded(session, raw),
-          ),
-        );
+        final raw = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
+        emit(AuthAuthenticated(
+          activeSession: session,
+          savedAccounts: _ensureActiveIncluded(session, raw),
+        ));
       },
     );
   }
@@ -195,33 +174,23 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     emit(AuthLoading());
-
-    final result = await _register(
-      RegisterParams(
-        name: event.name,
-        email: event.email,
-        password: event.password,
-        passwordConfirmation: event.passwordConfirmation,
-        phone: event.phone,
-      ),
-    );
-
+    final result = await _register(RegisterParams(
+      name: event.name,
+      email: event.email,
+      password: event.password,
+      passwordConfirmation: event.passwordConfirmation,
+      phone: event.phone,
+    ));
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session); // FIX
-
+        await _applyOrgContext(session);
         final accountsResult = await _getSavedAccounts(NoParams());
-        final raw = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
-        );
-        emit(
-          AuthAuthenticated(
-            activeSession: session,
-            savedAccounts: _ensureActiveIncluded(session, raw),
-          ),
-        );
+        final raw = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
+        emit(AuthAuthenticated(
+          activeSession: session,
+          savedAccounts: _ensureActiveIncluded(session, raw),
+        ));
       },
     );
   }
@@ -232,20 +201,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     emit(AuthLoading());
-
     final result = await _logout(NoParams());
-
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (_) async {
-        await _orgContext.clear(); // FIX
-
+        await _orgContext.clear();
         final accountsResult = await _getSavedAccounts(NoParams());
-        final remaining = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
-        );
-
+        final remaining = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
         if (remaining.isEmpty) {
           emit(AuthUnauthenticated());
         } else {
@@ -261,22 +223,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     final result = await _logoutAccount(LogoutAccountParams(event.email));
-
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (_) async {
         final accountsResult = await _getSavedAccounts(NoParams());
-        final remaining = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
-        );
-
+        final remaining = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
         if (remaining.isEmpty) {
-          await _orgContext.clear(); // FIX
+          await _orgContext.clear();
           emit(AuthUnauthenticated());
           return;
         }
-
         final sessionResult = await _getActiveSession(NoParams());
         sessionResult.fold(
           (_) => emit(AuthNeedsAccountPicker(savedAccounts: remaining)),
@@ -284,12 +240,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
             if (session == null) {
               emit(AuthNeedsAccountPicker(savedAccounts: remaining));
             } else {
-              emit(
-                AuthAccountsUpdated(
-                  activeSession: session,
-                  savedAccounts: _ensureActiveIncluded(session, remaining),
-                ),
-              );
+              emit(AuthAccountsUpdated(
+                activeSession: session,
+                savedAccounts: _ensureActiveIncluded(session, remaining),
+              ));
             }
           },
         );
@@ -303,15 +257,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     emit(AuthSwitching());
-
     final result = await _switchAccount(SwitchAccountParams(event.email));
-
     await result.fold(
       (failure) async {
         final sessionResult = await _getActiveSession(NoParams());
-        sessionResult.fold((_) => emit(AuthFailureState(failure.message)), (
-          session,
-        ) {
+        sessionResult.fold((_) => emit(AuthFailureState(failure.message)), (session) {
           if (session == null) {
             emit(AuthUnauthenticated());
           } else {
@@ -320,19 +270,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         });
       },
       (newSession) async {
-        await _applyOrgContext(newSession); // FIX
-
+        await _applyOrgContext(newSession);
         final accountsResult = await _getSavedAccounts(NoParams());
-        final raw = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
-        );
-        emit(
-          AuthAuthenticated(
-            activeSession: newSession,
-            savedAccounts: _ensureActiveIncluded(newSession, raw),
-          ),
-        );
+        final raw = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
+        emit(AuthAuthenticated(
+          activeSession: newSession,
+          savedAccounts: _ensureActiveIncluded(newSession, raw),
+        ));
       },
     );
   }
@@ -344,13 +288,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     final sessionResult = await _getActiveSession(NoParams());
     final accountsResult = await _getSavedAccounts(NoParams());
-
     sessionResult.fold((_) => emit(AuthUnauthenticated()), (session) {
       if (session == null) {
-        final saved = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
-        );
+        final saved = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
         if (saved.isNotEmpty) {
           emit(AuthNeedsAccountPicker(savedAccounts: saved));
         } else {
@@ -358,43 +298,30 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         }
         return;
       }
-
-      final raw = accountsResult.fold<List<AccountSession>>(
-        (_) => <AccountSession>[],
-        (List<AccountSession> a) => a,
-      );
-      emit(
-        AuthAccountsUpdated(
-          activeSession: session,
-          savedAccounts: _ensureActiveIncluded(session, raw),
-        ),
-      );
+      final raw = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
+      emit(AuthAccountsUpdated(
+        activeSession: session,
+        savedAccounts: _ensureActiveIncluded(session, raw),
+      ));
     });
   }
 
-  // ── Refresh active session from API ───────────────────────
+  // ── Session refresh ───────────────────────────────────────
   Future<void> _onSessionRefreshRequested(
     AuthSessionRefreshRequested event,
     Emitter<AuthState> emit,
   ) async {
     final result = await _refreshSession(NoParams());
-
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session); // FIX
-
+        await _applyOrgContext(session);
         final accountsResult = await _getSavedAccounts(NoParams());
-        final raw = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
-        );
-        emit(
-          AuthAuthenticated(
-            activeSession: session,
-            savedAccounts: _ensureActiveIncluded(session, raw),
-          ),
-        );
+        final raw = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
+        emit(AuthAuthenticated(
+          activeSession: session,
+          savedAccounts: _ensureActiveIncluded(session, raw),
+        ));
       },
     );
   }

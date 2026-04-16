@@ -2,25 +2,28 @@
 // ─────────────────────────────────────────────────────────────
 // FLOW (login & register):
 //   1. POST /auth/login (or /register) → get token
-//   2. Parse user from login response (if present)
-//   3. Save preliminary session (token only) so interceptor works
-//   4. GET /auth/me → full user + roles + permissions
-//   5. Save final session with everything
+//   2. Save preliminary session so interceptor has a token
+//   3. GET /auth/me (no org_id) → server picks best membership
+//   4. Server returns user.org_id → we persist it in OrgContext
+//   5. Save final session
 //
-// Single endpoint for user data: GET /auth/me returns user, roles,
-// and permissions in one response. No separate /me/roles call.
+// On refreshSession:
+//   - Read stored org_id from OrgContext
+//   - Pass it to getAuthMe(orgId:) → correct permissions every time
+//
+// This eliminates the hardcoded AppConstants.orgId from the auth flow.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
+import '../../../../core/context/org_context.dart';
 import '../../domain/entities/account_session.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/auth_local_datasource.dart';
 import '../datasources/auth_remote_datasource.dart';
 import '../models/account_session_model.dart';
 import '../models/user_model.dart';
-import '../../../../core/context/org_context.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDataSource _remote;
@@ -42,14 +45,14 @@ class AuthRepositoryImpl implements AuthRepository {
     required String password,
   }) async {
     try {
-      // ── Step 1: Authenticate ─────────────────────────────
+      // Step 1: Authenticate
       final loginData = await _remote.login(email, password);
       final token = AuthRemoteDataSourceImpl.extractToken(loginData);
       if (token == null) {
         return const Left(ServerFailure('No token received from server'));
       }
 
-      // ── Step 2: Save preliminary session so interceptor has token ──
+      // Step 2: Save preliminary session so interceptor has a token
       final prelimSession = AccountSessionModel(
         token: token,
         user: _placeholderUser(email),
@@ -59,10 +62,17 @@ class AuthRepositoryImpl implements AuthRepository {
       await _local.saveSession(prelimSession);
       await _local.setActiveAccount(email);
 
-      // ── Step 3: Fetch full profile (user + roles + permissions) ──
+      // Step 3: Fetch full profile — no org_id on first call.
+      // Server picks the user's highest-level active membership.
       final meResponse = await _remote.getAuthMe();
 
-      // ── Step 4: Save final session ────────────────────────
+      // Step 4: Persist the resolved org_id in OrgContext so
+      // refreshSession() can pass it back on the next call.
+      if (meResponse.resolvedOrgId != null) {
+        await _persistOrgId(meResponse.resolvedOrgId!, meResponse.user.actorId, meResponse.user.name);
+      }
+
+      // Step 5: Save final session
       final finalSession = AccountSessionModel(
         token: token,
         user: meResponse.user,
@@ -71,22 +81,6 @@ class AuthRepositoryImpl implements AuthRepository {
       );
       await _local.saveSession(finalSession);
       await _local.setActiveAccount(meResponse.user.email);
-      //     // ── Step 5: Set org context ──────────────────────────
-      //     // TODO: When API adds org memberships to /auth/me response,
-      //     // parse the user's org membership here and call:
-      //     //   _orgContext.setRootOrg(id: orgId, name: orgName, role: OrgRole.orgAdmin);
-      //     // For now, restore from last saved context:
-      await _orgContext.restore();
-      final actorId = meResponse.user.actorId;
-      if (_orgContext.hasOrg && actorId != null) {
-        await _orgContext.setRootOrg(
-          id: _orgContext.rootOrgId!,
-          name: _orgContext.rootOrgName ?? '',
-          role: _orgContext.orgRole,
-          actorId: actorId,
-          actorName: meResponse.user.name,
-        );
-      }
 
       return Right(finalSession);
     } on AuthException catch (e) {
@@ -112,7 +106,6 @@ class AuthRepositoryImpl implements AuthRepository {
     String? phone,
   }) async {
     try {
-      // ── Step 1: Register ──────────────────────────────────
       final registerData = await _remote.register(
         name: name,
         email: email,
@@ -123,12 +116,9 @@ class AuthRepositoryImpl implements AuthRepository {
 
       final token = AuthRemoteDataSourceImpl.extractToken(registerData);
       if (token == null) {
-        return const Left(
-          ServerFailure('No token received after registration'),
-        );
+        return const Left(ServerFailure('No token received after registration'));
       }
 
-      // ── Step 2: Save preliminary session ──────────────────
       final prelimSession = AccountSessionModel(
         token: token,
         user: _placeholderUser(email),
@@ -138,10 +128,13 @@ class AuthRepositoryImpl implements AuthRepository {
       await _local.saveSession(prelimSession);
       await _local.setActiveAccount(email);
 
-      // ── Step 3: Fetch full profile ────────────────────────
+      // New registrants have no membership yet → no org_id needed
       final meResponse = await _remote.getAuthMe();
 
-      // ── Step 4: Save final session ────────────────────────
+      if (meResponse.resolvedOrgId != null) {
+        await _persistOrgId(meResponse.resolvedOrgId!, meResponse.user.actorId, meResponse.user.name);
+      }
+
       final finalSession = AccountSessionModel(
         token: token,
         user: meResponse.user,
@@ -165,19 +158,14 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
-  // ── logout (active account) ───────────────────────────────
+  // ── logout ────────────────────────────────────────────────
   @override
   Future<Either<Failure, void>> logout() async {
     try {
       final activeEmail = await _local.getActiveEmail();
-      try {
-        await _remote.logout();
-      } catch (_) {}
-      if (activeEmail != null) {
-        await _local.removeSession(activeEmail);
-      }
+      try { await _remote.logout(); } catch (_) {}
+      if (activeEmail != null) await _local.removeSession(activeEmail);
       await _orgContext.clear();
-
       return const Right(null);
     } on CacheException catch (e) {
       return Left(CacheFailure(e.message));
@@ -186,15 +174,13 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
-  // ── logout specific account ───────────────────────────────
+  // ── logoutAccount ─────────────────────────────────────────
   @override
   Future<Either<Failure, void>> logoutAccount(String email) async {
     try {
       final activeEmail = await _local.getActiveEmail();
       if (activeEmail == email) {
-        try {
-          await _remote.logout();
-        } catch (_) {}
+        try { await _remote.logout(); } catch (_) {}
       }
       await _local.removeSession(email);
       return const Right(null);
@@ -209,8 +195,7 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<Either<Failure, List<AccountSession>>> getSavedAccounts() async {
     try {
-      final sessions = await _local.getAllSessions();
-      return Right(sessions);
+      return Right(await _local.getAllSessions());
     } on CacheException catch (e) {
       return Left(CacheFailure(e.message));
     } catch (e) {
@@ -222,8 +207,7 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<Either<Failure, AccountSession?>> getActiveSession() async {
     try {
-      final session = await _local.getActiveSession();
-      return Right(session);
+      return Right(await _local.getActiveSession());
     } on CacheException catch (e) {
       return Left(CacheFailure(e.message));
     } catch (e) {
@@ -237,9 +221,7 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       final sessions = await _local.getAllSessions();
       final target = sessions.where((s) => s.user.email == email).firstOrNull;
-      if (target == null) {
-        return Left(AuthFailure('No saved session found for $email'));
-      }
+      if (target == null) return Left(AuthFailure('No saved session found for $email'));
       await _local.setActiveAccount(email);
       return Right(target);
     } on CacheException catch (e) {
@@ -250,16 +232,24 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   // ── refreshSession ────────────────────────────────────────
-  // Re-fetches user + roles + permissions from GET /auth/me.
+  // Uses the org_id stored in OrgContext so branch/officer users
+  // always get the correct permission set for their membership org.
   @override
   Future<Either<Failure, AccountSession>> refreshSession() async {
     try {
       final current = await _local.getActiveSession();
-      if (current == null) {
-        return const Left(AuthFailure('No active session to refresh'));
-      }
+      if (current == null) return const Left(AuthFailure('No active session to refresh'));
 
-      final meResponse = await _remote.getAuthMe();
+      // Use persisted org_id (from OrgContext) for correct scoping
+      await _orgContext.restore();
+      final storedOrgId = _orgContext.rootOrgId;
+
+      final meResponse = await _remote.getAuthMe(orgId: storedOrgId);
+
+      // Update stored org_id if server returned one
+      if (meResponse.resolvedOrgId != null) {
+        await _persistOrgId(meResponse.resolvedOrgId!, meResponse.user.actorId, meResponse.user.name);
+      }
 
       final updated = AccountSessionModel(
         token: current.token,
@@ -268,16 +258,7 @@ class AuthRepositoryImpl implements AuthRepository {
         savedAt: DateTime.now(),
       );
       await _local.saveSession(updated);
-      final actorId = meResponse.user.actorId;
-      if (_orgContext.hasOrg && actorId != null) {
-        await _orgContext.setRootOrg(
-          id: _orgContext.rootOrgId!,
-          name: _orgContext.rootOrgName ?? '',
-          role: _orgContext.orgRole,
-          actorId: actorId,
-          actorName: meResponse.user.name,
-        );
-      }
+
       return Right(updated);
     } on AuthException catch (e) {
       return Left(AuthFailure(e.message));
@@ -292,7 +273,21 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
-  // ── Placeholder user ──────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────
+
+  Future<void> _persistOrgId(String orgId, String? actorId, String actorName) async {
+    await _orgContext.restore();
+    await _orgContext.setRootOrg(
+      id: orgId,
+      name: _orgContext.rootOrgName ?? 'Barick Pharmacy',
+      role: _orgContext.orgRole != OrgRole.unknown
+          ? _orgContext.orgRole
+          : OrgRole.orgAdmin,
+      actorId: actorId,
+      actorName: actorName,
+    );
+  }
+
   UserModel _placeholderUser(String email) => UserModel(
     id: '',
     name: '',
