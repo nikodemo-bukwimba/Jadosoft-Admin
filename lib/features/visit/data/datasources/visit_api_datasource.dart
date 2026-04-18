@@ -1,4 +1,3 @@
-// === FILE: lib/features/visit/data/datasources/visit_api_datasource.dart ===
 import 'package:dio/dio.dart';
 import '../../../../core/context/org_context.dart';
 import '../../../../core/error/exceptions.dart';
@@ -48,26 +47,47 @@ class VisitApiDataSource implements VisitRemoteDataSource {
     throw UnimplementedError('Admin cannot create visits');
   }
 
-  /// Calls review or flag endpoint based on the target status in [data].
-  /// Expects data keys: 'status' ('reviewed'|'flagged'), optionally 'flag_reason'.
+  // Add to VisitApiDataSource
+  String _resolveUrl(String? url) {
+    if (url == null || url.isEmpty) return '';
+    try {
+      final apiUri = Uri.parse(_dio.options.baseUrl);
+      if (!url.startsWith('http')) {
+        final base = _dio.options.baseUrl.replaceAll(RegExp(r'/api/v1/?$'), '');
+        return '$base$url';
+      }
+      final fileUri = Uri.parse(url);
+      return fileUri
+          .replace(
+            scheme: apiUri.scheme,
+            host: apiUri.host,
+            port: apiUri.hasPort ? apiUri.port : null,
+          )
+          .toString();
+    } catch (_) {
+      return url;
+    }
+  }
+
+  /// Calls review or flag endpoint based on 'status' in [data].
+  /// Expects: data['status'] == 'reviewed' | 'flagged'
+  ///          data['flag_reason'] for flagged
+  ///          data['admin_comment'] for reviewed (optional)
   @override
   Future<VisitModel> update(String id, Map<String, dynamic> data) async {
     final targetStatus = data['status'] as String?;
     try {
       if (targetStatus == 'reviewed') {
-        // POST /pharma/visits/{id}/review  — accept the visit
         final body = <String, dynamic>{};
-        if (data['admin_comment'] != null)
+        if (data['admin_comment'] != null &&
+            (data['admin_comment'] as String).isNotEmpty) {
           body['notes'] = data['admin_comment'];
+        }
         await _dio.post('/pharma/visits/$id/review', data: body);
       } else if (targetStatus == 'flagged') {
-        // POST /pharma/visits/{id}/flag
-        final body = <String, dynamic>{
-          if (data['flag_reason'] != null) 'reason': data['flag_reason'],
-        };
+        final body = <String, dynamic>{'reason': data['flag_reason'] ?? ''};
         await _dio.post('/pharma/visits/$id/flag', data: body);
       }
-      // Re-fetch to return up-to-date entity
       return getById(id);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -82,13 +102,16 @@ class VisitApiDataSource implements VisitRemoteDataSource {
   VisitModel _mapPharmaToAdminModel(Map<String, dynamic> j) {
     final customer = j['customer'] as Map<String, dynamic>?;
     final officer = j['officer'] as Map<String, dynamic>?;
+    final officerActor = officer?['actor'] as Map<String, dynamic>?;
 
     final visitDateStr = j['check_in_at'] ?? j['visit_date'] ?? j['created_at'];
 
-    // Resolve officer name: prefer officer.name, fallback to officer_name field
+    // Resolve actual officer name from nested officer object
     final officerName =
-        officer?['name'] as String? ??
+        officerActor?['display_name'] as String? ?? // ← API nests actor
         officer?['display_name'] as String? ??
+        officer?['name'] as String? ??
+        officer?['username'] as String? ??
         j['officer_name'] as String?;
 
     final mapped = <String, dynamic>{
@@ -125,29 +148,23 @@ class VisitApiDataSource implements VisitRemoteDataSource {
       'outcome_status': j['outcome_status'],
       'duration_minutes': j['duration_minutes'],
       'customer_name': customer?['name'] as String? ?? j['customer_name'],
-      'officer_name': officerName, // ← Fixed: resolves actual name
+      'officer_name': officerName,
       'flag_reason': j['flag_reason'],
       'admin_comments': j['admin_comments'] ?? <Map<String, dynamic>>[],
     };
     return VisitModel.fromJson(mapped);
   }
 
-  /// pharma: in_progress | completed | cancelled
-  /// admin:  pending (submitted/in review) | reviewed | flagged
   String _mapStatus(String? pharmaStatus) {
     return switch (pharmaStatus) {
-      'completed' => 'pending', // completed visit awaits admin review
+      'completed' => 'pending',
       'in_progress' => 'pending',
       'cancelled' => 'pending',
-      'reviewed' => 'reviewed', // if backend ever returns this
-      'flagged' => 'flagged',
       _ => 'pending',
     };
   }
 
-  /// Build image URL list from pharma attachments structure.
   List<String>? _buildImageUrls(Map<String, dynamic> j) {
-    // Try attachments array first (full visit detail response)
     final attachments = j['attachments'] as List?;
     if (attachments != null && attachments.isNotEmpty) {
       return attachments
@@ -157,7 +174,9 @@ class VisitApiDataSource implements VisitRemoteDataSource {
                 a['type'] == 'photo' ||
                 (a['mime_type'] as String? ?? '').startsWith('image/'),
           )
-          .map((a) => a['file_url']?.toString() ?? '')
+          .map(
+            (a) => _resolveUrl(a['file_url']?.toString()),
+          ) // ← wrap with _resolveUrl
           .where((url) => url.isNotEmpty)
           .toList();
     }

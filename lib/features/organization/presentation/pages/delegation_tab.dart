@@ -36,12 +36,12 @@ class DelegationTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return BlocBuilder<OrganizationBloc, OrganizationState>(
       buildWhen: (_, s) => s is DelegationsLoaded || s is OrganizationLoading,
       builder: (c, s) {
-        if (s is OrganizationLoading) {
+        if (s is OrganizationLoading)
           return const Center(child: CircularProgressIndicator());
-        }
 
         if (s is DelegationsLoaded) {
           return Stack(
@@ -404,8 +404,14 @@ class _CreateDelegationDialogState extends State<_CreateDelegationDialog> {
     return Dialog(
       insetPadding: const EdgeInsets.all(20),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 640),
+        constraints: const BoxConstraints(
+          minWidth: 320,
+          maxWidth: 480,
+          maxHeight: 640,
+        ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // ── Title bar ─────────────────────────────────────
             Container(
@@ -494,24 +500,11 @@ class _CreateDelegationDialogState extends State<_CreateDelegationDialog> {
                                 .map(
                                   (b) => DropdownMenuItem(
                                     value: b.id,
-                                    child: Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.store_outlined,
-                                          size: 16,
-                                          color: Colors.teal,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(b.name),
-                                        if (b.memberCount > 0)
-                                          Text(
-                                            ' · ${b.memberCount} members',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.grey.shade600,
-                                            ),
-                                          ),
-                                      ],
+                                    child: Text(
+                                      b.memberCount > 0
+                                          ? '${b.name} · ${b.memberCount} members'
+                                          : b.name,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 )
@@ -547,26 +540,11 @@ class _CreateDelegationDialogState extends State<_CreateDelegationDialog> {
                                 .map(
                                   (r) => DropdownMenuItem(
                                     value: r.id,
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          r.name,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        if (r.permissions.isNotEmpty)
-                                          Text(
-                                            '${r.permissions.length} permissions',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.grey.shade600,
-                                            ),
-                                          ),
-                                      ],
+                                    child: Text(
+                                      r.permissions.isNotEmpty
+                                          ? '${r.name} (${r.permissions.length} perms)'
+                                          : r.name,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 )
@@ -654,19 +632,11 @@ class _CreateDelegationDialogState extends State<_CreateDelegationDialog> {
                                 ...branchMembers.map(
                                   (m) => DropdownMenuItem(
                                     value: m.userId,
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.person, size: 16),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            m.name.isNotEmpty
-                                                ? '${m.name} · ${m.roleName}'
-                                                : m.email,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
+                                    child: Text(
+                                      m.name.isNotEmpty
+                                          ? '${m.name} · ${m.roleName}'
+                                          : m.email,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ),
@@ -705,30 +675,31 @@ class _CreateDelegationDialogState extends State<_CreateDelegationDialog> {
                 ),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: const Text('Cancel'),
                   ),
                   const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed:
-                        selectedBranchId != null && selectedRoleId != null
-                        ? () {
-                            Navigator.pop(context);
-                            widget.bloc.add(
-                              DelegationCreateRequested({
-                                'child_org_id': selectedBranchId,
-                                'org_role_id': selectedRoleId,
-                                if (selectedPermissionIds.isNotEmpty)
-                                  'permission_ids': selectedPermissionIds,
-                              }),
-                            );
-                          }
-                        : null,
-                    icon: const Icon(Icons.check_rounded),
-                    label: const Text('Create Delegation'),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed:
+                          selectedBranchId != null && selectedRoleId != null
+                          ? () {
+                              Navigator.pop(context);
+                              widget.bloc.add(
+                                DelegationCreateRequested({
+                                  'child_org_id': selectedBranchId,
+                                  'org_role_id': selectedRoleId,
+                                  if (selectedPermissionIds.isNotEmpty)
+                                    'permission_ids': selectedPermissionIds,
+                                }),
+                              );
+                            }
+                          : null,
+                      icon: const Icon(Icons.check_rounded),
+                      label: const Text('Create Delegation'),
+                    ),
                   ),
                 ],
               ),
@@ -926,7 +897,7 @@ class _EmptyDelegations extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          FilledButton.icon(
+          ElevatedButton.icon(
             onPressed: onAdd,
             icon: const Icon(Icons.add),
             label: const Text('Create First Delegation'),

@@ -9,9 +9,8 @@ import '../datasources/visit_remote_datasource.dart';
 class VisitRepositoryImpl implements VisitRepository {
   final VisitRemoteDataSource _remoteDataSource;
 
-  VisitRepositoryImpl({
-    required VisitRemoteDataSource remoteDataSource,
-  })  :         _remoteDataSource = remoteDataSource;
+  VisitRepositoryImpl({required VisitRemoteDataSource remoteDataSource})
+    : _remoteDataSource = remoteDataSource;
 
   @override
   Future<Either<Failure, List<VisitEntity>>> getAll() async {
@@ -52,11 +51,33 @@ class VisitRepositoryImpl implements VisitRepository {
     }
   }
 
+  /// Standard update — passes entity JSON.
   @override
   Future<Either<Failure, VisitEntity>> update(VisitEntity entity) async {
     try {
       final model = VisitModel.fromEntity(entity);
       final result = await _remoteDataSource.update(entity.id, model.toJson());
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  /// Admin-action update: passes status + extra action fields (flag_reason, admin_comment).
+  Future<Either<Failure, VisitEntity>> updateWithAction(
+    VisitEntity entity, {
+    String? flagReason,
+    String? adminComment,
+  }) async {
+    try {
+      final payload = <String, dynamic>{
+        'status': entity.status,
+        if (flagReason != null) 'flag_reason': flagReason,
+        if (adminComment != null) 'admin_comment': adminComment,
+      };
+      final result = await _remoteDataSource.update(entity.id, payload);
       return Right(result);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));

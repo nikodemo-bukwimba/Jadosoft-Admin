@@ -11,7 +11,6 @@ class VisitDomainService {
 
   VisitDomainService({required this.repository, required this.guard});
 
-  /// Original Maishell transition — still used for simple status changes.
   Future<Either<Failure, VisitEntity>> transition({
     required String id,
     required VisitStatus targetStatus,
@@ -25,15 +24,19 @@ class VisitDomainService {
       target: targetStatus,
     );
     if (guardResult.isLeft()) {
-      return guardResult.fold((f) => Left(f), (_) => throw StateError('unreachable'));
+      return guardResult.fold(
+        (f) => Left(f),
+        (_) => throw StateError('unreachable'),
+      );
     }
-    final validTarget = guardResult.getOrElse(() => throw StateError('unreachable'));
-
+    final validTarget = guardResult.getOrElse(
+      () => throw StateError('unreachable'),
+    );
     final updated = entity.copyWith(status: validTarget.name);
     return repository.update(updated);
   }
 
-  /// Accept visit with optional comment.
+  /// Accept a completed visit with optional comment for the officer.
   Future<Either<Failure, VisitEntity>> reviewWithComment({
     required String id,
     String? comment,
@@ -47,65 +50,78 @@ class VisitDomainService {
       target: VisitStatus.reviewed,
     );
     if (guardResult.isLeft()) {
-      return guardResult.fold((f) => Left(f), (_) => throw StateError('unreachable'));
+      return guardResult.fold(
+        (f) => Left(f),
+        (_) => throw StateError('unreachable'),
+      );
     }
 
-    // Build updated entity with status + optional comment
     final comments = List<VisitAdminComment>.from(entity.adminComments);
     if (comment != null && comment.trim().isNotEmpty) {
-      comments.add(VisitAdminComment(
-        id: 'cmt_${DateTime.now().millisecondsSinceEpoch}',
-        authorName: 'Admin',
-        comment: comment.trim(),
-        createdAt: DateTime.now(),
-      ));
+      comments.add(
+        VisitAdminComment(
+          id: 'cmt_${DateTime.now().millisecondsSinceEpoch}',
+          authorName: 'Admin',
+          comment: comment.trim(),
+          createdAt: DateTime.now(),
+        ),
+      );
     }
 
     final updated = entity.copyWith(
       status: VisitStatus.reviewed.name,
       adminComments: comments,
     );
-    return repository.update(updated);
+    // Pass adminComment so the datasource can send it to the review endpoint
+    return repository.updateWithAction(
+      updated,
+      adminComment: comment?.trim().isNotEmpty == true ? comment!.trim() : null,
+    );
   }
 
-  /// Flag visit with REQUIRED comment.
+  /// Flag a visit with a required comment explaining the reason.
   Future<Either<Failure, VisitEntity>> flagWithComment({
     required String id,
     required String comment,
   }) async {
     if (comment.trim().isEmpty) {
-      return const Left(ValidationFailure('A comment is required when flagging a visit.'));
+      return const Left(
+        ValidationFailure('A comment is required when flagging a visit.'),
+      );
     }
 
     final loadResult = await repository.getById(id);
     if (loadResult.isLeft()) return loadResult;
     final entity = loadResult.getOrElse(() => throw StateError('unreachable'));
 
-    // Flag can happen from pending OR reviewed
     final current = VisitStatusX.fromString(entity.status);
     if (current != VisitStatus.pending && current != VisitStatus.reviewed) {
-      return Left(ValidationFailure(
-        'Cannot flag from ${current.displayName}. Only pending or reviewed visits can be flagged.',
-      ));
+      return Left(
+        ValidationFailure(
+          'Cannot flag from ${current.displayName}. Only pending or reviewed visits can be flagged.',
+        ),
+      );
     }
 
     final comments = List<VisitAdminComment>.from(entity.adminComments);
-    comments.add(VisitAdminComment(
-      id: 'cmt_${DateTime.now().millisecondsSinceEpoch}',
-      authorName: 'Admin',
-      comment: comment.trim(),
-      createdAt: DateTime.now(),
-    ));
+    comments.add(
+      VisitAdminComment(
+        id: 'cmt_${DateTime.now().millisecondsSinceEpoch}',
+        authorName: 'Admin',
+        comment: comment.trim(),
+        createdAt: DateTime.now(),
+      ),
+    );
 
     final updated = entity.copyWith(
       status: VisitStatus.flagged.name,
       flagReason: comment.trim(),
       adminComments: comments,
     );
-    return repository.update(updated);
+    return repository.updateWithAction(updated, flagReason: comment.trim());
   }
 
-  /// Unflag visit (move back to reviewed).
+  /// Unflag a visit — move back to reviewed.
   Future<Either<Failure, VisitEntity>> unflagVisit({required String id}) async {
     return transition(id: id, targetStatus: VisitStatus.reviewed);
   }

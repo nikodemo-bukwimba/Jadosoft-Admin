@@ -28,6 +28,7 @@ class VisitCardTile extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               // Header row
               Row(
@@ -41,20 +42,23 @@ class VisitCardTile extends StatelessWidget {
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           item.businessName ?? 'Unknown Business',
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 2),
                         Text(
                           'by $officerDisplay',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: scheme.primary,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: scheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
                         ),
                       ],
                     ),
@@ -64,26 +68,35 @@ class VisitCardTile extends StatelessWidget {
               ),
 
               // Discussion summary
-              if (item.discussionSummary != null && item.discussionSummary!.isNotEmpty) ...[
-                const SizedBox(height: 10),
+              if (item.discussionSummary != null &&
+                  item.discussionSummary!.isNotEmpty) ...[
+                const SizedBox(height: 6),
                 Text(
                   item.discussionSummary!,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                  maxLines: 2,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
 
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
 
               // Footer row — date, GPS (tappable), photos, comments
               Row(
                 children: [
-                  Icon(Icons.schedule, size: 14, color: scheme.onSurfaceVariant),
+                  Icon(
+                    Icons.schedule,
+                    size: 14,
+                    color: scheme.onSurfaceVariant,
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     _formatDate(item.visitDate),
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
 
                   if (hasGps) ...[
@@ -91,14 +104,31 @@ class VisitCardTile extends StatelessWidget {
                     Tooltip(
                       message: 'Open in Map',
                       child: InkWell(
-                        onTap: () => MapLauncher.open(lat: item.gpsLat!, lng: item.gpsLng!, label: item.businessName ?? 'Visit Location'),
+                        onTap: () => MapLauncher.open(
+                          lat: item.gpsLat!,
+                          lng: item.gpsLng!,
+                          label: item.businessName ?? 'Visit Location',
+                        ),
                         borderRadius: BorderRadius.circular(4),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.gps_fixed, size: 14, color: scheme.primary),
+                            Icon(
+                              Icons.gps_fixed,
+                              size: 14,
+                              color: scheme.primary,
+                            ),
                             const SizedBox(width: 4),
-                            Text('GPS', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w600, decoration: TextDecoration.underline, decorationColor: scheme.primary)),
+                            Text(
+                              'GPS',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: scheme.primary,
+                                    fontWeight: FontWeight.w600,
+                                    decoration: TextDecoration.underline,
+                                    decorationColor: scheme.primary,
+                                  ),
+                            ),
                           ],
                         ),
                       ),
@@ -107,16 +137,30 @@ class VisitCardTile extends StatelessWidget {
 
                   if (item.imageUrls != null && item.imageUrls!.isNotEmpty) ...[
                     const SizedBox(width: 12),
-                    Icon(Icons.photo_library_outlined, size: 14, color: scheme.onSurfaceVariant),
+                    Icon(
+                      Icons.photo_library_outlined,
+                      size: 14,
+                      color: scheme.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 4),
-                    Text('${item.imageUrls!.length}', style: Theme.of(context).textTheme.labelSmall),
+                    Text(
+                      '${item.imageUrls!.length}',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
                   ],
 
                   if (item.adminComments.isNotEmpty) ...[
                     const SizedBox(width: 12),
-                    Icon(Icons.comment_outlined, size: 14, color: scheme.onSurfaceVariant),
+                    Icon(
+                      Icons.comment_outlined,
+                      size: 14,
+                      color: scheme.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 4),
-                    Text('${item.adminComments.length}', style: Theme.of(context).textTheme.labelSmall),
+                    Text(
+                      '${item.adminComments.length}',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
                   ],
                 ],
               ),
@@ -141,7 +185,11 @@ class _StatusChip extends StatelessWidget {
     ),
     child: Text(
       status.displayName,
-      style: TextStyle(color: status.color, fontSize: 11, fontWeight: FontWeight.w600),
+      style: TextStyle(
+        color: status.color,
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+      ),
     ),
   );
 }

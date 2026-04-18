@@ -1,11 +1,211 @@
 ﻿// ================================================================
 // features_visit_source.txt
-// Generated : 2026-04-08 23:20:14
-// Files     : 27
-// Usage     : Upload to Claude Project documents as reference.
+// Project Type : Flutter/Dart
+// Generated    : 2026-04-18 09:38:17
+// Files        : 27
+// Usage        : Upload to Claude Project documents as reference.
 // ================================================================
 
 // === FILE: lib/features/visit/data/datasources/visit_api_datasource.dart ===
+import 'package:dio/dio.dart';
+import '../../../../core/context/org_context.dart';
+import '../../../../core/error/exceptions.dart';
+import '../models/visit_model.dart';
+import 'visit_remote_datasource.dart';
+
+class VisitApiDataSource implements VisitRemoteDataSource {
+  final Dio _dio;
+  final OrgContext _orgContext;
+
+  VisitApiDataSource({required Dio dio, required OrgContext orgContext})
+    : _dio = dio,
+      _orgContext = orgContext;
+
+  String get _orgId => _orgContext.effectiveOrgId;
+
+  @override
+  Future<List<VisitModel>> getAll() async {
+    try {
+      final response = await _dio.get('/pharma/orgs/$_orgId/visits');
+      final raw = response.data;
+      final list = (raw is Map ? (raw['data'] ?? []) : raw) as List? ?? [];
+      return list
+          .whereType<Map<String, dynamic>>()
+          .map(_mapPharmaToAdminModel)
+          .toList();
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<VisitModel> getById(String id) async {
+    try {
+      final response = await _dio.get('/pharma/visits/$id');
+      final data = response.data is Map
+          ? response.data as Map<String, dynamic>
+          : (response.data['data'] ?? response.data) as Map<String, dynamic>;
+      return _mapPharmaToAdminModel(data);
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<VisitModel> create(Map<String, dynamic> data) {
+    throw UnimplementedError('Admin cannot create visits');
+  }
+
+  // Add to VisitApiDataSource
+  String _resolveUrl(String? url) {
+    if (url == null || url.isEmpty) return '';
+    try {
+      final apiUri = Uri.parse(_dio.options.baseUrl);
+      if (!url.startsWith('http')) {
+        final base = _dio.options.baseUrl.replaceAll(RegExp(r'/api/v1/?$'), '');
+        return '$base$url';
+      }
+      final fileUri = Uri.parse(url);
+      return fileUri
+          .replace(
+            scheme: apiUri.scheme,
+            host: apiUri.host,
+            port: apiUri.hasPort ? apiUri.port : null,
+          )
+          .toString();
+    } catch (_) {
+      return url;
+    }
+  }
+
+  /// Calls review or flag endpoint based on 'status' in [data].
+  /// Expects: data['status'] == 'reviewed' | 'flagged'
+  ///          data['flag_reason'] for flagged
+  ///          data['admin_comment'] for reviewed (optional)
+  @override
+  Future<VisitModel> update(String id, Map<String, dynamic> data) async {
+    final targetStatus = data['status'] as String?;
+    try {
+      if (targetStatus == 'reviewed') {
+        final body = <String, dynamic>{};
+        if (data['admin_comment'] != null &&
+            (data['admin_comment'] as String).isNotEmpty) {
+          body['notes'] = data['admin_comment'];
+        }
+        await _dio.post('/pharma/visits/$id/review', data: body);
+      } else if (targetStatus == 'flagged') {
+        final body = <String, dynamic>{'reason': data['flag_reason'] ?? ''};
+        await _dio.post('/pharma/visits/$id/flag', data: body);
+      }
+      return getById(id);
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<void> delete(String id) {
+    throw UnimplementedError('Admin cannot delete visits');
+  }
+
+  VisitModel _mapPharmaToAdminModel(Map<String, dynamic> j) {
+    final customer = j['customer'] as Map<String, dynamic>?;
+    final officer = j['officer'] as Map<String, dynamic>?;
+    final officerActor = officer?['actor'] as Map<String, dynamic>?;
+
+    final visitDateStr = j['check_in_at'] ?? j['visit_date'] ?? j['created_at'];
+
+    // Resolve actual officer name from nested officer object
+    final officerName =
+        officerActor?['display_name'] as String? ?? // ← API nests actor
+        officer?['display_name'] as String? ??
+        officer?['name'] as String? ??
+        officer?['username'] as String? ??
+        j['officer_name'] as String?;
+
+    final mapped = <String, dynamic>{
+      'id': j['id']?.toString() ?? '',
+      'customer_id':
+          j['customer_id']?.toString() ?? customer?['id']?.toString() ?? '',
+      'officer_id':
+          j['officer_actor_id']?.toString() ??
+          j['officer_id']?.toString() ??
+          officer?['id']?.toString() ??
+          '',
+      'visit_date':
+          visitDateStr?.toString() ?? DateTime.now().toIso8601String(),
+      'business_name':
+          customer?['name'] as String? ??
+          customer?['business_name'] as String? ??
+          j['business_name'] as String?,
+      'owner_phone': customer?['phone'] as String? ?? j['owner_phone'],
+      'contact_person_phone': j['contact_person_phone'],
+      'business_phone': j['business_phone'],
+      'notes': j['notes'],
+      'gps_lat': j['check_in_latitude'] ?? j['gps_lat'],
+      'gps_lng': j['check_in_longitude'] ?? j['gps_lng'],
+      'image_urls': _buildImageUrls(j),
+      'document_urls': _toStringList(j['document_urls']),
+      'promoted_product_ids': _toStringList(j['promoted_product_ids']),
+      'discussion_summary': j['discussion_summary'],
+      'status': _mapStatus(j['status'] as String?),
+      'created_at':
+          j['created_at']?.toString() ?? DateTime.now().toIso8601String(),
+      'visit_type': j['visit_type'],
+      'objective': j['objective'],
+      'outcome': j['outcome'],
+      'outcome_status': j['outcome_status'],
+      'duration_minutes': j['duration_minutes'],
+      'customer_name': customer?['name'] as String? ?? j['customer_name'],
+      'officer_name': officerName,
+      'flag_reason': j['flag_reason'],
+      'admin_comments': j['admin_comments'] ?? <Map<String, dynamic>>[],
+    };
+    return VisitModel.fromJson(mapped);
+  }
+
+  String _mapStatus(String? pharmaStatus) {
+    return switch (pharmaStatus) {
+      'completed' => 'pending',
+      'in_progress' => 'pending',
+      'cancelled' => 'pending',
+      _ => 'pending',
+    };
+  }
+
+  List<String>? _buildImageUrls(Map<String, dynamic> j) {
+    final attachments = j['attachments'] as List?;
+    if (attachments != null && attachments.isNotEmpty) {
+      return attachments
+          .whereType<Map>()
+          .where(
+            (a) =>
+                a['type'] == 'photo' ||
+                (a['mime_type'] as String? ?? '').startsWith('image/'),
+          )
+          .map(
+            (a) => _resolveUrl(a['file_url']?.toString()),
+          ) // ← wrap with _resolveUrl
+          .where((url) => url.isNotEmpty)
+          .toList();
+    }
+    return _toStringList(j['image_urls']);
+  }
+
+  List<String>? _toStringList(dynamic v) {
+    if (v == null) return null;
+    if (v is List) return v.map((e) => e.toString()).toList();
+    return null;
+  }
+
+  String _msg(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic> && data['message'] is String) {
+      return data['message'] as String;
+    }
+    return 'An error occurred. Please try again.';
+  }
+}
 
 
 // === FILE: lib/features/visit/data/datasources/visit_mock_datasource.dart ===
@@ -212,107 +412,185 @@ class VisitRemoteDataSourceImpl implements VisitRemoteDataSource {
 
 
 // === FILE: lib/features/visit/data/models/visit_model.dart ===
+// === FILE: lib/features/visit/data/models/visit_model.dart ===
 import '../../domain/entities/visit_entity.dart';
 
 class VisitModel extends VisitEntity {
   const VisitModel({
-    required super.id, required super.customerId, required super.officerId,
-    required super.visitDate, super.businessName, super.ownerPhone,
-    super.contactPersonPhone, super.businessPhone, super.notes,
-    super.gpsLat, super.gpsLng, super.imageUrls, super.documentUrls,
-    super.promotedProductIds, super.discussionSummary,
-    required super.status, required super.createdAt,
-    // Nexora extensions
-    super.visitType, super.objective, super.outcome, super.outcomeStatus,
-    super.durationMinutes, super.customerName, super.officerName,
-    super.flagReason, super.adminComments,
+    required super.id,
+    required super.customerId,
+    required super.officerId,
+    required super.visitDate,
+    super.businessName,
+    super.ownerPhone,
+    super.contactPersonPhone,
+    super.businessPhone,
+    super.notes,
+    super.gpsLat,
+    super.gpsLng,
+    super.imageUrls,
+    super.documentUrls,
+    super.promotedProductIds,
+    super.discussionSummary,
+    required super.status,
+    required super.createdAt,
+    super.visitType,
+    super.objective,
+    super.outcome,
+    super.outcomeStatus,
+    super.durationMinutes,
+    super.customerName,
+    super.officerName,
+    super.flagReason,
+    super.adminComments,
   });
 
   factory VisitModel.fromJson(Map<String, dynamic> json) {
-    // Parse admin comments
     final commentsList = <VisitAdminComment>[];
     final commentsJson = json['admin_comments'] as List<dynamic>?;
     if (commentsJson != null) {
       for (final c in commentsJson) {
         if (c is Map<String, dynamic>) {
-          commentsList.add(VisitAdminComment(
-            id: c['id']?.toString() ?? '',
-            authorName: c['author_name'] as String? ?? 'Admin',
-            comment: c['comment'] as String? ?? '',
-            createdAt: c['created_at'] != null ? DateTime.parse(c['created_at'].toString()) : DateTime.now(),
-          ));
+          commentsList.add(
+            VisitAdminComment(
+              id: c['id']?.toString() ?? '',
+              authorName: c['author_name'] as String? ?? 'Admin',
+              comment: c['comment'] as String? ?? '',
+              createdAt: c['created_at'] != null
+                  ? DateTime.parse(c['created_at'].toString())
+                  : DateTime.now(),
+            ),
+          );
         }
       }
     }
 
     return VisitModel(
-      // Original fields
       id: json['id']?.toString() ?? '',
       customerId: json['customer_id']?.toString() ?? '',
       officerId: json['officer_id']?.toString() ?? '',
-      visitDate: json['visit_date'] != null ? DateTime.parse(json['visit_date'].toString()) : DateTime.now(),
+      visitDate: json['visit_date'] != null
+          ? DateTime.parse(json['visit_date'].toString())
+          : DateTime.now(),
       businessName: json['business_name'] as String?,
       ownerPhone: json['owner_phone'] as String?,
       contactPersonPhone: json['contact_person_phone'] as String?,
       businessPhone: json['business_phone'] as String?,
       notes: json['notes'] as String?,
-      gpsLat: (json['gps_lat'] as num?)?.toDouble(),
-      gpsLng: (json['gps_lng'] as num?)?.toDouble(),
-      imageUrls: json['image_urls'] != null ? List<String>.from(json['image_urls'] as List) : null,
-      documentUrls: json['document_urls'] != null ? List<String>.from(json['document_urls'] as List) : null,
-      promotedProductIds: json['promoted_product_ids'] != null ? List<String>.from(json['promoted_product_ids'] as List) : null,
+      gpsLat: _parseDouble(json['gps_lat']), // ← fixed
+      gpsLng: _parseDouble(json['gps_lng']), // ← fixed
+      imageUrls: json['image_urls'] != null
+          ? List<String>.from(json['image_urls'] as List)
+          : null,
+      documentUrls: json['document_urls'] != null
+          ? List<String>.from(json['document_urls'] as List)
+          : null,
+      promotedProductIds: json['promoted_product_ids'] != null
+          ? List<String>.from(json['promoted_product_ids'] as List)
+          : null,
       discussionSummary: json['discussion_summary'] as String?,
       status: json['status'] as String? ?? 'pending',
-      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'].toString()) : DateTime.now(),
-      // Nexora extensions
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'].toString())
+          : DateTime.now(),
       visitType: json['visit_type'] as String?,
       objective: json['objective'] as String?,
       outcome: json['outcome'] as String?,
       outcomeStatus: json['outcome_status'] as String?,
-      durationMinutes: json['duration_minutes'] as int?,
-      customerName: json['customer_name'] as String? ?? json['business_name'] as String?,
+      durationMinutes: _parseInt(json['duration_minutes']), // ← fixed
+      customerName:
+          json['customer_name'] as String? ?? json['business_name'] as String?,
       officerName: json['officer_name'] as String?,
       flagReason: json['flag_reason'] as String?,
       adminComments: commentsList,
     );
   }
 
+  /// Safely parse any numeric-like value to double.
+  /// Handles: double, int, String, null.
+  static double? _parseDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is double) return v;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
+  }
+
+  /// Safely parse any numeric-like value to int.
+  /// Handles: int, double, String, null.
+  static int? _parseInt(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
+  }
+
   Map<String, dynamic> toJson() => {
-    'id': id, 'customer_id': customerId, 'officer_id': officerId,
-    'visit_date': visitDate.toIso8601String(), 'business_name': businessName,
-    'owner_phone': ownerPhone, 'contact_person_phone': contactPersonPhone,
-    'business_phone': businessPhone, 'notes': notes,
-    'gps_lat': gpsLat, 'gps_lng': gpsLng,
-    'image_urls': imageUrls, 'document_urls': documentUrls,
+    'id': id,
+    'customer_id': customerId,
+    'officer_id': officerId,
+    'visit_date': visitDate.toIso8601String(),
+    'business_name': businessName,
+    'owner_phone': ownerPhone,
+    'contact_person_phone': contactPersonPhone,
+    'business_phone': businessPhone,
+    'notes': notes,
+    'gps_lat': gpsLat,
+    'gps_lng': gpsLng,
+    'image_urls': imageUrls,
+    'document_urls': documentUrls,
     'promoted_product_ids': promotedProductIds,
     'discussion_summary': discussionSummary,
-    'status': status, 'created_at': createdAt.toIso8601String(),
-    'visit_type': visitType, 'objective': objective,
-    'outcome': outcome, 'outcome_status': outcomeStatus,
+    'status': status,
+    'created_at': createdAt.toIso8601String(),
+    'visit_type': visitType,
+    'objective': objective,
+    'outcome': outcome,
+    'outcome_status': outcomeStatus,
     'duration_minutes': durationMinutes,
-    'customer_name': customerName, 'officer_name': officerName,
+    'customer_name': customerName,
+    'officer_name': officerName,
     'flag_reason': flagReason,
-    'admin_comments': adminComments.map((c) => {
-      'id': c.id, 'author_name': c.authorName,
-      'comment': c.comment, 'created_at': c.createdAt.toIso8601String(),
-    }).toList(),
+    'admin_comments': adminComments
+        .map(
+          (c) => {
+            'id': c.id,
+            'author_name': c.authorName,
+            'comment': c.comment,
+            'created_at': c.createdAt.toIso8601String(),
+          },
+        )
+        .toList(),
   };
 
   factory VisitModel.fromEntity(VisitEntity e) => VisitModel(
-    id: e.id, customerId: e.customerId, officerId: e.officerId,
-    visitDate: e.visitDate, businessName: e.businessName,
-    ownerPhone: e.ownerPhone, contactPersonPhone: e.contactPersonPhone,
-    businessPhone: e.businessPhone, notes: e.notes,
-    gpsLat: e.gpsLat, gpsLng: e.gpsLng,
-    imageUrls: e.imageUrls, documentUrls: e.documentUrls,
+    id: e.id,
+    customerId: e.customerId,
+    officerId: e.officerId,
+    visitDate: e.visitDate,
+    businessName: e.businessName,
+    ownerPhone: e.ownerPhone,
+    contactPersonPhone: e.contactPersonPhone,
+    businessPhone: e.businessPhone,
+    notes: e.notes,
+    gpsLat: e.gpsLat,
+    gpsLng: e.gpsLng,
+    imageUrls: e.imageUrls,
+    documentUrls: e.documentUrls,
     promotedProductIds: e.promotedProductIds,
     discussionSummary: e.discussionSummary,
-    status: e.status, createdAt: e.createdAt,
-    visitType: e.visitType, objective: e.objective,
-    outcome: e.outcome, outcomeStatus: e.outcomeStatus,
+    status: e.status,
+    createdAt: e.createdAt,
+    visitType: e.visitType,
+    objective: e.objective,
+    outcome: e.outcome,
+    outcomeStatus: e.outcomeStatus,
     durationMinutes: e.durationMinutes,
-    customerName: e.customerName, officerName: e.officerName,
-    flagReason: e.flagReason, adminComments: e.adminComments,
+    customerName: e.customerName,
+    officerName: e.officerName,
+    flagReason: e.flagReason,
+    adminComments: e.adminComments,
   );
 }
 
@@ -329,9 +607,8 @@ import '../datasources/visit_remote_datasource.dart';
 class VisitRepositoryImpl implements VisitRepository {
   final VisitRemoteDataSource _remoteDataSource;
 
-  VisitRepositoryImpl({
-    required VisitRemoteDataSource remoteDataSource,
-  })  :         _remoteDataSource = remoteDataSource;
+  VisitRepositoryImpl({required VisitRemoteDataSource remoteDataSource})
+    : _remoteDataSource = remoteDataSource;
 
   @override
   Future<Either<Failure, List<VisitEntity>>> getAll() async {
@@ -372,11 +649,33 @@ class VisitRepositoryImpl implements VisitRepository {
     }
   }
 
+  /// Standard update — passes entity JSON.
   @override
   Future<Either<Failure, VisitEntity>> update(VisitEntity entity) async {
     try {
       final model = VisitModel.fromEntity(entity);
       final result = await _remoteDataSource.update(entity.id, model.toJson());
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  /// Admin-action update: passes status + extra action fields (flag_reason, admin_comment).
+  Future<Either<Failure, VisitEntity>> updateWithAction(
+    VisitEntity entity, {
+    String? flagReason,
+    String? adminComment,
+  }) async {
+    try {
+      final payload = <String, dynamic>{
+        'status': entity.status,
+        if (flagReason != null) 'flag_reason': flagReason,
+        if (adminComment != null) 'admin_comment': adminComment,
+      };
+      final result = await _remoteDataSource.update(entity.id, payload);
       return Right(result);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
@@ -527,10 +826,15 @@ import '../entities/visit_entity.dart';
 
 abstract class VisitRepository {
   Future<Either<Failure, List<VisitEntity>>> getAll();
-  Future<Either<Failure, VisitEntity>>       getById(String id);
-  Future<Either<Failure, VisitEntity>>       create(VisitEntity entity);
-  Future<Either<Failure, VisitEntity>>       update(VisitEntity entity);
-  Future<Either<Failure, void>>                 delete(String id);
+  Future<Either<Failure, VisitEntity>> getById(String id);
+  Future<Either<Failure, VisitEntity>> create(VisitEntity entity);
+  Future<Either<Failure, VisitEntity>> update(VisitEntity entity);
+  Future<Either<Failure, void>> delete(String id);
+  Future<Either<Failure, VisitEntity>> updateWithAction(
+    VisitEntity entity, {
+    String? flagReason,
+    String? adminComment,
+  });
 }
 
 
@@ -548,7 +852,6 @@ class VisitDomainService {
 
   VisitDomainService({required this.repository, required this.guard});
 
-  /// Original Maishell transition — still used for simple status changes.
   Future<Either<Failure, VisitEntity>> transition({
     required String id,
     required VisitStatus targetStatus,
@@ -562,15 +865,19 @@ class VisitDomainService {
       target: targetStatus,
     );
     if (guardResult.isLeft()) {
-      return guardResult.fold((f) => Left(f), (_) => throw StateError('unreachable'));
+      return guardResult.fold(
+        (f) => Left(f),
+        (_) => throw StateError('unreachable'),
+      );
     }
-    final validTarget = guardResult.getOrElse(() => throw StateError('unreachable'));
-
+    final validTarget = guardResult.getOrElse(
+      () => throw StateError('unreachable'),
+    );
     final updated = entity.copyWith(status: validTarget.name);
     return repository.update(updated);
   }
 
-  /// Accept visit with optional comment.
+  /// Accept a completed visit with optional comment for the officer.
   Future<Either<Failure, VisitEntity>> reviewWithComment({
     required String id,
     String? comment,
@@ -584,65 +891,78 @@ class VisitDomainService {
       target: VisitStatus.reviewed,
     );
     if (guardResult.isLeft()) {
-      return guardResult.fold((f) => Left(f), (_) => throw StateError('unreachable'));
+      return guardResult.fold(
+        (f) => Left(f),
+        (_) => throw StateError('unreachable'),
+      );
     }
 
-    // Build updated entity with status + optional comment
     final comments = List<VisitAdminComment>.from(entity.adminComments);
     if (comment != null && comment.trim().isNotEmpty) {
-      comments.add(VisitAdminComment(
-        id: 'cmt_${DateTime.now().millisecondsSinceEpoch}',
-        authorName: 'Admin',
-        comment: comment.trim(),
-        createdAt: DateTime.now(),
-      ));
+      comments.add(
+        VisitAdminComment(
+          id: 'cmt_${DateTime.now().millisecondsSinceEpoch}',
+          authorName: 'Admin',
+          comment: comment.trim(),
+          createdAt: DateTime.now(),
+        ),
+      );
     }
 
     final updated = entity.copyWith(
       status: VisitStatus.reviewed.name,
       adminComments: comments,
     );
-    return repository.update(updated);
+    // Pass adminComment so the datasource can send it to the review endpoint
+    return repository.updateWithAction(
+      updated,
+      adminComment: comment?.trim().isNotEmpty == true ? comment!.trim() : null,
+    );
   }
 
-  /// Flag visit with REQUIRED comment.
+  /// Flag a visit with a required comment explaining the reason.
   Future<Either<Failure, VisitEntity>> flagWithComment({
     required String id,
     required String comment,
   }) async {
     if (comment.trim().isEmpty) {
-      return const Left(ValidationFailure('A comment is required when flagging a visit.'));
+      return const Left(
+        ValidationFailure('A comment is required when flagging a visit.'),
+      );
     }
 
     final loadResult = await repository.getById(id);
     if (loadResult.isLeft()) return loadResult;
     final entity = loadResult.getOrElse(() => throw StateError('unreachable'));
 
-    // Flag can happen from pending OR reviewed
     final current = VisitStatusX.fromString(entity.status);
     if (current != VisitStatus.pending && current != VisitStatus.reviewed) {
-      return Left(ValidationFailure(
-        'Cannot flag from ${current.displayName}. Only pending or reviewed visits can be flagged.',
-      ));
+      return Left(
+        ValidationFailure(
+          'Cannot flag from ${current.displayName}. Only pending or reviewed visits can be flagged.',
+        ),
+      );
     }
 
     final comments = List<VisitAdminComment>.from(entity.adminComments);
-    comments.add(VisitAdminComment(
-      id: 'cmt_${DateTime.now().millisecondsSinceEpoch}',
-      authorName: 'Admin',
-      comment: comment.trim(),
-      createdAt: DateTime.now(),
-    ));
+    comments.add(
+      VisitAdminComment(
+        id: 'cmt_${DateTime.now().millisecondsSinceEpoch}',
+        authorName: 'Admin',
+        comment: comment.trim(),
+        createdAt: DateTime.now(),
+      ),
+    );
 
     final updated = entity.copyWith(
       status: VisitStatus.flagged.name,
       flagReason: comment.trim(),
       adminComments: comments,
     );
-    return repository.update(updated);
+    return repository.updateWithAction(updated, flagReason: comment.trim());
   }
 
-  /// Unflag visit (move back to reviewed).
+  /// Unflag a visit — move back to reviewed.
   Future<Either<Failure, VisitEntity>> unflagVisit({required String id}) async {
     return transition(id: id, targetStatus: VisitStatus.reviewed);
   }
@@ -1827,6 +2147,7 @@ class VisitCardTile extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               // Header row
               Row(
@@ -1840,20 +2161,23 @@ class VisitCardTile extends StatelessWidget {
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           item.businessName ?? 'Unknown Business',
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 2),
                         Text(
                           'by $officerDisplay',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: scheme.primary,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: scheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
                         ),
                       ],
                     ),
@@ -1863,26 +2187,35 @@ class VisitCardTile extends StatelessWidget {
               ),
 
               // Discussion summary
-              if (item.discussionSummary != null && item.discussionSummary!.isNotEmpty) ...[
-                const SizedBox(height: 10),
+              if (item.discussionSummary != null &&
+                  item.discussionSummary!.isNotEmpty) ...[
+                const SizedBox(height: 6),
                 Text(
                   item.discussionSummary!,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                  maxLines: 2,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
 
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
 
               // Footer row — date, GPS (tappable), photos, comments
               Row(
                 children: [
-                  Icon(Icons.schedule, size: 14, color: scheme.onSurfaceVariant),
+                  Icon(
+                    Icons.schedule,
+                    size: 14,
+                    color: scheme.onSurfaceVariant,
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     _formatDate(item.visitDate),
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
 
                   if (hasGps) ...[
@@ -1890,14 +2223,31 @@ class VisitCardTile extends StatelessWidget {
                     Tooltip(
                       message: 'Open in Map',
                       child: InkWell(
-                        onTap: () => MapLauncher.open(lat: item.gpsLat!, lng: item.gpsLng!, label: item.businessName ?? 'Visit Location'),
+                        onTap: () => MapLauncher.open(
+                          lat: item.gpsLat!,
+                          lng: item.gpsLng!,
+                          label: item.businessName ?? 'Visit Location',
+                        ),
                         borderRadius: BorderRadius.circular(4),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.gps_fixed, size: 14, color: scheme.primary),
+                            Icon(
+                              Icons.gps_fixed,
+                              size: 14,
+                              color: scheme.primary,
+                            ),
                             const SizedBox(width: 4),
-                            Text('GPS', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w600, decoration: TextDecoration.underline, decorationColor: scheme.primary)),
+                            Text(
+                              'GPS',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: scheme.primary,
+                                    fontWeight: FontWeight.w600,
+                                    decoration: TextDecoration.underline,
+                                    decorationColor: scheme.primary,
+                                  ),
+                            ),
                           ],
                         ),
                       ),
@@ -1906,16 +2256,30 @@ class VisitCardTile extends StatelessWidget {
 
                   if (item.imageUrls != null && item.imageUrls!.isNotEmpty) ...[
                     const SizedBox(width: 12),
-                    Icon(Icons.photo_library_outlined, size: 14, color: scheme.onSurfaceVariant),
+                    Icon(
+                      Icons.photo_library_outlined,
+                      size: 14,
+                      color: scheme.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 4),
-                    Text('${item.imageUrls!.length}', style: Theme.of(context).textTheme.labelSmall),
+                    Text(
+                      '${item.imageUrls!.length}',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
                   ],
 
                   if (item.adminComments.isNotEmpty) ...[
                     const SizedBox(width: 12),
-                    Icon(Icons.comment_outlined, size: 14, color: scheme.onSurfaceVariant),
+                    Icon(
+                      Icons.comment_outlined,
+                      size: 14,
+                      color: scheme.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 4),
-                    Text('${item.adminComments.length}', style: Theme.of(context).textTheme.labelSmall),
+                    Text(
+                      '${item.adminComments.length}',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
                   ],
                 ],
               ),
@@ -1940,10 +2304,15 @@ class _StatusChip extends StatelessWidget {
     ),
     child: Text(
       status.displayName,
-      style: TextStyle(color: status.color, fontSize: 11, fontWeight: FontWeight.w600),
+      style: TextStyle(
+        color: status.color,
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+      ),
     ),
   );
 }
+
 
 // === FILE: lib/features/visit/presentation/widgets/visit_list_row.dart ===
 import 'package:flutter/material.dart';

@@ -268,24 +268,12 @@ class _InviteDialogState extends State<_InviteDialog> {
                     items: [
                       DropdownMenuItem(
                         value: widget.bloc.orgContext.rootOrgId,
-                        child: Row(
-                          children: [
-                            const Icon(Icons.business, size: 16),
-                            const SizedBox(width: 6),
-                            Text('Root Organization (HQ)'),
-                          ],
-                        ),
+                        child: const Text('HQ (Root Organization)'),
                       ),
                       ...branches.map(
                         (b) => DropdownMenuItem(
                           value: b.id,
-                          child: Row(
-                            children: [
-                              const Icon(Icons.store_outlined, size: 16),
-                              const SizedBox(width: 6),
-                              Text(b.name),
-                            ],
-                          ),
+                          child: Text(b.name, overflow: TextOverflow.ellipsis),
                         ),
                       ),
                     ],
@@ -305,12 +293,9 @@ class _InviteDialogState extends State<_InviteDialog> {
                         .map(
                           (r) => DropdownMenuItem(
                             value: r.id,
-                            child: Row(
-                              children: [
-                                _roleIcon(r.name),
-                                const SizedBox(width: 8),
-                                Text(r.name),
-                              ],
+                            child: Text(
+                              r.name,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         )
@@ -370,15 +355,6 @@ class _InviteDialogState extends State<_InviteDialog> {
         ),
       ],
     );
-  }
-
-  Widget _roleIcon(String name) {
-    final n = name.toLowerCase();
-    if (n.contains('manager') || n.contains('admin'))
-      return const Icon(Icons.manage_accounts, size: 16, color: Colors.blue);
-    if (n.contains('officer'))
-      return const Icon(Icons.badge, size: 16, color: Colors.teal);
-    return const Icon(Icons.person, size: 16);
   }
 }
 
@@ -668,35 +644,38 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
                         style: TextStyle(color: scheme.error, fontSize: 12),
                       ),
                     const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.tonal(
-                        onPressed: _saving
-                            ? null
-                            : () {
-                                final name = _nameCtrl.text.trim();
-                                if (name.isEmpty) return;
-                                setState(() {
-                                  _saving = true;
-                                  _saveError = null;
-                                });
-                                widget.bloc.add(
-                                  UserInfoUpdateRequested(
-                                    userId: member.userId,
-                                    name: name,
-                                  ),
-                                );
-                              },
-                        child: _saving
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Text('Update Name'),
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.tonal(
+                            onPressed: _saving
+                                ? null
+                                : () {
+                                    final name = _nameCtrl.text.trim();
+                                    if (name.isEmpty) return;
+                                    setState(() {
+                                      _saving = true;
+                                      _saveError = null;
+                                    });
+                                    widget.bloc.add(
+                                      UserInfoUpdateRequested(
+                                        userId: member.userId,
+                                        name: name,
+                                      ),
+                                    );
+                                  },
+                            child: _saving
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('Update Name'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -728,9 +707,15 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
                           color: scheme.onSurfaceVariant,
                         ),
                       ),
-                      trailing: OutlinedButton(
-                        onPressed: () => _confirmPasswordReset(context),
-                        child: const Text('Send Email'),
+                      trailing: SizedBox(
+                        width: 90,
+                        child: TextButton(
+                          onPressed: () => _confirmPasswordReset(context),
+                          child: const Text(
+                            'Send Email',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -834,34 +819,35 @@ class _BranchScopeBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: scheme.primaryContainer.withOpacity(0.3),
-      child: Row(
-        children: [
-          Icon(Icons.store, size: 16, color: scheme.primary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Branch members',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: scheme.primary,
+    return LayoutBuilder(
+      builder: (context, constraints) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        color: scheme.primaryContainer.withOpacity(0.3),
+        child: Row(
+          children: [
+            Icon(Icons.store, size: 16, color: scheme.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Branch members',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.primary,
+                ),
               ),
             ),
-          ),
-          TextButton.icon(
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back, size: 14),
-            label: const Text('All Members', style: TextStyle(fontSize: 12)),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: Size.zero,
+            TextButton.icon(
+              onPressed: onBack,
+              icon: const Icon(Icons.arrow_back, size: 14),
+              label: const Text('All Members', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: Size.zero,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -884,13 +870,13 @@ class _EmptyState extends StatelessWidget {
           Text(isBranch ? 'No members in this branch' : 'No members yet'),
           const SizedBox(height: 8),
           if (isBranch && onAssign != null)
-            FilledButton.icon(
+            ElevatedButton.icon(
               onPressed: onAssign,
               icon: const Icon(Icons.person_add_alt_1),
               label: const Text('Assign Member'),
             ),
           if (!isBranch && onInvite != null)
-            FilledButton.icon(
+            ElevatedButton.icon(
               onPressed: onInvite,
               icon: const Icon(Icons.person_add),
               label: const Text('Invite Member'),
@@ -960,13 +946,16 @@ class _StatusActionTile extends StatelessWidget {
         style: TextStyle(color: color, fontWeight: FontWeight.w600),
       ),
       subtitle: Text(description, style: const TextStyle(fontSize: 12)),
-      trailing: OutlinedButton(
-        onPressed: onTap,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: color,
-          side: BorderSide(color: color),
+      trailing: SizedBox(
+        width: 80,
+        child: TextButton(
+          onPressed: onTap,
+          style: TextButton.styleFrom(
+            foregroundColor: color,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+          ),
+          child: const Text('Apply', style: TextStyle(fontSize: 12)),
         ),
-        child: const Text('Apply'),
       ),
     );
   }
