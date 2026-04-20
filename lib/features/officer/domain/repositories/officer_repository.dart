@@ -5,18 +5,30 @@ import '../entities/officer_entity.dart';
 
 abstract class OfficerRepository {
   Future<Either<Failure, PaginatedResponse<OfficerEntity>>> getAll({
-    String? status, String? search, int? perPage, int? page,
+    String? status,
+    String? search,
+    int? perPage,
+    int? page,
   });
   Future<Either<Failure, OfficerEntity>> getById(String userId);
   Future<Either<Failure, OfficerEntity>> invite({
-    required String email, String? username, String? phone,
-    required String branchId, required String orgRoleId,
+    required String email,
+    String? username,
+    String? phone,
+    required String branchId,
+    required String orgRoleId,
   });
   Future<Either<Failure, OfficerEntity>> updateMembership(
-    String userId, { String? orgRoleId, int? level, String? status });
+    String userId, {
+    String? orgRoleId,
+    int? level,
+    String? status,
+  });
   Future<Either<Failure, void>> reassignBranch({
-    required String userId, required String fromBranchId,
-    required String toBranchId, required String orgRoleId,
+    required String userId,
+    required String fromBranchId,
+    required String toBranchId,
+    required String orgRoleId,
   });
   Future<Either<Failure, OfficerEntity>> suspend(String userId);
   Future<Either<Failure, OfficerEntity>> activate(String userId);

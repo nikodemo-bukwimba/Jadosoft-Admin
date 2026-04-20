@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿//Admin app
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../domain/entities/daily_report_entity.dart';
 import '../../domain/value_objects/daily_report_status.dart';

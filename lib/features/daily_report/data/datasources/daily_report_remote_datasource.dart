@@ -23,7 +23,7 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   }) : _dio = dio,
        _orgContext = orgContext;
 
-  String get _base => '/pharma/${_orgContext.effectiveOrgId}/reports';
+  String get _base => '/pharma/orgs/${_orgContext.effectiveOrgId}/reports';
 
   @override
   Future<List<DailyReportModel>> getAll() async {
@@ -41,7 +41,8 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   @override
   Future<DailyReportModel> getById(String id) async {
     try {
-      final response = await _dio.get('$_base/$id');
+      // Correct route: /pharma/reports/{id} not /pharma/orgs/{orgId}/reports/{id}
+      final response = await _dio.get('/pharma/reports/$id');
       final data = response.data['data'] ?? response.data;
       return DailyReportModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
@@ -81,14 +82,13 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   }
 
   @override
-  Future<DailyReportModel> approve(
-    String id, {
-    required String feedback,
-  }) async {
+  Future<DailyReportModel> approve(String id, {String? feedback}) async {
     try {
+      // BEFORE (wrong): final response = await _dio.post('$_base/$id/approve', ...);
+      // AFTER (correct):
       final response = await _dio.post(
-        '$_base/$id/approve',
-        data: {'feedback': feedback},
+        '/pharma/reports/$id/approve',
+        data: {'notes': feedback},
       );
       final body = response.data['data'] ?? response.data;
       return DailyReportModel.fromJson(body as Map<String, dynamic>);
@@ -100,9 +100,11 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   @override
   Future<DailyReportModel> reject(String id, {required String feedback}) async {
     try {
+      // BEFORE (wrong): final response = await _dio.post('$_base/$id/reject', ...);
+      // AFTER (correct):
       final response = await _dio.post(
-        '$_base/$id/reject',
-        data: {'feedback': feedback},
+        '/pharma/reports/$id/reject',
+        data: {'notes': feedback},
       );
       final body = response.data['data'] ?? response.data;
       return DailyReportModel.fromJson(body as Map<String, dynamic>);

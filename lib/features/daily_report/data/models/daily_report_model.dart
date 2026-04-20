@@ -1,3 +1,4 @@
+// Admin app
 import '../../domain/entities/daily_report_entity.dart';
 
 class DailyReportModel extends DailyReportEntity {
@@ -30,7 +31,8 @@ class DailyReportModel extends DailyReportEntity {
   factory DailyReportModel.fromJson(Map<String, dynamic> json) {
     return DailyReportModel(
       id: json['id'] as String,
-      officerId: json['officer_id'] as String,
+      officerId:
+          (json['officer_id'] ?? json['officer_actor_id'] ?? '') as String,
       officerName: json['officer_name'] as String?,
       officerEmail: json['officer_email'] as String?,
       officerPhone: json['officer_phone'] as String?,
@@ -47,20 +49,21 @@ class DailyReportModel extends DailyReportEntity {
       visitedCustomers: json['visited_customers'] != null
           ? List<Map<String, dynamic>>.from(json['visited_customers'])
           : null,
-      keyOutcomes: json['key_outcomes'] as String?,
-      challengesFaced: json['challenges_faced'] as String?,
+      keyOutcomes: (json['key_outcomes'] ?? json['summary']) as String?,
+      challengesFaced:
+          (json['challenges_faced'] ?? json['challenges']) as String?,
       nextDayPlan: json['next_day_plan'] as String?,
-      customBody: json['custom_body'] as String?,
+      customBody: (json['custom_body'] ?? json['achievements']) as String?,
       isCustomized: json['is_customized'] as bool? ?? false,
       reviewedByName: json['reviewed_by_name'] as String?,
       reviewedByRole: json['reviewed_by_role'] as String?,
-      adminFeedback: json['admin_feedback'] as String?,
+      adminFeedback:
+          (json['admin_feedback'] ?? json['review_notes']) as String?,
       reviewDecision: json['review_decision'] as String?,
-      status: json['status'] as String,
+      status: (json['status'] ?? 'draft') as String,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
-
   Map<String, dynamic> toJson() => {
     'id': id,
     'officer_id': officerId,

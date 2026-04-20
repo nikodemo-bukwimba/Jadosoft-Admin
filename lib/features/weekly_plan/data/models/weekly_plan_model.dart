@@ -1,12 +1,44 @@
 ﻿import '../../domain/entities/weekly_plan_entity.dart';
 
+class PlanItemModel extends PlanItemEntity {
+  const PlanItemModel({
+    super.id,
+    super.customerId,
+    super.customerName,
+    super.title,
+    super.objective,
+    super.plannedDate,
+    super.plannedStartTime,
+    super.plannedEndTime,
+    super.notes,
+    super.status,
+  });
+
+  factory PlanItemModel.fromJson(Map<String, dynamic> json) => PlanItemModel(
+    id: json['id']?.toString(),
+    customerId: json['customer_id']?.toString(),
+    customerName: json['customer_name'] as String?,
+    title: json['title'] as String?,
+    objective: json['objective'] as String?,
+    plannedDate: json['planned_date'] != null
+        ? DateTime.tryParse(json['planned_date'].toString())
+        : null,
+    plannedStartTime: json['planned_start_time'] as String?,
+    plannedEndTime: json['planned_end_time'] as String?,
+    notes: json['notes'] as String?,
+    status: json['status'] as String? ?? 'planned',
+  );
+}
+
 class WeeklyPlanModel extends WeeklyPlanEntity {
   const WeeklyPlanModel({
     required super.id,
     required super.officerId,
+    super.officerName,
     required super.weekStart,
     required super.weekEnd,
     super.plannedCustomerIds,
+    super.items,
     super.plannedActivities,
     super.notes,
     required super.status,
@@ -16,32 +48,41 @@ class WeeklyPlanModel extends WeeklyPlanEntity {
     required super.createdAt,
   });
 
-  factory WeeklyPlanModel.fromJson(Map<String, dynamic> json) => WeeklyPlanModel(
-    id: json['id']?.toString() ?? '',
-    officerId: json['officer_id']?.toString() ?? '',
-    weekStart: json['week_start'] != null
-        ? DateTime.parse(json['week_start'].toString())
-        : DateTime.now(),
-    weekEnd: json['week_end'] != null
-        ? DateTime.parse(json['week_end'].toString())
-        : DateTime.now(),
-    plannedCustomerIds: json['planned_customer_ids'] != null
-        ? List<String>.from(json['planned_customer_ids'] as List)
-        : null,
-    plannedActivities: json['planned_activities'] as String?,
-    notes: json['notes'] as String?,
-    status: json['status'] as String? ?? 'draft',
-    submittedAt: json['submitted_at'] != null
-        ? DateTime.parse(json['submitted_at'].toString())
-        : null,
-    reviewedAt: json['reviewed_at'] != null
-        ? DateTime.parse(json['reviewed_at'].toString())
-        : null,
-    reviewNotes: json['review_notes'] as String?,
-    createdAt: json['created_at'] != null
-        ? DateTime.parse(json['created_at'].toString())
-        : DateTime.now(),
-  );
+  factory WeeklyPlanModel.fromJson(Map<String, dynamic> json) {
+    final rawItems =
+        (json['items'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .map(PlanItemModel.fromJson)
+            .toList() ??
+        [];
+    return WeeklyPlanModel(
+      id: json['id']?.toString() ?? '',
+      officerId:
+          json['officer_id']?.toString() ??
+          json['officer_actor_id']?.toString() ??
+          '',
+      officerName: _parseOfficerName(json),
+      weekStart: _parseDate(json['week_start_date'] ?? json['week_start']),
+      weekEnd: _parseDate(json['week_end_date'] ?? json['week_end']),
+      items: rawItems,
+      plannedCustomerIds: _parseCustomerIds(json, rawItems),
+      plannedActivities:
+          json['planned_activities'] as String? ??
+          json['objectives'] as String?,
+      notes: json['notes'] as String?,
+      status: json['status'] as String? ?? 'draft',
+      submittedAt: json['submitted_at'] != null
+          ? DateTime.parse(json['submitted_at'].toString())
+          : null,
+      reviewedAt: json['reviewed_at'] != null
+          ? DateTime.parse(json['reviewed_at'].toString())
+          : null,
+      reviewNotes: json['review_notes'] as String?,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'].toString())
+          : DateTime.now(),
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -64,6 +105,7 @@ class WeeklyPlanModel extends WeeklyPlanEntity {
     weekStart: e.weekStart,
     weekEnd: e.weekEnd,
     plannedCustomerIds: e.plannedCustomerIds,
+    items: e.items,
     plannedActivities: e.plannedActivities,
     notes: e.notes,
     status: e.status,
@@ -72,4 +114,37 @@ class WeeklyPlanModel extends WeeklyPlanEntity {
     reviewNotes: e.reviewNotes,
     createdAt: e.createdAt,
   );
+
+  static DateTime _parseDate(dynamic v) =>
+      v != null ? DateTime.parse(v.toString()) : DateTime.now();
+
+  static List<String>? _parseCustomerIds(
+    Map<String, dynamic> json,
+    List<PlanItemEntity> items,
+  ) {
+    if (items.isNotEmpty) {
+      final ids = items.map((e) => e.customerId).whereType<String>().toList();
+      if (ids.isNotEmpty) return ids;
+    }
+    final raw = json['planned_customer_ids'];
+    if (raw != null) return List<String>.from(raw as List);
+    return null;
+  }
+
+  static String? _parseOfficerName(Map<String, dynamic> json) {
+    // Try flat field first
+    if (json['officer_name'] is String) return json['officer_name'] as String;
+    // Try nested officer object
+    final officer = json['officer'];
+    if (officer is Map) {
+      return (officer['display_name'] ?? officer['name'] ?? officer['username'])
+          ?.toString();
+    }
+    // Try nested actor object
+    final actor = json['actor'];
+    if (actor is Map) {
+      return (actor['display_name'] ?? actor['name'])?.toString();
+    }
+    return null;
+  }
 }

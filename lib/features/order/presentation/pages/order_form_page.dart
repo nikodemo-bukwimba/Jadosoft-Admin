@@ -38,6 +38,10 @@ class _OrderFormPageState extends State<OrderFormPage> {
   CustomerModel? _selectedCustomer;
   final List<_OrderLineItem> _lineItems = [];
 
+  bool _sendMobilePayment = false;
+  final _paymentPhoneCtrl = TextEditingController();
+  String _paymentProvider = 'mpesa';
+
   @override
   void initState() {
     super.initState();
@@ -83,6 +87,7 @@ class _OrderFormPageState extends State<OrderFormPage> {
   @override
   void dispose() {
     _paymentRefController.dispose();
+    _paymentPhoneCtrl.dispose();
     super.dispose();
   }
 
@@ -208,6 +213,121 @@ class _OrderFormPageState extends State<OrderFormPage> {
                               prefixIcon: Icon(Icons.tag),
                             ),
                             textCapitalization: TextCapitalization.characters,
+                          ),
+                          const SizedBox(height: 20),
+
+                          // ── Optional mobile payment prompt ─
+                          Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: theme.colorScheme.outlineVariant,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.phone_in_talk_outlined,
+                                        size: 18,
+                                        color: theme.colorScheme.primary,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Send Mobile Payment Prompt',
+                                        style: theme.textTheme.titleSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                      const Spacer(),
+                                      Switch(
+                                        value: _sendMobilePayment,
+                                        onChanged: (v) => setState(
+                                          () => _sendMobilePayment = v,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    'Optionally send an M-Pesa / Airtel Money push notification '
+                                    'to a customer phone number.',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  if (_sendMobilePayment) ...[
+                                    const SizedBox(height: 16),
+                                    // Provider selector
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: _ProviderChip(
+                                            label: 'M-Pesa',
+                                            color: Colors.green,
+                                            selected:
+                                                _paymentProvider == 'mpesa',
+                                            onTap: () => setState(
+                                              () => _paymentProvider = 'mpesa',
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: _ProviderChip(
+                                            label: 'Airtel Money',
+                                            color: Colors.red,
+                                            selected:
+                                                _paymentProvider == 'airtel',
+                                            onTap: () => setState(
+                                              () => _paymentProvider = 'airtel',
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    TextFormField(
+                                      controller: _paymentPhoneCtrl,
+                                      keyboardType: TextInputType.phone,
+                                      decoration: InputDecoration(
+                                        labelText: 'Customer Phone Number',
+                                        hintText: _paymentProvider == 'mpesa'
+                                            ? '07XXXXXXXX'
+                                            : '06XXXXXXXX',
+                                        prefixIcon: const Icon(
+                                          Icons.phone_outlined,
+                                        ),
+                                        border: const OutlineInputBorder(),
+                                        helperText:
+                                            'A payment push will be sent to this number.',
+                                      ),
+                                      validator: (v) {
+                                        if (!_sendMobilePayment) return null;
+                                        if (v == null || v.trim().isEmpty) {
+                                          return 'Enter a phone number or disable mobile payment';
+                                        }
+                                        final digits = v.trim().replaceAll(
+                                          RegExp(r'[\s\-+]'),
+                                          '',
+                                        );
+                                        if (!RegExp(
+                                          r'^\d{9,12}$',
+                                        ).hasMatch(digits)) {
+                                          return 'Enter a valid phone number';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 24),
                           if (_lineItems.isNotEmpty) ...[
@@ -584,22 +704,30 @@ class _OrderFormPageState extends State<OrderFormPage> {
         );
       }
     } else {
-      // ── Create: go through basket checkout
-      // ADD THESE 3 LINES HERE:
       for (final e in _lineItems) {
         debugPrint(
           'ITEM: name=${e.product.name} id=${e.product.id} variantId=${e.product.variantId}',
         );
       }
+
+      // Build effective paymentRef — append mobile payment info if provided
+      final baseRef = _paymentRefController.text.trim();
+      final mobileNote =
+          _sendMobilePayment && _paymentPhoneCtrl.text.trim().isNotEmpty
+          ? 'MOBILE:${_paymentPhoneCtrl.text.trim()}:${_paymentProvider.toUpperCase()}'
+          : null;
+      final effectiveRef = [
+        if (baseRef.isNotEmpty) baseRef,
+        if (mobileNote != null) mobileNote,
+      ].join('|');
+
       context.read<OrderBloc>().add(
         OrderCreateRequested(
           CreateOrderParams(
             customerId: _selectedCustomer!.id,
             items: items,
             total: _calculatedTotal,
-            paymentRef: _paymentRefController.text.trim().isEmpty
-                ? null
-                : _paymentRefController.text.trim(),
+            paymentRef: effectiveRef.isEmpty ? null : effectiveRef,
           ),
         ),
       );
@@ -1110,6 +1238,51 @@ class _ProductListSheetState extends State<_ProductListSheet> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ProviderChip extends StatelessWidget {
+  final String label;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ProviderChip({
+    required this.label,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        decoration: BoxDecoration(
+          color: selected
+              ? color.withValues(alpha: 0.10)
+              : scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? color : scheme.outlineVariant,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: selected ? color : scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
       ),
     );
   }
