@@ -267,7 +267,6 @@ import 'package:jadosoft_admin/features/notification/data/datasources/notificati
 import 'package:jadosoft_admin/features/payment/data/datasources/payment_mock_datasource.dart';
 import 'package:jadosoft_admin/features/report_export/data/client/report_export_mock_client.dart';
 
-
 // SMS Gateway
 import 'package:jadosoft_admin/features/sms_gateway/data/client/sms_gateway_mock_client.dart';
 
@@ -586,9 +585,6 @@ Future<void> initDependencies() async {
   // Phase 6: Promotions (L3) ? domainService required
   // ----------------------------------------------------------
 
-  // sl.registerLazySingleton<PromotionRemoteDataSource>(
-  //   () => PromotionMockDataSource(),
-  // );
   sl.registerLazySingleton<PromotionRemoteDataSource>(
     () => PromotionRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
   );

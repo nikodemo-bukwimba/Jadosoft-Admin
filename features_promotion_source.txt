@@ -1,8 +1,9 @@
 ﻿// ================================================================
 // features_promotion_source.txt
-// Generated : 2026-04-06 22:55:57
-// Files     : 28
-// Usage     : Upload to Claude Project documents as reference.
+// Project Type : Flutter/Dart
+// Generated    : 2026-04-20 11:21:48
+// Files        : 28
+// Usage        : Upload to Claude Project documents as reference.
 // ================================================================
 
 // === FILE: lib/features/promotion/data/datasources/promotion_api_datasource.dart ===
@@ -223,7 +224,7 @@ class PromotionMockDataSource implements PromotionRemoteDataSource {
 }
 
 // === FILE: lib/features/promotion/data/datasources/promotion_remote_datasource.dart ===
-// promotion_remote_datasource.dart
+// admin app promotion_remote_datasource.dart
 // ─────────────────────────────────────────────────────────────
 // Nexora endpoint mapping:
 //   GET    /api/v1/pharma/orgs/{orgId}/product-updates   → getAll()
@@ -1265,6 +1266,7 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
   ) async {
     emit(PromotionLoading());
     final result = await createUseCase(event.params);
+    if (emit.isDone) return;
     result.fold(
       (f) => emit(PromotionFailure(f.message)),
       (_) => emit(PromotionOperationSuccess('Promotion created successfully')),
@@ -1279,6 +1281,7 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
     final result = await updateUseCase(
       UpdatePromotionParams(entity: event.entity),
     );
+    if (emit.isDone) return;
     result.fold(
       (f) => emit(PromotionFailure(f.message)),
       (_) => emit(PromotionOperationSuccess('Promotion updated successfully')),
@@ -1291,6 +1294,7 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
   ) async {
     emit(PromotionLoading());
     final result = await deleteUseCase(DeletePromotionParams(id: event.id));
+    if (emit.isDone) return;
     result.fold(
       (f) => emit(PromotionFailure(f.message)),
       (_) => emit(PromotionOperationSuccess('Promotion deleted successfully')),
@@ -1454,12 +1458,16 @@ enum PromotionFormNode { create, edit }
 
 // === FILE: lib/features/promotion/presentation/pages/promotion_detail_page.dart ===
 // promotion_detail_page.dart
-// Product names are no longer resolved from the mock datasource.
-// The detail page shows product IDs as-is (the real product name
-// resolution belongs in a dedicated Product feature bloc/repository).
-// For display, productId is shown with a truncated label.
-// When the Product feature (Seq 7) is wired, replace _productLabel()
-// with a lookup from ProductBloc/cache.
+// ─────────────────────────────────────────────────────────────
+// Admin App — Promotion detail with state transition actions.
+//
+// FIX (Issue 3): After End/Cancel transitions, Nexora maps
+// the status back to 'sent'/'failed' → 'active'/'cancelled'.
+// Re-fetching from API after these transitions would overwrite
+// the local terminal status. Instead, we apply the returned
+// entity directly via PromotionStatusOverridden so the UI
+// reflects the correct state without a network round-trip.
+// ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -1486,22 +1494,15 @@ class PromotionDetailPage extends StatelessWidget {
               backgroundColor: Colors.green,
             ),
           );
-          // Reload this detail only — do NOT fire LoadAll which overwrites state
+          // FIX: Apply the updated entity directly to state.
+          // Do NOT call LoadOne — it re-fetches from Nexora which maps
+          // 'sent' → 'active', discarding the local 'ended' status.
           if (state.updatedItem != null) {
             context.read<PromotionBloc>().add(
-              PromotionLoadOneRequested(state.updatedItem!.id),
+              PromotionStatusOverridden(state.updatedItem!),
             );
           }
         }
-        if (state is PromotionFailure) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-          );
-        }
-
         if (state is PromotionFailure) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -1889,8 +1890,7 @@ class _ActionButtons extends StatelessWidget {
             const Text('Activating this promotion will immediately:'),
             const SizedBox(height: 12),
             _bulletPoint(
-              'Send SMS to all registered customers'
-              ' via Vodacom/Airtel gateway',
+              'Send SMS to all registered customers via Vodacom/Airtel gateway',
               Icons.sms_outlined,
               Colors.orange,
             ),
@@ -2019,8 +2019,6 @@ class _ProductRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Product name resolution: shows the product ID until the Product
-    // feature (Seq 7) exposes a name cache. The ID is the ULID from Nexora.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
@@ -2039,12 +2037,7 @@ class _ProductRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              productId, // replaced by product name cache when Product feature is live
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
+          Expanded(child: Text(productId, style: theme.textTheme.bodyMedium)),
         ],
       ),
     );
@@ -2946,10 +2939,10 @@ class _PromotionListPageState extends State<PromotionListPage> {
 
     return BlocListener<PromotionBloc, PromotionState>(
       listenWhen: (previous, state) {
-        // Only react to success if previous state was NOT PromotionDetailLoaded
-        // This prevents list from reloading after End/Cancel from detail page
         if (state is PromotionOperationSuccess) {
-          return previous is! PromotionDetailLoaded;
+          // If updatedItem is set, this came from a detail-page transition
+          // (End/Cancel/Activate). Don't reload the list from here.
+          return state.updatedItem == null;
         }
         return state is PromotionFailure;
       },

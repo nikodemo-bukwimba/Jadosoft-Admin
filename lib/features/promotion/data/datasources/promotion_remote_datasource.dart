@@ -26,11 +26,11 @@ import '../models/promotion_model.dart';
 
 abstract class PromotionRemoteDataSource {
   Future<List<PromotionModel>> getAll();
-  Future<PromotionModel>       getById(String id);
-  Future<PromotionModel>       create(Map<String, dynamic> data);
-  Future<PromotionModel>       update(String id, Map<String, dynamic> data);
-  Future<void>                 delete(String id);
-  Future<PromotionModel>       publish(String id);
+  Future<PromotionModel> getById(String id);
+  Future<PromotionModel> create(Map<String, dynamic> data);
+  Future<PromotionModel> update(String id, Map<String, dynamic> data);
+  Future<void> delete(String id);
+  Future<PromotionModel> publish(String id);
 }
 
 class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
@@ -40,8 +40,8 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
   PromotionRemoteDataSourceImpl({
     required Dio dio,
     required OrgContext orgContext,
-  })  : _dio = dio,
-        _orgContext = orgContext;
+  }) : _dio = dio,
+       _orgContext = orgContext;
 
   String get _base =>
       '/pharma/orgs/${_orgContext.effectiveOrgId}/product-updates';
@@ -49,8 +49,6 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
   // ── Nexora response → PromotionModel ──────────────────────
 
   PromotionModel _fromNexora(Map<String, dynamic> j) {
-    final meta = (j['metadata'] as Map<String, dynamic>?) ?? {};
-
     final channels = <String>[
       if (j['send_sms'] == true) 'sms',
       if (j['send_whatsapp'] == true) 'whatsapp',
@@ -60,35 +58,44 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
     final nexoraStatus = j['status'] as String? ?? 'draft';
     final localStatus = _mapStatusFromNexora(nexoraStatus);
 
+    final sentAt = j['sent_at'] != null
+        ? DateTime.tryParse(j['sent_at'].toString())
+        : null;
+
+    // Read the new top-level date columns; fall back to sent_at for old records
+    final startDate = j['start_date'] != null
+        ? DateTime.tryParse(j['start_date'].toString()) ??
+              sentAt ??
+              DateTime.now()
+        : sentAt ?? DateTime.now();
+
+    final endDate = j['end_date'] != null
+        ? DateTime.tryParse(j['end_date'].toString()) ??
+              startDate.add(const Duration(days: 7))
+        : startDate.add(const Duration(days: 7));
+
     return PromotionModel(
-      id:          j['id']?.toString() ?? '',
-      title:       j['title'] as String? ?? '',
+      id: j['id']?.toString() ?? '',
+      title: j['title'] as String? ?? '',
       description: j['body'] as String?,
-      productIds:  List<String>.from((j['product_ids'] as List?) ?? []),
-      startDate:   meta['start_date'] != null
-          ? DateTime.tryParse(meta['start_date'] as String) ?? DateTime.now()
-          : DateTime.now(),
-      endDate:     meta['end_date'] != null
-          ? DateTime.tryParse(meta['end_date'] as String) ??
-              DateTime.now().add(const Duration(days: 7))
-          : DateTime.now().add(const Duration(days: 7)),
-      channels:    channels,
-      status:      localStatus,
-      createdAt:   j['created_at'] != null
+      productIds: List<String>.from((j['product_ids'] as List?) ?? []),
+      startDate: startDate,
+      endDate: endDate,
+      channels: channels,
+      status: localStatus,
+      createdAt: j['created_at'] != null
           ? DateTime.tryParse(j['created_at'].toString()) ?? DateTime.now()
           : DateTime.now(),
-      targetCount:     j['total_recipients'] as int? ?? 0,
-      broadcastSentAt: j['sent_at'] != null
-          ? DateTime.tryParse(j['sent_at'].toString())
-          : null,
+      targetCount: j['total_recipients'] as int? ?? 0,
+      broadcastSentAt: sentAt,
     );
   }
 
   /// Nexora status string → local PromotionStatus name
   String _mapStatusFromNexora(String s) => switch (s) {
     'sending' || 'sent' => 'active',
-    'failed'            => 'cancelled',
-    _                   => s, // 'draft' passes through
+    'failed' => 'cancelled',
+    _ => s, // 'draft' passes through
   };
 
   // ── Local status → Nexora PATCH status ────────────────────
@@ -100,56 +107,49 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
   //
   // Note: 'active' is NEVER patched here — it goes through publish().
   String _mapStatusToNexora(String localStatus) => switch (localStatus) {
-    'ended'     => 'sent',
+    'ended' => 'sent',
     'cancelled' => 'failed',
-    _           => localStatus, // 'draft' is the only other passthrough
+    _ => localStatus, // 'draft' is the only other passthrough
   };
 
   // ── PromotionModel data → Nexora create body ───────────────
-
   Map<String, dynamic> _toCreateBody(Map<String, dynamic> d) {
-    final channels  = List<String>.from(d['channels'] as List? ?? []);
+    final channels = List<String>.from(d['channels'] as List? ?? []);
     final startDate = d['start_date'] ?? d['startDate'];
-    final endDate   = d['end_date']   ?? d['endDate'];
+    final endDate = d['end_date'] ?? d['endDate'];
 
     return {
-      'title':          d['title'] ?? '',
-      'body':           d['description'],
-      'update_type':    'promotion',
+      'title': d['title'] ?? '',
+      'body': d['description'],
+      'update_type': 'promotion',
       'target_segment': 'all',
-      'send_sms':       channels.contains('sms'),
-      'send_whatsapp':  channels.contains('whatsapp'),
-      'send_in_app':    channels.contains('in_app'),
-      'product_ids':    List<String>.from(d['product_ids'] as List? ?? []),
-      'metadata': {
-        if (startDate != null) 'start_date': startDate.toString(),
-        if (endDate   != null) 'end_date':   endDate.toString(),
-      },
+      'send_sms': channels.contains('sms'),
+      'send_whatsapp': channels.contains('whatsapp'),
+      'send_in_app': channels.contains('in_app'),
+      'product_ids': List<String>.from(d['product_ids'] as List? ?? []),
+      if (startDate != null)
+        'start_date': startDate.toString().substring(0, 10),
+      if (endDate != null) 'end_date': endDate.toString().substring(0, 10),
     };
   }
 
-  // ── PromotionModel data → Nexora PATCH body ─────────────────
-
   Map<String, dynamic> _toUpdateBody(Map<String, dynamic> d) {
-    final channels  = List<String>.from(d['channels'] as List? ?? []);
+    final channels = List<String>.from(d['channels'] as List? ?? []);
     final startDate = d['start_date'] ?? d['startDate'];
-    final endDate   = d['end_date']   ?? d['endDate'];
+    final endDate = d['end_date'] ?? d['endDate'];
 
     final body = <String, dynamic>{
-      'title':         d['title'] ?? '',
-      'body':          d['description'],
-      'send_sms':      channels.contains('sms'),
+      'title': d['title'] ?? '',
+      'body': d['description'],
+      'send_sms': channels.contains('sms'),
       'send_whatsapp': channels.contains('whatsapp'),
-      'send_in_app':   channels.contains('in_app'),
-      'product_ids':   List<String>.from(d['product_ids'] as List? ?? []),
-      'metadata': {
-        if (startDate != null) 'start_date': startDate.toString(),
-        if (endDate   != null) 'end_date':   endDate.toString(),
-      },
+      'send_in_app': channels.contains('in_app'),
+      'product_ids': List<String>.from(d['product_ids'] as List? ?? []),
+      if (startDate != null)
+        'start_date': startDate.toString().substring(0, 10),
+      if (endDate != null) 'end_date': endDate.toString().substring(0, 10),
     };
 
-    // FIX: always translate local status to a Nexora-valid status string.
-    // Without this, sending 'ended' or 'cancelled' causes a 422/500 from Nexora.
     if (d['status'] != null) {
       body['status'] = _mapStatusToNexora(d['status'] as String);
     }

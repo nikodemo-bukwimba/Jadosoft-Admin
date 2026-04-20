@@ -1,5 +1,5 @@
 // Admin app product api datasource
-// 
+//
 // product_api_datasource.dart
 // ─────────────────────────────────────────────────────────────
 // Nexora Commerce Products API implementation.
@@ -263,10 +263,20 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   @override
   Future<ProductModel> update(String id, Map<String, dynamic> data) async {
     try {
-      // Update product metadata only — no variant price patch (endpoint doesn't exist)
-      await _dio.patch('/commerce/products/$id', data: _updateBody(data));
+      final newStatus = data['status']?.toString();
 
-      // Re-fetch to return accurate state
+      if (newStatus == 'active') {
+        // Publish: draft/featured → active requires the dedicated endpoint
+        await _dio.post('/commerce/products/$id/publish');
+      } else if (newStatus == 'archived') {
+        // Archive via its own endpoint (already used in delete())
+        await _dio.post('/commerce/products/$id/archive');
+      } else {
+        // Plain metadata/name update — no status change
+        await _dio.patch('/commerce/products/$id', data: _updateBody(data));
+      }
+
+      // Always re-fetch to return accurate, server-confirmed state
       return await getById(id);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
