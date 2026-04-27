@@ -39,6 +39,8 @@ abstract class OfficerRemoteDataSource {
     required String branchId,
     String? username,
     String? phone,
+    String? appPassword, // ← ADD
+    String? appPasswordConfirmation, // ← ADD
   });
 
   /// Update an officer's membership (role, level, status).
@@ -140,6 +142,8 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     required String branchId,
     String? username,
     String? phone,
+    String? appPassword,
+    String? appPasswordConfirmation,
   }) async {
     final response = await dio.post(
       '${ApiPaths.orgs.members(branchId)}/invite',
@@ -148,10 +152,12 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
         if (username != null) 'username': username,
         if (phone != null) 'phone': phone,
         'org_role_id': orgRoleId,
+        if (appPassword != null) 'app_password': appPassword,
+        if (appPasswordConfirmation != null)
+          'app_password_confirmation': appPasswordConfirmation,
       },
     );
     final body = response.data as Map<String, dynamic>? ?? {};
-    // Try all known response key variants
     final raw = body['membership'] ?? body['member'] ?? body['data'] ?? body;
     return OfficerModel.fromJson(raw as Map<String, dynamic>);
   }

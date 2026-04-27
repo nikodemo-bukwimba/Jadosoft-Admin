@@ -1,8 +1,8 @@
 ﻿// ================================================================
 // lib_all_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-04-20 09:12:06
-// Files        : 585
+// Generated    : 2026-04-23 15:05:39
+// Files        : 584
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
 
@@ -2894,7 +2894,6 @@ import 'package:jadosoft_admin/features/notification/data/datasources/notificati
 import 'package:jadosoft_admin/features/payment/data/datasources/payment_mock_datasource.dart';
 import 'package:jadosoft_admin/features/report_export/data/client/report_export_mock_client.dart';
 
-
 // SMS Gateway
 import 'package:jadosoft_admin/features/sms_gateway/data/client/sms_gateway_mock_client.dart';
 
@@ -3213,9 +3212,6 @@ Future<void> initDependencies() async {
   // Phase 6: Promotions (L3) ? domainService required
   // ----------------------------------------------------------
 
-  // sl.registerLazySingleton<PromotionRemoteDataSource>(
-  //   () => PromotionMockDataSource(),
-  // );
   sl.registerLazySingleton<PromotionRemoteDataSource>(
     () => PromotionRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
   );
@@ -3790,7 +3786,6 @@ class AppConstants {
   // production   → https://dev.halasoftware.com/api
   static const String baseUrl = 'http://localhost:8000/api/v1/';
   // static const String baseUrl = 'http://192.168.100.119:8000/api/v1/';
-  static const String orgId = '01KM3J1485S5T17RXQ6JRWF8JR';
 
   // ── Network timeouts ───────────────────────────────────────
   static const int connectTimeoutSeconds = 15;
@@ -28895,6 +28890,8 @@ class CreateCustomerParams {
   final String? contactRole;
   final String? contactPhone;
   final String? assignedOfficerId;
+  final String? appPassword;
+  final String? appPasswordConfirmation;
 
   const CreateCustomerParams({
     required this.name,
@@ -28914,6 +28911,8 @@ class CreateCustomerParams {
     this.contactRole,
     this.contactPhone,
     this.assignedOfficerId,
+    this.appPassword,
+    this.appPasswordConfirmation,
   });
 
   Map<String, dynamic> toJson() {
@@ -28924,7 +28923,8 @@ class CreateCustomerParams {
       if (tier != null && tier!.isNotEmpty) 'tier': tier,
       if (phone != null && phone!.isNotEmpty) 'phone': phone,
       if (email != null && email!.isNotEmpty) 'email': email,
-      if (whatsappNumber != null && whatsappNumber!.isNotEmpty) 'whatsapp_number': whatsappNumber,
+      if (whatsappNumber != null && whatsappNumber!.isNotEmpty)
+        'whatsapp_number': whatsappNumber,
       if (address != null && address!.isNotEmpty) 'address': address,
       if (city != null && city!.isNotEmpty) 'city': city,
       if (county != null && county!.isNotEmpty) 'county': county,
@@ -28933,6 +28933,11 @@ class CreateCustomerParams {
       if (notes != null && notes!.isNotEmpty) 'notes': notes,
       if (assignedOfficerId != null && assignedOfficerId!.isNotEmpty)
         'assigned_officer_id': assignedOfficerId,
+      if (appPassword != null && appPassword!.isNotEmpty)
+        'app_password': appPassword,
+      if (appPasswordConfirmation != null &&
+          appPasswordConfirmation!.isNotEmpty)
+        'app_password_confirmation': appPasswordConfirmation,
     };
     if (contactName != null && contactName!.isNotEmpty) {
       data['contacts'] = [
@@ -28941,25 +28946,33 @@ class CreateCustomerParams {
           if (contactRole != null) 'role': contactRole,
           if (contactPhone != null) 'phone': contactPhone,
           'is_primary': true,
-        }
+        },
       ];
     }
+
     return data;
   }
 }
 
-class CreateCustomerUseCase implements UseCase<CustomerEntity, CreateCustomerParams> {
+class CreateCustomerUseCase
+    implements UseCase<CustomerEntity, CreateCustomerParams> {
   final CustomerRepository repository;
   CreateCustomerUseCase(this.repository);
 
   @override
   Future<Either<Failure, CustomerEntity>> call(CreateCustomerParams p) async {
-    if (p.name.trim().isEmpty) return const Left(ValidationFailure('Customer name is required'));
-    if (p.name.trim().length < 2) return const Left(ValidationFailure('Name must be at least 2 characters'));
-    if (p.customerType != 'b2b' && p.customerType != 'b2c') return const Left(ValidationFailure('Type must be b2b or b2c'));
+    if (p.name.trim().isEmpty)
+      return const Left(ValidationFailure('Customer name is required'));
+    if (p.name.trim().length < 2)
+      return const Left(
+        ValidationFailure('Name must be at least 2 characters'),
+      );
+    if (p.customerType != 'b2b' && p.customerType != 'b2c')
+      return const Left(ValidationFailure('Type must be b2b or b2c'));
     return repository.create(p.toJson());
   }
 }
+
 
 // === FILE: lib/features/customer/domain/usecases/delete_customer_usecase.dart ===
 import 'package:dartz/dartz.dart';
@@ -29370,6 +29383,9 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
   final _notesCtl = TextEditingController();
   final _contactNameCtl = TextEditingController();
   final _contactPhoneCtl = TextEditingController();
+  final _passwordCtl = TextEditingController();
+  final _confirmPassCtl = TextEditingController();
+  bool _enableAppLogin = false;
   String _customerType = 'b2b';
   String? _category;
   String? _tier;
@@ -29446,6 +29462,8 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
       _notesCtl,
       _contactNameCtl,
       _contactPhoneCtl,
+      _passwordCtl,
+      _confirmPassCtl,
     ]) {
       c.dispose();
     }
@@ -29949,6 +29967,64 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                       maxLines: 3,
                     ),
                     const SizedBox(height: 32),
+                    // ── App Login Credentials (optional) ──────────────────
+                    _sectionLabel(context, 'Customer App Login'),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      value: _enableAppLogin,
+                      title: const Text('Enable Customer App Login'),
+                      subtitle: const Text(
+                        'Set a password so customer can log into jadosoft-lite',
+                      ),
+                      onChanged: !_isEdit
+                          ? (v) => setState(() => _enableAppLogin = v)
+                          : null,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    if (_enableAppLogin && !_isEdit) ...[
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _passwordCtl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Password',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.lock_outline),
+                          helperText: 'Min 8 characters',
+                        ),
+                        validator: (v) {
+                          if (!_enableAppLogin) return null;
+                          if (v == null || v.isEmpty)
+                            return 'Password is required';
+                          if (v.length < 8) return 'At least 8 characters';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _confirmPassCtl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Confirm Password',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.lock_outline),
+                        ),
+                        validator: (v) {
+                          if (!_enableAppLogin) return null;
+                          if (v != _passwordCtl.text)
+                            return 'Passwords do not match';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Email above will be used as the login credential.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
 
                     FilledButton.icon(
                       onPressed: _isSubmitting ? null : _submit,
@@ -30079,6 +30155,11 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
             contactName: _contactNameCtl.text.trim(),
             contactRole: _contactRole,
             contactPhone: _contactPhoneCtl.text.trim(),
+            // App login credentials (only when toggle is on)
+            appPassword: _enableAppLogin ? _passwordCtl.text : null,
+            appPasswordConfirmation: _enableAppLogin
+                ? _confirmPassCtl.text
+                : null,
           ),
         ),
       );
@@ -41387,6 +41468,8 @@ class OfficerMockDataSource implements OfficerRemoteDataSource {
     required String branchId,
     String? username,
     String? phone,
+    String? appPassword,
+    String? appPasswordConfirmation,
   }) async {
     await _delay();
     final id = _idCounter++;
@@ -41466,7 +41549,8 @@ class OfficerMockDataSource implements OfficerRemoteDataSource {
     final index = _store.indexWhere((e) => e['user_id'] == userId);
     if (index == -1) throw Exception('Officer not found');
     final user = Map<String, dynamic>.from(
-        _store[index]['user'] as Map<String, dynamic>);
+      _store[index]['user'] as Map<String, dynamic>,
+    );
     user['status'] = 'suspended';
     _store[index]['user'] = user;
   }
@@ -41477,7 +41561,8 @@ class OfficerMockDataSource implements OfficerRemoteDataSource {
     final index = _store.indexWhere((e) => e['user_id'] == userId);
     if (index == -1) throw Exception('Officer not found');
     final user = Map<String, dynamic>.from(
-        _store[index]['user'] as Map<String, dynamic>);
+      _store[index]['user'] as Map<String, dynamic>,
+    );
     user['status'] = 'deactivated';
     _store[index]['user'] = user;
   }
@@ -41534,6 +41619,8 @@ abstract class OfficerRemoteDataSource {
     required String branchId,
     String? username,
     String? phone,
+    String? appPassword, // ← ADD
+    String? appPasswordConfirmation, // ← ADD
   });
 
   /// Update an officer's membership (role, level, status).
@@ -41635,6 +41722,8 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     required String branchId,
     String? username,
     String? phone,
+    String? appPassword,
+    String? appPasswordConfirmation,
   }) async {
     final response = await dio.post(
       '${ApiPaths.orgs.members(branchId)}/invite',
@@ -41643,10 +41732,12 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
         if (username != null) 'username': username,
         if (phone != null) 'phone': phone,
         'org_role_id': orgRoleId,
+        if (appPassword != null) 'app_password': appPassword,
+        if (appPasswordConfirmation != null)
+          'app_password_confirmation': appPasswordConfirmation,
       },
     );
     final body = response.data as Map<String, dynamic>? ?? {};
-    // Try all known response key variants
     final raw = body['membership'] ?? body['member'] ?? body['data'] ?? body;
     return OfficerModel.fromJson(raw as Map<String, dynamic>);
   }
@@ -41811,34 +41902,104 @@ import '../datasources/officer_remote_datasource.dart';
 
 class OfficerRepositoryImpl implements OfficerRepository {
   final OfficerRemoteDataSource _remote;
-  OfficerRepositoryImpl({required OfficerRemoteDataSource remoteDataSource}) : _remote = remoteDataSource;
+  OfficerRepositoryImpl({required OfficerRemoteDataSource remoteDataSource})
+    : _remote = remoteDataSource;
 
   Future<Either<Failure, T>> _guard<T>(Future<T> Function() call) async {
-    try { return Right(await call());
-    } on AuthException catch (e) { return Left(AuthFailure(e.message));
-    } on ServerException catch (e) { return Left(ServerFailure(e.message));
-    } on NetworkException catch (e) { return Left(NetworkFailure(e.message));
-    } catch (e) { return Left(GenericFailure(e.toString())); }
+    try {
+      return Right(await call());
+    } on AuthException catch (e) {
+      return Left(AuthFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
   }
 
   @override
   Future<Either<Failure, PaginatedResponse<OfficerEntity>>> getAll({
-    String? status, String? search, int? perPage, int? page,
-  }) => _guard(() => _remote.getAll(status: status, search: search, perPage: perPage, page: page));
+    String? status,
+    String? search,
+    int? perPage,
+    int? page,
+  }) => _guard(
+    () => _remote.getAll(
+      status: status,
+      search: search,
+      perPage: perPage,
+      page: page,
+    ),
+  );
 
-  @override Future<Either<Failure, OfficerEntity>> getById(String userId) => _guard(() => _remote.getById(userId));
-  @override Future<Either<Failure, OfficerEntity>> invite({
-    required String email, String? username, String? phone, required String branchId, required String orgRoleId,
-  }) => _guard(() => _remote.invite(email: email, username: username, phone: phone, branchId: branchId, orgRoleId: orgRoleId));
-  @override Future<Either<Failure, OfficerEntity>> updateMembership(String userId, {String? orgRoleId, int? level, String? status}) =>
-      _guard(() => _remote.updateMembership(userId, orgRoleId: orgRoleId, level: level, status: status));
-  @override Future<Either<Failure, void>> reassignBranch({required String userId, required String fromBranchId, required String toBranchId, required String orgRoleId}) =>
-      _guard(() => _remote.reassignBranch(userId: userId, fromBranchId: fromBranchId, toBranchId: toBranchId, orgRoleId: orgRoleId));
-  @override Future<Either<Failure, OfficerEntity>> suspend(String userId) => _guard(() => _remote.suspend(userId));
-  @override Future<Either<Failure, OfficerEntity>> activate(String userId) => _guard(() => _remote.activate(userId));
-  @override Future<Either<Failure, void>> suspendUser(String userId) => _guard(() => _remote.suspendUser(userId));
-  @override Future<Either<Failure, void>> deactivateUser(String userId) => _guard(() => _remote.deactivateUser(userId));
-  @override Future<Either<Failure, void>> remove(String userId) => _guard(() => _remote.remove(userId));
+  @override
+  Future<Either<Failure, OfficerEntity>> getById(String userId) =>
+      _guard(() => _remote.getById(userId));
+  @override
+  Future<Either<Failure, OfficerEntity>> invite({
+    required String email,
+    String? username,
+    String? phone,
+    required String branchId,
+    required String orgRoleId,
+    String? appPassword,
+    String? appPasswordConfirmation,
+  }) => _guard(
+    () => _remote.invite(
+      email: email,
+      username: username,
+      phone: phone,
+      branchId: branchId,
+      orgRoleId: orgRoleId,
+      appPassword: appPassword,
+      appPasswordConfirmation: appPasswordConfirmation,
+    ),
+  );
+  @override
+  Future<Either<Failure, OfficerEntity>> updateMembership(
+    String userId, {
+    String? orgRoleId,
+    int? level,
+    String? status,
+  }) => _guard(
+    () => _remote.updateMembership(
+      userId,
+      orgRoleId: orgRoleId,
+      level: level,
+      status: status,
+    ),
+  );
+  @override
+  Future<Either<Failure, void>> reassignBranch({
+    required String userId,
+    required String fromBranchId,
+    required String toBranchId,
+    required String orgRoleId,
+  }) => _guard(
+    () => _remote.reassignBranch(
+      userId: userId,
+      fromBranchId: fromBranchId,
+      toBranchId: toBranchId,
+      orgRoleId: orgRoleId,
+    ),
+  );
+  @override
+  Future<Either<Failure, OfficerEntity>> suspend(String userId) =>
+      _guard(() => _remote.suspend(userId));
+  @override
+  Future<Either<Failure, OfficerEntity>> activate(String userId) =>
+      _guard(() => _remote.activate(userId));
+  @override
+  Future<Either<Failure, void>> suspendUser(String userId) =>
+      _guard(() => _remote.suspendUser(userId));
+  @override
+  Future<Either<Failure, void>> deactivateUser(String userId) =>
+      _guard(() => _remote.deactivateUser(userId));
+  @override
+  Future<Either<Failure, void>> remove(String userId) =>
+      _guard(() => _remote.remove(userId));
 }
 
 
@@ -41937,6 +42098,8 @@ abstract class OfficerRepository {
     String? phone,
     required String branchId,
     required String orgRoleId,
+    String? appPassword,
+    String? appPasswordConfirmation,
   });
   Future<Either<Failure, OfficerEntity>> updateMembership(
     String userId, {
@@ -42011,23 +42174,46 @@ class CreateOfficerParams {
   final String? phone;
   final String branchId;
   final String orgRoleId;
+  final String? appPassword;
+  final String? appPasswordConfirmation;
   const CreateOfficerParams({
-    required this.email, this.username, this.phone,
-    required this.branchId, required this.orgRoleId,
+    required this.email,
+    this.username,
+    this.phone,
+    required this.branchId,
+    required this.orgRoleId,
+    this.appPassword, // ← ADD
+    this.appPasswordConfirmation, // ← ADD
   });
 }
 
-class CreateOfficerUseCase implements UseCase<OfficerEntity, CreateOfficerParams> {
+class CreateOfficerUseCase
+    implements UseCase<OfficerEntity, CreateOfficerParams> {
   final OfficerRepository repository;
   CreateOfficerUseCase(this.repository);
   @override
   Future<Either<Failure, OfficerEntity>> call(CreateOfficerParams p) async {
-    if (p.email.trim().isEmpty) return const Left(ValidationFailure('Email is required'));
-    if (!p.email.contains('@')) return const Left(ValidationFailure('Enter a valid email'));
-    if (p.branchId.trim().isEmpty) return const Left(ValidationFailure('Branch is required'));
-    if (p.orgRoleId.trim().isEmpty) return const Left(ValidationFailure('Role is required'));
-    return repository.invite(email: p.email.trim(), username: p.username?.trim(),
-      phone: p.phone?.trim(), branchId: p.branchId, orgRoleId: p.orgRoleId);
+    if (p.email.trim().isEmpty) {
+      return const Left(ValidationFailure('Email is required'));
+    }
+    if (!p.email.contains('@')) {
+      return const Left(ValidationFailure('Enter a valid email'));
+    }
+    if (p.branchId.trim().isEmpty) {
+      return const Left(ValidationFailure('Branch is required'));
+    }
+    if (p.orgRoleId.trim().isEmpty) {
+      return const Left(ValidationFailure('Role is required'));
+    }
+    return repository.invite(
+      email: p.email.trim(),
+      username: p.username?.trim(),
+      phone: p.phone?.trim(),
+      branchId: p.branchId,
+      orgRoleId: p.orgRoleId,
+      appPassword: p.appPassword, // ← ADD
+      appPasswordConfirmation: p.appPasswordConfirmation, // ← ADD
+    );
   }
 }
 
@@ -42876,6 +43062,9 @@ class _OfficerFormPageState extends State<OfficerFormPage> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPassController = TextEditingController();
+  bool _enableAppLogin = true; // default ON for officers
 
   OrgRoleEntity? _selectedRole;
   BranchEntity? _selectedBranch;
@@ -42908,6 +43097,8 @@ class _OfficerFormPageState extends State<OfficerFormPage> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _passwordController.dispose();
+    _confirmPassController.dispose();
     super.dispose();
   }
 
@@ -43028,6 +43219,67 @@ class _OfficerFormPageState extends State<OfficerFormPage> {
                       if (_isEdit && officerState is OfficerDetailLoaded)
                         _buildBranchInfoRow(context, scheme, officerState),
                       const SizedBox(height: 32),
+                      // ── App Login Credentials ──────────────────────────────
+                      if (!_isEdit) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Officer App Login',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(
+                                color: scheme.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        SwitchListTile(
+                          value: _enableAppLogin,
+                          title: const Text('Create App Login Now'),
+                          subtitle: const Text(
+                            'Officer can log into jadosoft-officer immediately',
+                          ),
+                          onChanged: (v) => setState(() => _enableAppLogin = v),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        if (_enableAppLogin) ...[
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _passwordController,
+                            obscureText: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Password',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.lock_outline),
+                              helperText: 'Min 8 characters',
+                            ),
+                            validator: (v) {
+                              if (!_enableAppLogin) return null;
+                              if (v == null || v.isEmpty) {
+                                return 'Password is required';
+                              }
+                              if (v.length < 8) return 'At least 8 characters';
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _confirmPassController,
+                            obscureText: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Confirm Password',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.lock_outline),
+                            ),
+                            validator: (v) {
+                              if (!_enableAppLogin) return null;
+                              if (v != _passwordController.text) {
+                                return 'Passwords do not match';
+                              }
+                              return null;
+                            },
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                      ],
                       FilledButton.icon(
                         onPressed: _isSubmitting ? null : _submit,
                         icon: _isSubmitting
@@ -43242,6 +43494,11 @@ class _OfficerFormPageState extends State<OfficerFormPage> {
             phone: _phoneController.text.trim(),
             branchId: _selectedBranch!.id,
             orgRoleId: _selectedRole!.id,
+            // App login
+            appPassword: _enableAppLogin ? _passwordController.text : null,
+            appPasswordConfirmation: _enableAppLogin
+                ? _confirmPassController.text
+                : null,
           ),
         ),
       );
@@ -55862,7 +56119,7 @@ class PaymentCard extends StatelessWidget {
 
 // === FILE: lib/features/product/data/datasources/product_api_datasource.dart ===
 // Admin app product api datasource
-// 
+//
 // product_api_datasource.dart
 // ─────────────────────────────────────────────────────────────
 // Nexora Commerce Products API implementation.
@@ -56126,10 +56383,20 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   @override
   Future<ProductModel> update(String id, Map<String, dynamic> data) async {
     try {
-      // Update product metadata only — no variant price patch (endpoint doesn't exist)
-      await _dio.patch('/commerce/products/$id', data: _updateBody(data));
+      final newStatus = data['status']?.toString();
 
-      // Re-fetch to return accurate state
+      if (newStatus == 'active') {
+        // Publish: draft/featured → active requires the dedicated endpoint
+        await _dio.post('/commerce/products/$id/publish');
+      } else if (newStatus == 'archived') {
+        // Archive via its own endpoint (already used in delete())
+        await _dio.post('/commerce/products/$id/archive');
+      } else {
+        // Plain metadata/name update — no status change
+        await _dio.patch('/commerce/products/$id', data: _updateBody(data));
+      }
+
+      // Always re-fetch to return accurate, server-confirmed state
       return await getById(id);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -60933,220 +61200,6 @@ class _ErrorView extends StatelessWidget {
 // === FILE: lib/features/promotion/data/datasources/promotion_api_datasource.dart ===
 
 
-// === FILE: lib/features/promotion/data/datasources/promotion_mock_datasource.dart ===
-import '../../domain/entities/promotion_entity.dart';
-import '../models/promotion_model.dart';
-import 'promotion_remote_datasource.dart';
-
-class PromotionMockDataSource implements PromotionRemoteDataSource {
-  final List<Map<String, dynamic>> _store = [
-    {
-      'id': 'promo-001',
-      'title': 'October Antibiotics Campaign',
-      'description':
-          'Special discounts on all antibiotic products for October. Target pharmacies in Mbeya and surrounding regions.',
-      'product_ids': ['prod-001', 'prod-002', 'prod-003'],
-      'start_date': '2025-10-01T00:00:00.000Z',
-      'end_date': '2025-10-31T23:59:59.000Z',
-      'channels': ['sms', 'whatsapp'],
-      'status': 'active',
-      'target_count': 24,
-      'broadcast_sent_at': '2025-10-01T08:00:00.000Z',
-      'created_at': '2025-09-28T10:00:00.000Z',
-    },
-    {
-      'id': 'promo-002',
-      'title': 'New Vitamins & Supplements Line',
-      'description':
-          'Introducing our new range of vitamins and dietary supplements. Inform all customers about the new catalogue.',
-      'product_ids': ['prod-004', 'prod-005'],
-      'start_date': '2025-10-14T00:00:00.000Z',
-      'end_date': '2025-10-28T23:59:59.000Z',
-      'channels': ['whatsapp'],
-      'status': 'active',
-      'target_count': 24,
-      'broadcast_sent_at': '2025-10-14T09:00:00.000Z',
-      'created_at': '2025-10-10T14:30:00.000Z',
-    },
-    {
-      'id': 'promo-003',
-      'title': 'September Malaria Season Promo',
-      'description':
-          'Promotional pricing on malaria prevention and treatment products ahead of the rainy season.',
-      'product_ids': ['prod-002', 'prod-006'],
-      'start_date': '2025-09-01T00:00:00.000Z',
-      'end_date': '2025-09-30T23:59:59.000Z',
-      'channels': ['sms', 'whatsapp'],
-      'status': 'ended',
-      'target_count': 21,
-      'broadcast_sent_at': '2025-09-01T07:30:00.000Z',
-      'created_at': '2025-08-27T09:00:00.000Z',
-    },
-    {
-      'id': 'promo-004',
-      'title': 'Ramadhan Health Package',
-      'description':
-          'Special health package pricing for pharmacies during Ramadhan. Includes vitamins, supplements and ORS products.',
-      'product_ids': ['prod-004', 'prod-005', 'prod-007'],
-      'start_date': '2025-11-01T00:00:00.000Z',
-      'end_date': '2025-11-30T23:59:59.000Z',
-      'channels': ['sms', 'whatsapp'],
-      'status': 'draft',
-      'target_count': 0,
-      'broadcast_sent_at': null,
-      'created_at': '2025-10-12T16:00:00.000Z',
-    },
-    {
-      'id': 'promo-005',
-      'title': 'Flash Sale — Pain Relief Products',
-      'description': 'One-week flash sale on pain relief and anti-inflammatory products.',
-      'product_ids': ['prod-001', 'prod-003'],
-      'start_date': '2025-10-07T00:00:00.000Z',
-      'end_date': '2025-10-14T23:59:59.000Z',
-      'channels': ['sms'],
-      'status': 'cancelled',
-      'target_count': 0,
-      'broadcast_sent_at': null,
-      'created_at': '2025-10-05T11:00:00.000Z',
-    },
-  ];
-
-  // Mock product name lookup (mirrors product mock data)
-  static const Map<String, String> _productNames = {
-    'prod-001': 'Amoxicillin 500mg Capsules',
-    'prod-002': 'Artemether/Lumefantrine 20/120mg',
-    'prod-003': 'Ibuprofen 400mg Tablets',
-    'prod-004': 'Vitamin C 1000mg Effervescent',
-    'prod-005': 'Multivitamin & Minerals Complex',
-    'prod-006': 'Metronidazole 400mg Tablets',
-    'prod-007': 'Oral Rehydration Salts (ORS)',
-  };
-
-  static String productName(String id) =>
-      _productNames[id] ?? id;
-
-  // Simulated total customer count for broadcast
-  static const int _totalCustomers = 24;
-
-  int _idCounter = 6;
-
-  Future<void> _delay() =>
-      Future.delayed(const Duration(milliseconds: 450));
-
-  /// Simulates the L3 workflow broadcast side effect.
-  /// In production the backend calls SMS + WhatsApp gateways.
-  /// Returns a summary of what would be sent.
-  Map<String, dynamic> _simulateBroadcast(
-      List<String> channels, List<String> productIds) {
-    return {
-      'target_count': _totalCustomers,
-      'broadcast_sent_at': DateTime.now().toIso8601String(),
-      'channels_dispatched': channels,
-      'products_included': productIds.length,
-      'sms_queued': channels.contains('sms') ? _totalCustomers : 0,
-      'whatsapp_queued':
-          channels.contains('whatsapp') ? _totalCustomers : 0,
-    };
-  }
-
-  @override
-  Future<List<PromotionModel>> getAll() async {
-    await _delay();
-    final sorted = List<Map<String, dynamic>>.from(_store)
-      ..sort((a, b) => (b['created_at'] as String)
-          .compareTo(a['created_at'] as String));
-    return sorted.map(PromotionModel.fromJson).toList();
-  }
-
-  @override
-  Future<PromotionModel> getById(String id) async {
-    await _delay();
-    final item = _store.firstWhere(
-      (e) => e['id'] == id,
-      orElse: () => throw Exception('Promotion not found'),
-    );
-    return PromotionModel.fromJson(item);
-  }
-
-  @override
-  Future<PromotionModel> create(Map<String, dynamic> data) async {
-    await _delay();
-    final id = 'promo-${_idCounter.toString().padLeft(3, '0')}';
-    _idCounter++;
-    final newItem = {
-      'id': id,
-      'title': data['title'] ?? '',
-      'description': data['description'],
-      'product_ids': data['product_ids'] ?? [],
-      'start_date': data['start_date'] ??
-          DateTime.now().toIso8601String(),
-      'end_date': data['end_date'] ??
-          DateTime.now()
-              .add(const Duration(days: 7))
-              .toIso8601String(),
-      'channels': data['channels'] ?? ['sms'],
-      'status': 'draft',
-      'target_count': 0,
-      'broadcast_sent_at': null,
-      'created_at': DateTime.now().toIso8601String(),
-    };
-    _store.add(newItem);
-    return PromotionModel.fromJson(newItem);
-  }
-
-  @override
-  Future<PromotionModel> update(
-      String id, Map<String, dynamic> data) async {
-    await _delay();
-    final index = _store.indexWhere((e) => e['id'] == id);
-    if (index == -1) throw Exception('Promotion not found');
-
-    // L3 Workflow: if transitioning to active, simulate broadcast
-    if (data['status'] == 'active') {
-      final broadcast = _simulateBroadcast(
-        List<String>.from(
-            _store[index]['channels'] as List? ?? []),
-        List<String>.from(
-            _store[index]['product_ids'] as List? ?? []),
-      );
-      data = {
-        ...data,
-        'target_count': broadcast['target_count'],
-        'broadcast_sent_at': broadcast['broadcast_sent_at'],
-      };
-    }
-
-    _store[index] = {..._store[index], ...data};
-    return PromotionModel.fromJson(_store[index]);
-  }
-
-  @override
-  Future<void> delete(String id) async {
-    await _delay();
-    _store.removeWhere((e) => e['id'] == id);
-  }
-
-    @override
-  Future<PromotionModel> publish(String id) async {
-    await _delay();
-    final index = _store.indexWhere((e) => e['id'] == id);
-    if (index == -1) throw Exception('Promotion not found');
- 
-    final broadcast = _simulateBroadcast(
-      List<String>.from(_store[index]['channels'] as List? ?? []),
-      List<String>.from(_store[index]['product_ids'] as List? ?? []),
-    );
- 
-    _store[index] = {
-      ..._store[index],
-      'status': 'active',
-      'target_count': broadcast['target_count'],
-      'broadcast_sent_at': broadcast['broadcast_sent_at'],
-    };
-    return PromotionModel.fromJson(Map.from(_store[index]));
-  }
-}
-
 // === FILE: lib/features/promotion/data/datasources/promotion_remote_datasource.dart ===
 // admin app promotion_remote_datasource.dart
 // ─────────────────────────────────────────────────────────────
@@ -61176,11 +61229,11 @@ import '../models/promotion_model.dart';
 
 abstract class PromotionRemoteDataSource {
   Future<List<PromotionModel>> getAll();
-  Future<PromotionModel>       getById(String id);
-  Future<PromotionModel>       create(Map<String, dynamic> data);
-  Future<PromotionModel>       update(String id, Map<String, dynamic> data);
-  Future<void>                 delete(String id);
-  Future<PromotionModel>       publish(String id);
+  Future<PromotionModel> getById(String id);
+  Future<PromotionModel> create(Map<String, dynamic> data);
+  Future<PromotionModel> update(String id, Map<String, dynamic> data);
+  Future<void> delete(String id);
+  Future<PromotionModel> publish(String id);
 }
 
 class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
@@ -61190,8 +61243,8 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
   PromotionRemoteDataSourceImpl({
     required Dio dio,
     required OrgContext orgContext,
-  })  : _dio = dio,
-        _orgContext = orgContext;
+  }) : _dio = dio,
+       _orgContext = orgContext;
 
   String get _base =>
       '/pharma/orgs/${_orgContext.effectiveOrgId}/product-updates';
@@ -61199,8 +61252,6 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
   // ── Nexora response → PromotionModel ──────────────────────
 
   PromotionModel _fromNexora(Map<String, dynamic> j) {
-    final meta = (j['metadata'] as Map<String, dynamic>?) ?? {};
-
     final channels = <String>[
       if (j['send_sms'] == true) 'sms',
       if (j['send_whatsapp'] == true) 'whatsapp',
@@ -61210,35 +61261,44 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
     final nexoraStatus = j['status'] as String? ?? 'draft';
     final localStatus = _mapStatusFromNexora(nexoraStatus);
 
+    final sentAt = j['sent_at'] != null
+        ? DateTime.tryParse(j['sent_at'].toString())
+        : null;
+
+    // Read the new top-level date columns; fall back to sent_at for old records
+    final startDate = j['start_date'] != null
+        ? DateTime.tryParse(j['start_date'].toString()) ??
+              sentAt ??
+              DateTime.now()
+        : sentAt ?? DateTime.now();
+
+    final endDate = j['end_date'] != null
+        ? DateTime.tryParse(j['end_date'].toString()) ??
+              startDate.add(const Duration(days: 7))
+        : startDate.add(const Duration(days: 7));
+
     return PromotionModel(
-      id:          j['id']?.toString() ?? '',
-      title:       j['title'] as String? ?? '',
+      id: j['id']?.toString() ?? '',
+      title: j['title'] as String? ?? '',
       description: j['body'] as String?,
-      productIds:  List<String>.from((j['product_ids'] as List?) ?? []),
-      startDate:   meta['start_date'] != null
-          ? DateTime.tryParse(meta['start_date'] as String) ?? DateTime.now()
-          : DateTime.now(),
-      endDate:     meta['end_date'] != null
-          ? DateTime.tryParse(meta['end_date'] as String) ??
-              DateTime.now().add(const Duration(days: 7))
-          : DateTime.now().add(const Duration(days: 7)),
-      channels:    channels,
-      status:      localStatus,
-      createdAt:   j['created_at'] != null
+      productIds: List<String>.from((j['product_ids'] as List?) ?? []),
+      startDate: startDate,
+      endDate: endDate,
+      channels: channels,
+      status: localStatus,
+      createdAt: j['created_at'] != null
           ? DateTime.tryParse(j['created_at'].toString()) ?? DateTime.now()
           : DateTime.now(),
-      targetCount:     j['total_recipients'] as int? ?? 0,
-      broadcastSentAt: j['sent_at'] != null
-          ? DateTime.tryParse(j['sent_at'].toString())
-          : null,
+      targetCount: j['total_recipients'] as int? ?? 0,
+      broadcastSentAt: sentAt,
     );
   }
 
   /// Nexora status string → local PromotionStatus name
   String _mapStatusFromNexora(String s) => switch (s) {
     'sending' || 'sent' => 'active',
-    'failed'            => 'cancelled',
-    _                   => s, // 'draft' passes through
+    'failed' => 'cancelled',
+    _ => s, // 'draft' passes through
   };
 
   // ── Local status → Nexora PATCH status ────────────────────
@@ -61250,56 +61310,49 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
   //
   // Note: 'active' is NEVER patched here — it goes through publish().
   String _mapStatusToNexora(String localStatus) => switch (localStatus) {
-    'ended'     => 'sent',
+    'ended' => 'sent',
     'cancelled' => 'failed',
-    _           => localStatus, // 'draft' is the only other passthrough
+    _ => localStatus, // 'draft' is the only other passthrough
   };
 
   // ── PromotionModel data → Nexora create body ───────────────
-
   Map<String, dynamic> _toCreateBody(Map<String, dynamic> d) {
-    final channels  = List<String>.from(d['channels'] as List? ?? []);
+    final channels = List<String>.from(d['channels'] as List? ?? []);
     final startDate = d['start_date'] ?? d['startDate'];
-    final endDate   = d['end_date']   ?? d['endDate'];
+    final endDate = d['end_date'] ?? d['endDate'];
 
     return {
-      'title':          d['title'] ?? '',
-      'body':           d['description'],
-      'update_type':    'promotion',
+      'title': d['title'] ?? '',
+      'body': d['description'],
+      'update_type': 'promotion',
       'target_segment': 'all',
-      'send_sms':       channels.contains('sms'),
-      'send_whatsapp':  channels.contains('whatsapp'),
-      'send_in_app':    channels.contains('in_app'),
-      'product_ids':    List<String>.from(d['product_ids'] as List? ?? []),
-      'metadata': {
-        if (startDate != null) 'start_date': startDate.toString(),
-        if (endDate   != null) 'end_date':   endDate.toString(),
-      },
+      'send_sms': channels.contains('sms'),
+      'send_whatsapp': channels.contains('whatsapp'),
+      'send_in_app': channels.contains('in_app'),
+      'product_ids': List<String>.from(d['product_ids'] as List? ?? []),
+      if (startDate != null)
+        'start_date': startDate.toString().substring(0, 10),
+      if (endDate != null) 'end_date': endDate.toString().substring(0, 10),
     };
   }
 
-  // ── PromotionModel data → Nexora PATCH body ─────────────────
-
   Map<String, dynamic> _toUpdateBody(Map<String, dynamic> d) {
-    final channels  = List<String>.from(d['channels'] as List? ?? []);
+    final channels = List<String>.from(d['channels'] as List? ?? []);
     final startDate = d['start_date'] ?? d['startDate'];
-    final endDate   = d['end_date']   ?? d['endDate'];
+    final endDate = d['end_date'] ?? d['endDate'];
 
     final body = <String, dynamic>{
-      'title':         d['title'] ?? '',
-      'body':          d['description'],
-      'send_sms':      channels.contains('sms'),
+      'title': d['title'] ?? '',
+      'body': d['description'],
+      'send_sms': channels.contains('sms'),
       'send_whatsapp': channels.contains('whatsapp'),
-      'send_in_app':   channels.contains('in_app'),
-      'product_ids':   List<String>.from(d['product_ids'] as List? ?? []),
-      'metadata': {
-        if (startDate != null) 'start_date': startDate.toString(),
-        if (endDate   != null) 'end_date':   endDate.toString(),
-      },
+      'send_in_app': channels.contains('in_app'),
+      'product_ids': List<String>.from(d['product_ids'] as List? ?? []),
+      if (startDate != null)
+        'start_date': startDate.toString().substring(0, 10),
+      if (endDate != null) 'end_date': endDate.toString().substring(0, 10),
     };
 
-    // FIX: always translate local status to a Nexora-valid status string.
-    // Without this, sending 'ended' or 'cancelled' causes a 422/500 from Nexora.
     if (d['status'] != null) {
       body['status'] = _mapStatusToNexora(d['status'] as String);
     }
@@ -61411,6 +61464,7 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
     }
   }
 }
+
 
 // === FILE: lib/features/promotion/data/models/promotion_model.dart ===
 import '../../domain/entities/promotion_entity.dart';

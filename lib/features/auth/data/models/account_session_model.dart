@@ -19,15 +19,24 @@ class AccountSessionModel extends AccountSession {
 
   factory AccountSessionModel.fromJson(Map<String, dynamic> json) {
     final rawPerms = json['permissions'] as List<dynamic>? ?? [];
+
     final permissions = rawPerms
         .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
         .toList();
 
+    final token = json['token'] as String?;
+    final userJson = json['user'] as Map<String, dynamic>?;
+    final savedAtStr = json['saved_at'] as String?;
+
+    if (token == null || userJson == null || savedAtStr == null) {
+      throw Exception('Invalid session data in storage');
+    }
+
     return AccountSessionModel(
-      token: json['token'] as String,
-      user: UserModel.fromJson(json['user'] as Map<String, dynamic>),
+      token: token,
+      user: UserModel.fromJson(userJson),
       permissions: permissions,
-      savedAt: DateTime.parse(json['saved_at'] as String),
+      savedAt: DateTime.parse(savedAtStr),
     );
   }
 

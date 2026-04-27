@@ -166,6 +166,8 @@ class OfficerMockDataSource implements OfficerRemoteDataSource {
     required String branchId,
     String? username,
     String? phone,
+    String? appPassword,
+    String? appPasswordConfirmation,
   }) async {
     await _delay();
     final id = _idCounter++;
@@ -245,7 +247,8 @@ class OfficerMockDataSource implements OfficerRemoteDataSource {
     final index = _store.indexWhere((e) => e['user_id'] == userId);
     if (index == -1) throw Exception('Officer not found');
     final user = Map<String, dynamic>.from(
-        _store[index]['user'] as Map<String, dynamic>);
+      _store[index]['user'] as Map<String, dynamic>,
+    );
     user['status'] = 'suspended';
     _store[index]['user'] = user;
   }
@@ -256,7 +259,8 @@ class OfficerMockDataSource implements OfficerRemoteDataSource {
     final index = _store.indexWhere((e) => e['user_id'] == userId);
     if (index == -1) throw Exception('Officer not found');
     final user = Map<String, dynamic>.from(
-        _store[index]['user'] as Map<String, dynamic>);
+      _store[index]['user'] as Map<String, dynamic>,
+    );
     user['status'] = 'deactivated';
     _store[index]['user'] = user;
   }

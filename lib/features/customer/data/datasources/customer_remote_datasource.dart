@@ -54,14 +54,14 @@ class CustomerRemoteDataSourceImpl extends BaseRemoteDataSource
   }) {
     final orgId = _orgContext.effectiveOrgId;
     final p = <String, dynamic>{
-      if (customerType != null) 'customer_type': customerType,
-      if (status != null) 'status': status,
-      if (category != null) 'category': category,
-      if (tier != null) 'tier': tier,
-      if (officerId != null) 'officer_id': officerId,
-      if (search != null) 'search': search,
-      if (perPage != null) 'per_page': perPage,
-      if (page != null) 'page': page,
+      'customer_type': ?customerType,
+      'status': ?status,
+      'category': ?category,
+      'tier': ?tier,
+      'officer_id': ?officerId,
+      'search': ?search,
+      'per_page': ?perPage,
+      'page': ?page,
     };
     return fetchPaginatedList(
       ApiPaths.pharma.customers(orgId),

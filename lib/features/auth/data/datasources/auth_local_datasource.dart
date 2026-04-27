@@ -49,7 +49,15 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
     try {
       final email = await getActiveEmail();
       if (email == null) return null;
-      return _readSession(email);
+
+      final session = await _readSession(email);
+
+      // If session is gone (corrupted & deleted), clear pointer
+      if (session == null) {
+        await _storage.delete(AppConstants.activeAccountKey);
+      }
+
+      return session;
     } catch (e) {
       throw CacheException('Failed to read active session: $e');
     }
@@ -143,7 +151,14 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
 
   Future<AccountSessionModel?> _readSession(String email) async {
     final raw = await _storage.read(_accountKey(email));
-    if (raw == null) return null;
-    return AccountSessionModel.fromJsonString(raw);
+    if (raw == null || raw.isEmpty) return null;
+
+    try {
+      return AccountSessionModel.fromJsonString(raw);
+    } catch (e) {
+      // 🔥 Corrupted or outdated session — remove it
+      await _storage.delete(_accountKey(email));
+      return null;
+    }
   }
 }

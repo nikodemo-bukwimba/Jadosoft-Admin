@@ -361,6 +361,13 @@ class _InviteDialogState extends State<_InviteDialog> {
 // ═══════════════════════════════════════════════════════════
 // Assign Dialog — for assigning existing root members to branch
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// Assign Dialog — for assigning existing root members to branch
+// FIX: deduplicate rootMembers by userId (a user can have multiple
+//      memberships/roles in the root org, causing duplicate dropdown
+//      values which Flutter asserts against).
+//      Also deduplicate roles by id for the same reason.
+// ═══════════════════════════════════════════════════════════
 class _AssignDialog extends StatefulWidget {
   final OrganizationBloc bloc;
   final String branchId;
@@ -390,8 +397,31 @@ class _AssignDialogState extends State<_AssignDialog> {
     final rolesRes = await widget.bloc.repository.getRoles(rootOrgId);
     if (!mounted) return;
     setState(() {
-      membersRes.fold((f) => error = f.message, (m) => rootMembers = m);
-      rolesRes.fold((f) => error ??= f.message, (r) => roles = r);
+      membersRes.fold((f) => error = f.message, (m) {
+        // Deduplicate by userId — keep the entry with the highest authority
+        // level so the display label shows their primary role.
+        final seen = <String, OrgMemberEntity>{};
+        for (final member in m) {
+          if (!member.isActive) continue;
+          final existing = seen[member.userId];
+          if (existing == null ||
+              member.authorityLevel > existing.authorityLevel) {
+            seen[member.userId] = member;
+          }
+        }
+        rootMembers = seen.values.toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
+      });
+
+      rolesRes.fold((f) => error ??= f.message, (r) {
+        // Deduplicate by role id — server may return duplicate rows.
+        final seen = <String, OrgRoleEntity>{};
+        for (final role in r) {
+          seen[role.id] ??= role;
+        }
+        roles = seen.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+      });
+
       loading = false;
     });
   }
@@ -418,6 +448,8 @@ class _AssignDialogState extends State<_AssignDialog> {
                         'Assign an existing organization member to this branch with a specific role.',
                   ),
                   const SizedBox(height: 16),
+
+                  // ── Member picker ─────────────────────────────
                   DropdownButtonFormField<String>(
                     value: selectedUserId,
                     decoration: const InputDecoration(
@@ -427,7 +459,6 @@ class _AssignDialogState extends State<_AssignDialog> {
                     ),
                     isExpanded: true,
                     items: rootMembers
-                        .where((m) => m.isActive)
                         .map(
                           (m) => DropdownMenuItem(
                             value: m.userId,
@@ -443,6 +474,8 @@ class _AssignDialogState extends State<_AssignDialog> {
                     onChanged: (v) => setState(() => selectedUserId = v),
                   ),
                   const SizedBox(height: 12),
+
+                  // ── Role picker ───────────────────────────────
                   DropdownButtonFormField<String>(
                     value: selectedRoleId,
                     decoration: const InputDecoration(
@@ -450,11 +483,15 @@ class _AssignDialogState extends State<_AssignDialog> {
                       prefixIcon: Icon(Icons.admin_panel_settings_outlined),
                       border: OutlineInputBorder(),
                     ),
+                    isExpanded: true,
                     items: roles
                         .map(
                           (r) => DropdownMenuItem(
                             value: r.id,
-                            child: Text(r.name),
+                            child: Text(
+                              r.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         )
                         .toList(),

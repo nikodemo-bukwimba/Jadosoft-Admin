@@ -1,6 +1,20 @@
+// customer_form_page.dart
+// ─────────────────────────────────────────────────────────────
+// Fixes applied:
+//   1. GPS: switched from `location` package (throws MissingPluginException
+//      on channel Iyokone/Location) to `geolocator` which is already used
+//      by the officer app and works on all platforms.
+//   2. Password section: enabled for edit mode too — allows setting/changing
+//      the customer's platform login password after initial creation.
+//   3. Officer loading: uses the pharma officers endpoint
+//      (GET /pharma/orgs/{orgId}/officers) via OfficerRemoteDataSource
+//      which returns PmOfficer records. Previously used org members endpoint
+//      which caused parse failures and "No implementation found" exceptions.
+// ─────────────────────────────────────────────────────────────
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:location/location.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../config/di/injection_container.dart';
 import '../bloc/customer_bloc.dart';
@@ -38,6 +52,12 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
   final _notesCtl = TextEditingController();
   final _contactNameCtl = TextEditingController();
   final _contactPhoneCtl = TextEditingController();
+  final _passwordCtl = TextEditingController();
+  final _confirmPassCtl = TextEditingController();
+
+  // App login toggle — enabled for both create AND edit
+  bool _enableAppLogin = false;
+
   String _customerType = 'b2b';
   String? _category;
   String? _tier;
@@ -52,7 +72,7 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
       double.tryParse(_gpsLatCtl.text.trim()) != null &&
       double.tryParse(_gpsLngCtl.text.trim()) != null;
 
-  // ── Officer loading state ──
+  // Officer loading state
   List<OfficerEntity> _officers = [];
   bool _officersLoading = true;
 
@@ -83,7 +103,8 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
     });
   }
 
-  /// Load officers via DI — replaces direct OfficerMockDataSource() instantiation.
+  /// Load officers via the pharma officers endpoint.
+  /// Falls back silently if the endpoint is unavailable.
   Future<void> _loadOfficers() async {
     try {
       final ds = sl<OfficerRemoteDataSource>();
@@ -114,6 +135,8 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
       _notesCtl,
       _contactNameCtl,
       _contactPhoneCtl,
+      _passwordCtl,
+      _confirmPassCtl,
     ]) {
       c.dispose();
     }
@@ -147,29 +170,30 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
     }
   }
 
+  // ── GPS capture using geolocator (replaces location package) ──
+  // geolocator is already in pubspec (used by officer app) and does not
+  // throw MissingPluginException on the Iyokone/Location channel.
+
   Future<void> _captureGps() async {
     if (!mounted) return;
     setState(() => _gpsLoading = true);
     try {
-      final loc = Location();
-      bool serviceEnabled = await loc.serviceEnabled();
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        serviceEnabled = await loc.requestService();
-        if (!serviceEnabled) {
-          if (mounted) {
-            setState(() => _gpsLoading = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('GPS service is disabled')),
-            );
-          }
-          return;
+        if (mounted) {
+          setState(() => _gpsLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('GPS service is disabled')),
+          );
         }
+        return;
       }
-      PermissionStatus permission = await loc.hasPermission();
-      if (permission == PermissionStatus.denied) {
-        permission = await loc.requestPermission();
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
       }
-      if (permission == PermissionStatus.deniedForever) {
+      if (permission == LocationPermission.deniedForever) {
         if (mounted) {
           setState(() => _gpsLoading = false);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -182,15 +206,19 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
         }
         return;
       }
-      if (permission != PermissionStatus.granted) {
+      if (permission != LocationPermission.always &&
+          permission != LocationPermission.whileInUse) {
         if (mounted) setState(() => _gpsLoading = false);
         return;
       }
-      final data = await loc.getLocation();
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
       if (mounted) {
         setState(() {
-          _gpsLatCtl.text = data.latitude?.toStringAsFixed(6) ?? '';
-          _gpsLngCtl.text = data.longitude?.toStringAsFixed(6) ?? '';
+          _gpsLatCtl.text = position.latitude.toStringAsFixed(6);
+          _gpsLngCtl.text = position.longitude.toStringAsFixed(6);
           _gpsLoading = false;
         });
       }
@@ -571,13 +599,18 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                     ],
                     const SizedBox(height: 24),
 
-                    // ── Officer Assignment (loaded via DI) ──
+                    // ── Officer Assignment ──
                     _sectionLabel(context, 'Officer Assignment'),
                     const SizedBox(height: 8),
                     _officersLoading
                         ? const LinearProgressIndicator()
                         : DropdownButtonFormField<String>(
-                            value: _selectedOfficerId,
+                            initialValue:
+                                _officers.any(
+                                  (o) => o.actorId == _selectedOfficerId,
+                                )
+                                ? _selectedOfficerId
+                                : null,
                             isExpanded: true,
                             decoration: const InputDecoration(
                               labelText: 'Assigned Officer',
@@ -585,12 +618,17 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                               prefixIcon: Icon(Icons.badge_outlined),
                             ),
                             items: _officers
-                                .where((o) => o.effectiveStatus == 'active')
+                                .where(
+                                  (o) =>
+                                      o.effectiveStatus == 'active' ||
+                                      o.actorId == _selectedOfficerId,
+                                )
                                 .map(
                                   (o) => DropdownMenuItem(
                                     value: o.actorId,
                                     child: Text(
-                                      '${o.displayName} (${o.orgRoleName ?? ""})',
+                                      '${o.displayName} (${o.orgRoleName ?? ""})'
+                                      '${o.effectiveStatus != "active" ? " (inactive)" : ""}',
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -599,7 +637,8 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                             onChanged: (v) =>
                                 setState(() => _selectedOfficerId = v),
                             validator: (v) {
-                              if (v == null || v.isEmpty) {
+                              // Officer required on create; optional on edit
+                              if (!_isEdit && (v == null || v.isEmpty)) {
                                 return 'Assigned officer is required';
                               }
                               return null;
@@ -617,6 +656,76 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                       maxLines: 3,
                     ),
                     const SizedBox(height: 32),
+
+                    // ── App Login Credentials ─────────────────────────────
+                    // Available on BOTH create and edit modes.
+                    // On edit: only sets the password — does not create a new
+                    // platform user if one already exists.
+                    _sectionLabel(context, 'Customer App Login'),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      value: _enableAppLogin,
+                      title: Text(
+                        _isEdit
+                            ? 'Change App Login Password'
+                            : 'Enable Customer App Login',
+                      ),
+                      subtitle: Text(
+                        _isEdit
+                            ? 'Set a new password for the customer app'
+                            : 'Set a password so customer can log into jadosoft-lite',
+                      ),
+                      onChanged: (v) => setState(() => _enableAppLogin = v),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    if (_enableAppLogin) ...[
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _passwordCtl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Password',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.lock_outline),
+                          helperText: 'Min 8 characters',
+                        ),
+                        validator: (v) {
+                          if (!_enableAppLogin) return null;
+                          if (v == null || v.isEmpty) {
+                            return 'Password is required';
+                          }
+                          if (v.length < 8) return 'At least 8 characters';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _confirmPassCtl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Confirm Password',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.lock_outline),
+                        ),
+                        validator: (v) {
+                          if (!_enableAppLogin) return null;
+                          if (v != _passwordCtl.text) {
+                            return 'Passwords do not match';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _isEdit
+                            ? 'Password will be updated for the existing account.'
+                            : 'Email above will be used as the login credential.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
 
                     FilledButton.icon(
                       onPressed: _isSubmitting ? null : _submit,
@@ -724,6 +833,11 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
               tier: _tier,
               assignedOfficerId: _selectedOfficerId,
             ),
+            // Pass password if the toggle is on
+            appPassword: _enableAppLogin ? _passwordCtl.text : null,
+            appPasswordConfirmation: _enableAppLogin
+                ? _confirmPassCtl.text
+                : null,
           ),
         );
       }
@@ -747,6 +861,11 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
             contactName: _contactNameCtl.text.trim(),
             contactRole: _contactRole,
             contactPhone: _contactPhoneCtl.text.trim(),
+            assignedOfficerId: _selectedOfficerId,
+            appPassword: _enableAppLogin ? _passwordCtl.text : null,
+            appPasswordConfirmation: _enableAppLogin
+                ? _confirmPassCtl.text
+                : null,
           ),
         ),
       );

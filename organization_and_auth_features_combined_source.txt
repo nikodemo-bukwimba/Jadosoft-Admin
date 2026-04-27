@@ -1,8 +1,8 @@
 ﻿// ================================================================
-// features_organization_source.txt
+// organization_and_auth_features_combined_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-04-24 16:37:47
-// Files        : 34
+// Generated    : 2026-04-25 11:52:05
+// Files        : 58
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
 
@@ -5549,6 +5549,3754 @@ class RoleCardTile extends StatelessWidget {
         .split(' ')
         .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
         .join(' ');
+  }
+}
+
+
+// === FILE: lib/features/auth/data/datasources/auth_local_datasource.dart ===
+// auth_local_datasource.dart  [R2 — Secure Device Storage]
+// ─────────────────────────────────────────────────────────────
+// Manages multiple AccountSessions in flutter_secure_storage.
+//
+// Storage layout:
+//   "active_account_email"  → currently active email (or absent)
+//   "account_{email}"       → AccountSessionModel JSON per account
+//
+// Rules:
+//   - All reads/writes go through SecureStorageService
+//   - SharedPreferences is never used here
+//   - On logout: token is revoked remotely FIRST, then cleared here
+// ─────────────────────────────────────────────────────────────
+
+import '../../../../core/constants/app_constants.dart';
+import '../../../../core/error/exceptions.dart';
+import '../../../../core/storage/secure_storage_service.dart';
+import '../models/account_session_model.dart';
+
+abstract class AuthLocalDataSource {
+  Future<void> saveSession(AccountSessionModel session);
+  Future<AccountSessionModel?> getActiveSession();
+  Future<List<AccountSessionModel>> getAllSessions();
+  Future<void> setActiveAccount(String email);
+  Future<String?> getActiveEmail();
+  Future<void> removeSession(String email);
+  Future<void> clearAll();
+}
+
+class AuthLocalDataSourceImpl implements AuthLocalDataSource {
+  final SecureStorageService _storage;
+
+  AuthLocalDataSourceImpl(this._storage);
+
+  // ── Save / overwrite a session ────────────────────────────
+  @override
+  Future<void> saveSession(AccountSessionModel session) async {
+    try {
+      final key = _accountKey(session.user.email);
+      await _storage.write(key, session.toJsonString());
+    } catch (e) {
+      throw CacheException('Failed to save session: $e');
+    }
+  }
+
+  // ── Get currently active session ──────────────────────────
+  @override
+  Future<AccountSessionModel?> getActiveSession() async {
+    try {
+      final email = await getActiveEmail();
+      if (email == null) return null;
+
+      final session = await _readSession(email);
+
+      // If session is gone (corrupted & deleted), clear pointer
+      if (session == null) {
+        await _storage.delete(AppConstants.activeAccountKey);
+      }
+
+      return session;
+    } catch (e) {
+      throw CacheException('Failed to read active session: $e');
+    }
+  }
+
+  // ── Get all stored sessions ───────────────────────────────
+  @override
+  Future<List<AccountSessionModel>> getAllSessions() async {
+    try {
+      final all = await _storage.readAll();
+      final sessions = <AccountSessionModel>[];
+
+      for (final entry in all.entries) {
+        if (entry.key.startsWith(AppConstants.accountPrefix)) {
+          try {
+            sessions.add(AccountSessionModel.fromJsonString(entry.value));
+          } catch (_) {
+            // Corrupt entry — skip silently, don't crash the list
+          }
+        }
+      }
+
+      // Sort: most recently saved first
+      sessions.sort((a, b) => b.savedAt.compareTo(a.savedAt));
+      return sessions;
+    } catch (e) {
+      throw CacheException('Failed to read sessions: $e');
+    }
+  }
+
+  // ── Set active account ────────────────────────────────────
+  @override
+  Future<void> setActiveAccount(String email) async {
+    try {
+      // Verify the session exists before making it active
+      final session = await _readSession(email);
+      if (session == null) {
+        throw CacheException('No stored session for $email');
+      }
+      await _storage.write(AppConstants.activeAccountKey, email);
+    } catch (e) {
+      if (e is CacheException) rethrow;
+      throw CacheException('Failed to set active account: $e');
+    }
+  }
+
+  // ── Get active email ──────────────────────────────────────
+  @override
+  Future<String?> getActiveEmail() async {
+    return _storage.read(AppConstants.activeAccountKey);
+  }
+
+  // ── Remove a specific account session ─────────────────────
+  @override
+  Future<void> removeSession(String email) async {
+    try {
+      await _storage.delete(_accountKey(email));
+
+      // If this was the active account, clear the active pointer
+      final activeEmail = await getActiveEmail();
+      if (activeEmail == email) {
+        await _storage.delete(AppConstants.activeAccountKey);
+
+        // Auto-switch to another account if one exists
+        final remaining = await getAllSessions();
+        if (remaining.isNotEmpty) {
+          await _storage.write(
+            AppConstants.activeAccountKey,
+            remaining.first.user.email,
+          );
+        }
+      }
+    } catch (e) {
+      throw CacheException('Failed to remove session: $e');
+    }
+  }
+
+  // ── Clear all sessions (full device wipe) ─────────────────
+  @override
+  Future<void> clearAll() async {
+    try {
+      await _storage.deleteAll();
+    } catch (e) {
+      throw CacheException('Failed to clear all sessions: $e');
+    }
+  }
+
+  // ── Private helpers ───────────────────────────────────────
+
+  String _accountKey(String email) => '${AppConstants.accountPrefix}$email';
+
+  Future<AccountSessionModel?> _readSession(String email) async {
+    final raw = await _storage.read(_accountKey(email));
+    if (raw == null || raw.isEmpty) return null;
+
+    try {
+      return AccountSessionModel.fromJsonString(raw);
+    } catch (e) {
+      // 🔥 Corrupted or outdated session — remove it
+      await _storage.delete(_accountKey(email));
+      return null;
+    }
+  }
+}
+
+
+// === FILE: lib/features/auth/data/datasources/auth_remote_datasource.dart ===
+// auth_remote_datasource.dart
+// ─────────────────────────────────────────────────────────────
+// FIX 1: getAuthMe() — org_id is now dynamic, not hardcoded.
+//   On first login: no org_id sent → server picks highest-level
+//   membership → returns user.org_id in response → we store it.
+//   On refresh: stored org_id is passed → correct permissions.
+//
+// FIX 2: register() — sends 'name' (→ actor.display_name) and
+//   a generated 'username' (→ users.username).
+// ─────────────────────────────────────────────────────────────
+
+import 'dart:math';
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import '../../../../core/error/exceptions.dart';
+import '../models/user_model.dart';
+
+class AuthMeResponse {
+  final UserModel user;
+  final List<RoleModel> roles;
+  final List<PermissionModel> permissions;
+  // org_id echoed back by the server (membership org). null = no membership.
+  final String? resolvedOrgId;
+
+  const AuthMeResponse({
+    required this.user,
+    required this.roles,
+    required this.permissions,
+    this.resolvedOrgId,
+  });
+}
+
+abstract class AuthRemoteDataSource {
+  Future<Map<String, dynamic>> login(String email, String password);
+  Future<Map<String, dynamic>> register({
+    required String name,
+    required String email,
+    required String password,
+    required String passwordConfirmation,
+    String? phone,
+  });
+  Future<void> logout();
+  Future<AuthMeResponse> getAuthMe({String? orgId});
+}
+
+class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
+  final Dio _dio;
+  AuthRemoteDataSourceImpl(this._dio);
+
+  @override
+  Future<Map<String, dynamic>> login(String email, String password) async {
+    try {
+      final response = await _dio.post(
+        '/auth/login',
+        data: {'email': email, 'password': password},
+      );
+      final body = _parseBody(response);
+      if (kDebugMode) {
+        debugPrint('[AUTH] Login response keys: ${body.keys.toList()}');
+        final token = _extractToken(body);
+        debugPrint(
+          '[AUTH] Token extracted: ${token != null ? "YES (${token.length} chars)" : "NO — check response shape"}',
+        );
+      }
+      return body;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> register({
+    required String name,
+    required String email,
+    required String password,
+    required String passwordConfirmation,
+    String? phone,
+  }) async {
+    try {
+      final username = _generateUsername(name);
+      final response = await _dio.post(
+        '/auth/register',
+        data: {
+          'name': name, // → actor.display_name (real full name)
+          'username': username, // → users.username (auto-generated)
+          'email': email,
+          'password': password,
+          'password_confirmation': passwordConfirmation,
+          if (phone != null && phone.isNotEmpty) 'phone': phone,
+        },
+      );
+      final body = _parseBody(response);
+      if (kDebugMode) {
+        debugPrint('[AUTH] Register response keys: ${body.keys.toList()}');
+        debugPrint('[AUTH] Registered: name=$name, username=$username');
+      }
+      return body;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  @override
+  Future<void> logout() async {
+    try {
+      await _dio.post('/auth/logout');
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) return;
+      throw _handleDioError(e);
+    }
+  }
+
+  // ── GET /auth/me ──────────────────────────────────────────
+  // orgId = null on first login → server picks highest-level membership.
+  // orgId = stored value on refresh → correct branch permissions.
+  // The backend echoes back user.org_id so we know which org was used.
+  @override
+  Future<AuthMeResponse> getAuthMe({String? orgId}) async {
+    try {
+      final response = await _dio.get(
+        '/auth/me',
+        queryParameters: orgId != null ? {'org_id': orgId} : null,
+      );
+      final raw = response.data;
+
+      if (raw == null)
+        throw const ServerException('Empty response from /auth/me');
+      if (raw is! Map<String, dynamic>)
+        throw const ServerException('Unexpected response format from /auth/me');
+
+      final userJson = raw['user'] as Map<String, dynamic>? ?? raw;
+      final user = UserModel.fromJson(userJson);
+
+      final rawPerms = raw['permissions'] as List<dynamic>? ?? [];
+      final permissions = rawPerms
+          .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
+          .toList();
+
+      final rawRoles = userJson['roles'] as List<dynamic>? ?? [];
+      final roles = rawRoles
+          .map((r) => RoleModel.fromJson(r as Map<String, dynamic>))
+          .toList();
+
+      // The backend now echoes user.org_id — the membership org for this call.
+      final resolvedOrgId =
+          userJson['org_id']?.toString() ?? raw['org_id']?.toString() ?? orgId;
+
+      if (kDebugMode) {
+        debugPrint(
+          '[AUTH] /auth/me: user=${user.email}, '
+          'roles=${roles.length}, permissions=${permissions.length}, '
+          'resolved_org_id=$resolvedOrgId',
+        );
+      }
+
+      return AuthMeResponse(
+        user: user,
+        roles: roles,
+        permissions: permissions,
+        resolvedOrgId: resolvedOrgId,
+      );
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  static String? extractToken(Map<String, dynamic> body) => _extractToken(body);
+
+  static String? _extractToken(Map<String, dynamic> body) {
+    if (body['token'] is String) return body['token'] as String;
+    if (body['access_token'] is String) return body['access_token'] as String;
+    final data = body['data'];
+    if (data is Map<String, dynamic>) {
+      if (data['token'] is String) return data['token'] as String;
+      if (data['access_token'] is String) return data['access_token'] as String;
+    }
+    return null;
+  }
+
+  // "John Mwangi" → "john_mwangi_4j2k"
+  String _generateUsername(String fullName) {
+    final base = fullName
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), '')
+        .trim()
+        .replaceAll(RegExp(r'\s+'), '_');
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    final rand = Random();
+    final suffix = List.generate(
+      4,
+      (_) => chars[rand.nextInt(chars.length)],
+    ).join();
+    return '${base}_$suffix';
+  }
+
+  Map<String, dynamic> _parseBody(Response response) {
+    final data = response.data;
+    if (data == null) throw const ServerException('Empty response body');
+    if (data is! Map<String, dynamic>)
+      throw const ServerException('Unexpected response format');
+    return data;
+  }
+
+  Exception _handleDioError(DioException e) {
+    final statusCode = e.response?.statusCode;
+    final responseData = e.response?.data;
+    String message = 'An error occurred. Please try again.';
+    if (responseData is Map<String, dynamic>) {
+      if (responseData['message'] is String) {
+        message = responseData['message'] as String;
+      } else if (responseData['errors'] is Map) {
+        final errors = responseData['errors'] as Map<String, dynamic>;
+        final firstField = errors.values.first;
+        if (firstField is List && firstField.isNotEmpty) {
+          message = firstField.first.toString();
+        }
+      }
+    }
+    if (statusCode == 401) return AuthException(message);
+    if (statusCode == 422) return ServerException(message, statusCode: 422);
+    if (e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout) {
+      return const NetworkException(
+        'Connection timed out. Check your internet.',
+      );
+    }
+    if (e.type == DioExceptionType.connectionError) {
+      return const NetworkException(
+        'Cannot reach the server. Check your connection.',
+      );
+    }
+    return ServerException(message, statusCode: statusCode);
+  }
+}
+
+// === FILE: lib/features/auth/data/models/account_session_model.dart ===
+// account_session_model.dart
+// ─────────────────────────────────────────────────────────────
+// Serializable form of AccountSession stored in flutter_secure_storage.
+// Each instance maps to one key: "account_{email}"
+// ─────────────────────────────────────────────────────────────
+
+import 'dart:convert';
+import '../../domain/entities/account_session.dart';
+import '../../domain/entities/user_entity.dart';
+import 'user_model.dart';
+
+class AccountSessionModel extends AccountSession {
+  const AccountSessionModel({
+    required super.token,
+    required super.user,
+    required super.permissions,
+    required super.savedAt,
+  });
+
+  factory AccountSessionModel.fromJson(Map<String, dynamic> json) {
+    final rawPerms = json['permissions'] as List<dynamic>? ?? [];
+
+    final permissions = rawPerms
+        .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
+        .toList();
+
+    final token = json['token'] as String?;
+    final userJson = json['user'] as Map<String, dynamic>?;
+    final savedAtStr = json['saved_at'] as String?;
+
+    if (token == null || userJson == null || savedAtStr == null) {
+      throw Exception('Invalid session data in storage');
+    }
+
+    return AccountSessionModel(
+      token: token,
+      user: UserModel.fromJson(userJson),
+      permissions: permissions,
+      savedAt: DateTime.parse(savedAtStr),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'token': token,
+    'user': UserModel(
+      id: user.id,
+      actorId: user.actorId, // ADD — was missing
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      isActive: user.isActive,
+      emailVerifiedAt: user.emailVerifiedAt,
+      primaryRole: user.primaryRole,
+      roles: user.roles,
+      hasActiveSubscription: user.hasActiveSubscription,
+      subscriptionStatus: user.subscriptionStatus,
+      createdAt: user.createdAt,
+    ).toJson(),
+    'permissions': permissions
+        .map(
+          (p) => PermissionModel(id: p.id, name: p.name, slug: p.slug).toJson(),
+        )
+        .toList(),
+    'saved_at': savedAt.toIso8601String(),
+  };
+
+  /// Encode to JSON string for secure storage.
+  String toJsonString() => jsonEncode(toJson());
+
+  /// Decode from JSON string read from secure storage.
+  factory AccountSessionModel.fromJsonString(String raw) =>
+      AccountSessionModel.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+
+  /// Create from a fresh login response + fetched roles.
+  factory AccountSessionModel.fromLoginResponse({
+    required String token,
+    required UserModel user,
+    required List<PermissionEntity> permissions,
+  }) => AccountSessionModel(
+    token: token,
+    user: user,
+    permissions: permissions,
+    savedAt: DateTime.now(),
+  );
+}
+
+
+// === FILE: lib/features/auth/data/models/user_model.dart ===
+// Admin app user_model.dart
+// ─────────────────────────────────────────────────────────────
+// CHANGE: UserModel.id is now String (Laravel uses ULIDs).
+// RoleModel / PermissionModel keep int ids (standard auto-increment)
+// but use safe parsing so they never hard-cast.
+//
+// FIX: RoleModel.slug falls back to name when the API doesn't
+// return a 'slug' field (platform_roles table has no slug column).
+// Same for PermissionModel — slug falls back to name.
+// ─────────────────────────────────────────────────────────────
+
+import '../../domain/entities/user_entity.dart';
+
+class RoleModel extends RoleEntity {
+  const RoleModel({
+    required super.id,
+    required super.name,
+    required super.slug,
+  });
+
+  factory RoleModel.fromJson(Map<String, dynamic> json) => RoleModel(
+    id: json['id']?.toString() ?? '', // was int.parse(...)
+    name: json['name'] as String? ?? '',
+    slug: json['slug'] as String? ?? json['name'] as String? ?? '',
+  );
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'slug': slug};
+}
+
+class PermissionModel extends PermissionEntity {
+  const PermissionModel({
+    required super.id,
+    required super.name,
+    required super.slug,
+  });
+
+  factory PermissionModel.fromJson(Map<String, dynamic> json) =>
+      PermissionModel(
+        id: json['id']?.toString() ?? '', // was int.parse(...)
+        name: json['name'] as String? ?? '',
+        slug: json['slug'] as String? ?? json['name'] as String? ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'slug': slug};
+}
+
+class UserModel extends UserEntity {
+  const UserModel({
+    required super.id, // String — Laravel ULID
+    super.actorId,
+    required super.name,
+    required super.email,
+    super.phone,
+    required super.isActive,
+    super.emailVerifiedAt,
+    super.primaryRole,
+    super.roles,
+    required super.hasActiveSubscription,
+    required super.subscriptionStatus,
+    super.createdAt,
+  });
+
+  factory UserModel.fromJson(Map<String, dynamic> json) {
+    final rawRoles = json['roles'] as List<dynamic>? ?? [];
+    final roles = rawRoles
+        .map((r) => RoleModel.fromJson(r as Map<String, dynamic>))
+        .toList();
+
+    RoleModel? primaryRole;
+    if (json['primary_role'] != null) {
+      primaryRole = RoleModel.fromJson(
+        json['primary_role'] as Map<String, dynamic>,
+      );
+    } else if (roles.isNotEmpty) {
+      // If no explicit primary_role, use first role
+      primaryRole = roles.first;
+    }
+
+    return UserModel(
+      // ULID — always a String, never cast to int
+      id: json['id'].toString(),
+      actorId: json['actor_id']?.toString(),
+
+      name: json['name'] as String? ?? json['username'] as String? ?? '',
+      email: json['email'] as String,
+      phone: json['phone'] as String?,
+
+      // Laravel may return 0/1, true/false, or 'active' status string
+      isActive:
+          json['is_active'] == true ||
+          json['is_active'] == 1 ||
+          json['status'] == 'active',
+
+      hasActiveSubscription:
+          json['has_active_subscription'] == true ||
+          json['has_active_subscription'] == 1,
+
+      emailVerifiedAt: json['email_verified_at'] != null
+          ? DateTime.tryParse(json['email_verified_at'].toString())
+          : null,
+
+      primaryRole: primaryRole,
+      roles: roles,
+
+      subscriptionStatus: json['subscription_status'] as String? ?? 'none',
+
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString())
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'actor_id': actorId,
+    'name': name,
+    'email': email,
+    'phone': phone,
+    'is_active': isActive,
+    'email_verified_at': emailVerifiedAt?.toIso8601String(),
+    'primary_role': primaryRole == null
+        ? null
+        : RoleModel(
+            id: primaryRole!.id,
+            name: primaryRole!.name,
+            slug: primaryRole!.slug,
+          ).toJson(),
+    'roles': roles
+        .map((r) => RoleModel(id: r.id, name: r.name, slug: r.slug).toJson())
+        .toList(),
+    'has_active_subscription': hasActiveSubscription,
+    'subscription_status': subscriptionStatus,
+    'created_at': createdAt?.toIso8601String(),
+  };
+}
+
+
+// === FILE: lib/features/auth/data/repositories/auth_repository_impl.dart ===
+// auth_repository_impl.dart
+// ─────────────────────────────────────────────────────────────
+// FLOW (login & register):
+//   1. POST /auth/login (or /register) → get token
+//   2. Save preliminary session so interceptor has a token
+//   3. GET /auth/me (no org_id) → server picks best membership
+//   4. Server returns user.org_id → we persist it in OrgContext
+//   5. Save final session
+//
+// On refreshSession:
+//   - Read stored org_id from OrgContext
+//   - Pass it to getAuthMe(orgId:) → correct permissions every time
+//
+// This eliminates the hardcoded AppConstants.orgId from the auth flow.
+// ─────────────────────────────────────────────────────────────
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/exceptions.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/context/org_context.dart';
+import '../../domain/entities/account_session.dart';
+import '../../domain/repositories/auth_repository.dart';
+import '../datasources/auth_local_datasource.dart';
+import '../datasources/auth_remote_datasource.dart';
+import '../models/account_session_model.dart';
+import '../models/user_model.dart';
+
+class AuthRepositoryImpl implements AuthRepository {
+  final AuthRemoteDataSource _remote;
+  final AuthLocalDataSource _local;
+  final OrgContext _orgContext;
+
+  AuthRepositoryImpl({
+    required AuthRemoteDataSource remote,
+    required AuthLocalDataSource local,
+    required OrgContext orgContext,
+  }) : _remote = remote,
+       _local = local,
+       _orgContext = orgContext;
+
+  // ── login ─────────────────────────────────────────────────
+  @override
+  Future<Either<Failure, AccountSession>> login({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      // Step 1: Authenticate
+      final loginData = await _remote.login(email, password);
+      final token = AuthRemoteDataSourceImpl.extractToken(loginData);
+      if (token == null) {
+        return const Left(ServerFailure('No token received from server'));
+      }
+
+      // Step 2: Save preliminary session so interceptor has a token
+      final prelimSession = AccountSessionModel(
+        token: token,
+        user: _placeholderUser(email),
+        permissions: const [],
+        savedAt: DateTime.now(),
+      );
+      await _local.saveSession(prelimSession);
+      await _local.setActiveAccount(email);
+
+      // Step 3: Fetch full profile — no org_id on first call.
+      // Server picks the user's highest-level active membership.
+      final meResponse = await _remote.getAuthMe();
+
+      // Step 4: Persist the resolved org_id in OrgContext so
+      // refreshSession() can pass it back on the next call.
+      if (meResponse.resolvedOrgId != null) {
+        await _persistOrgId(meResponse.resolvedOrgId!, meResponse.user.actorId, meResponse.user.name);
+      }
+
+      // Step 5: Save final session
+      final finalSession = AccountSessionModel(
+        token: token,
+        user: meResponse.user,
+        permissions: meResponse.permissions,
+        savedAt: DateTime.now(),
+      );
+      await _local.saveSession(finalSession);
+      await _local.setActiveAccount(meResponse.user.email);
+
+      return Right(finalSession);
+    } on AuthException catch (e) {
+      return Left(AuthFailure(e.message));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on CacheException catch (e) {
+      return Left(CacheFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  // ── register ──────────────────────────────────────────────
+  @override
+  Future<Either<Failure, AccountSession>> register({
+    required String name,
+    required String email,
+    required String password,
+    required String passwordConfirmation,
+    String? phone,
+  }) async {
+    try {
+      final registerData = await _remote.register(
+        name: name,
+        email: email,
+        password: password,
+        passwordConfirmation: passwordConfirmation,
+        phone: phone,
+      );
+
+      final token = AuthRemoteDataSourceImpl.extractToken(registerData);
+      if (token == null) {
+        return const Left(ServerFailure('No token received after registration'));
+      }
+
+      final prelimSession = AccountSessionModel(
+        token: token,
+        user: _placeholderUser(email),
+        permissions: const [],
+        savedAt: DateTime.now(),
+      );
+      await _local.saveSession(prelimSession);
+      await _local.setActiveAccount(email);
+
+      // New registrants have no membership yet → no org_id needed
+      final meResponse = await _remote.getAuthMe();
+
+      if (meResponse.resolvedOrgId != null) {
+        await _persistOrgId(meResponse.resolvedOrgId!, meResponse.user.actorId, meResponse.user.name);
+      }
+
+      final finalSession = AccountSessionModel(
+        token: token,
+        user: meResponse.user,
+        permissions: meResponse.permissions,
+        savedAt: DateTime.now(),
+      );
+      await _local.saveSession(finalSession);
+      await _local.setActiveAccount(meResponse.user.email);
+
+      return Right(finalSession);
+    } on AuthException catch (e) {
+      return Left(AuthFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } on CacheException catch (e) {
+      return Left(CacheFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  // ── logout ────────────────────────────────────────────────
+  @override
+  Future<Either<Failure, void>> logout() async {
+    try {
+      final activeEmail = await _local.getActiveEmail();
+      try { await _remote.logout(); } catch (_) {}
+      if (activeEmail != null) await _local.removeSession(activeEmail);
+      await _orgContext.clear();
+      return const Right(null);
+    } on CacheException catch (e) {
+      return Left(CacheFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  // ── logoutAccount ─────────────────────────────────────────
+  @override
+  Future<Either<Failure, void>> logoutAccount(String email) async {
+    try {
+      final activeEmail = await _local.getActiveEmail();
+      if (activeEmail == email) {
+        try { await _remote.logout(); } catch (_) {}
+      }
+      await _local.removeSession(email);
+      return const Right(null);
+    } on CacheException catch (e) {
+      return Left(CacheFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  // ── getSavedAccounts ──────────────────────────────────────
+  @override
+  Future<Either<Failure, List<AccountSession>>> getSavedAccounts() async {
+    try {
+      return Right(await _local.getAllSessions());
+    } on CacheException catch (e) {
+      return Left(CacheFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  // ── getActiveSession ──────────────────────────────────────
+  @override
+  Future<Either<Failure, AccountSession?>> getActiveSession() async {
+    try {
+      return Right(await _local.getActiveSession());
+    } on CacheException catch (e) {
+      return Left(CacheFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  // ── switchAccount ─────────────────────────────────────────
+  @override
+  Future<Either<Failure, AccountSession>> switchAccount(String email) async {
+    try {
+      final sessions = await _local.getAllSessions();
+      final target = sessions.where((s) => s.user.email == email).firstOrNull;
+      if (target == null) return Left(AuthFailure('No saved session found for $email'));
+      await _local.setActiveAccount(email);
+      return Right(target);
+    } on CacheException catch (e) {
+      return Left(CacheFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  // ── refreshSession ────────────────────────────────────────
+  // Uses the org_id stored in OrgContext so branch/officer users
+  // always get the correct permission set for their membership org.
+  @override
+  Future<Either<Failure, AccountSession>> refreshSession() async {
+    try {
+      final current = await _local.getActiveSession();
+      if (current == null) return const Left(AuthFailure('No active session to refresh'));
+
+      // Use persisted org_id (from OrgContext) for correct scoping
+      await _orgContext.restore();
+      final storedOrgId = _orgContext.rootOrgId;
+
+      final meResponse = await _remote.getAuthMe(orgId: storedOrgId);
+
+      // Update stored org_id if server returned one
+      if (meResponse.resolvedOrgId != null) {
+        await _persistOrgId(meResponse.resolvedOrgId!, meResponse.user.actorId, meResponse.user.name);
+      }
+
+      final updated = AccountSessionModel(
+        token: current.token,
+        user: meResponse.user,
+        permissions: meResponse.permissions,
+        savedAt: DateTime.now(),
+      );
+      await _local.saveSession(updated);
+
+      return Right(updated);
+    } on AuthException catch (e) {
+      return Left(AuthFailure(e.message));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on CacheException catch (e) {
+      return Left(CacheFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────
+
+  Future<void> _persistOrgId(String orgId, String? actorId, String actorName) async {
+    await _orgContext.restore();
+    await _orgContext.setRootOrg(
+      id: orgId,
+      name: _orgContext.rootOrgName ?? 'Barick Pharmacy',
+      role: _orgContext.orgRole != OrgRole.unknown
+          ? _orgContext.orgRole
+          : OrgRole.orgAdmin,
+      actorId: actorId,
+      actorName: actorName,
+    );
+  }
+
+  UserModel _placeholderUser(String email) => UserModel(
+    id: '',
+    name: '',
+    email: email,
+    isActive: false,
+    hasActiveSubscription: false,
+    subscriptionStatus: 'none',
+  );
+}
+
+// === FILE: lib/features/auth/domain/entities/account_session.dart ===
+// account_session.dart
+// ─────────────────────────────────────────────────────────────
+// Represents ONE fully authenticated account stored on the device.
+// Multiple AccountSessions can exist simultaneously.
+// Only one is "active" at a time (tracked by activeAccountKey).
+//
+// Storage layout in flutter_secure_storage:
+//   Key   → "account_{email}"
+//   Value → JSON blob of this entity
+//   Plus  → "active_account_email" = currently active email
+// ─────────────────────────────────────────────────────────────
+
+import 'user_entity.dart';
+
+class AccountSession {
+  final String     token;       // Sanctum Bearer token
+  final UserEntity user;
+  final List<PermissionEntity> permissions; // from GET /me/roles
+  final DateTime   savedAt;     // when this session was stored
+
+  const AccountSession({
+    required this.token,
+    required this.user,
+    required this.permissions,
+    required this.savedAt,
+  });
+
+  /// Convenience: is this account the one currently active?
+  bool isActive(String activeEmail) => user.email == activeEmail;
+}
+
+
+// === FILE: lib/features/auth/domain/entities/user_entity.dart ===
+//admin app user_entity.dart
+// ─────────────────────────────────────────────────────────────
+// Pure Dart — zero Flutter or Drift imports.
+// Shape mirrors the Laravel API /user and toApiArray() response.
+//
+// CHANGE: UserEntity.id is String — Laravel uses ULIDs.
+// RoleEntity / PermissionEntity keep int ids (standard auto-increment).
+//
+// DESIGN: Roles on the entity are for DISPLAY only (badge, label).
+// UI gating uses permission checks via RbacExtensions.can().
+// No hardcoded role names anywhere in this file.
+// ─────────────────────────────────────────────────────────────
+
+class RoleEntity {
+  final String id; // was int
+  final String name;
+  final String slug;
+  const RoleEntity({required this.id, required this.name, required this.slug});
+}
+
+class PermissionEntity {
+  final String id; // was int
+  final String name;
+  final String slug;
+  const PermissionEntity({
+    required this.id,
+    required this.name,
+    required this.slug,
+  });
+}
+
+class UserEntity {
+  final String id;
+  final String? actorId; // ← ADD — platform actor ULID
+  final String name;
+  final String email;
+  final String? phone;
+  final bool isActive;
+  final DateTime? emailVerifiedAt;
+  final RoleEntity? primaryRole;
+  final List<RoleEntity> roles;
+  final bool hasActiveSubscription;
+  final String subscriptionStatus;
+  final DateTime? createdAt;
+
+  const UserEntity({
+    required this.id,
+    this.actorId, // ← ADD
+    required this.name,
+    required this.email,
+    this.phone,
+    required this.isActive,
+    this.emailVerifiedAt,
+    this.primaryRole,
+    this.roles = const [],
+    required this.hasActiveSubscription,
+    required this.subscriptionStatus,
+    this.createdAt,
+  });
+
+  String get displayName => name.isNotEmpty ? name : email;
+
+  bool hasRole(String roleName) => roles.any((r) => r.name == roleName);
+}
+
+
+// === FILE: lib/features/auth/domain/repositories/auth_repository.dart ===
+// auth_repository.dart
+// ─────────────────────────────────────────────────────────────
+// Abstract interface — domain layer depends only on this.
+// The data layer provides the concrete implementation.
+// ─────────────────────────────────────────────────────────────
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../entities/account_session.dart';
+
+abstract class AuthRepository {
+  // ── Remote operations ─────────────────────────────────────
+
+  /// Authenticate with the API. On success, stores the session
+  /// locally and sets it as the active account.
+  Future<Either<Failure, AccountSession>> login({
+    required String email,
+    required String password,
+  });
+
+  /// Register a new user. On success, logs in automatically.
+  Future<Either<Failure, AccountSession>> register({
+    required String name,
+    required String email,
+    required String password,
+    required String passwordConfirmation,
+    String? phone,
+  });
+
+  /// Revoke the active account's Sanctum token on the server,
+  /// then remove it from local storage.
+  Future<Either<Failure, void>> logout();
+
+  /// Revoke a specific account's token (by email) and remove it.
+  Future<Either<Failure, void>> logoutAccount(String email);
+
+  // ── Local / multi-account operations ─────────────────────
+
+  /// Returns all accounts currently stored on this device.
+  Future<Either<Failure, List<AccountSession>>> getSavedAccounts();
+
+  /// Returns the currently active account session, or null.
+  Future<Either<Failure, AccountSession?>> getActiveSession();
+
+  /// Switch the active account to the one with this email.
+  /// The target account must already be stored locally.
+  Future<Either<Failure, AccountSession>> switchAccount(String email);
+
+  /// Fetch fresh user data + roles from the API for the active account
+  /// and update the stored session.
+  Future<Either<Failure, AccountSession>> refreshSession();
+}
+
+
+// === FILE: lib/features/auth/domain/usecases/auth_usecases.dart ===
+// get_saved_accounts_usecase.dart
+// Returns all AccountSessions stored on this device.
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/account_session.dart';
+import '../repositories/auth_repository.dart';
+
+class GetSavedAccountsUseCase implements UseCase<List<AccountSession>, NoParams> {
+  final AuthRepository _repository;
+  GetSavedAccountsUseCase(this._repository);
+
+  @override
+  Future<Either<Failure, List<AccountSession>>> call(NoParams _) =>
+      _repository.getSavedAccounts();
+}
+
+// ─────────────────────────────────────────────────────────────
+
+// get_active_session_usecase.dart
+// Returns the currently active AccountSession or null if not logged in.
+
+class GetActiveSessionUseCase implements UseCase<AccountSession?, NoParams> {
+  final AuthRepository _repository;
+  GetActiveSessionUseCase(this._repository);
+
+  @override
+  Future<Either<Failure, AccountSession?>> call(NoParams _) =>
+      _repository.getActiveSession();
+}
+
+// ─────────────────────────────────────────────────────────────
+
+// refresh_session_usecase.dart
+// Fetches fresh user + role data from API and updates stored session.
+// Use after profile changes or on app resume.
+
+class RefreshSessionUseCase implements UseCase<AccountSession, NoParams> {
+  final AuthRepository _repository;
+  RefreshSessionUseCase(this._repository);
+
+  @override
+  Future<Either<Failure, AccountSession>> call(NoParams _) =>
+      _repository.refreshSession();
+}
+
+// ─────────────────────────────────────────────────────────────
+
+// logout_account_usecase.dart
+// Logs out a specific account by email (not necessarily the active one).
+
+class LogoutAccountParams {
+  final String email;
+  const LogoutAccountParams(this.email);
+}
+
+class LogoutAccountUseCase implements UseCase<void, LogoutAccountParams> {
+  final AuthRepository _repository;
+  LogoutAccountUseCase(this._repository);
+
+  @override
+  Future<Either<Failure, void>> call(LogoutAccountParams p) =>
+      _repository.logoutAccount(p.email);
+}
+
+
+// === FILE: lib/features/auth/domain/usecases/login_usecase.dart ===
+// login_usecase.dart  [R5 — Two-Gate Input Validation]
+// ─────────────────────────────────────────────────────────────
+// Security gate: validates ALL input before hitting the network.
+// This gate runs for every caller regardless of origin.
+// UI validation is UX-only and is never the sole defence.
+// ─────────────────────────────────────────────────────────────
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/account_session.dart';
+import '../repositories/auth_repository.dart';
+
+class LoginParams {
+  final String email;
+  final String password;
+
+  const LoginParams({required this.email, required this.password});
+}
+
+class LoginUseCase implements UseCase<AccountSession, LoginParams> {
+  final AuthRepository _repository;
+
+  LoginUseCase(this._repository);
+
+  @override
+  Future<Either<Failure, AccountSession>> call(LoginParams p) async {
+    // ── Security gate (R5) ────────────────────────────────
+    final emailTrimmed = p.email.trim().toLowerCase();
+
+    if (emailTrimmed.isEmpty) {
+      return const Left(ValidationFailure('Email is required'));
+    }
+    if (!_isValidEmail(emailTrimmed)) {
+      return const Left(ValidationFailure('Enter a valid email address'));
+    }
+    if (p.password.isEmpty) {
+      return const Left(ValidationFailure('Password is required'));
+    }
+    if (p.password.length < 8) {
+      return const Left(ValidationFailure('Password must be at least 8 characters'));
+    }
+
+    return _repository.login(email: emailTrimmed, password: p.password);
+  }
+
+  bool _isValidEmail(String email) {
+    return RegExp(r'^[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}$').hasMatch(email);
+  }
+}
+
+
+// === FILE: lib/features/auth/domain/usecases/logout_usecase.dart ===
+// logout_usecase.dart  [R2 — Secure Logout]
+// Revokes Sanctum token server-side and wipes the active account locally.
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../repositories/auth_repository.dart';
+
+class LogoutUseCase implements UseCase<void, NoParams> {
+  final AuthRepository _repository;
+  LogoutUseCase(this._repository);
+
+  @override
+  Future<Either<Failure, void>> call(NoParams _) => _repository.logout();
+}
+
+
+// === FILE: lib/features/auth/domain/usecases/register_usecase.dart ===
+// register_usecase.dart  [R5 — Two-Gate Input Validation]
+// ─────────────────────────────────────────────────────────────
+// Security gate for registration. Validates before any network call.
+// Mirrors the validation the Laravel backend also enforces (R8).
+// ─────────────────────────────────────────────────────────────
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/account_session.dart';
+import '../repositories/auth_repository.dart';
+
+class RegisterParams {
+  final String  name;
+  final String  email;
+  final String  password;
+  final String  passwordConfirmation;
+  final String? phone;
+
+  const RegisterParams({
+    required this.name,
+    required this.email,
+    required this.password,
+    required this.passwordConfirmation,
+    this.phone,
+  });
+}
+
+class RegisterUseCase implements UseCase<AccountSession, RegisterParams> {
+  final AuthRepository _repository;
+
+  RegisterUseCase(this._repository);
+
+  @override
+  Future<Either<Failure, AccountSession>> call(RegisterParams p) async {
+    // ── Security gate (R5) ────────────────────────────────
+    final nameTrimmed  = p.name.trim();
+    final emailTrimmed = p.email.trim().toLowerCase();
+
+    if (nameTrimmed.isEmpty) {
+      return const Left(ValidationFailure('Name is required'));
+    }
+    if (nameTrimmed.length < 2) {
+      return const Left(ValidationFailure('Name must be at least 2 characters'));
+    }
+    if (nameTrimmed.length > 100) {
+      return const Left(ValidationFailure('Name is too long'));
+    }
+    if (emailTrimmed.isEmpty) {
+      return const Left(ValidationFailure('Email is required'));
+    }
+    if (!_isValidEmail(emailTrimmed)) {
+      return const Left(ValidationFailure('Enter a valid email address'));
+    }
+    if (p.password.isEmpty) {
+      return const Left(ValidationFailure('Password is required'));
+    }
+    if (p.password.length < 8) {
+      return const Left(ValidationFailure('Password must be at least 8 characters'));
+    }
+    if (p.password != p.passwordConfirmation) {
+      return const Left(ValidationFailure('Passwords do not match'));
+    }
+    if (p.phone != null && p.phone!.isNotEmpty) {
+      if (!_isValidPhone(p.phone!)) {
+        return const Left(ValidationFailure('Enter a valid phone number'));
+      }
+    }
+
+    return _repository.register(
+      name:                 nameTrimmed,
+      email:                emailTrimmed,
+      password:             p.password,
+      passwordConfirmation: p.passwordConfirmation,
+      phone:                p.phone,
+    );
+  }
+
+  bool _isValidEmail(String email) =>
+      RegExp(r'^[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}$').hasMatch(email);
+
+  bool _isValidPhone(String phone) =>
+      RegExp(r'^\+?\d{7,15}$').hasMatch(phone.replaceAll(RegExp(r'[\s\-()]'), ''));
+}
+
+
+// === FILE: lib/features/auth/domain/usecases/switch_account_usecase.dart ===
+// switch_account_usecase.dart
+// ─────────────────────────────────────────────────────────────
+// Switches the active account to an already-stored session.
+// Does NOT call the network — purely a local pointer change.
+// If the target email is not stored, returns AuthFailure.
+// ─────────────────────────────────────────────────────────────
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/account_session.dart';
+import '../repositories/auth_repository.dart';
+
+class SwitchAccountParams {
+  final String email;
+  const SwitchAccountParams(this.email);
+}
+
+class SwitchAccountUseCase implements UseCase<AccountSession, SwitchAccountParams> {
+  final AuthRepository _repository;
+  SwitchAccountUseCase(this._repository);
+
+  @override
+  Future<Either<Failure, AccountSession>> call(SwitchAccountParams p) async {
+    if (p.email.trim().isEmpty) {
+      return const Left(ValidationFailure('Account email is required'));
+    }
+    return _repository.switchAccount(p.email.trim().toLowerCase());
+  }
+}
+
+
+// === FILE: lib/features/auth/presentation/bloc/auth_bloc.dart ===
+// auth_bloc.dart
+// ─────────────────────────────────────────────────────────────
+// FIX: _applyOrgContext() no longer uses AppConstants.orgId.
+// Instead it reads the org_id already stored in OrgContext by
+// AuthRepositoryImpl after the /auth/me call. This means branch
+// members and officers get the correct org scope automatically.
+//
+// The role derivation from slug covers all org roles in use:
+//   owner, org_admin, manager, staff, viewer → orgAdmin
+//   branch_manager                           → branchAdmin
+//   officer, field_*, pharma_rep, sales_rep  → fieldOfficer
+// ─────────────────────────────────────────────────────────────
+
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/context/org_context.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../../domain/entities/account_session.dart';
+import '../../domain/usecases/auth_usecases.dart';
+import '../../domain/usecases/login_usecase.dart';
+import '../../domain/usecases/logout_usecase.dart';
+import '../../domain/usecases/register_usecase.dart';
+import '../../domain/usecases/switch_account_usecase.dart';
+import 'auth_event.dart';
+import 'auth_state.dart';
+
+class AuthBloc extends Bloc<AuthEvent, AuthState> {
+  final LoginUseCase _login;
+  final RegisterUseCase _register;
+  final LogoutUseCase _logout;
+  final LogoutAccountUseCase _logoutAccount;
+  final SwitchAccountUseCase _switchAccount;
+  final GetActiveSessionUseCase _getActiveSession;
+  final GetSavedAccountsUseCase _getSavedAccounts;
+  final RefreshSessionUseCase _refreshSession;
+  final OrgContext _orgContext;
+
+  AuthBloc({
+    required LoginUseCase login,
+    required RegisterUseCase register,
+    required LogoutUseCase logout,
+    required LogoutAccountUseCase logoutAccount,
+    required SwitchAccountUseCase switchAccount,
+    required GetActiveSessionUseCase getActiveSession,
+    required GetSavedAccountsUseCase getSavedAccounts,
+    required RefreshSessionUseCase refreshSession,
+    required OrgContext orgContext,
+  }) : _login = login,
+       _register = register,
+       _logout = logout,
+       _logoutAccount = logoutAccount,
+       _switchAccount = switchAccount,
+       _getActiveSession = getActiveSession,
+       _getSavedAccounts = getSavedAccounts,
+       _refreshSession = refreshSession,
+       _orgContext = orgContext,
+       super(AuthInitial()) {
+    on<AuthCheckRequested>(_onCheckRequested);
+    on<AuthLoginRequested>(_onLoginRequested);
+    on<AuthRegisterRequested>(_onRegisterRequested);
+    on<AuthLogoutRequested>(_onLogoutRequested);
+    on<AuthLogoutAccountRequested>(_onLogoutAccountRequested);
+    on<AuthSwitchAccountRequested>(_onSwitchAccountRequested);
+    on<AuthAccountsRefreshRequested>(_onAccountsRefreshRequested);
+    on<AuthSessionRefreshRequested>(_onSessionRefreshRequested);
+  }
+
+  // ── OrgContext helper ─────────────────────────────────────
+  // The repository already called setRootOrg() with the resolved
+  // org_id after /auth/me. Here we only update the role + actor
+  // fields that come from the session, leaving org_id untouched.
+  Future<void> _applyOrgContext(AccountSession session) async {
+    final slug = session.user.primaryRole?.slug.toLowerCase() ?? '';
+
+    final role = slug == 'branch_manager'
+        ? OrgRole.branchAdmin
+        : (slug.contains('officer') ||
+               slug.contains('field') ||
+               slug.contains('pharma_rep') ||
+               slug.contains('sales_rep') ||
+               slug == 'junior_officer')
+            ? OrgRole.fieldOfficer
+            : OrgRole.orgAdmin; // owner, org_admin, manager, staff, viewer
+
+    // OrgContext already has the correct org_id from the repository.
+    // Restore it to ensure in-memory state matches storage.
+    await _orgContext.restore();
+
+    // Only update if the context has an org_id (set by repository).
+    // If it doesn't (brand new user, no membership), leave as-is —
+    // the router will send them to /pending-activation.
+    if (_orgContext.hasOrg) {
+      await _orgContext.setRootOrg(
+        id: _orgContext.rootOrgId!,
+        name: _orgContext.rootOrgName ?? 'Barick Pharmacy',
+        role: role,
+        actorId: session.user.actorId,
+        actorName: session.user.name.isNotEmpty
+            ? session.user.name
+            : session.user.email,
+      );
+    }
+  }
+
+  List<AccountSession> _ensureActiveIncluded(
+    AccountSession active,
+    List<AccountSession> accounts,
+  ) {
+    if (accounts.any((a) => a.user.email == active.user.email)) return accounts;
+    return [active, ...accounts];
+  }
+
+  // ── Startup check ─────────────────────────────────────────
+  Future<void> _onCheckRequested(
+    AuthCheckRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(AuthLoading());
+    await _orgContext.restore();
+
+    final sessionResult = await _getActiveSession(NoParams());
+
+    await sessionResult.fold((_) async => emit(AuthUnauthenticated()), (
+      session,
+    ) async {
+      if (session == null) {
+        final accountsResult = await _getSavedAccounts(NoParams());
+        final saved = accountsResult.fold<List<AccountSession>>(
+          (_) => <AccountSession>[],
+          (a) => a,
+        );
+        if (saved.isNotEmpty) {
+          emit(AuthNeedsAccountPicker(savedAccounts: saved));
+        } else {
+          emit(AuthUnauthenticated());
+        }
+        return;
+      }
+
+      if (!_orgContext.hasOrg) await _applyOrgContext(session);
+
+      final accountsResult = await _getSavedAccounts(NoParams());
+      final raw = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
+      emit(AuthAuthenticated(
+        activeSession: session,
+        savedAccounts: _ensureActiveIncluded(session, raw),
+      ));
+    });
+  }
+
+  // ── Login ─────────────────────────────────────────────────
+  Future<void> _onLoginRequested(
+    AuthLoginRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(AuthLoading());
+    final result = await _login(LoginParams(email: event.email, password: event.password));
+    await result.fold(
+      (failure) async => emit(AuthFailureState(failure.message)),
+      (session) async {
+        await _applyOrgContext(session);
+        final accountsResult = await _getSavedAccounts(NoParams());
+        final raw = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
+        emit(AuthAuthenticated(
+          activeSession: session,
+          savedAccounts: _ensureActiveIncluded(session, raw),
+        ));
+      },
+    );
+  }
+
+  // ── Register ──────────────────────────────────────────────
+  Future<void> _onRegisterRequested(
+    AuthRegisterRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(AuthLoading());
+    final result = await _register(RegisterParams(
+      name: event.name,
+      email: event.email,
+      password: event.password,
+      passwordConfirmation: event.passwordConfirmation,
+      phone: event.phone,
+    ));
+    await result.fold(
+      (failure) async => emit(AuthFailureState(failure.message)),
+      (session) async {
+        await _applyOrgContext(session);
+        final accountsResult = await _getSavedAccounts(NoParams());
+        final raw = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
+        emit(AuthAuthenticated(
+          activeSession: session,
+          savedAccounts: _ensureActiveIncluded(session, raw),
+        ));
+      },
+    );
+  }
+
+  // ── Logout active account ─────────────────────────────────
+  Future<void> _onLogoutRequested(
+    AuthLogoutRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(AuthLoading());
+    final result = await _logout(NoParams());
+    await result.fold(
+      (failure) async => emit(AuthFailureState(failure.message)),
+      (_) async {
+        await _orgContext.clear();
+        final accountsResult = await _getSavedAccounts(NoParams());
+        final remaining = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
+        if (remaining.isEmpty) {
+          emit(AuthUnauthenticated());
+        } else {
+          emit(AuthNeedsAccountPicker(savedAccounts: remaining));
+        }
+      },
+    );
+  }
+
+  // ── Logout specific account ───────────────────────────────
+  Future<void> _onLogoutAccountRequested(
+    AuthLogoutAccountRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    final result = await _logoutAccount(LogoutAccountParams(event.email));
+    await result.fold(
+      (failure) async => emit(AuthFailureState(failure.message)),
+      (_) async {
+        final accountsResult = await _getSavedAccounts(NoParams());
+        final remaining = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
+        if (remaining.isEmpty) {
+          await _orgContext.clear();
+          emit(AuthUnauthenticated());
+          return;
+        }
+        final sessionResult = await _getActiveSession(NoParams());
+        sessionResult.fold(
+          (_) => emit(AuthNeedsAccountPicker(savedAccounts: remaining)),
+          (session) {
+            if (session == null) {
+              emit(AuthNeedsAccountPicker(savedAccounts: remaining));
+            } else {
+              emit(AuthAccountsUpdated(
+                activeSession: session,
+                savedAccounts: _ensureActiveIncluded(session, remaining),
+              ));
+            }
+          },
+        );
+      },
+    );
+  }
+
+  // ── Switch account ────────────────────────────────────────
+  Future<void> _onSwitchAccountRequested(
+    AuthSwitchAccountRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(AuthSwitching());
+    final result = await _switchAccount(SwitchAccountParams(event.email));
+    await result.fold(
+      (failure) async {
+        final sessionResult = await _getActiveSession(NoParams());
+        sessionResult.fold((_) => emit(AuthFailureState(failure.message)), (session) {
+          if (session == null) {
+            emit(AuthUnauthenticated());
+          } else {
+            emit(AuthFailureState(failure.message));
+          }
+        });
+      },
+      (newSession) async {
+        await _applyOrgContext(newSession);
+        final accountsResult = await _getSavedAccounts(NoParams());
+        final raw = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
+        emit(AuthAuthenticated(
+          activeSession: newSession,
+          savedAccounts: _ensureActiveIncluded(newSession, raw),
+        ));
+      },
+    );
+  }
+
+  // ── Refresh accounts list ─────────────────────────────────
+  Future<void> _onAccountsRefreshRequested(
+    AuthAccountsRefreshRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    final sessionResult = await _getActiveSession(NoParams());
+    final accountsResult = await _getSavedAccounts(NoParams());
+    sessionResult.fold((_) => emit(AuthUnauthenticated()), (session) {
+      if (session == null) {
+        final saved = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
+        if (saved.isNotEmpty) {
+          emit(AuthNeedsAccountPicker(savedAccounts: saved));
+        } else {
+          emit(AuthUnauthenticated());
+        }
+        return;
+      }
+      final raw = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
+      emit(AuthAccountsUpdated(
+        activeSession: session,
+        savedAccounts: _ensureActiveIncluded(session, raw),
+      ));
+    });
+  }
+
+  // ── Session refresh ───────────────────────────────────────
+  Future<void> _onSessionRefreshRequested(
+    AuthSessionRefreshRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    final result = await _refreshSession(NoParams());
+    await result.fold(
+      (failure) async => emit(AuthFailureState(failure.message)),
+      (session) async {
+        await _applyOrgContext(session);
+        final accountsResult = await _getSavedAccounts(NoParams());
+        final raw = accountsResult.fold<List<AccountSession>>((_) => [], (a) => a);
+        emit(AuthAuthenticated(
+          activeSession: session,
+          savedAccounts: _ensureActiveIncluded(session, raw),
+        ));
+      },
+    );
+  }
+}
+
+// === FILE: lib/features/auth/presentation/bloc/auth_event.dart ===
+// auth_event.dart
+// ─────────────────────────────────────────────────────────────
+// All events the UI can send to AuthBloc.
+// UI never calls use cases or repositories directly.
+// ─────────────────────────────────────────────────────────────
+
+abstract class AuthEvent {}
+
+/// App startup — check for an existing active session.
+class AuthCheckRequested extends AuthEvent {}
+
+/// User submitted the login form.
+class AuthLoginRequested extends AuthEvent {
+  final String email;
+  final String password;
+  AuthLoginRequested({required this.email, required this.password});
+}
+
+/// User submitted the registration form.
+class AuthRegisterRequested extends AuthEvent {
+  final String  name;
+  final String  email;
+  final String  password;
+  final String  passwordConfirmation;
+  final String? phone;
+  AuthRegisterRequested({
+    required this.name,
+    required this.email,
+    required this.password,
+    required this.passwordConfirmation,
+    this.phone,
+  });
+}
+
+/// User pressed "Logout" for the active account.
+class AuthLogoutRequested extends AuthEvent {}
+
+/// User pressed "Remove account" for a specific saved account.
+class AuthLogoutAccountRequested extends AuthEvent {
+  final String email;
+  AuthLogoutAccountRequested(this.email);
+}
+
+/// User tapped a saved account to switch to it.
+class AuthSwitchAccountRequested extends AuthEvent {
+  final String email;
+  AuthSwitchAccountRequested(this.email);
+}
+
+/// Reload the saved accounts list (e.g. after adding a new one).
+class AuthAccountsRefreshRequested extends AuthEvent {}
+
+/// Refresh the active session data from the API.
+class AuthSessionRefreshRequested extends AuthEvent {}
+
+
+// === FILE: lib/features/auth/presentation/bloc/auth_state.dart ===
+// auth_state.dart
+// ─────────────────────────────────────────────────────────────
+// Added: AuthNeedsAccountPicker — emitted when user logs out but
+// other saved accounts still exist. UI navigates to picker page.
+// ─────────────────────────────────────────────────────────────
+
+import 'package:equatable/equatable.dart';
+import '../../domain/entities/account_session.dart';
+
+abstract class AuthState extends Equatable {
+  const AuthState();
+
+  @override
+  List<Object?> get props => [];
+}
+
+/// Initial state before any check has run.
+class AuthInitial extends AuthState {}
+
+/// Any async operation in progress.
+class AuthLoading extends AuthState {}
+
+/// Account switch animation/transition in progress.
+class AuthSwitching extends AuthState {}
+
+/// User is authenticated with an active session.
+class AuthAuthenticated extends AuthState {
+  final AccountSession activeSession;
+  final List<AccountSession> savedAccounts;
+
+  const AuthAuthenticated({
+    required this.activeSession,
+    required this.savedAccounts,
+  });
+
+  @override
+  List<Object?> get props => [activeSession.user.email, savedAccounts.length];
+}
+
+/// Accounts list changed (e.g. a non-active account was removed).
+class AuthAccountsUpdated extends AuthState {
+  final AccountSession activeSession;
+  final List<AccountSession> savedAccounts;
+
+  const AuthAccountsUpdated({
+    required this.activeSession,
+    required this.savedAccounts,
+  });
+
+  @override
+  List<Object?> get props => [activeSession.user.email, savedAccounts.length];
+}
+
+/// No authenticated session — navigate to login.
+class AuthUnauthenticated extends AuthState {}
+
+/// Active account was logged out but other accounts are saved.
+/// UI should navigate to AccountPickerPage instead of login.
+class AuthNeedsAccountPicker extends AuthState {
+  final List<AccountSession> savedAccounts;
+
+  const AuthNeedsAccountPicker({required this.savedAccounts});
+
+  @override
+  List<Object?> get props => [savedAccounts.length];
+}
+
+/// An error message to display (shown via SnackBar or inline).
+class AuthFailureState extends AuthState {
+  final String message;
+
+  const AuthFailureState(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}
+
+
+// === FILE: lib/features/auth/presentation/pages/account_picker_page.dart ===
+// account_picker_page.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../../domain/entities/account_session.dart';
+import '../bloc/auth_bloc.dart';
+import '../bloc/auth_event.dart';
+import '../bloc/auth_state.dart';
+
+enum AccountPickerMode { picker, add }
+
+class AccountPickerPage extends StatelessWidget {
+  final AccountPickerMode mode;
+  final List<AccountSession> initialAccounts;
+  final String? initialActiveEmail;
+
+  const AccountPickerPage({
+    super.key,
+    this.mode = AccountPickerMode.picker,
+    this.initialAccounts = const [],
+    this.initialActiveEmail,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return BlocConsumer<AuthBloc, AuthState>(
+      // Only react to meaningful transitions, not same-type re-emissions.
+      // Without this, opening the picker while AuthAuthenticated (add mode)
+      // triggers context.go(home) on the very next AuthAuthenticated emission.
+      listenWhen: (previous, current) =>
+          previous.runtimeType != current.runtimeType,
+      listener: (context, state) {
+        if (state is AuthAuthenticated) {
+          context.go(AppRouter.home);
+        } else if (state is AuthUnauthenticated) {
+          context.go(AppRouter.login);
+        }
+      },
+      builder: (context, state) {
+        // Derive live accounts from current BLoC state.
+        // Fall back to initialAccounts (read from authBloc.state at route
+        // build time) when the BLoC is in a transient state like
+        // AuthLoading or AuthSwitching — so the list never disappears
+        // during a switch operation.
+        List<AccountSession> savedAccounts = initialAccounts;
+        String? activeEmail = initialActiveEmail;
+
+        if (state is AuthAuthenticated) {
+          savedAccounts = state.savedAccounts;
+          activeEmail = state.activeSession.user.email;
+        } else if (state is AuthNeedsAccountPicker) {
+          savedAccounts = state.savedAccounts;
+          activeEmail = null;
+        } else if (state is AuthAccountsUpdated) {
+          savedAccounts = state.savedAccounts;
+          activeEmail = state.activeSession.user.email;
+        }
+        // AuthLoading / AuthSwitching / AuthFailureState:
+        //   keep showing the last known list (initialAccounts / previous state)
+
+        final isLoading = state is AuthLoading || state is AuthSwitching;
+
+        return Scaffold(
+          appBar: mode == AccountPickerMode.add
+              ? AppBar(leading: const BackButton())
+              : null,
+          body: SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 32,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _Header(mode: mode, scheme: scheme, textTheme: textTheme),
+                      const SizedBox(height: 32),
+
+                      // ── Account list ──────────────────────────
+                      if (savedAccounts.isNotEmpty) ...[
+                        Text(
+                          'Saved accounts',
+                          style: textTheme.labelMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Flexible(
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            itemCount: savedAccounts.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 4),
+                            itemBuilder: (context, index) {
+                              final account = savedAccounts[index];
+                              final isActive =
+                                  account.user.email == activeEmail;
+                              return _AccountCard(
+                                account: account,
+                                isActive: isActive,
+                                isLoading: isLoading,
+                                onTap: isActive || isLoading
+                                    ? null
+                                    : () => context.read<AuthBloc>().add(
+                                        AuthSwitchAccountRequested(
+                                          account.user.email,
+                                        ),
+                                      ),
+                                onRemove: isLoading
+                                    ? null
+                                    : () => _confirmRemove(
+                                        context,
+                                        account,
+                                        scheme,
+                                      ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        _OrDivider(scheme: scheme, textTheme: textTheme),
+                        const SizedBox(height: 24),
+                      ],
+
+                      // ── Add / sign in ─────────────────────────
+                      FilledButton.icon(
+                        icon: const Icon(Icons.login, size: 18),
+                        label: const Text('Sign in to another account'),
+                        onPressed: isLoading
+                            ? null
+                            : () => context.push(
+                                AppRouter.login,
+                                extra: {'addAccount': true},
+                              ),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.person_add_outlined, size: 18),
+                        label: const Text('Create new account'),
+                        onPressed: isLoading
+                            ? null
+                            : () => context.push(
+                                AppRouter.register,
+                                extra: {'addAccount': true},
+                              ),
+                      ),
+
+                      if (isLoading) ...[
+                        const SizedBox(height: 24),
+                        const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmRemove(
+    BuildContext context,
+    AccountSession account,
+    ColorScheme scheme,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Remove account?'),
+        content: Text(
+          'Remove ${account.user.email} from this device?\n'
+          'You can always sign back in later.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: scheme.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      context.read<AuthBloc>().add(
+        AuthLogoutAccountRequested(account.user.email),
+      );
+    }
+  }
+}
+
+// ── Header ────────────────────────────────────────────────────
+
+class _Header extends StatelessWidget {
+  final AccountPickerMode mode;
+  final ColorScheme scheme;
+  final TextTheme textTheme;
+
+  const _Header({
+    required this.mode,
+    required this.scheme,
+    required this.textTheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isAdd = mode == AccountPickerMode.add;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: scheme.primaryContainer,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Icon(
+            isAdd ? Icons.person_add_outlined : Icons.switch_account_outlined,
+            size: 28,
+            color: scheme.onPrimaryContainer,
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          isAdd ? 'Add account' : 'Choose account',
+          style: textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          isAdd
+              ? 'Sign in to add another account'
+              : 'Select an account to continue',
+          style: textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+}
+
+// ── "or" divider ──────────────────────────────────────────────
+
+class _OrDivider extends StatelessWidget {
+  final ColorScheme scheme;
+  final TextTheme textTheme;
+  const _OrDivider({required this.scheme, required this.textTheme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: Divider(color: scheme.outlineVariant)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            'or',
+            style: textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        Expanded(child: Divider(color: scheme.outlineVariant)),
+      ],
+    );
+  }
+}
+
+// ── Account card ──────────────────────────────────────────────
+
+class _AccountCard extends StatelessWidget {
+  final AccountSession account;
+  final bool isActive;
+  final bool isLoading;
+  final VoidCallback? onTap;
+  final VoidCallback? onRemove;
+
+  const _AccountCard({
+    required this.account,
+    required this.isActive,
+    required this.isLoading,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final user = account.user;
+
+    return Card(
+      elevation: 0,
+      color: isActive
+          ? scheme.primaryContainer.withOpacity(0.4)
+          : scheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: isActive
+            ? BorderSide(color: scheme.primary.withOpacity(0.4))
+            : BorderSide.none,
+      ),
+      child: ListTile(
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: CircleAvatar(
+          radius: 22,
+          backgroundColor: isActive
+              ? scheme.primaryContainer
+              : scheme.surfaceContainerHighest,
+          child: Text(
+            _initials(user.displayName),
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              color: isActive
+                  ? scheme.onPrimaryContainer
+                  : scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        title: Text(
+          user.displayName,
+          style: textTheme.bodyLarge?.copyWith(
+            fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(user.email, style: textTheme.bodySmall),
+            if (user.primaryRole != null)
+              Text(
+                user.primaryRole!.name,
+                style: textTheme.labelSmall?.copyWith(color: scheme.primary),
+              ),
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isActive)
+              Icon(Icons.check_circle_rounded, color: scheme.primary, size: 20),
+            if (!isActive)
+              SizedBox(
+                height: 32,
+                child: FilledButton.tonal(
+                  onPressed: isLoading ? null : onTap,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Switch'),
+                ),
+              ),
+            const SizedBox(width: 4),
+            IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              tooltip: 'Remove',
+              onPressed: isLoading ? null : onRemove,
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _initials(String name) {
+    final parts = name.trim().split(' ');
+    if (parts.length >= 2) {
+      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    }
+    return name.isNotEmpty ? name[0].toUpperCase() : '?';
+  }
+}
+
+
+// === FILE: lib/features/auth/presentation/pages/home_page.dart ===
+// home_page.dart
+// ─────────────────────────────────────────────────────────────
+// Placeholder home page shown after login.
+// Replace body content with your actual home feature widget,
+// or generate a Level 4 feature and swap HomeTab() in
+// shell_nav_items.dart.
+//
+// Navigation:
+//   Logout / unauthenticated → GoRouter redirect handles it
+//   "Add another account"    → context.push(AppRouter.login, extra: addAccount:true)
+// ─────────────────────────────────────────────────────────────
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../bloc/auth_bloc.dart';
+import '../bloc/auth_event.dart';
+import '../bloc/auth_state.dart';
+import '../widgets/account_switcher_sheet.dart';
+
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<AuthBloc, AuthState>(
+      builder: (context, state) {
+        // Guard: GoRouter redirect handles unauthenticated navigation.
+        // Only render when authenticated.
+        if (state is! AuthAuthenticated) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final session = state.activeSession;
+        final user = session.user;
+        final accounts = state.savedAccounts;
+        final scheme = Theme.of(context).colorScheme;
+        final textTheme = Theme.of(context).textTheme;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Home'),
+            actions: [
+              // ── Account avatar / switcher ───────────────
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: GestureDetector(
+                  // ✅ FIX: No longer passes stale activeSession/savedAccounts.
+                  // The sheet reads live data from the BLoC directly.
+                  onTap: () => AccountSwitcherSheet.show(context),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CircleAvatar(
+                        radius: 18,
+                        backgroundColor: scheme.primaryContainer,
+                        child: Text(
+                          _initials(user.displayName),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: scheme.onPrimaryContainer,
+                          ),
+                        ),
+                      ),
+                      if (accounts.length > 1)
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            width: 14,
+                            height: 14,
+                            decoration: BoxDecoration(
+                              color: scheme.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: scheme.surface,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${accounts.length}',
+                                style: TextStyle(
+                                  fontSize: 8,
+                                  color: scheme.onPrimary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 640),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── Welcome card ─────────────────────
+                      Card(
+                        color: scheme.primaryContainer,
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 28,
+                                backgroundColor: scheme.primary.withValues(
+                                  alpha: 0.15,
+                                ),
+                                child: Text(
+                                  _initials(user.displayName),
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: scheme.onPrimaryContainer,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Welcome, ${user.displayName}',
+                                      style: textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: scheme.onPrimaryContainer,
+                                      ),
+                                    ),
+                                    Text(
+                                      user.email,
+                                      style: textTheme.bodySmall?.copyWith(
+                                        color: scheme.onPrimaryContainer
+                                            .withValues(alpha: 0.8),
+                                      ),
+                                    ),
+                                    if (user.primaryRole != null) ...[
+                                      const SizedBox(height: 4),
+                                      _RoleBadge(
+                                        label: user.primaryRole!.name,
+                                        scheme: scheme,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // ── Session info ─────────────────────
+                      Text('Session Info', style: textTheme.titleSmall),
+                      const SizedBox(height: 12),
+                      _InfoRow(
+                        icon: Icons.verified_outlined,
+                        label: 'Email verified',
+                        value: user.isActive ? 'Yes' : 'No',
+                        scheme: scheme,
+                      ),
+                      _InfoRow(
+                        icon: Icons.card_membership_outlined,
+                        label: 'Subscription',
+                        value: user.subscriptionStatus,
+                        scheme: scheme,
+                      ),
+                      _InfoRow(
+                        icon: Icons.shield_outlined,
+                        label: 'Permissions',
+                        value: '${session.permissions.length} granted',
+                        scheme: scheme,
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // ── Saved accounts summary ────────────
+                      if (accounts.length > 1) ...[
+                        Text('Signed-in accounts', style: textTheme.titleSmall),
+                        const SizedBox(height: 12),
+                        ...accounts.map((acc) {
+                          final isActive = acc.user.email == user.email;
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: CircleAvatar(
+                              radius: 18,
+                              backgroundColor: isActive
+                                  ? scheme.primaryContainer
+                                  : scheme.surfaceContainerHighest,
+                              child: Text(
+                                _initials(acc.user.displayName),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: isActive
+                                      ? scheme.onPrimaryContainer
+                                      : scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                            title: Text(acc.user.displayName),
+                            subtitle: Text(acc.user.email),
+                            trailing: isActive
+                                ? Chip(
+                                    label: const Text('Active'),
+                                    padding: EdgeInsets.zero,
+                                    labelStyle: TextStyle(
+                                      fontSize: 11,
+                                      color: scheme.onSecondaryContainer,
+                                    ),
+                                    backgroundColor: scheme.secondaryContainer,
+                                  )
+                                : TextButton(
+                                    onPressed: () =>
+                                        context.read<AuthBloc>().add(
+                                          AuthSwitchAccountRequested(
+                                            acc.user.email,
+                                          ),
+                                        ),
+                                    child: const Text('Switch'),
+                                  ),
+                          );
+                        }),
+                        const SizedBox(height: 8),
+                      ],
+
+                      const SizedBox(height: 16),
+
+                      // ── Add account ───────────────────────
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.person_add_outlined, size: 18),
+                        label: const Text('Add another account'),
+                        // ✅ FIX: pass addAccount:true so LoginPage renders
+                        // the correct AppBar and navigates back properly.
+                        onPressed: () => context.push(
+                          AppRouter.login,
+                          extra: {'addAccount': true},
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // ── Logout ────────────────────────────
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.logout, size: 18),
+                        label: const Text('Sign out'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: scheme.error,
+                          side: BorderSide(
+                            color: scheme.error.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        onPressed: () =>
+                            context.read<AuthBloc>().add(AuthLogoutRequested()),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _initials(String name) {
+    final parts = name.trim().split(' ');
+    if (parts.length >= 2) {
+      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    }
+    return name.isNotEmpty ? name[0].toUpperCase() : '?';
+  }
+}
+
+// ── Small widgets ─────────────────────────────────────────────
+
+class _RoleBadge extends StatelessWidget {
+  final String label;
+  final ColorScheme scheme;
+  const _RoleBadge({required this.label, required this.scheme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: scheme.primary,
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label, value;
+  final ColorScheme scheme;
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.scheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 12),
+          Text(label, style: TextStyle(color: scheme.onSurfaceVariant)),
+          const Spacer(),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/auth/presentation/pages/login_page.dart ===
+// login_page.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../bloc/auth_bloc.dart';
+import '../bloc/auth_event.dart';
+import '../bloc/auth_state.dart';
+import '../widgets/auth_form_field.dart';
+
+class LoginPage extends StatefulWidget {
+  final bool addAccount;
+  const LoginPage({super.key, this.addAccount = false});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  bool _submitted = false;
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    setState(() => _submitted = true);
+    if (!_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
+    context.read<AuthBloc>().add(
+      AuthLoginRequested(
+        email: _emailCtrl.text.trim(),
+        password: _passCtrl.text,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final isAdding = widget.addAccount;
+
+    return BlocListener<AuthBloc, AuthState>(
+      listener: (context, state) {
+        if (state is AuthAuthenticated) {
+          if (widget.addAccount) {
+            context.go(
+              AppRouter.accountPicker,
+            ); // return to picker with updated list
+          } else {
+            context.go(AppRouter.home);
+          }
+          return;
+        }
+        if (state is AuthFailureState) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: scheme.error,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            );
+        }
+      },
+      child: BlocBuilder<AuthBloc, AuthState>(
+        builder: (context, state) {
+          final isLoading = state is AuthLoading;
+
+          return Scaffold(
+            appBar: isAdding
+                ? AppBar(
+                    title: const Text('Add account'),
+                    leading: const BackButton(),
+                  )
+                : null,
+            body: SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: _formMaxWidth(context),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _Header(
+                          isAdding: isAdding,
+                          scheme: scheme,
+                          textTheme: textTheme,
+                        ),
+                        const SizedBox(height: 40),
+                        _LoginForm(
+                          formKey: _formKey,
+                          emailCtrl: _emailCtrl,
+                          passCtrl: _passCtrl,
+                          submitted: _submitted,
+                          isLoading: isLoading,
+                          onSubmit: _submit,
+                        ),
+                        const SizedBox(height: 12),
+                        _ForgotPassword(scheme: scheme),
+                        const SizedBox(height: 32),
+                        _SubmitButton(isLoading: isLoading, onSubmit: _submit),
+                        const SizedBox(height: 24),
+                        _RegisterLink(scheme: scheme, isAdding: isAdding),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  double _formMaxWidth(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    if (w >= 1024) return 440;
+    if (w >= 600) return 480;
+    return double.infinity;
+  }
+}
+
+class _Header extends StatelessWidget {
+  final bool isAdding;
+  final ColorScheme scheme;
+  final TextTheme textTheme;
+  const _Header({
+    required this.isAdding,
+    required this.scheme,
+    required this.textTheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: scheme.primaryContainer,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Icon(
+            isAdding ? Icons.person_add_outlined : Icons.lock_outline_rounded,
+            size: 28,
+            color: scheme.onPrimaryContainer,
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          isAdding ? 'Add another account' : 'Welcome back',
+          style: textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          isAdding
+              ? 'Sign in to add and switch between accounts'
+              : 'Sign in to continue',
+          style: textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+}
+
+class _LoginForm extends StatelessWidget {
+  final GlobalKey<FormState> formKey;
+  final TextEditingController emailCtrl, passCtrl;
+  final bool submitted, isLoading;
+  final VoidCallback onSubmit;
+
+  const _LoginForm({
+    required this.formKey,
+    required this.emailCtrl,
+    required this.passCtrl,
+    required this.submitted,
+    required this.isLoading,
+    required this.onSubmit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Form(
+      key: formKey,
+      autovalidateMode: submitted
+          ? AutovalidateMode.onUserInteraction
+          : AutovalidateMode.disabled,
+      child: Column(
+        children: [
+          AuthFormField(
+            label: 'Email',
+            prefixIcon: Icons.email_outlined,
+            controller: emailCtrl,
+            keyboardType: TextInputType.emailAddress,
+            enabled: !isLoading,
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) return 'Email is required';
+              if (!v.contains('@')) return 'Enter a valid email';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          AuthFormField(
+            label: 'Password',
+            prefixIcon: Icons.lock_outline,
+            controller: passCtrl,
+            isPassword: true,
+            enabled: !isLoading,
+            textInputAction: TextInputAction.done,
+            onEditingComplete: onSubmit,
+            validator: (v) {
+              if (v == null || v.isEmpty) return 'Password is required';
+              if (v.length < 8) return 'At least 8 characters';
+              return null;
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ForgotPassword extends StatelessWidget {
+  final ColorScheme scheme;
+  const _ForgotPassword({required this.scheme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: TextButton(
+        onPressed: () {},
+        child: const Text('Forgot password?'),
+      ),
+    );
+  }
+}
+
+class _SubmitButton extends StatelessWidget {
+  final bool isLoading;
+  final VoidCallback onSubmit;
+  const _SubmitButton({required this.isLoading, required this.onSubmit});
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      onPressed: isLoading ? null : onSubmit,
+      child: isLoading
+          ? const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            )
+          : const Text('Sign in'),
+    );
+  }
+}
+
+class _RegisterLink extends StatelessWidget {
+  final ColorScheme scheme;
+  final bool isAdding;
+  const _RegisterLink({required this.scheme, required this.isAdding});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          "Don't have an account?",
+          style: TextStyle(color: scheme.onSurfaceVariant),
+        ),
+        TextButton(
+          onPressed: () {
+            if (isAdding) {
+              // Push so the user can still cancel back to account-picker.
+              context.push(AppRouter.register, extra: {'addAccount': true});
+            } else {
+              // Replace so back doesn't loop login ↔ register.
+              context.go(AppRouter.register);
+            }
+          },
+          child: const Text('Create one'),
+        ),
+      ],
+    );
+  }
+}
+
+
+// === FILE: lib/features/auth/presentation/pages/pending_activation_page.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../bloc/auth_bloc.dart';
+import '../bloc/auth_event.dart';
+
+class PendingActivationPage extends StatelessWidget {
+  const PendingActivationPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: scheme.secondaryContainer,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(
+                      Icons.hourglass_top_rounded,
+                      size: 40,
+                      color: scheme.onSecondaryContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Text(
+                    'Account Pending Activation',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Your account has been created but has not been '
+                    'assigned a role yet.\n\n'
+                    'Please contact your administrator to activate '
+                    'your account.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Refresh — in case admin just assigned the role
+                  OutlinedButton.icon(
+                    onPressed: () => context
+                        .read<AuthBloc>()
+                        .add(AuthSessionRefreshRequested()),
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Check Again'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton.icon(
+                    onPressed: () =>
+                        context.read<AuthBloc>().add(AuthLogoutRequested()),
+                    icon: const Icon(Icons.logout, size: 18),
+                    label: const Text('Sign Out'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: scheme.error,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// === FILE: lib/features/auth/presentation/pages/register_page.dart ===
+// register_page.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../bloc/auth_bloc.dart';
+import '../bloc/auth_event.dart';
+import '../bloc/auth_state.dart';
+import '../widgets/auth_form_field.dart';
+
+class RegisterPage extends StatefulWidget {
+  final bool addAccount;
+  const RegisterPage({super.key, this.addAccount = false});
+
+  @override
+  State<RegisterPage> createState() => _RegisterPageState();
+}
+
+class _RegisterPageState extends State<RegisterPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  bool _submitted = false;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _emailCtrl.dispose();
+    _phoneCtrl.dispose();
+    _passCtrl.dispose();
+    _confirmCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    setState(() => _submitted = true);
+    if (!_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
+    context.read<AuthBloc>().add(
+      AuthRegisterRequested(
+        name: _nameCtrl.text.trim(),
+        email: _emailCtrl.text.trim(),
+        password: _passCtrl.text,
+        passwordConfirmation: _confirmCtrl.text,
+        phone: _phoneCtrl.text.trim().isNotEmpty
+            ? _phoneCtrl.text.trim()
+            : null,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final isAdding = widget.addAccount;
+
+    return BlocListener<AuthBloc, AuthState>(
+      listener: (context, state) {
+        if (state is AuthAuthenticated) {
+          if (widget.addAccount) {
+            context.go(AppRouter.accountPicker);
+          } else {
+            context.go(AppRouter.home);
+          }
+          return;
+        }
+        if (state is AuthFailureState) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: scheme.error,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            );
+        }
+      },
+      child: BlocBuilder<AuthBloc, AuthState>(
+        builder: (context, state) {
+          final isLoading = state is AuthLoading;
+
+          return Scaffold(
+            appBar: isAdding
+                ? AppBar(
+                    title: const Text('Create account'),
+                    leading: const BackButton(),
+                  )
+                : null,
+            body: SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: _formMaxWidth(context),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // ── Header ───────────────────────────
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: scheme.secondaryContainer,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Icon(
+                                Icons.person_outline_rounded,
+                                size: 28,
+                                color: scheme.onSecondaryContainer,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            Text(
+                              'Create account',
+                              style: textTheme.headlineMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Fill in your details to get started',
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 40),
+
+                        // ── Form ─────────────────────────────
+                        Form(
+                          key: _formKey,
+                          autovalidateMode: _submitted
+                              ? AutovalidateMode.onUserInteraction
+                              : AutovalidateMode.disabled,
+                          child: Column(
+                            children: [
+                              AuthFormField(
+                                label: 'Full name',
+                                prefixIcon: Icons.badge_outlined,
+                                controller: _nameCtrl,
+                                enabled: !isLoading,
+                                validator: (v) {
+                                  if (v == null || v.trim().isEmpty)
+                                    return 'Name is required';
+                                  if (v.trim().length < 2)
+                                    return 'Name is too short';
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                              AuthFormField(
+                                label: 'Email',
+                                prefixIcon: Icons.email_outlined,
+                                controller: _emailCtrl,
+                                keyboardType: TextInputType.emailAddress,
+                                enabled: !isLoading,
+                                validator: (v) {
+                                  if (v == null || v.trim().isEmpty)
+                                    return 'Email is required';
+                                  if (!v.contains('@'))
+                                    return 'Enter a valid email';
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                              AuthFormField(
+                                label: 'Phone',
+                                prefixIcon: Icons.phone_outlined,
+                                controller: _phoneCtrl,
+                                keyboardType: TextInputType.phone,
+                                isOptional: true,
+                                enabled: !isLoading,
+                                validator: (v) {
+                                  if (v == null || v.trim().isEmpty)
+                                    return null;
+                                  final digits = v.replaceAll(
+                                    RegExp(r'[\s\-()]'),
+                                    '',
+                                  );
+                                  if (!RegExp(
+                                    r'^\+?\d{7,15}$',
+                                  ).hasMatch(digits)) {
+                                    return 'Enter a valid phone number';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                              AuthFormField(
+                                label: 'Password',
+                                prefixIcon: Icons.lock_outline,
+                                controller: _passCtrl,
+                                isPassword: true,
+                                enabled: !isLoading,
+                                validator: (v) {
+                                  if (v == null || v.isEmpty)
+                                    return 'Password is required';
+                                  if (v.length < 8)
+                                    return 'At least 8 characters';
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                              AuthFormField(
+                                label: 'Confirm password',
+                                prefixIcon: Icons.lock_outline,
+                                controller: _confirmCtrl,
+                                isPassword: true,
+                                enabled: !isLoading,
+                                textInputAction: TextInputAction.done,
+                                onEditingComplete: _submit,
+                                validator: (v) {
+                                  if (v == null || v.isEmpty)
+                                    return 'Please confirm your password';
+                                  if (v != _passCtrl.text)
+                                    return 'Passwords do not match';
+                                  return null;
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 32),
+
+                        FilledButton(
+                          onPressed: isLoading ? null : _submit,
+                          child: isLoading
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                  ),
+                                )
+                              : const Text('Create account'),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Already have an account?',
+                              style: TextStyle(color: scheme.onSurfaceVariant),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                if (isAdding) {
+                                  // Pop back to LoginPage (was pushed before register).
+                                  context.pop();
+                                } else {
+                                  context.go(AppRouter.login);
+                                }
+                              },
+                              child: const Text('Sign in'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  double _formMaxWidth(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    if (w >= 1024) return 440;
+    if (w >= 600) return 480;
+    return double.infinity;
+  }
+}
+
+
+// === FILE: lib/features/auth/presentation/pages/wrong_app_page.dart ===
+// wrong_app_page.dart
+// Shown when a user logs into the wrong app for their role.
+// Admin logging into officer app, or officer logging into admin app.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../bloc/auth_bloc.dart';
+import '../bloc/auth_event.dart';
+
+class WrongAppPage extends StatelessWidget {
+  /// true  → officer/unknown role tried to open the ADMIN app
+  /// false → admin role tried to open the OFFICER app
+  final bool officerInAdminApp;
+
+  const WrongAppPage({super.key, required this.officerInAdminApp});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: scheme.errorContainer,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(
+                      Icons.no_accounts_outlined,
+                      size: 40,
+                      color: scheme.onErrorContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Text(
+                    'Access Denied',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: scheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    officerInAdminApp
+                        ? 'Your account does not have admin access.\n\n'
+                          'Please use the Officer App to continue.'
+                        : 'Admin accounts cannot log into the Officer App.\n\n'
+                          'Please use the Admin App to continue.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                  FilledButton.icon(
+                    onPressed: () =>
+                        context.read<AuthBloc>().add(AuthLogoutRequested()),
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Sign Out'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: scheme.error,
+                      foregroundColor: scheme.onError,
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// === FILE: lib/features/auth/presentation/widgets/account_switcher_sheet.dart ===
+// account_switcher_sheet.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../../domain/entities/account_session.dart';
+import '../bloc/auth_bloc.dart';
+import '../bloc/auth_event.dart';
+import '../bloc/auth_state.dart';
+
+class AccountSwitcherSheet {
+  const AccountSwitcherSheet._();
+
+  static Future<void> show(BuildContext context) {
+    // Capture the router BEFORE the modal opens so that we can push to it
+    // from inside the sheet (the modal has its own Navigator scope).
+    final router = GoRouter.of(context);
+    final authBloc = context.read<AuthBloc>();
+
+    return showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => BlocProvider.value(
+        value: authBloc,
+        child: _AccountSwitcherSheetBody(router: router),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal body — receives the pre-captured router so it can navigate without
+// depending on the modal's Navigator scope.
+// ─────────────────────────────────────────────────────────────────────────────
+class _AccountSwitcherSheetBody extends StatelessWidget {
+  final GoRouter router;
+  const _AccountSwitcherSheetBody({required this.router});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return BlocConsumer<AuthBloc, AuthState>(
+      listenWhen: (previous, current) => previous != current,
+      listener: (context, state) {
+        // Close the sheet on any auth-transition that means the user's
+        // context has changed.
+        switch (state) {
+          case AuthAuthenticated():
+          case AuthAccountsUpdated():
+          case AuthNeedsAccountPicker():
+          case AuthUnauthenticated():
+            if (context.mounted) Navigator.of(context).pop();
+          default:
+            break;
+        }
+      },
+      builder: (context, state) {
+        // ── Read LIVE data from the BLoC ─────────────────────────────────────
+        // This is the core fix: instead of relying on the constructor-param
+        // snapshot (which was captured when the sheet opened and never updated),
+        // we read directly from the current BLoC state.
+        final liveAccounts = switch (state) {
+          AuthAuthenticated s => s.savedAccounts,
+          AuthAccountsUpdated s => s.savedAccounts,
+          _ => <AccountSession>[],
+        };
+
+        final activeEmail = switch (state) {
+          AuthAuthenticated s => s.activeSession.user.email,
+          _ => null,
+        };
+
+        final isLoading = state is AuthLoading || state is AuthSwitching;
+
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.55,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          builder: (_, scrollController) => Column(
+            children: [
+              // ── Handle ────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.only(top: 12, bottom: 8),
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: scheme.onSurfaceVariant.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+
+              // ── Header ────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Row(
+                  children: [
+                    Text('Accounts', style: textTheme.titleLarge),
+                    const Spacer(),
+                    TextButton.icon(
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add account'),
+                      onPressed: isLoading
+                          ? null
+                          : () {
+                              // Pop the sheet first (uses the modal Navigator —
+                              // this is correct). Then push the login route
+                              // using the pre-captured GoRouter reference.
+                              Navigator.of(context).pop();
+                              router.push(
+                                AppRouter.login,
+                                extra: {'addAccount': true},
+                              );
+                            },
+                    ),
+                  ],
+                ),
+              ),
+
+              const Divider(height: 1),
+
+              // ── Account list ──────────────────────────────────
+              Expanded(
+                child: liveAccounts.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No saved accounts',
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: scrollController,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemCount: liveAccounts.length,
+                        itemBuilder: (context, index) {
+                          final account = liveAccounts[index];
+                          final isActive = account.user.email == activeEmail;
+
+                          return _AccountTile(
+                            account: account,
+                            isActive: isActive,
+                            isLoading: isLoading,
+                            onSwitch: isActive || isLoading
+                                ? null
+                                : () => context.read<AuthBloc>().add(
+                                    AuthSwitchAccountRequested(
+                                      account.user.email,
+                                    ),
+                                  ),
+                            onRemove: isLoading
+                                ? null
+                                : () => _confirmRemove(context, account),
+                          );
+                        },
+                      ),
+              ),
+
+              // ── Sign out current ──────────────────────────────
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.logout, size: 18),
+                    label: const Text('Sign out of this account'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: scheme.error,
+                      side: BorderSide(color: scheme.error.withOpacity(0.5)),
+                    ),
+                    onPressed: isLoading
+                        ? null
+                        : () {
+                            Navigator.of(context).pop();
+                            context.read<AuthBloc>().add(AuthLogoutRequested());
+                          },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmRemove(
+    BuildContext context,
+    AccountSession account,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Remove account?'),
+        content: Text(
+          'Remove ${account.user.email} from this device?\n'
+          'You can always sign back in later.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      context.read<AuthBloc>().add(
+        AuthLogoutAccountRequested(account.user.email),
+      );
+    }
+  }
+}
+
+// ── Single account tile ───────────────────────────────────────
+class _AccountTile extends StatelessWidget {
+  final AccountSession account;
+  final bool isActive;
+  final bool isLoading;
+  final VoidCallback? onSwitch;
+  final VoidCallback? onRemove;
+
+  const _AccountTile({
+    required this.account,
+    required this.isActive,
+    required this.isLoading,
+    required this.onSwitch,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final user = account.user;
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      leading: CircleAvatar(
+        radius: 22,
+        backgroundColor: isActive
+            ? scheme.primaryContainer
+            : scheme.surfaceContainerHighest,
+        child: Text(
+          _initials(user.displayName),
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+            color: isActive
+                ? scheme.onPrimaryContainer
+                : scheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+      title: Text(
+        user.displayName,
+        style: textTheme.bodyLarge?.copyWith(
+          fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(user.email, style: textTheme.bodySmall),
+          if (user.primaryRole != null)
+            Text(
+              user.primaryRole!.name,
+              style: textTheme.labelSmall?.copyWith(color: scheme.primary),
+            ),
+        ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isActive)
+            Icon(Icons.check_circle_rounded, color: scheme.primary, size: 20),
+          if (!isActive)
+            SizedBox(
+              height: 32,
+              child: FilledButton.tonal(
+                onPressed: isLoading ? null : onSwitch,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: isLoading
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Switch'),
+              ),
+            ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            tooltip: 'Remove',
+            onPressed: isLoading ? null : onRemove,
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _initials(String name) {
+    final parts = name.trim().split(' ');
+    if (parts.length >= 2) {
+      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    }
+    return name.isNotEmpty ? name[0].toUpperCase() : '?';
+  }
+}
+
+
+// === FILE: lib/features/auth/presentation/widgets/auth_form_field.dart ===
+// auth_form_field.dart
+// Consistent styled TextFormField used across login & register pages.
+
+import 'package:flutter/material.dart';
+
+class AuthFormField extends StatefulWidget {
+  final String label;
+  final String? hint;
+  final IconData prefixIcon;
+  final bool isPassword;
+  final bool isOptional;
+  final TextInputType keyboardType;
+  final TextEditingController controller;
+  final String? Function(String?)? validator;
+  final TextInputAction textInputAction;
+  final VoidCallback? onEditingComplete;
+  final bool enabled;
+
+  const AuthFormField({
+    super.key,
+    required this.label,
+    required this.prefixIcon,
+    required this.controller,
+    this.hint,
+    this.isPassword = false,
+    this.isOptional = false,
+    this.keyboardType = TextInputType.text,
+    this.validator,
+    this.textInputAction = TextInputAction.next,
+    this.onEditingComplete,
+    this.enabled = true,
+  });
+
+  @override
+  State<AuthFormField> createState() => _AuthFormFieldState();
+}
+
+class _AuthFormFieldState extends State<AuthFormField> {
+  bool _obscure = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return TextFormField(
+      controller: widget.controller,
+      obscureText: widget.isPassword && _obscure,
+      keyboardType: widget.keyboardType,
+      textInputAction: widget.textInputAction,
+      enabled: widget.enabled,
+      onEditingComplete: widget.onEditingComplete,
+      validator: widget.validator,
+      autocorrect: false,
+      decoration: InputDecoration(
+        labelText: widget.label + (widget.isOptional ? '  (optional)' : ''),
+        hintText: widget.hint,
+        fillColor: scheme.surfaceContainerHighest.withOpacity(0.5),
+        prefixIcon: Icon(widget.prefixIcon, size: 20),
+        suffixIcon: widget.isPassword
+            ? IconButton(
+                icon: Icon(
+                  _obscure
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  size: 20,
+                ),
+                onPressed: () => setState(() => _obscure = !_obscure),
+              )
+            : null,
+      ),
+    );
   }
 }
 

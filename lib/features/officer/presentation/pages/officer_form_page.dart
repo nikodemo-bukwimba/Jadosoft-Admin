@@ -40,6 +40,9 @@ class _OfficerFormPageState extends State<OfficerFormPage> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPassController = TextEditingController();
+  bool _enableAppLogin = true; // default ON for officers
 
   OrgRoleEntity? _selectedRole;
   BranchEntity? _selectedBranch;
@@ -72,6 +75,8 @@ class _OfficerFormPageState extends State<OfficerFormPage> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _passwordController.dispose();
+    _confirmPassController.dispose();
     super.dispose();
   }
 
@@ -192,6 +197,67 @@ class _OfficerFormPageState extends State<OfficerFormPage> {
                       if (_isEdit && officerState is OfficerDetailLoaded)
                         _buildBranchInfoRow(context, scheme, officerState),
                       const SizedBox(height: 32),
+                      // ── App Login Credentials ──────────────────────────────
+                      if (!_isEdit) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Officer App Login',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(
+                                color: scheme.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        SwitchListTile(
+                          value: _enableAppLogin,
+                          title: const Text('Create App Login Now'),
+                          subtitle: const Text(
+                            'Officer can log into jadosoft-officer immediately',
+                          ),
+                          onChanged: (v) => setState(() => _enableAppLogin = v),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        if (_enableAppLogin) ...[
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _passwordController,
+                            obscureText: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Password',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.lock_outline),
+                              helperText: 'Min 8 characters',
+                            ),
+                            validator: (v) {
+                              if (!_enableAppLogin) return null;
+                              if (v == null || v.isEmpty) {
+                                return 'Password is required';
+                              }
+                              if (v.length < 8) return 'At least 8 characters';
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _confirmPassController,
+                            obscureText: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Confirm Password',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.lock_outline),
+                            ),
+                            validator: (v) {
+                              if (!_enableAppLogin) return null;
+                              if (v != _passwordController.text) {
+                                return 'Passwords do not match';
+                              }
+                              return null;
+                            },
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                      ],
                       FilledButton.icon(
                         onPressed: _isSubmitting ? null : _submit,
                         icon: _isSubmitting
@@ -406,6 +472,11 @@ class _OfficerFormPageState extends State<OfficerFormPage> {
             phone: _phoneController.text.trim(),
             branchId: _selectedBranch!.id,
             orgRoleId: _selectedRole!.id,
+            // App login
+            appPassword: _enableAppLogin ? _passwordController.text : null,
+            appPasswordConfirmation: _enableAppLogin
+                ? _confirmPassController.text
+                : null,
           ),
         ),
       );

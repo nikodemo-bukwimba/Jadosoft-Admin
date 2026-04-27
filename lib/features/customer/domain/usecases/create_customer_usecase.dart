@@ -22,6 +22,8 @@ class CreateCustomerParams {
   final String? contactRole;
   final String? contactPhone;
   final String? assignedOfficerId;
+  final String? appPassword;
+  final String? appPasswordConfirmation;
 
   const CreateCustomerParams({
     required this.name,
@@ -41,6 +43,8 @@ class CreateCustomerParams {
     this.contactRole,
     this.contactPhone,
     this.assignedOfficerId,
+    this.appPassword,
+    this.appPasswordConfirmation,
   });
 
   Map<String, dynamic> toJson() {
@@ -51,7 +55,8 @@ class CreateCustomerParams {
       if (tier != null && tier!.isNotEmpty) 'tier': tier,
       if (phone != null && phone!.isNotEmpty) 'phone': phone,
       if (email != null && email!.isNotEmpty) 'email': email,
-      if (whatsappNumber != null && whatsappNumber!.isNotEmpty) 'whatsapp_number': whatsappNumber,
+      if (whatsappNumber != null && whatsappNumber!.isNotEmpty)
+        'whatsapp_number': whatsappNumber,
       if (address != null && address!.isNotEmpty) 'address': address,
       if (city != null && city!.isNotEmpty) 'city': city,
       if (county != null && county!.isNotEmpty) 'county': county,
@@ -60,6 +65,11 @@ class CreateCustomerParams {
       if (notes != null && notes!.isNotEmpty) 'notes': notes,
       if (assignedOfficerId != null && assignedOfficerId!.isNotEmpty)
         'assigned_officer_id': assignedOfficerId,
+      if (appPassword != null && appPassword!.isNotEmpty)
+        'app_password': appPassword,
+      if (appPasswordConfirmation != null &&
+          appPasswordConfirmation!.isNotEmpty)
+        'app_password_confirmation': appPasswordConfirmation,
     };
     if (contactName != null && contactName!.isNotEmpty) {
       data['contacts'] = [
@@ -68,22 +78,29 @@ class CreateCustomerParams {
           if (contactRole != null) 'role': contactRole,
           if (contactPhone != null) 'phone': contactPhone,
           'is_primary': true,
-        }
+        },
       ];
     }
+
     return data;
   }
 }
 
-class CreateCustomerUseCase implements UseCase<CustomerEntity, CreateCustomerParams> {
+class CreateCustomerUseCase
+    implements UseCase<CustomerEntity, CreateCustomerParams> {
   final CustomerRepository repository;
   CreateCustomerUseCase(this.repository);
 
   @override
   Future<Either<Failure, CustomerEntity>> call(CreateCustomerParams p) async {
-    if (p.name.trim().isEmpty) return const Left(ValidationFailure('Customer name is required'));
-    if (p.name.trim().length < 2) return const Left(ValidationFailure('Name must be at least 2 characters'));
-    if (p.customerType != 'b2b' && p.customerType != 'b2c') return const Left(ValidationFailure('Type must be b2b or b2c'));
+    if (p.name.trim().isEmpty)
+      return const Left(ValidationFailure('Customer name is required'));
+    if (p.name.trim().length < 2)
+      return const Left(
+        ValidationFailure('Name must be at least 2 characters'),
+      );
+    if (p.customerType != 'b2b' && p.customerType != 'b2c')
+      return const Left(ValidationFailure('Type must be b2b or b2c'));
     return repository.create(p.toJson());
   }
 }

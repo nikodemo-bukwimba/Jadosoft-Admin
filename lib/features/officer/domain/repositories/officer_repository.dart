@@ -17,6 +17,8 @@ abstract class OfficerRepository {
     String? phone,
     required String branchId,
     required String orgRoleId,
+    String? appPassword,
+    String? appPasswordConfirmation,
   });
   Future<Either<Failure, OfficerEntity>> updateMembership(
     String userId, {
