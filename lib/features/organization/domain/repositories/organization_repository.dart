@@ -40,7 +40,7 @@ abstract class OrganizationRepository {
 
   // ── Members ───────────────────────────────────────────────
   Future<Either<Failure, List<OrgMemberEntity>>> getMembers(String orgId);
-  Future<Either<Failure, OrgMemberEntity>> inviteMember(
+  Future<Either<Failure, Map<String, dynamic>>> inviteMember(
     String orgId,
     Map<String, dynamic> data,
   );

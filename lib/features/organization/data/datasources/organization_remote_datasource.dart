@@ -148,15 +148,25 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
   }
 
   /// Invite by email to a SPECIFIC org/branch (orgId = target branch).
-  Future<OrgMemberModel> inviteMember(
+  Future<Map<String, dynamic>> inviteMember(
     String orgId,
     Map<String, dynamic> data,
-  ) => postAndParse(
-    '${ApiPaths.orgs.members(orgId)}/invite',
-    data,
-    OrgMemberModel.fromJson,
-    dataKey: 'invitation',
-  );
+  ) async {
+    try {
+      final response = await dio.post(
+        '${ApiPaths.orgs.members(orgId)}/invite',
+        data: data,
+      );
+      final body = response.data;
+      if (body is Map<String, dynamic>) {
+        // Server returns: { message: '...', invitation: { token, email, ... } }
+        return body['invitation'] as Map<String, dynamic>? ?? body;
+      }
+      return {};
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
 
   Future<OrgMemberModel> updateMember(
     String orgId,

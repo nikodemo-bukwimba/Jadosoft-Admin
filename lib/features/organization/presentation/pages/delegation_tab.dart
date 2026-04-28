@@ -36,7 +36,6 @@ class DelegationTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return BlocBuilder<OrganizationBloc, OrganizationState>(
       buildWhen: (_, s) => s is DelegationsLoaded || s is OrganizationLoading,
       builder: (c, s) {

@@ -10,6 +10,7 @@ import '../../domain/entities/org_tree_entity.dart';
 abstract class OrganizationState {}
 
 class OrganizationInitial extends OrganizationState {}
+
 class OrganizationLoading extends OrganizationState {}
 
 class OrganizationFailure extends OrganizationState {
@@ -41,6 +42,27 @@ class OrgCreatedSuccess extends OrganizationState {
 class InvitationAccepted extends OrganizationState {
   final String message;
   InvitationAccepted(this.message);
+}
+
+/// Carries the invitation token so the admin can share it via WhatsApp
+/// or any other channel rather than relying solely on email.
+class MemberInvitedWithToken extends OrganizationState {
+  /// The email address the invitation was sent to.
+  final String email;
+
+  /// The 64-character invitation token from the server.
+  final String token;
+
+  /// The org/branch name the user is being invited to.
+  final String orgName;
+
+  MemberInvitedWithToken({
+    required this.email,
+    required this.token,
+    required this.orgName,
+  });
+
+  List<Object?> get props => [email, token, orgName];
 }
 
 // ── Org ─────────────────────────────────────────────────────

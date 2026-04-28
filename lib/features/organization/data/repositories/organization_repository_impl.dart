@@ -74,7 +74,7 @@ class OrganizationRepositoryImpl implements OrganizationRepository {
   Future<Either<Failure, List<OrgMemberEntity>>> getMembers(String orgId) =>
       _guard(() async => await _remote.getMembers(orgId));
   @override
-  Future<Either<Failure, OrgMemberEntity>> inviteMember(
+  Future<Either<Failure, Map<String, dynamic>>> inviteMember(
     String orgId,
     Map<String, dynamic> data,
   ) => _guard(() => _remote.inviteMember(orgId, data));
