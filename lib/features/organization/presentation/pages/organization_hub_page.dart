@@ -1,3 +1,4 @@
+// organization_hub_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/organization_bloc.dart';
@@ -57,12 +58,10 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
         bloc.add(RolesLoadRequested());
         break;
       case 2:
-        // If switching to Members tab from branch view, skip reload
         if (_skipNextMemberLoad) {
           _skipNextMemberLoad = false;
           return;
         }
-        // Normal tab switch — load root org members, clear branch context
         _viewingBranchMembers = null;
         bloc.add(MembersLoadRequested());
         break;
@@ -110,11 +109,13 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
           // Always refresh branches so member counts update
           c.read<OrganizationBloc>().add(BranchesLoadRequested());
         }
+
         if (s is OrganizationFailure) {
           ScaffoldMessenger.of(c).showSnackBar(
             SnackBar(content: Text(s.message), backgroundColor: scheme.error),
           );
         }
+
         if (s is OrgCreatedSuccess) {
           ScaffoldMessenger.of(c).showSnackBar(
             const SnackBar(
@@ -125,14 +126,43 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
           );
           c.read<OrganizationBloc>().add(OrgLoadRequested());
         }
+
         if (s is InvitationAccepted) {
           ScaffoldMessenger.of(c).showSnackBar(
             SnackBar(content: Text(s.message), backgroundColor: Colors.green),
           );
           c.read<OrganizationBloc>().add(OrgLoadRequested());
         }
-        // Do NOT auto-switch to Members tab on MembersLoaded anymore.
-        // The switch is handled by the branch callback directly.
+
+        // FIX: Handle MemberInvitedWithToken HERE at the hub level.
+        //
+        // Previously this was handled inside MemberTab's BlocListener.
+        // That approach failed because:
+        //   1. The dialog pops before the event fires, and the resulting
+        //      OrganizationLoading state can cause the tab to rebuild,
+        //      leaving the inner listener context in an unstable state.
+        //   2. showModalBottomSheet requires a Scaffold ancestor — the hub
+        //      page's Scaffold is always present and reliable.
+        //
+        // This context `c` always has a Scaffold above it from _buildActiveHub
+        // (or the loading/pending scaffolds), so the sheet always opens safely.
+        if (s is MemberInvitedWithToken) {
+          // Use addPostFrameCallback so we're never calling showModalBottomSheet
+          // in the middle of a build/setState cycle.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            InvitationTokenSheet.show(
+              context,
+              email: s.email,
+              token: s.token,
+              orgName: s.orgName,
+            );
+            // Reload members so the newly invited member appears in the list.
+            context.read<OrganizationBloc>().add(
+              MembersLoadRequested(orgId: _viewingBranchMembers),
+            );
+          });
+        }
       },
       builder: (c, s) {
         if (s is NoOrganizationState) {
@@ -190,7 +220,6 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
               children: [
                 BranchTab(
                   onSwitchToMembers: (branchId) {
-                    // Load branch-scoped members
                     _viewingBranchMembers = branchId;
                     _skipNextMemberLoad = true;
                     c.read<OrganizationBloc>().add(
@@ -265,7 +294,6 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
   }
 
   Widget _rejectedView(BuildContext c, OrganizationEntity org) {
-    final scheme = Theme.of(c).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Organization'),
@@ -308,7 +336,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
                         Expanded(
                           child: Text(
                             org.rejectionReason!,
-                            style: Theme.of(c).textTheme.bodyMedium,
+                            style: const TextStyle(fontSize: 14),
                           ),
                         ),
                       ],
@@ -317,12 +345,11 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
                 ),
                 const SizedBox(height: 16),
               ],
-              Text(
-                'Please contact platform support or create a new organization.',
-                textAlign: TextAlign.center,
-                style: Theme.of(c).textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
+              OutlinedButton.icon(
+                onPressed: () =>
+                    c.read<OrganizationBloc>().add(OrgLoadRequested()),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh'),
               ),
             ],
           ),
@@ -332,6 +359,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
   }
 
   Widget _suspendedView(BuildContext c, OrganizationEntity org) {
+    final scheme = Theme.of(c).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Organization'),
@@ -343,23 +371,29 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.pause_circle_outline,
-                size: 72,
-                color: Colors.orange.withOpacity(0.6),
-              ),
+              Icon(Icons.block, size: 72, color: scheme.error.withOpacity(0.6)),
               const SizedBox(height: 24),
               Text(
                 'Organization Suspended',
                 style: Theme.of(c).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w700,
+                  color: scheme.error,
                 ),
               ),
               const SizedBox(height: 12),
               Text(
-                'Your organization "${org.name}" has been suspended by the platform admin. Please contact support.',
+                'Your organization "${org.name}" has been suspended. Contact platform support.',
                 textAlign: TextAlign.center,
-                style: Theme.of(c).textTheme.bodyMedium,
+                style: Theme.of(c).textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 24),
+              OutlinedButton.icon(
+                onPressed: () =>
+                    c.read<OrganizationBloc>().add(OrgLoadRequested()),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh'),
               ),
             ],
           ),

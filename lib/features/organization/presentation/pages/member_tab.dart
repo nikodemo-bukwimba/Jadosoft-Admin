@@ -1,8 +1,8 @@
 // member_tab.dart
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // FIX: Clipboard
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:url_launcher/url_launcher.dart'; // FIX: canLaunchUrl / launchUrl
+import 'package:url_launcher/url_launcher.dart';
 import '../../domain/entities/org_member_entity.dart';
 import '../../domain/entities/org_role_entity.dart';
 import '../../domain/entities/branch_entity.dart';
@@ -12,7 +12,7 @@ import '../bloc/organization_state.dart';
 import '../widgets/member_card_tile.dart';
 
 class MemberTab extends StatelessWidget {
-  final String? viewingBranchId; // FIX: removed stray 'F'
+  final String? viewingBranchId;
   final VoidCallback? onBackToRootMembers;
 
   const MemberTab({super.key, this.viewingBranchId, this.onBackToRootMembers});
@@ -20,18 +20,10 @@ class MemberTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocListener<OrganizationBloc, OrganizationState>(
-      // FIX: BlocListener wrapping the whole tab — listens for invite token
-      // and operation results. BlocBuilder is nested inside for UI rebuilds.
+      // NOTE: MemberInvitedWithToken is intentionally NOT handled here.
+      // It is handled at OrganizationHubPage level so the sheet always
+      // opens from a stable, top-level Scaffold context.
       listener: (context, state) {
-        if (state is MemberInvitedWithToken) {
-          // Show token bottom sheet so admin can share via WhatsApp
-          _InvitationTokenSheet.show(
-            context,
-            email: state.email,
-            token: state.token,
-            orgName: state.orgName,
-          );
-        }
         if (state is OrganizationOperationSuccess) {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
@@ -215,6 +207,38 @@ class MemberTab extends StatelessWidget {
   }
 }
 
+// ── Branch scope bar ──────────────────────────────────────────
+class _BranchScopeBar extends StatelessWidget {
+  final VoidCallback? onBack;
+  const _BranchScopeBar({this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      color: scheme.primaryContainer.withOpacity(0.3),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Icon(Icons.store_outlined, size: 16, color: scheme.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Viewing branch members',
+              style: TextStyle(
+                fontSize: 13,
+                color: scheme.onPrimaryContainer,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          TextButton(onPressed: onBack, child: const Text('Back to all')),
+        ],
+      ),
+    );
+  }
+}
+
 // ═══════════════════════════════════════════════════════════
 // Invite Dialog — email + branch + role → emits MemberInvitedWithToken
 // ═══════════════════════════════════════════════════════════
@@ -233,6 +257,7 @@ class _InviteDialogState extends State<_InviteDialog> {
   List<BranchEntity> branches = [];
   List<OrgRoleEntity> roles = [];
   bool loading = true;
+  // FIX: These start null; the dropdown value: binding controls them correctly.
   String? selectedBranchId;
   String? selectedRoleId;
 
@@ -273,7 +298,7 @@ class _InviteDialogState extends State<_InviteDialog> {
       return;
     }
     if (selectedBranchId == null) {
-      _snack('Select a target branch');
+      _snack('Select a target branch or HQ');
       return;
     }
     if (selectedRoleId == null) {
@@ -332,8 +357,12 @@ class _InviteDialogState extends State<_InviteDialog> {
                     keyboardType: TextInputType.emailAddress,
                   ),
                   const SizedBox(height: 12),
+                  // FIX: Use `value:` not `initialValue:`.
+                  // `initialValue` is read-only on first render and does NOT
+                  // reflect state changes after async load. `value:` is the
+                  // controlled prop that keeps the dropdown in sync with state.
                   DropdownButtonFormField<String>(
-                    initialValue: selectedBranchId, // FIX: value→initialValue
+                    value: selectedBranchId,
                     decoration: const InputDecoration(
                       labelText: 'Target Branch *',
                       hintText: 'Select the branch they will join',
@@ -355,8 +384,9 @@ class _InviteDialogState extends State<_InviteDialog> {
                     onChanged: (v) => setState(() => selectedBranchId = v),
                   ),
                   const SizedBox(height: 12),
+                  // FIX: Use `value:` not `initialValue:`.
                   DropdownButtonFormField<String>(
-                    initialValue: selectedRoleId, // FIX: value→initialValue
+                    value: selectedRoleId,
                     decoration: const InputDecoration(
                       labelText: 'Role *',
                       prefixIcon: Icon(Icons.admin_panel_settings_outlined),
@@ -406,17 +436,19 @@ class _InviteDialogState extends State<_InviteDialog> {
 // ═══════════════════════════════════════════════════════════
 // Invitation Token Bottom Sheet
 // ═══════════════════════════════════════════════════════════
-class _InvitationTokenSheet extends StatelessWidget {
+class InvitationTokenSheet extends StatelessWidget {
   final String email;
   final String token;
   final String orgName;
 
-  const _InvitationTokenSheet({
+  const InvitationTokenSheet({
+    super.key,
     required this.email,
     required this.token,
     required this.orgName,
   });
 
+  /// Call this from OrganizationHubPage's BlocConsumer listener.
   static void show(
     BuildContext context, {
     required String email,
@@ -431,7 +463,7 @@ class _InvitationTokenSheet extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (_) =>
-          _InvitationTokenSheet(email: email, token: token, orgName: orgName),
+          InvitationTokenSheet(email: email, token: token, orgName: orgName),
     );
   }
 
@@ -576,11 +608,12 @@ class _InvitationTokenSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 SelectableText(
-                  token,
+                  token.isNotEmpty ? token : '(token not returned by server)',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontFamily: 'monospace',
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.3,
+                    color: token.isNotEmpty ? null : scheme.error,
                   ),
                 ),
               ],
@@ -590,7 +623,7 @@ class _InvitationTokenSheet extends StatelessWidget {
 
           // Copy token
           OutlinedButton.icon(
-            onPressed: () => _copyToken(context),
+            onPressed: token.isNotEmpty ? () => _copyToken(context) : null,
             icon: const Icon(Icons.copy, size: 16),
             label: const Text('Copy Token Only'),
             style: OutlinedButton.styleFrom(
@@ -659,6 +692,7 @@ class _AssignDialogState extends State<_AssignDialog> {
   List<OrgMemberEntity> rootMembers = [];
   List<OrgRoleEntity> roles = [];
   bool loading = true;
+  // FIX: Use value: binding — starts null, controlled by setState.
   String? selectedUserId;
   String? selectedRoleId;
   String? error;
@@ -699,6 +733,10 @@ class _AssignDialogState extends State<_AssignDialog> {
     });
   }
 
+  void _snack(BuildContext context, String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -722,8 +760,9 @@ class _AssignDialogState extends State<_AssignDialog> {
                         'branch with a specific role.',
                   ),
                   const SizedBox(height: 16),
+                  // FIX: value: instead of initialValue:
                   DropdownButtonFormField<String>(
-                    initialValue: selectedUserId, // FIX: value→initialValue
+                    value: selectedUserId,
                     decoration: const InputDecoration(
                       labelText: 'Member *',
                       prefixIcon: Icon(Icons.person_outlined),
@@ -746,8 +785,9 @@ class _AssignDialogState extends State<_AssignDialog> {
                     onChanged: (v) => setState(() => selectedUserId = v),
                   ),
                   const SizedBox(height: 12),
+                  // FIX: value: instead of initialValue:
                   DropdownButtonFormField<String>(
-                    initialValue: selectedRoleId, // FIX: value→initialValue
+                    value: selectedRoleId,
                     decoration: const InputDecoration(
                       labelText: 'Branch Role *',
                       prefixIcon: Icon(Icons.admin_panel_settings_outlined),
@@ -972,69 +1012,37 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Text('Update Name'),
+                            : const Text('Save Name'),
                       ),
                     ),
-                  ],
-                ),
-              ),
-              const Divider(height: 28),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                    const SizedBox(height: 24),
+                    const Divider(),
+                    const SizedBox(height: 12),
                     Text(
-                      'Security',
+                      'Account Actions',
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 12),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.lock_reset_outlined),
-                      title: const Text('Reset Password'),
-                      subtitle: Text(
-                        'Send a password reset email to ${member.email}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      trailing: SizedBox(
-                        width: 90,
-                        child: TextButton(
-                          onPressed: () => _confirmPasswordReset(context),
-                          child: const Text(
-                            'Send Email',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      ),
+                    _StatusActionTile(
+                      icon: Icons.lock_reset,
+                      color: Colors.orange,
+                      label: 'Reset Password',
+                      description: 'Send a password reset email',
+                      onTap: () {
+                        Navigator.pop(context);
+                        widget.bloc.add(
+                          UserPasswordResetRequested(member.email),
+                        );
+                      },
                     ),
-                  ],
-                ),
-              ),
-              const Divider(height: 28),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Account Status',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
                     if (member.isActive)
                       _StatusActionTile(
                         icon: Icons.pause_circle_outline,
-                        color: Colors.orange,
+                        color: Colors.red,
                         label: 'Suspend Account',
-                        description: 'User cannot log in while suspended',
+                        description: 'Prevent login temporarily',
                         onTap: () {
                           Navigator.pop(context);
                           widget.bloc.add(
@@ -1047,10 +1055,10 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
                       ),
                     if (member.isSuspended)
                       _StatusActionTile(
-                        icon: Icons.check_circle_outline,
+                        icon: Icons.play_circle_outline,
                         color: Colors.green,
                         label: 'Reactivate Account',
-                        description: 'Allow user to log in again',
+                        description: 'Restore login access',
                         onTap: () {
                           Navigator.pop(context);
                           widget.bloc.add(
@@ -1061,85 +1069,19 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
                           );
                         },
                       ),
+                    const SizedBox(height: 20),
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
             ],
           ),
         ),
       ),
     );
   }
-
-  void _confirmPasswordReset(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Send Password Reset?'),
-        content: Text(
-          'A password reset link will be emailed to ${widget.member.email}.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              widget.bloc.add(UserPasswordResetRequested(widget.member.email));
-            },
-            child: const Text('Send'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Shared helpers
-// ═══════════════════════════════════════════════════════════
-
-class _BranchScopeBar extends StatelessWidget {
-  final VoidCallback? onBack;
-  const _BranchScopeBar({this.onBack});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: scheme.primaryContainer.withValues(alpha: 0.3), // FIX: withValues
-      child: Row(
-        children: [
-          Icon(Icons.store, size: 16, color: scheme.primary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Branch members',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: scheme.primary,
-              ),
-            ),
-          ),
-          TextButton.icon(
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back, size: 14),
-            label: const Text('All Members', style: TextStyle(fontSize: 12)),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: Size.zero,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// ── Shared helpers ────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
   final bool isBranch;
@@ -1190,7 +1132,7 @@ class _InfoBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08), // FIX: withValues
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -1203,7 +1145,7 @@ class _InfoBanner extends StatelessWidget {
               text,
               style: TextStyle(
                 fontSize: 12,
-                color: color.withValues(alpha: 0.9), // FIX: withValues
+                color: color.withValues(alpha: 0.9),
               ),
             ),
           ),
@@ -1250,8 +1192,4 @@ class _StatusActionTile extends StatelessWidget {
       ),
     );
   }
-}
-
-void _snack(BuildContext context, String msg) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 }
