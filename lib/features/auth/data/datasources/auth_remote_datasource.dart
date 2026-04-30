@@ -19,14 +19,20 @@ class AuthMeResponse {
   final UserModel user;
   final List<RoleModel> roles;
   final List<PermissionModel> permissions;
-  // org_id echoed back by the server (membership org). null = no membership.
+
+  /// org_id echoed back by the server (membership org). null = no membership.
   final String? resolvedOrgId;
+
+  /// org_status returned from backend:
+  /// null | 'pending_approval' | 'active' | 'suspended' | 'rejected'
+  final String? orgStatus;
 
   const AuthMeResponse({
     required this.user,
     required this.roles,
     required this.permissions,
     this.resolvedOrgId,
+    this.orgStatus,
   });
 }
 
@@ -145,6 +151,9 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       final resolvedOrgId =
           userJson['org_id']?.toString() ?? raw['org_id']?.toString() ?? orgId;
 
+      // ── NEW: extract org status ────────────────────────────────
+      final orgStatus = userJson['org_status'] as String?;
+
       if (kDebugMode) {
         debugPrint(
           '[AUTH] /auth/me: user=${user.email}, '
@@ -158,6 +167,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         roles: roles,
         permissions: permissions,
         resolvedOrgId: resolvedOrgId,
+        orgStatus: orgStatus,
       );
     } on DioException catch (e) {
       throw _handleDioError(e);

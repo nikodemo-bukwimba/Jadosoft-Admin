@@ -5,14 +5,17 @@ abstract class OrganizationEvent {}
 
 // ── Organization ────────────────────────────────────────────
 class OrgLoadRequested extends OrganizationEvent {}
+
 class OrgCreateRequested extends OrganizationEvent {
   final Map<String, dynamic> data;
   OrgCreateRequested(this.data);
 }
+
 class OrgTreeLoadRequested extends OrganizationEvent {}
 
 // ── Branches ────────────────────────────────────────────────
 class BranchesLoadRequested extends OrganizationEvent {}
+
 class BranchCreateRequested extends OrganizationEvent {
   final Map<String, dynamic> data;
   BranchCreateRequested(this.data);
@@ -20,18 +23,24 @@ class BranchCreateRequested extends OrganizationEvent {
 
 // ── Roles ───────────────────────────────────────────────────
 class RolesLoadRequested extends OrganizationEvent {}
+
 class RoleCreateRequested extends OrganizationEvent {
   final Map<String, dynamic> data;
   RoleCreateRequested(this.data);
 }
+
 class RoleDeleteRequested extends OrganizationEvent {
   final String roleId;
   RoleDeleteRequested(this.roleId);
 }
+
 class RolePermissionsSyncRequested extends OrganizationEvent {
   final String roleId;
   final List<String> permissionIds;
-  RolePermissionsSyncRequested({required this.roleId, required this.permissionIds});
+  RolePermissionsSyncRequested({
+    required this.roleId,
+    required this.permissionIds,
+  });
 }
 
 // ── Members ─────────────────────────────────────────────────
@@ -43,7 +52,7 @@ class MembersLoadRequested extends OrganizationEvent {
 /// Invite a user by email to a SPECIFIC branch with a role.
 /// [orgId] = target branch/org to invite into (required).
 class MemberInviteRequested extends OrganizationEvent {
-  final String orgId;   // ← required: which branch they're invited to
+  final String orgId; // ← required: which branch they're invited to
   final Map<String, dynamic> data; // { email, org_role_id, level }
   MemberInviteRequested({required this.orgId, required this.data});
 }
@@ -122,11 +131,23 @@ class DelegationRevokeRequested extends OrganizationEvent {
 
 // ── Permission Requests ─────────────────────────────────────
 class PermissionRequestsLoadRequested extends OrganizationEvent {}
+
 class PermissionRequestApproveRequested extends OrganizationEvent {
   final String requestId;
   PermissionRequestApproveRequested(this.requestId);
 }
+
 class PermissionRequestDenyRequested extends OrganizationEvent {
   final String requestId;
   PermissionRequestDenyRequested(this.requestId);
+}
+
+class InvitationsLoadRequested extends OrganizationEvent {
+  final String? status; // null = 'pending'
+  InvitationsLoadRequested({this.status});
+}
+
+class InvitationCancelRequested extends OrganizationEvent {
+  final String invitationId;
+  InvitationCancelRequested(this.invitationId);
 }

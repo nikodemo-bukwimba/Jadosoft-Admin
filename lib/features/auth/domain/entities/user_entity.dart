@@ -1,25 +1,25 @@
-//admin app user_entity.dart
+// user_entity.dart
 // ─────────────────────────────────────────────────────────────
 // Pure Dart — zero Flutter or Drift imports.
 // Shape mirrors the Laravel API /user and toApiArray() response.
 //
-// CHANGE: UserEntity.id is String — Laravel uses ULIDs.
-// RoleEntity / PermissionEntity keep int ids (standard auto-increment).
-//
-// DESIGN: Roles on the entity are for DISPLAY only (badge, label).
-// UI gating uses permission checks via RbacExtensions.can().
-// No hardcoded role names anywhere in this file.
+// CHANGE: Added orgStatus and orgName from /auth/me response so the
+// app can distinguish:
+//   null              → no membership yet (pending activation)
+//   'pending_approval'→ org exists but not yet admin-approved
+//   'active'          → fully operational
+//   'suspended'/'rejected' → org not usable
 // ─────────────────────────────────────────────────────────────
 
 class RoleEntity {
-  final String id; // was int
+  final String id;
   final String name;
   final String slug;
   const RoleEntity({required this.id, required this.name, required this.slug});
 }
 
 class PermissionEntity {
-  final String id; // was int
+  final String id;
   final String name;
   final String slug;
   const PermissionEntity({
@@ -31,7 +31,7 @@ class PermissionEntity {
 
 class UserEntity {
   final String id;
-  final String? actorId; // ← ADD — platform actor ULID
+  final String? actorId;
   final String name;
   final String email;
   final String? phone;
@@ -43,9 +43,18 @@ class UserEntity {
   final String subscriptionStatus;
   final DateTime? createdAt;
 
+  // ── Org context fields from /auth/me ─────────────────────
+  /// The org_status returned by the server for the resolved membership.
+  /// null means the user has no active membership at all.
+  final String? orgStatus;
+
+  /// The name of the resolved org node (for display during pending state).
+  final String? orgName;
+  final String? orgId;
+
   const UserEntity({
     required this.id,
-    this.actorId, // ← ADD
+    this.actorId,
     required this.name,
     required this.email,
     this.phone,
@@ -56,9 +65,18 @@ class UserEntity {
     required this.hasActiveSubscription,
     required this.subscriptionStatus,
     this.createdAt,
+    this.orgStatus,
+    this.orgId,
+    this.orgName,
   });
 
   String get displayName => name.isNotEmpty ? name : email;
 
   bool hasRole(String roleName) => roles.any((r) => r.name == roleName);
+
+  /// True when the user has an org but it hasn't been approved yet.
+  bool get isOrgPendingApproval => orgStatus == 'pending_approval';
+
+  /// True when org is fully active.
+  bool get isOrgActive => orgStatus == 'active';
 }

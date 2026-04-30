@@ -1,7 +1,11 @@
 ﻿// ================================================================
 // features_organization_source.txt
 // Project Type : Flutter/Dart
+<<<<<<< HEAD
 // Generated    : 2026-04-28 12:55:35
+=======
+// Generated    : 2026-04-29 01:59:10
+>>>>>>> promotion_and_bulk_sms
 // Files        : 34
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================

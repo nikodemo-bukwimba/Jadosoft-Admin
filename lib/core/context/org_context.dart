@@ -47,11 +47,18 @@ enum OrgRole {
   unknown,
 }
 
+/// Centralized org status values (prevents string drift).
+class OrgStatuses {
+  static const pendingApproval = 'pending_approval';
+  static const active = 'active';
+}
+
 class OrgContext {
   final SecureStorageService _storage;
 
   static const String _rootOrgIdKey = 'root_org_id';
   static const String _rootOrgNameKey = 'root_org_name';
+  static const String _kOrgStatus = 'org_status';
   static const String _activeBranchIdKey = 'active_branch_id';
   static const String _activeBranchNameKey = 'active_branch_name';
   static const String _orgRoleKey = 'org_role';
@@ -60,6 +67,7 @@ class OrgContext {
 
   String? _rootOrgId;
   String? _rootOrgName;
+  String? _orgStatus; // ✅ NEW
   String? _activeBranchId;
   String? _activeBranchName;
   OrgRole _orgRole = OrgRole.unknown;
@@ -76,6 +84,13 @@ class OrgContext {
   /// Root organisation display name.
   String? get rootOrgName => _rootOrgName;
 
+  /// Org lifecycle status (pending_approval, active, etc.)
+  String? get orgStatus => _orgStatus;
+
+  bool get isOrgPendingApproval => _orgStatus == OrgStatuses.pendingApproval;
+
+  bool get isOrgActive => _orgStatus == OrgStatuses.active;
+
   /// Currently selected branch, or null = "all branches" view.
   String? get activeBranchId => _activeBranchId;
 
@@ -91,6 +106,8 @@ class OrgContext {
   /// Whether the user is a branch-level admin.
   bool get isBranchAdmin => _orgRole == OrgRole.branchAdmin;
 
+  bool get isFieldOfficer => _orgRole == OrgRole.fieldOfficer;
+
   /// Whether any org is set.
   bool get hasOrg => _rootOrgId != null && _rootOrgId!.isNotEmpty;
 
@@ -100,21 +117,10 @@ class OrgContext {
   /// Whether viewing all branches (org admin, no branch filter).
   bool get isViewingAllBranches => isOrgAdmin && !hasBranch;
 
-  bool get isFieldOfficer => _orgRole == OrgRole.fieldOfficer;
-
   String? get actorId => _actorId;
   String? get actorName => _actorName;
 
   /// The org ID to use for org-scoped API calls.
-  ///
-  /// - If a branch is selected → returns the branch ID
-  ///   (API scopes data to that branch)
-  /// - If no branch selected (org admin "all" view) → returns root org ID
-  ///   (API returns data across all branches under root)
-  ///
-  /// This is the value you pass to:
-  ///   ApiPaths.pharma.customers(effectiveOrgId)
-  ///   ApiPaths.commerce.orders(effectiveOrgId)
   String get effectiveOrgId {
     if (_activeBranchId != null && _activeBranchId!.isNotEmpty) {
       return _activeBranchId!;
@@ -123,7 +129,6 @@ class OrgContext {
   }
 
   /// Root org ID — throws if not set.
-  /// Use for org-level resources: products catalog, roles, settings.
   String requireRootOrgId() {
     if (_rootOrgId == null || _rootOrgId!.isEmpty) {
       throw StateError(
@@ -149,15 +154,31 @@ class OrgContext {
     _orgRole = role;
     _actorId = actorId;
     _actorName = actorName;
+
     await _storage.write(_rootOrgIdKey, id);
     await _storage.write(_rootOrgNameKey, name);
     await _storage.write(_orgRoleKey, role.name);
-    if (actorId != null) await _storage.write(_actorIdKey, actorId);
-    if (actorName != null) await _storage.write(_actorNameKey, actorName);
+
+    if (actorId != null) {
+      await _storage.write(_actorIdKey, actorId);
+    }
+    if (actorName != null) {
+      await _storage.write(_actorNameKey, actorName);
+    }
+  }
+
+  /// Sets org lifecycle status (pending_approval, active, etc.)
+  Future<void> setOrgStatus(String? status) async {
+    _orgStatus = status;
+
+    if (status != null) {
+      await _storage.write(_kOrgStatus, status);
+    } else {
+      await _storage.delete(_kOrgStatus);
+    }
   }
 
   /// Switches active branch (org admin filtering).
-  /// Pass null to go back to "all branches" view.
   Future<void> switchBranch({String? branchId, String? branchName}) async {
     _activeBranchId = branchId;
     _activeBranchName = branchName;
@@ -182,6 +203,8 @@ class OrgContext {
     _actorId = await _storage.read(_actorIdKey);
     _actorName = await _storage.read(_actorNameKey);
 
+    _orgStatus = await _storage.read(_kOrgStatus); // ✅ NEW
+
     final roleStr = await _storage.read(_orgRoleKey);
     _orgRole = OrgRole.values.firstWhere(
       (r) => r.name == roleStr,
@@ -193,30 +216,35 @@ class OrgContext {
   Future<void> clear() async {
     _rootOrgId = null;
     _rootOrgName = null;
+    _orgStatus = null; // ✅ NEW
     _activeBranchId = null;
     _activeBranchName = null;
     _orgRole = OrgRole.unknown;
     _actorId = null;
     _actorName = null;
+
     await _storage.delete(_actorIdKey);
     await _storage.delete(_actorNameKey);
     await _storage.delete(_rootOrgIdKey);
     await _storage.delete(_rootOrgNameKey);
+    await _storage.delete(_kOrgStatus); // ✅ NEW
     await _storage.delete(_activeBranchIdKey);
     await _storage.delete(_activeBranchNameKey);
     await _storage.delete(_orgRoleKey);
   }
 
   /// Display label for current view context.
-  /// Used in app bar: "Barick Pharmacy" or "Barick Pharmacy > Mbeya Branch"
   String get displayLabel {
     final root = _rootOrgName ?? 'Organization';
+
     if (hasBranch) {
       return '$root > ${_activeBranchName ?? 'Branch'}';
     }
+
     if (isOrgAdmin) {
       return '$root (All Branches)';
     }
+
     return root;
   }
 }

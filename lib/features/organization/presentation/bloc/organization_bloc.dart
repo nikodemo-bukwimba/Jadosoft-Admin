@@ -36,6 +36,8 @@ class OrganizationBloc extends Bloc<OrganizationEvent, OrganizationState> {
     on<PermissionRequestsLoadRequested>(_onLoadPermRequests);
     on<PermissionRequestApproveRequested>(_onApprovePermRequest);
     on<PermissionRequestDenyRequested>(_onDenyPermRequest);
+    on<InvitationsLoadRequested>(_onLoadInvitations);
+    on<InvitationCancelRequested>(_onCancelInvitation);
   }
 
   String? get _orgIdOrNull => orgContext.rootOrgId;
@@ -100,6 +102,38 @@ class OrganizationBloc extends Bloc<OrganizationEvent, OrganizationState> {
       (f) => emit(OrganizationFailure(f.message)),
       (tree) => emit(OrgTreeLoaded(tree)),
     );
+  }
+
+  Future<void> _onLoadInvitations(
+    InvitationsLoadRequested e,
+    Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit);
+    if (id == null) return;
+    emit(OrganizationLoading());
+    final result = await repository.getInvitations(
+      id,
+      status: e.status ?? 'pending',
+    );
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (invitations) => emit(InvitationsLoaded(invitations)),
+    );
+  }
+
+  Future<void> _onCancelInvitation(
+    InvitationCancelRequested e,
+    Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit);
+    if (id == null) return;
+    emit(OrganizationLoading());
+    final result = await repository.cancelInvitation(id, e.invitationId);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (_) {
+      emit(OrganizationOperationSuccess('Invitation cancelled'));
+      // Reload so list refreshes
+      add(InvitationsLoadRequested());
+    });
   }
 
   // ── Branches ──────────────────────────────────────────────

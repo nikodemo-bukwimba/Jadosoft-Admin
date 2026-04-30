@@ -1,4 +1,5 @@
 // organization_state.dart
+import '../../domain/entities/org_invitation_entity.dart';
 import '../../domain/entities/organization_entity.dart';
 import '../../domain/entities/branch_entity.dart';
 import '../../domain/entities/org_role_entity.dart';
@@ -74,6 +75,11 @@ class OrgLoaded extends OrganizationState {
 class OrgTreeLoaded extends OrganizationState {
   final OrgTreeNode tree;
   OrgTreeLoaded(this.tree);
+}
+
+class InvitationsLoaded extends OrganizationState {
+  final List<OrgInvitationEntity> invitations;
+  InvitationsLoaded(this.invitations);
 }
 
 // ── Branches ────────────────────────────────────────────────

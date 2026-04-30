@@ -7,6 +7,7 @@ import '../bloc/organization_state.dart';
 import 'branch_tab.dart';
 import 'role_tab.dart';
 import 'member_tab.dart';
+import 'invitations_tab.dart';
 import 'delegation_tab.dart';
 import 'permission_request_tab.dart';
 import 'create_organization_page.dart';
@@ -23,22 +24,24 @@ class OrganizationHubPage extends StatefulWidget {
 class _OrganizationHubPageState extends State<OrganizationHubPage>
     with TickerProviderStateMixin {
   TabController? _tabController;
-
-  /// Tracks if we're viewing members for a specific branch.
-  /// null = root org, non-null = branch ID.
   String? _viewingBranchMembers;
-
-  /// Prevents _onTabChanged from overwriting a branch-scoped member load
-  /// when the tab switch is triggered programmatically from branch view.
   bool _skipNextMemberLoad = false;
 
   static const _tabs = [
     Tab(icon: Icon(Icons.account_tree_outlined), text: 'Branches'),
     Tab(icon: Icon(Icons.admin_panel_settings_outlined), text: 'Roles'),
     Tab(icon: Icon(Icons.people_outlined), text: 'Members'),
+    Tab(icon: Icon(Icons.mail_outlined), text: 'Invitations'),
     Tab(icon: Icon(Icons.swap_horiz_outlined), text: 'Delegations'),
     Tab(icon: Icon(Icons.lock_open_outlined), text: 'Requests'),
   ];
+
+  static const int _kBranches = 0;
+  static const int _kRoles = 1;
+  static const int _kMembers = 2;
+  static const int _kInvitations = 3;
+  static const int _kDelegations = 4;
+  static const int _kRequests = 5;
 
   @override
   void initState() {
@@ -51,26 +54,28 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
     if (_tabController == null || !_tabController!.indexIsChanging) return;
     final bloc = context.read<OrganizationBloc>();
     switch (_tabController!.index) {
-      case 0:
+      case _kBranches:
         bloc.add(BranchesLoadRequested());
-        break;
-      case 1:
+      case _kRoles:
         bloc.add(RolesLoadRequested());
+<<<<<<< HEAD
         break;
       case 2:
+=======
+      case _kMembers:
+>>>>>>> promotion_and_bulk_sms
         if (_skipNextMemberLoad) {
           _skipNextMemberLoad = false;
           return;
         }
         _viewingBranchMembers = null;
         bloc.add(MembersLoadRequested());
-        break;
-      case 3:
+      case _kInvitations:
+        bloc.add(InvitationsLoadRequested());
+      case _kDelegations:
         bloc.add(DelegationsLoadRequested());
-        break;
-      case 4:
+      case _kRequests:
         bloc.add(PermissionRequestsLoadRequested());
-        break;
     }
   }
 
@@ -80,15 +85,13 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
     super.dispose();
   }
 
-  List<Widget> _appBarActions(BuildContext context) {
-    return [
-      IconButton(
-        icon: const Icon(Icons.mail_outlined),
-        tooltip: 'Accept Invitation',
-        onPressed: () => AcceptInvitationDialog.show(context),
-      ),
-    ];
-  }
+  List<Widget> _appBarActions(BuildContext context) => [
+    IconButton(
+      icon: const Icon(Icons.mail_outlined),
+      tooltip: 'Accept Invitation',
+      onPressed: () => AcceptInvitationDialog.show(context),
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -99,14 +102,11 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
           ScaffoldMessenger.of(
             c,
           ).showSnackBar(SnackBar(content: Text(s.message)));
-          if (_viewingBranchMembers != null) {
+          if (_tabController?.index == _kMembers) {
             c.read<OrganizationBloc>().add(
               MembersLoadRequested(orgId: _viewingBranchMembers),
             );
-          } else {
-            _onTabChanged();
           }
-          // Always refresh branches so member counts update
           c.read<OrganizationBloc>().add(BranchesLoadRequested());
         }
 
@@ -134,6 +134,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
           c.read<OrganizationBloc>().add(OrgLoadRequested());
         }
 
+<<<<<<< HEAD
         // FIX: Handle MemberInvitedWithToken HERE at the hub level.
         //
         // Previously this was handled inside MemberTab's BlocListener.
@@ -149,6 +150,14 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
         if (s is MemberInvitedWithToken) {
           // Use addPostFrameCallback so we're never calling showModalBottomSheet
           // in the middle of a build/setState cycle.
+=======
+        // ── Token sheet — hub-level Scaffold, always stable ─────────
+        // addPostFrameCallback prevents calling showModalBottomSheet
+        // during a build/emit cycle (OrganizationLoading fires first,
+        // causing inner builders to rebuild before MemberInvitedWithToken
+        // arrives — handling it here avoids the stale-context issue).
+        if (s is MemberInvitedWithToken) {
+>>>>>>> promotion_and_bulk_sms
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             InvitationTokenSheet.show(
@@ -157,10 +166,17 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
               token: s.token,
               orgName: s.orgName,
             );
+<<<<<<< HEAD
             // Reload members so the newly invited member appears in the list.
             context.read<OrganizationBloc>().add(
               MembersLoadRequested(orgId: _viewingBranchMembers),
             );
+=======
+            // Refresh members list and invitations tab automatically
+            context.read<OrganizationBloc>()
+              ..add(MembersLoadRequested(orgId: _viewingBranchMembers))
+              ..add(InvitationsLoadRequested());
+>>>>>>> promotion_and_bulk_sms
           });
         }
       },
@@ -225,7 +241,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
                     c.read<OrganizationBloc>().add(
                       MembersLoadRequested(orgId: branchId),
                     );
-                    _tabController!.animateTo(2);
+                    _tabController!.animateTo(_kMembers);
                   },
                 ),
                 const RoleTab(),
@@ -236,6 +252,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
                     c.read<OrganizationBloc>().add(MembersLoadRequested());
                   },
                 ),
+                const InvitationsTab(), // ← persistent invitations list
                 const DelegationTab(),
                 const PermissionRequestTab(),
               ],
@@ -273,7 +290,8 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
               ),
               const SizedBox(height: 12),
               Text(
-                'Your organization "${org.name}" has been submitted and is waiting for platform admin approval.',
+                'Your organization "${org.name}" has been submitted and is '
+                'waiting for platform admin approval.',
                 textAlign: TextAlign.center,
                 style: Theme.of(c).textTheme.bodyMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
@@ -318,8 +336,8 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
                   color: Colors.red,
                 ),
               ),
-              const SizedBox(height: 12),
               if (org.rejectionReason != null) ...[
+                const SizedBox(height: 12),
                 Card(
                   color: Colors.red.withOpacity(0.06),
                   child: Padding(
@@ -333,18 +351,25 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
                           size: 20,
                         ),
                         const SizedBox(width: 10),
+<<<<<<< HEAD
                         Expanded(
                           child: Text(
                             org.rejectionReason!,
                             style: const TextStyle(fontSize: 14),
                           ),
                         ),
+=======
+                        Expanded(child: Text(org.rejectionReason!)),
+>>>>>>> promotion_and_bulk_sms
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
               ],
+<<<<<<< HEAD
+=======
+              const SizedBox(height: 16),
+>>>>>>> promotion_and_bulk_sms
               OutlinedButton.icon(
                 onPressed: () =>
                     c.read<OrganizationBloc>().add(OrgLoadRequested()),

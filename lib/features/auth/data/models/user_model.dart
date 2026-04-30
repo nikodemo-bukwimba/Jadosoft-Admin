@@ -46,7 +46,7 @@ class PermissionModel extends PermissionEntity {
 
 class UserModel extends UserEntity {
   const UserModel({
-    required super.id, // String — Laravel ULID
+    required super.id,
     super.actorId,
     required super.name,
     required super.email,
@@ -58,6 +58,9 @@ class UserModel extends UserEntity {
     required super.hasActiveSubscription,
     required super.subscriptionStatus,
     super.createdAt,
+    super.orgStatus, // ← NEW
+    super.orgId, // 👈 ADD THIS
+    super.orgName, // ← NEW
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -72,20 +75,17 @@ class UserModel extends UserEntity {
         json['primary_role'] as Map<String, dynamic>,
       );
     } else if (roles.isNotEmpty) {
-      // If no explicit primary_role, use first role
       primaryRole = roles.first;
     }
 
     return UserModel(
-      // ULID — always a String, never cast to int
-      id: json['id'].toString(),
+      id: json['id']?.toString() ?? '',
       actorId: json['actor_id']?.toString(),
 
       name: json['name'] as String? ?? json['username'] as String? ?? '',
-      email: json['email'] as String,
+      email: json['email'] as String? ?? '',
       phone: json['phone'] as String?,
 
-      // Laravel may return 0/1, true/false, or 'active' status string
       isActive:
           json['is_active'] == true ||
           json['is_active'] == 1 ||
@@ -107,6 +107,11 @@ class UserModel extends UserEntity {
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString())
           : null,
+
+      // ✅ FULL org context
+      orgId: json['org_id']?.toString(), // 👈 ADD THIS
+      orgStatus: (json['org_status'] as String?)?.toLowerCase(),
+      orgName: json['org_name'] as String?,
     );
   }
 
@@ -131,5 +136,9 @@ class UserModel extends UserEntity {
     'has_active_subscription': hasActiveSubscription,
     'subscription_status': subscriptionStatus,
     'created_at': createdAt?.toIso8601String(),
+    // ── NEW ──
+    'org_id': orgId,
+    'org_status': orgStatus,
+    'org_name': orgName,
   };
 }

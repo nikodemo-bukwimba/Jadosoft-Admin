@@ -2,6 +2,7 @@
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
+import '../../domain/entities/org_invitation_entity.dart';
 import '../../domain/entities/organization_entity.dart';
 import '../../domain/entities/branch_entity.dart';
 import '../../domain/entities/org_role_entity.dart';
@@ -140,4 +141,15 @@ class OrganizationRepositoryImpl implements OrganizationRepository {
   Future<Either<Failure, List<OrgPermissionEntity>>> getPermissions(
     String orgId,
   ) => _guard(() async => await _remote.getPermissions(orgId));
+  @override
+  Future<Either<Failure, List<OrgInvitationEntity>>> getInvitations(
+    String orgId, {
+    String status = 'pending',
+  }) => _guard(() => _remote.getInvitations(orgId, status: status));
+
+  @override
+  Future<Either<Failure, void>> cancelInvitation(
+    String orgId,
+    String invitationId,
+  ) => _guard(() => _remote.cancelInvitation(orgId, invitationId));
 }

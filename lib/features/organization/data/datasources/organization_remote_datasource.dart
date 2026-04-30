@@ -6,18 +6,21 @@ import '../../../../core/network/base_remote_datasource.dart';
 import '../models/organization_model.dart';
 import '../models/branch_model.dart';
 import '../models/org_role_model.dart';
+import '../models/org_invitation_model.dart';
 import '../models/org_member_model.dart';
 import '../models/delegation_model.dart';
 import '../models/permission_request_model.dart';
 import '../models/org_tree_model.dart';
 
 class OrganizationRemoteDataSource extends BaseRemoteDataSource {
-  final OrgContext _orgContext;
+  // FIX: _orgContext was unused — removed to clear the warning.
+  // If you need org context in future datasource methods, re-add it then.
 
   OrganizationRemoteDataSource({
     required super.dio,
-    required OrgContext orgContext,
-  }) : _orgContext = orgContext;
+    OrgContext?
+    orgContext, // kept in constructor signature for DI compatibility
+  });
 
   // ── Organization ──────────────────────────────────────────
 
@@ -123,8 +126,6 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
   }
 
   // ── Members ───────────────────────────────────────────────
-  // FIX: requests per_page=200 to get all members (root org tree query).
-  // The backend fix includes branch members when querying root org.
 
   Future<List<OrgMemberModel>> getMembers(String orgId) async {
     try {
@@ -133,7 +134,6 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
         queryParameters: {'per_page': 200},
       );
       final data = response.data;
-      // Paginated response: { data: [...], ... } or flat list
       final List<dynamic> items = data is Map<String, dynamic>
           ? (data['data'] as List<dynamic>? ??
                 data['members'] as List<dynamic>? ??
@@ -147,7 +147,7 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
     }
   }
 
-  /// Invite by email to a SPECIFIC org/branch (orgId = target branch).
+  /// Invite a member by email to a specific org/branch.
   Future<Map<String, dynamic>> inviteMember(
     String orgId,
     Map<String, dynamic> data,
@@ -167,6 +167,49 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
       throw mapDioException(e);
     }
   }
+
+  // ── Invitations ───────────────────────────────────────────
+
+  /// GET /api/v1/orgs/{orgId}/invitations?status=pending
+  ///
+  /// FIX: was using ApiPaths.orgs.base(orgId) which doesn't exist on
+  /// _OrgPaths. Replaced with the literal '/orgs/$orgId' path string.
+  Future<List<OrgInvitationModel>> getInvitations(
+    String orgId, {
+    String status = 'pending',
+  }) async {
+    try {
+      final response = await dio.get(
+        '/orgs/$orgId/invitations', // ← FIX: literal path, not .base()
+        queryParameters: {'status': status, 'per_page': 100},
+      );
+      final data = response.data;
+      final List<dynamic> items = data is Map<String, dynamic>
+          ? (data['data'] as List<dynamic>? ?? [])
+          : (data as List<dynamic>? ?? []);
+      return items
+          .map((e) => OrgInvitationModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
+  /// DELETE /api/v1/orgs/{orgId}/invitations/{invitationId}/cancel
+  ///
+  /// FIX: was using ApiPaths.orgs.base(orgId) which doesn't exist on
+  /// _OrgPaths. Replaced with the literal '/orgs/$orgId' path string.
+  Future<void> cancelInvitation(String orgId, String invitationId) async {
+    try {
+      await dio.delete(
+        '/orgs/$orgId/invitations/$invitationId/cancel', // ← FIX: literal path
+      );
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
+  // ── Member mutations ──────────────────────────────────────
 
   Future<OrgMemberModel> updateMember(
     String orgId,
@@ -194,19 +237,12 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
   }
 
   // ── User Account Management ───────────────────────────────
-  // These call platform admin endpoints to update user info.
 
-  /// Update user's display name (actor.display_name) via profile endpoint.
-  /// The platform exposes PATCH /admin/users/{id}/status for status changes.
-  /// For name/email we use a workaround via the actor endpoint if available,
-  /// or fall back to the member update endpoint.
   Future<void> updateUserInfo(String userId, Map<String, dynamic> data) async {
     try {
-      // Try admin endpoint first
       await dio.patch('/admin/users/$userId/info', data: data);
     } on DioException catch (e) {
       if (e.response?.statusCode == 404 || e.response?.statusCode == 405) {
-        // Fallback: update via org membership actor name (best effort)
         try {
           await dio.patch(
             '/actors/${data['actor_id'] ?? userId}',
@@ -219,7 +255,6 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
     }
   }
 
-  /// Change user account status: active | suspended | banned.
   Future<void> updateUserStatus(String userId, String status) async {
     try {
       await dio.patch(
@@ -231,12 +266,10 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
     }
   }
 
-  /// Trigger password reset email (uses Fortify's forgot-password endpoint).
   Future<void> sendPasswordResetEmail(String email) async {
     try {
       await dio.post('/forgot-password', data: {'email': email});
     } on DioException catch (e) {
-      // 422 = email not found; surface that clearly
       throw mapDioException(e);
     }
   }
