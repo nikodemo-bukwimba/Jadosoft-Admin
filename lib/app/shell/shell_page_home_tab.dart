@@ -108,7 +108,7 @@ class _SidePanel extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-           (user.displayName as String).split(' ').first,
+            (user.displayName as String).split(' ').first,
             style: textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.w800,
               color: scheme.onSurface,
@@ -148,13 +148,7 @@ class _SidePanel extends StatelessWidget {
                 size: 20,
               ),
               const SizedBox(width: 8),
-              Text(
-                'Barick Pharmacy',
-                style: textTheme.labelLarge?.copyWith(
-                  color: scheme.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              Text(user.orgName ?? 'No Organization'),
             ],
           ),
           const SizedBox(height: 8),

@@ -1,8 +1,9 @@
 ﻿// ================================================================
 // features_report_export_source.txt
-// Generated : 2026-04-02 15:02:42
-// Files     : 15
-// Usage     : Upload to Claude Project documents as reference.
+// Project Type : Flutter/Dart
+// Generated    : 2026-04-29 09:33:28
+// Files        : 15
+// Usage        : Upload to Claude Project documents as reference.
 // ================================================================
 
 // === FILE: lib/features/report_export/data/client/report_export_client.dart ===
@@ -565,7 +566,6 @@ class ReportExcelGenerator {
           expiry.difference(now).inDays <= 180;
 
       // Resolve styles for this row
-      final st      = isAlt ? altRowStyle      : dataStyle;
       final stC     = isAlt ? altRowCenterStyle : dataCenterStyle;
       final stN     = isAlt ? altRowNumStyle    : dataNumStyle;
 
@@ -609,7 +609,7 @@ class ReportExcelGenerator {
       final qtyVal = qty != null ? '$qty' : '—';
       final qtyStyle = qty != null && qty == 0
           ? (isAlt ? altRowCenterStyle : dataCenterStyle).copyWith(
-              fontColorHexVal: '#D32F2F',
+              fontColorHexVal: ExcelColor.fromHexString('#D32F2F'),
               boldVal: true,
             )
           : stC;
@@ -1637,7 +1637,7 @@ class ReportPdfGenerator {
             : '—';
         final isExpiringSoon =
             expiry != null && expiry.difference(DateTime.now()).inDays <= 180;
-        return [
+        return <String>[
           '${i + 1}',
           p.name,
           p.packSize ?? '—',

@@ -1,8 +1,8 @@
-// member_tab.dart
+// lib/features/organization/presentation/pages/member_tab.dart
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // FIX: Clipboard
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:url_launcher/url_launcher.dart'; // FIX: canLaunchUrl / launchUrl
+import 'package:url_launcher/url_launcher.dart';
 import '../../domain/entities/org_member_entity.dart';
 import '../../domain/entities/org_role_entity.dart';
 import '../../domain/entities/branch_entity.dart';
@@ -12,7 +12,7 @@ import '../bloc/organization_state.dart';
 import '../widgets/member_card_tile.dart';
 
 class MemberTab extends StatelessWidget {
-  final String? viewingBranchId; // FIX: removed stray 'F'
+  final String? viewingBranchId;
   final VoidCallback? onBackToRootMembers;
 
   const MemberTab({super.key, this.viewingBranchId, this.onBackToRootMembers});
@@ -20,18 +20,9 @@ class MemberTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocListener<OrganizationBloc, OrganizationState>(
-      // FIX: BlocListener wrapping the whole tab — listens for invite token
-      // and operation results. BlocBuilder is nested inside for UI rebuilds.
+      // MemberInvitedWithToken is handled at OrganizationHubPage level —
+      // do NOT handle it here to avoid stale-context sheet failures.
       listener: (context, state) {
-        if (state is MemberInvitedWithToken) {
-          // Show token bottom sheet so admin can share via WhatsApp
-          _InvitationTokenSheet.show(
-            context,
-            email: state.email,
-            token: state.token,
-            orgName: state.orgName,
-          );
-        }
         if (state is OrganizationOperationSuccess) {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
@@ -63,7 +54,6 @@ class MemberTab extends StatelessWidget {
           if (s is OrganizationLoading) {
             return const Center(child: CircularProgressIndicator());
           }
-
           if (s is MembersLoaded) {
             return Column(
               children: [
@@ -142,7 +132,6 @@ class MemberTab extends StatelessWidget {
               ],
             );
           }
-
           return Center(
             child: FilledButton(
               onPressed: () =>
@@ -155,7 +144,6 @@ class MemberTab extends StatelessWidget {
     );
   }
 
-  // ── Invite Dialog ─────────────────────────────────────────
   void _showInviteDialog(BuildContext context) {
     final bloc = context.read<OrganizationBloc>();
     final messenger = ScaffoldMessenger.of(context);
@@ -165,7 +153,6 @@ class MemberTab extends StatelessWidget {
     );
   }
 
-  // ── Assign Dialog ─────────────────────────────────────────
   void _showAssignDialog(BuildContext context, String branchId) {
     final bloc = context.read<OrganizationBloc>();
     showDialog(
@@ -215,9 +202,41 @@ class MemberTab extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Invite Dialog — email + branch + role → emits MemberInvitedWithToken
-// ═══════════════════════════════════════════════════════════
+// ── Branch scope bar ──────────────────────────────────────────────
+class _BranchScopeBar extends StatelessWidget {
+  final VoidCallback? onBack;
+  const _BranchScopeBar({this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      color: scheme.primaryContainer.withOpacity(0.3),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Icon(Icons.store_outlined, size: 16, color: scheme.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Viewing branch members',
+              style: TextStyle(
+                fontSize: 13,
+                color: scheme.onPrimaryContainer,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          TextButton(onPressed: onBack, child: const Text('Back to all')),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Invite Dialog
+// ═══════════════════════════════════════════════════════════════════
 class _InviteDialog extends StatefulWidget {
   final OrganizationBloc bloc;
   final ScaffoldMessengerState messenger;
@@ -230,9 +249,15 @@ class _InviteDialog extends StatefulWidget {
 class _InviteDialogState extends State<_InviteDialog> {
   final _emailCtrl = TextEditingController();
   final _levelCtrl = TextEditingController(text: '50');
+
   List<BranchEntity> branches = [];
   List<OrgRoleEntity> roles = [];
   bool loading = true;
+
+  // FIX: Use value: (controlled) not initialValue: (uncontrolled).
+  // initialValue is read-only on first render — it NEVER reflects
+  // async setState() changes, so selectedBranchId/selectedRoleId
+  // stayed null even after the user visually picked an item.
   String? selectedBranchId;
   String? selectedRoleId;
 
@@ -273,7 +298,7 @@ class _InviteDialogState extends State<_InviteDialog> {
       return;
     }
     if (selectedBranchId == null) {
-      _snack('Select a target branch');
+      _snack('Select a target branch or HQ');
       return;
     }
     if (selectedRoleId == null) {
@@ -318,9 +343,11 @@ class _InviteDialogState extends State<_InviteDialog> {
                     color: Colors.blue,
                     text:
                         'An invitation email will be sent. You will also '
-                        'receive a token you can share via WhatsApp.',
+                        'receive a token to share via WhatsApp.',
                   ),
                   const SizedBox(height: 16),
+
+                  // ── Email ────────────────────────────────────
                   TextField(
                     controller: _emailCtrl,
                     decoration: const InputDecoration(
@@ -332,8 +359,10 @@ class _InviteDialogState extends State<_InviteDialog> {
                     keyboardType: TextInputType.emailAddress,
                   ),
                   const SizedBox(height: 12),
+
+                  // ── Branch — value: (controlled) ─────────────
                   DropdownButtonFormField<String>(
-                    initialValue: selectedBranchId, // FIX: value→initialValue
+                    value: selectedBranchId, // ← FIX
                     decoration: const InputDecoration(
                       labelText: 'Target Branch *',
                       hintText: 'Select the branch they will join',
@@ -355,8 +384,10 @@ class _InviteDialogState extends State<_InviteDialog> {
                     onChanged: (v) => setState(() => selectedBranchId = v),
                   ),
                   const SizedBox(height: 12),
+
+                  // ── Role — value: (controlled) ───────────────
                   DropdownButtonFormField<String>(
-                    initialValue: selectedRoleId, // FIX: value→initialValue
+                    value: selectedRoleId, // ← FIX
                     decoration: const InputDecoration(
                       labelText: 'Role *',
                       prefixIcon: Icon(Icons.admin_panel_settings_outlined),
@@ -376,6 +407,8 @@ class _InviteDialogState extends State<_InviteDialog> {
                     onChanged: (v) => setState(() => selectedRoleId = v),
                   ),
                   const SizedBox(height: 12),
+
+                  // ── Level ────────────────────────────────────
                   TextField(
                     controller: _levelCtrl,
                     decoration: const InputDecoration(
@@ -403,15 +436,16 @@ class _InviteDialogState extends State<_InviteDialog> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Invitation Token Bottom Sheet
-// ═══════════════════════════════════════════════════════════
-class _InvitationTokenSheet extends StatelessWidget {
+// ═══════════════════════════════════════════════════════════════════
+// Invitation Token Sheet — called from OrganizationHubPage listener
+// ═══════════════════════════════════════════════════════════════════
+class InvitationTokenSheet extends StatelessWidget {
   final String email;
   final String token;
   final String orgName;
 
-  const _InvitationTokenSheet({
+  const InvitationTokenSheet({
+    super.key,
     required this.email,
     required this.token,
     required this.orgName,
@@ -431,31 +465,29 @@ class _InvitationTokenSheet extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (_) =>
-          _InvitationTokenSheet(email: email, token: token, orgName: orgName),
+          InvitationTokenSheet(email: email, token: token, orgName: orgName),
     );
   }
 
   String get _whatsAppMessage =>
       'You have been invited to join *$orgName* on Barick Pharma.\n\n'
-      'To accept your invitation:\n'
+      'To accept:\n'
       '1. Open the *Barick Officer* app\n'
-      '2. Register or log in with this email: *$email*\n'
-      '3. On the pending activation screen, tap *Enter Invitation Token*\n'
-      '4. Paste this token:\n\n'
+      '2. Register/login with: *$email*\n'
+      '3. Tap *Enter Invitation Token* and paste:\n\n'
       '$token\n\n'
-      'The invitation expires in 7 days.';
+      'Token expires in 7 days.';
 
-  Future<void> _shareViaWhatsApp(BuildContext context) async {
-    final encoded = Uri.encodeComponent(_whatsAppMessage);
-    final uri = Uri.parse('whatsapp://send?text=$encoded');
+  Future<void> _shareWhatsApp(BuildContext context) async {
+    final uri = Uri.parse(
+      'whatsapp://send?text=${Uri.encodeComponent(_whatsAppMessage)}',
+    );
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
-    } else {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('WhatsApp not found on this device.')),
-        );
-      }
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('WhatsApp not found on this device.')),
+      );
     }
   }
 
@@ -464,14 +496,14 @@ class _InvitationTokenSheet extends StatelessWidget {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Token copied to clipboard.'),
+          content: Text('Token copied.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
     }
   }
 
-  Future<void> _copyFullMessage(BuildContext context) async {
+  Future<void> _copyMessage(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: _whatsAppMessage));
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -486,7 +518,6 @@ class _InvitationTokenSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
       child: Column(
@@ -506,7 +537,7 @@ class _InvitationTokenSheet extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
-          // Title row
+          // Title
           Row(
             children: [
               Container(
@@ -543,11 +574,11 @@ class _InvitationTokenSheet extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-
+          const SizedBox(height: 12),
           Text(
             'An email has been sent. Share the token below via WhatsApp '
-            'so the user can accept immediately.',
+            'so the user can accept immediately.\n'
+            'You can also view this token later in the Invitations tab.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: scheme.onSurfaceVariant,
               height: 1.4,
@@ -576,11 +607,12 @@ class _InvitationTokenSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 SelectableText(
-                  token,
+                  token.isNotEmpty ? token : '(token not returned by server)',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontFamily: 'monospace',
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.3,
+                    color: token.isNotEmpty ? null : scheme.error,
                   ),
                 ),
               ],
@@ -588,9 +620,8 @@ class _InvitationTokenSheet extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // Copy token
           OutlinedButton.icon(
-            onPressed: () => _copyToken(context),
+            onPressed: token.isNotEmpty ? () => _copyToken(context) : null,
             icon: const Icon(Icons.copy, size: 16),
             label: const Text('Copy Token Only'),
             style: OutlinedButton.styleFrom(
@@ -602,9 +633,8 @@ class _InvitationTokenSheet extends StatelessWidget {
           ),
           const SizedBox(height: 8),
 
-          // WhatsApp share
           FilledButton.icon(
-            onPressed: () => _shareViaWhatsApp(context),
+            onPressed: () => _shareWhatsApp(context),
             icon: const Icon(Icons.share, size: 18),
             label: const Text('Share via WhatsApp'),
             style: FilledButton.styleFrom(
@@ -618,9 +648,8 @@ class _InvitationTokenSheet extends StatelessWidget {
           ),
           const SizedBox(height: 8),
 
-          // Copy full message
           TextButton.icon(
-            onPressed: () => _copyFullMessage(context),
+            onPressed: () => _copyMessage(context),
             icon: const Icon(Icons.message_outlined, size: 16),
             label: const Text('Copy Full Message'),
             style: TextButton.styleFrom(
@@ -629,7 +658,6 @@ class _InvitationTokenSheet extends StatelessWidget {
           ),
           const SizedBox(height: 4),
 
-          // Done
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             style: TextButton.styleFrom(
@@ -643,9 +671,9 @@ class _InvitationTokenSheet extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 // Assign Dialog
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 class _AssignDialog extends StatefulWidget {
   final OrganizationBloc bloc;
   final String branchId;
@@ -659,8 +687,8 @@ class _AssignDialogState extends State<_AssignDialog> {
   List<OrgMemberEntity> rootMembers = [];
   List<OrgRoleEntity> roles = [];
   bool loading = true;
-  String? selectedUserId;
-  String? selectedRoleId;
+  String? selectedUserId; // ← controlled with value:
+  String? selectedRoleId; // ← controlled with value:
   String? error;
 
   @override
@@ -718,12 +746,12 @@ class _AssignDialogState extends State<_AssignDialog> {
                     icon: Icons.info_outline,
                     color: Colors.green,
                     text:
-                        'Assign an existing organization member to this '
-                        'branch with a specific role.',
+                        'Assign an existing org member to this branch '
+                        'with a specific role.',
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    initialValue: selectedUserId, // FIX: value→initialValue
+                    value: selectedUserId, // ← FIX
                     decoration: const InputDecoration(
                       labelText: 'Member *',
                       prefixIcon: Icon(Icons.person_outlined),
@@ -747,7 +775,7 @@ class _AssignDialogState extends State<_AssignDialog> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    initialValue: selectedRoleId, // FIX: value→initialValue
+                    value: selectedRoleId, // ← FIX
                     decoration: const InputDecoration(
                       labelText: 'Branch Role *',
                       prefixIcon: Icon(Icons.admin_panel_settings_outlined),
@@ -780,7 +808,11 @@ class _AssignDialogState extends State<_AssignDialog> {
               ? null
               : () {
                   if (selectedUserId == null || selectedRoleId == null) {
-                    _snack(context, 'Select both a member and a role');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Select both a member and a role'),
+                      ),
+                    );
                     return;
                   }
                   Navigator.pop(context);
@@ -801,9 +833,9 @@ class _AssignDialogState extends State<_AssignDialog> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 // Manage Account Sheet
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 class _ManageAccountSheet extends StatefulWidget {
   final OrganizationBloc bloc;
   final OrgMemberEntity member;
@@ -815,7 +847,6 @@ class _ManageAccountSheet extends StatefulWidget {
 
 class _ManageAccountSheetState extends State<_ManageAccountSheet> {
   late final TextEditingController _nameCtrl;
-  late final TextEditingController _emailCtrl;
   bool _saving = false;
   String? _saveError;
 
@@ -823,13 +854,11 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
   void initState() {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.member.name);
-    _emailCtrl = TextEditingController(text: widget.member.email);
   }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _emailCtrl.dispose();
     super.dispose();
   }
 
@@ -938,12 +967,13 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
                         border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    if (_saveError != null)
+                    if (_saveError != null) ...[
+                      const SizedBox(height: 6),
                       Text(
                         _saveError!,
                         style: TextStyle(color: scheme.error, fontSize: 12),
                       ),
+                    ],
                     const SizedBox(height: 8),
                     SizedBox(
                       width: double.infinity,
@@ -972,69 +1002,37 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Text('Update Name'),
+                            : const Text('Save Name'),
                       ),
                     ),
-                  ],
-                ),
-              ),
-              const Divider(height: 28),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                    const SizedBox(height: 24),
+                    const Divider(),
+                    const SizedBox(height: 12),
                     Text(
-                      'Security',
+                      'Account Actions',
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 12),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.lock_reset_outlined),
-                      title: const Text('Reset Password'),
-                      subtitle: Text(
-                        'Send a password reset email to ${member.email}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      trailing: SizedBox(
-                        width: 90,
-                        child: TextButton(
-                          onPressed: () => _confirmPasswordReset(context),
-                          child: const Text(
-                            'Send Email',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      ),
+                    _StatusActionTile(
+                      icon: Icons.lock_reset,
+                      color: Colors.orange,
+                      label: 'Reset Password',
+                      description: 'Send a password reset email',
+                      onTap: () {
+                        Navigator.pop(context);
+                        widget.bloc.add(
+                          UserPasswordResetRequested(member.email),
+                        );
+                      },
                     ),
-                  ],
-                ),
-              ),
-              const Divider(height: 28),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Account Status',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
                     if (member.isActive)
                       _StatusActionTile(
                         icon: Icons.pause_circle_outline,
-                        color: Colors.orange,
+                        color: Colors.red,
                         label: 'Suspend Account',
-                        description: 'User cannot log in while suspended',
+                        description: 'Prevent login temporarily',
                         onTap: () {
                           Navigator.pop(context);
                           widget.bloc.add(
@@ -1047,10 +1045,10 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
                       ),
                     if (member.isSuspended)
                       _StatusActionTile(
-                        icon: Icons.check_circle_outline,
+                        icon: Icons.play_circle_outline,
                         color: Colors.green,
                         label: 'Reactivate Account',
-                        description: 'Allow user to log in again',
+                        description: 'Restore login access',
                         onTap: () {
                           Navigator.pop(context);
                           widget.bloc.add(
@@ -1061,86 +1059,19 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
                           );
                         },
                       ),
+                    const SizedBox(height: 20),
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
             ],
           ),
         ),
       ),
     );
   }
-
-  void _confirmPasswordReset(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Send Password Reset?'),
-        content: Text(
-          'A password reset link will be emailed to ${widget.member.email}.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              widget.bloc.add(UserPasswordResetRequested(widget.member.email));
-            },
-            child: const Text('Send'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Shared helpers
-// ═══════════════════════════════════════════════════════════
-
-class _BranchScopeBar extends StatelessWidget {
-  final VoidCallback? onBack;
-  const _BranchScopeBar({this.onBack});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: scheme.primaryContainer.withValues(alpha: 0.3), // FIX: withValues
-      child: Row(
-        children: [
-          Icon(Icons.store, size: 16, color: scheme.primary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Branch members',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: scheme.primary,
-              ),
-            ),
-          ),
-          TextButton.icon(
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back, size: 14),
-            label: const Text('All Members', style: TextStyle(fontSize: 12)),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: Size.zero,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
+// ── Shared helpers ─────────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {
   final bool isBranch;
   final VoidCallback? onInvite;
@@ -1190,7 +1121,7 @@ class _InfoBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08), // FIX: withValues
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -1203,7 +1134,7 @@ class _InfoBanner extends StatelessWidget {
               text,
               style: TextStyle(
                 fontSize: 12,
-                color: color.withValues(alpha: 0.9), // FIX: withValues
+                color: color.withValues(alpha: 0.9),
               ),
             ),
           ),
@@ -1250,8 +1181,4 @@ class _StatusActionTile extends StatelessWidget {
       ),
     );
   }
-}
-
-void _snack(BuildContext context, String msg) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 }

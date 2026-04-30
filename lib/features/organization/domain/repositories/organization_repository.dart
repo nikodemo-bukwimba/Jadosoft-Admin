@@ -1,6 +1,7 @@
 // organization_repository.dart
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
+import '../entities/org_invitation_entity.dart';
 import '../entities/organization_entity.dart';
 import '../entities/branch_entity.dart';
 import '../entities/org_role_entity.dart';
@@ -53,6 +54,16 @@ abstract class OrganizationRepository {
   Future<Either<Failure, void>> assignMemberToBranch(
     String branchId,
     Map<String, dynamic> data,
+  );
+
+  // ── Invitations ───────────────────────────────────────────
+  Future<Either<Failure, List<OrgInvitationEntity>>> getInvitations(
+    String orgId, {
+    String status = 'pending',
+  });
+  Future<Either<Failure, void>> cancelInvitation(
+    String orgId,
+    String invitationId,
   );
 
   // ── User Account Management ───────────────────────────────
