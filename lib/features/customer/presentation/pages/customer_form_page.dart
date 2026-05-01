@@ -1,22 +1,26 @@
 // customer_form_page.dart
-// ─────────────────────────────────────────────────────────────
-// Fixes applied:
-//   1. GPS: switched from `location` package (throws MissingPluginException
-//      on channel Iyokone/Location) to `geolocator` which is already used
-//      by the officer app and works on all platforms.
-//   2. Password section: enabled for edit mode too — allows setting/changing
-//      the customer's platform login password after initial creation.
-//   3. Officer loading: uses the pharma officers endpoint
-//      (GET /pharma/orgs/{orgId}/officers) via OfficerRemoteDataSource
-//      which returns PmOfficer records. Previously used org members endpoint
-//      which caused parse failures and "No implementation found" exceptions.
-// ─────────────────────────────────────────────────────────────
+// Changes in this version:
+//   1. Location section: hierarchical Tanzania dropdowns
+//      Country (fixed: Tanzania) → Region → District → Ward → Street
+//      Each level resets the ones below it on change.
+//      Levels with no static data (district/ward/street when unknown)
+//      show a free-text fallback field instead.
+//   2. Officer dropdown: uses `initialValue` guard + dedup.
+//      The underlying dedup is in OfficerRemoteDataSourceImpl.getAll().
+//      The form additionally guards against stale _selectedOfficerId
+//      not matching any loaded officer (sets to null in that case).
+//   3. Refresh button added to AppBar.
+//   4. Both city and county controllers removed — replaced by
+//      dropdown-selected values (_region, _district, _ward, _street).
+//      The city field sent to the API is now the district value
+//      and county is the region value for backwards compatibility.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../config/di/injection_container.dart';
+import '../../../../core/data/tanzania_locations.dart';
 import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
 import '../bloc/customer_state.dart';
@@ -45,8 +49,9 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
   final _emailCtl = TextEditingController();
   final _whatsappCtl = TextEditingController();
   final _addressCtl = TextEditingController();
-  final _cityCtl = TextEditingController();
-  final _countyCtl = TextEditingController();
+  // Free-text fallbacks when static data doesn't cover the selected level
+  final _wardFreeCtl = TextEditingController();
+  final _streetFreeCtl = TextEditingController();
   final _gpsLatCtl = TextEditingController();
   final _gpsLngCtl = TextEditingController();
   final _notesCtl = TextEditingController();
@@ -55,7 +60,6 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
   final _passwordCtl = TextEditingController();
   final _confirmPassCtl = TextEditingController();
 
-  // App login toggle — enabled for both create AND edit
   bool _enableAppLogin = false;
 
   String _customerType = 'b2b';
@@ -63,6 +67,13 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
   String? _tier;
   String? _contactRole;
   String? _selectedOfficerId;
+
+  // Location state
+  // Country is always Tanzania.
+  String? _region;
+  String? _district;
+  String? _ward;
+  String? _street;
 
   bool _isSubmitting = false;
   bool _fieldsPopulated = false;
@@ -72,7 +83,6 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
       double.tryParse(_gpsLatCtl.text.trim()) != null &&
       double.tryParse(_gpsLngCtl.text.trim()) != null;
 
-  // Officer loading state
   List<OfficerEntity> _officers = [];
   bool _officersLoading = true;
 
@@ -103,9 +113,8 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
     });
   }
 
-  /// Load officers via the pharma officers endpoint.
-  /// Falls back silently if the endpoint is unavailable.
   Future<void> _loadOfficers() async {
+    if (mounted) setState(() => _officersLoading = true);
     try {
       final ds = sl<OfficerRemoteDataSource>();
       final result = await ds.getAll();
@@ -113,6 +122,11 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
         setState(() {
           _officers = result.items;
           _officersLoading = false;
+          // Guard: if the pre-selected officer is no longer in the list, clear.
+          if (_selectedOfficerId != null &&
+              !_officers.any((o) => o.actorId == _selectedOfficerId)) {
+            _selectedOfficerId = null;
+          }
         });
       }
     } catch (_) {
@@ -123,20 +137,9 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
   @override
   void dispose() {
     for (final c in [
-      _nameCtl,
-      _phoneCtl,
-      _emailCtl,
-      _whatsappCtl,
-      _addressCtl,
-      _cityCtl,
-      _countyCtl,
-      _gpsLatCtl,
-      _gpsLngCtl,
-      _notesCtl,
-      _contactNameCtl,
-      _contactPhoneCtl,
-      _passwordCtl,
-      _confirmPassCtl,
+      _nameCtl, _phoneCtl, _emailCtl, _whatsappCtl, _addressCtl,
+      _wardFreeCtl, _streetFreeCtl, _gpsLatCtl, _gpsLngCtl, _notesCtl,
+      _contactNameCtl, _contactPhoneCtl, _passwordCtl, _confirmPassCtl,
     ]) {
       c.dispose();
     }
@@ -151,8 +154,6 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
       _emailCtl.text = item.email ?? '';
       _whatsappCtl.text = item.whatsappNumber ?? '';
       _addressCtl.text = item.address ?? '';
-      _cityCtl.text = item.city ?? '';
-      _countyCtl.text = item.county ?? '';
       _gpsLatCtl.text = item.latitude?.toString() ?? '';
       _gpsLngCtl.text = item.longitude?.toString() ?? '';
       _notesCtl.text = item.notes ?? '';
@@ -160,6 +161,26 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
       _category = _categories.contains(item.category) ? item.category : null;
       _tier = _tiers.contains(item.tier) ? item.tier : null;
       _selectedOfficerId = item.assignedOfficerId;
+
+      // Populate location from stored county (region) and city (district)
+      final storedRegion = item.county; // county stored as region
+      final storedDistrict = item.city; // city stored as district
+
+      if (storedRegion != null &&
+          TanzaniaLocations.regions.contains(storedRegion)) {
+        _region = storedRegion;
+        final districts = TanzaniaLocations.getDistricts(storedRegion);
+        if (storedDistrict != null && districts.contains(storedDistrict)) {
+          _district = storedDistrict;
+        } else if (storedDistrict != null && storedDistrict.isNotEmpty) {
+          // District not in static list — show in free-text ward fallback
+          _district = null;
+          _wardFreeCtl.text = storedDistrict;
+        }
+      } else if (storedRegion != null && storedRegion.isNotEmpty) {
+        _wardFreeCtl.text = storedRegion;
+      }
+
       final pc = item.primaryContact;
       if (pc != null) {
         _contactNameCtl.text = pc.name;
@@ -167,12 +188,17 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
         _contactRole = pc.role;
       }
       _fieldsPopulated = true;
+
+      // After populating, guard officer selection
+      if (_selectedOfficerId != null &&
+          _officers.isNotEmpty &&
+          !_officers.any((o) => o.actorId == _selectedOfficerId)) {
+        _selectedOfficerId = null;
+      }
     }
   }
 
-  // ── GPS capture using geolocator (replaces location package) ──
-  // geolocator is already in pubspec (used by officer app) and does not
-  // throw MissingPluginException on the Iyokone/Location channel.
+  // ── GPS capture ───────────────────────────────────────────
 
   Future<void> _captureGps() async {
     if (!mounted) return;
@@ -188,7 +214,6 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
         }
         return;
       }
-
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -211,7 +236,6 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
         if (mounted) setState(() => _gpsLoading = false);
         return;
       }
-
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
@@ -244,19 +268,52 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
     }
   }
 
+  // ── Location helpers ──────────────────────────────────────
+
+  /// The effective "city" value sent to the API — district if selected,
+  /// otherwise the free-text ward field.
+  String get _effectiveCity =>
+      _district ?? _wardFreeCtl.text.trim();
+
+  /// The effective "county" value sent to the API — region if selected,
+  /// otherwise the free-text ward field.
+  String get _effectiveCounty => _region ?? '';
+
+  // ── Build ─────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final isWide = MediaQuery.of(context).size.width >= 600;
+    final scheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      appBar: AppBar(title: Text(_isEdit ? 'Edit Customer' : 'New Customer')),
+      appBar: AppBar(
+        title: Text(_isEdit ? 'Edit Customer' : 'New Customer'),
+        actions: [
+          if (_isEdit)
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Reload',
+              onPressed: () {
+                if (widget.id != null) {
+                  setState(() => _fieldsPopulated = false);
+                  context
+                      .read<CustomerBloc>()
+                      .add(CustomerLoadOneRequested(widget.id!));
+                }
+                _loadOfficers();
+              },
+            ),
+        ],
+      ),
       body: BlocConsumer<CustomerBloc, CustomerState>(
         listener: (context, state) {
-          if (state is CustomerDetailLoaded) {
-            setState(() => _populateFields(state));
-          }
+          _populateFields(state);
           if (state is CustomerOperationSuccess) {
             setState(() => _isSubmitting = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(state.message)),
+            );
             Navigator.of(context).pop(true);
           }
           if (state is CustomerFailure) {
@@ -457,44 +514,122 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                     ),
                     const SizedBox(height: 24),
 
-                    // ── Location ──
+                    // ── Location ──────────────────────────────────────────
                     _sectionLabel(context, 'Location'),
                     const SizedBox(height: 8),
+
+                    // Country (fixed)
+                    _staticField(
+                      'Country',
+                      TanzaniaLocations.country,
+                      Icons.public,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Region
+                    _dropdown(
+                      'Region',
+                      TanzaniaLocations.regions,
+                      _region,
+                      (v) => setState(() {
+                        _region = v;
+                        // Reset children
+                        _district = null;
+                        _ward = null;
+                        _street = null;
+                        _wardFreeCtl.clear();
+                        _streetFreeCtl.clear();
+                      }),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // District — shown only when region is selected
+                    if (_region != null) ...[
+                      () {
+                        final dList =
+                            TanzaniaLocations.getDistricts(_region!);
+                        if (dList.isEmpty) {
+                          // No static districts — free-text
+                          return _field(
+                            _wardFreeCtl,
+                            'District / City',
+                            Icons.location_city,
+                          );
+                        }
+                        return _dropdown(
+                          'District / City',
+                          dList,
+                          _district,
+                          (v) => setState(() {
+                            _district = v;
+                            _ward = null;
+                            _street = null;
+                            _wardFreeCtl.clear();
+                            _streetFreeCtl.clear();
+                          }),
+                        );
+                      }(),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Ward — shown only when district is selected
+                    if (_district != null) ...[
+                      () {
+                        final wList =
+                            TanzaniaLocations.getWards(_district!);
+                        if (wList.isEmpty) {
+                          return _field(
+                            _wardFreeCtl,
+                            'Ward',
+                            Icons.map_outlined,
+                          );
+                        }
+                        return _dropdown(
+                          'Ward',
+                          wList,
+                          _ward,
+                          (v) => setState(() {
+                            _ward = v;
+                            _street = null;
+                            _streetFreeCtl.clear();
+                          }),
+                        );
+                      }(),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Street — shown only when ward is selected
+                    if (_ward != null) ...[
+                      () {
+                        final sList =
+                            TanzaniaLocations.getStreets(_ward!);
+                        if (sList.isEmpty) {
+                          return _field(
+                            _streetFreeCtl,
+                            'Street',
+                            Icons.signpost_outlined,
+                          );
+                        }
+                        return _dropdown(
+                          'Street',
+                          sList,
+                          _street,
+                          (v) => setState(() => _street = v),
+                        );
+                      }(),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Full address (optional free-text)
                     _field(
                       _addressCtl,
-                      'Address',
+                      'Full Address (optional)',
                       Icons.location_on_outlined,
                       maxLines: 2,
                     ),
                     const SizedBox(height: 16),
-                    if (isWide)
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: _field(
-                              _cityCtl,
-                              'City',
-                              Icons.location_city,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _field(
-                              _countyCtl,
-                              'County / Region',
-                              Icons.map_outlined,
-                            ),
-                          ),
-                        ],
-                      )
-                    else ...[
-                      _field(_cityCtl, 'City', Icons.location_city),
-                      const SizedBox(height: 16),
-                      _field(_countyCtl, 'County / Region', Icons.map_outlined),
-                    ],
-                    const SizedBox(height: 16),
-                    // GPS header row
+
+                    // GPS
                     Row(
                       children: [
                         Text(
@@ -602,48 +737,7 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                     // ── Officer Assignment ──
                     _sectionLabel(context, 'Officer Assignment'),
                     const SizedBox(height: 8),
-                    _officersLoading
-                        ? const LinearProgressIndicator()
-                        : DropdownButtonFormField<String>(
-                            initialValue:
-                                _officers.any(
-                                  (o) => o.actorId == _selectedOfficerId,
-                                )
-                                ? _selectedOfficerId
-                                : null,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Assigned Officer',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.badge_outlined),
-                            ),
-                            items: _officers
-                                .where(
-                                  (o) =>
-                                      o.effectiveStatus == 'active' ||
-                                      o.actorId == _selectedOfficerId,
-                                )
-                                .map(
-                                  (o) => DropdownMenuItem(
-                                    value: o.actorId,
-                                    child: Text(
-                                      '${o.displayName} (${o.orgRoleName ?? ""})'
-                                      '${o.effectiveStatus != "active" ? " (inactive)" : ""}',
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) =>
-                                setState(() => _selectedOfficerId = v),
-                            validator: (v) {
-                              // Officer required on create; optional on edit
-                              if (!_isEdit && (v == null || v.isEmpty)) {
-                                return 'Assigned officer is required';
-                              }
-                              return null;
-                            },
-                          ),
+                    _buildOfficerDropdown(),
                     const SizedBox(height: 24),
 
                     // ── Notes ──
@@ -657,10 +751,7 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                     ),
                     const SizedBox(height: 32),
 
-                    // ── App Login Credentials ─────────────────────────────
-                    // Available on BOTH create and edit modes.
-                    // On edit: only sets the password — does not create a new
-                    // platform user if one already exists.
+                    // ── App Login Credentials ──
                     _sectionLabel(context, 'Customer App Login'),
                     const SizedBox(height: 8),
                     SwitchListTile(
@@ -721,7 +812,9 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                             ? 'Password will be updated for the existing account.'
                             : 'Email above will be used as the login credential.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -749,12 +842,85 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
     );
   }
 
+  // ── Officer dropdown ──────────────────────────────────────
+  // Guards against duplicate actorId values from the API by
+  // using the deduped list from OfficerRemoteDataSourceImpl.
+  // Additionally clears the selected value if not found in list.
+
+  Widget _buildOfficerDropdown() {
+    if (_officersLoading) return const LinearProgressIndicator();
+
+    // Build the eligible list: active officers + the currently assigned one
+    final eligible = _officers
+        .where(
+          (o) =>
+              o.effectiveStatus == 'active' ||
+              o.actorId == _selectedOfficerId,
+        )
+        .toList();
+
+    // Ensure the selected value exists exactly once in the items
+    final validSelection =
+        eligible.where((o) => o.actorId == _selectedOfficerId).length == 1
+            ? _selectedOfficerId
+            : null;
+
+    // Sync state if the guard cleared the value
+    if (validSelection != _selectedOfficerId) {
+      // Schedule post-frame to avoid calling setState during build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _selectedOfficerId = validSelection);
+      });
+    }
+
+    return DropdownButtonFormField<String>(
+      value: validSelection,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        labelText: 'Assigned Officer',
+        border: OutlineInputBorder(),
+        prefixIcon: Icon(Icons.badge_outlined),
+      ),
+      items: eligible
+          .map(
+            (o) => DropdownMenuItem(
+              value: o.actorId,
+              child: Text(
+                '${o.displayName} (${o.orgRoleName ?? ""})'
+                '${o.effectiveStatus != "active" ? " (inactive)" : ""}',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          )
+          .toList(),
+      onChanged: (v) => setState(() => _selectedOfficerId = v),
+      validator: (v) {
+        if (!_isEdit && (v == null || v.isEmpty)) {
+          return 'Assigned officer is required';
+        }
+        return null;
+      },
+    );
+  }
+
+  // ── Helpers ───────────────────────────────────────────────
+
   Widget _sectionLabel(BuildContext context, String text) => Text(
     text,
     style: Theme.of(context).textTheme.titleSmall?.copyWith(
       color: Theme.of(context).colorScheme.primary,
       fontWeight: FontWeight.w700,
     ),
+  );
+
+  /// A read-only display field (not a real form field)
+  Widget _staticField(String label, String value, IconData icon) => InputDecorator(
+    decoration: InputDecoration(
+      labelText: label,
+      border: const OutlineInputBorder(),
+      prefixIcon: Icon(icon),
+    ),
+    child: Text(value),
   );
 
   Widget _field(
@@ -790,7 +956,7 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
     String? value,
     ValueChanged<String?> onChanged,
   ) => DropdownButtonFormField<String>(
-    value: value,
+    value: items.contains(value) ? value : null,
     isExpanded: true,
     decoration: InputDecoration(
       labelText: label,
@@ -801,7 +967,10 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
         .map(
           (e) => DropdownMenuItem(
             value: e,
-            child: Text(e[0].toUpperCase() + e.substring(1)),
+            child: Text(
+              e[0].toUpperCase() + e.substring(1),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         )
         .toList(),
@@ -813,6 +982,21 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
     setState(() => _isSubmitting = true);
     final lat = double.tryParse(_gpsLatCtl.text.trim());
     final lng = double.tryParse(_gpsLngCtl.text.trim());
+
+    // Build structured location string from hierarchy
+    final locationParts = <String>[
+      if (_street != null && _street!.isNotEmpty) _street!,
+      if (_streetFreeCtl.text.trim().isNotEmpty) _streetFreeCtl.text.trim(),
+      if (_ward != null && _ward!.isNotEmpty) _ward!,
+      if (_wardFreeCtl.text.trim().isNotEmpty) _wardFreeCtl.text.trim(),
+    ];
+    final structuredAddress = locationParts.isNotEmpty
+        ? locationParts.join(', ')
+        : _addressCtl.text.trim();
+    final finalAddress = _addressCtl.text.trim().isNotEmpty
+        ? _addressCtl.text.trim()
+        : structuredAddress;
+
     if (_isEdit) {
       final s = context.read<CustomerBloc>().state;
       if (s is CustomerDetailLoaded) {
@@ -823,9 +1007,10 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
               phone: _phoneCtl.text.trim(),
               email: _emailCtl.text.trim(),
               whatsappNumber: _whatsappCtl.text.trim(),
-              address: _addressCtl.text.trim(),
-              city: _cityCtl.text.trim(),
-              county: _countyCtl.text.trim(),
+              address: finalAddress,
+              city: _effectiveCity,    // district
+              county: _effectiveCounty, // region
+              country: TanzaniaLocations.country,
               latitude: lat,
               longitude: lng,
               notes: _notesCtl.text.trim(),
@@ -833,7 +1018,6 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
               tier: _tier,
               assignedOfficerId: _selectedOfficerId,
             ),
-            // Pass password if the toggle is on
             appPassword: _enableAppLogin ? _passwordCtl.text : null,
             appPasswordConfirmation: _enableAppLogin
                 ? _confirmPassCtl.text
@@ -852,9 +1036,9 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
             phone: _phoneCtl.text.trim(),
             email: _emailCtl.text.trim(),
             whatsappNumber: _whatsappCtl.text.trim(),
-            address: _addressCtl.text.trim(),
-            city: _cityCtl.text.trim(),
-            county: _countyCtl.text.trim(),
+            address: finalAddress,
+            city: _effectiveCity,
+            county: _effectiveCounty,
             latitude: lat,
             longitude: lng,
             notes: _notesCtl.text.trim(),
