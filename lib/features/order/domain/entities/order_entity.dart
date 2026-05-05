@@ -1,5 +1,8 @@
+// order_entity.dart — Admin App
+// Adds createdByName / createdById to track who placed the order
+// (officer or admin acting on behalf of a customer).
+
 import 'package:equatable/equatable.dart';
-import '../value_objects/order_status.dart';
 
 class OrderEntity extends Equatable {
   final String id;
@@ -9,10 +12,20 @@ class OrderEntity extends Equatable {
   final String? paymentRef;
   final String status;
   final DateTime createdAt;
+
   // ── Payment audit fields ──────────────────────────────────
-  final String paymentStatus;      // unpaid | paid | partial | refunded
+  final String paymentStatus; // unpaid | paid | partial | refunded
   final String? paymentVerifiedBy; // actor ID who toggled, or 'system'
   final DateTime? paymentVerifiedAt;
+
+  // ── Order source fields ───────────────────────────────────
+  /// Display name of the officer / admin who placed this order.
+  /// Populated from metadata.created_by_name returned by the API.
+  final String? createdByName;
+
+  /// Actor ID of the officer / admin who placed this order.
+  /// Populated from metadata.created_by_id returned by the API.
+  final String? createdById;
 
   const OrderEntity({
     required this.id,
@@ -25,6 +38,8 @@ class OrderEntity extends Equatable {
     this.paymentStatus = 'unpaid',
     this.paymentVerifiedBy,
     this.paymentVerifiedAt,
+    this.createdByName,
+    this.createdById,
   });
 
   OrderEntity copyWith({
@@ -38,6 +53,8 @@ class OrderEntity extends Equatable {
     String? paymentStatus,
     String? paymentVerifiedBy,
     DateTime? paymentVerifiedAt,
+    String? createdByName,
+    String? createdById,
   }) {
     return OrderEntity(
       id: id ?? this.id,
@@ -50,12 +67,24 @@ class OrderEntity extends Equatable {
       paymentStatus: paymentStatus ?? this.paymentStatus,
       paymentVerifiedBy: paymentVerifiedBy ?? this.paymentVerifiedBy,
       paymentVerifiedAt: paymentVerifiedAt ?? this.paymentVerifiedAt,
+      createdByName: createdByName ?? this.createdByName,
+      createdById: createdById ?? this.createdById,
     );
   }
 
   @override
   List<Object?> get props => [
-    id, customerId, items, total, paymentRef, status, createdAt,
-    paymentStatus, paymentVerifiedBy, paymentVerifiedAt,
+    id,
+    customerId,
+    items,
+    total,
+    paymentRef,
+    status,
+    createdAt,
+    paymentStatus,
+    paymentVerifiedBy,
+    paymentVerifiedAt,
+    createdByName,
+    createdById,
   ];
 }

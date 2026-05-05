@@ -1,10 +1,14 @@
-﻿import 'package:dio/dio.dart';
+﻿// order_remote_datasource.dart — Admin App
+// Sends created_by_name / created_by_id in metadata on order creation.
+// Supports ?created_by_id= query filter on seller list.
+
+import 'package:dio/dio.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/context/org_context.dart';
 import '../models/order_model.dart';
 
 abstract class OrderRemoteDataSource {
-  Future<List<OrderModel>> getAll();
+  Future<List<OrderModel>> getAll({String? createdById});
   Future<OrderModel> getById(String id);
   Future<OrderModel> create(Map<String, dynamic> data);
   Future<OrderModel> update(String id, Map<String, dynamic> data);
@@ -28,12 +32,18 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
   String get _sellerBase =>
       '/commerce/orgs/${_orgContext.effectiveOrgId}/orders';
 
+  // ── List ─────────────────────────────────────────────────
+
   @override
-  Future<List<OrderModel>> getAll() async {
+  Future<List<OrderModel>> getAll({String? createdById}) async {
     try {
       final response = await _dio.get(
         _sellerBase,
-        queryParameters: {'per_page': 100},
+        queryParameters: {
+          'per_page': 100,
+          if (createdById != null && createdById.isNotEmpty)
+            'created_by_id': createdById,
+        },
       );
       final data = (response.data['data'] ?? response.data) as List;
       return data
@@ -44,10 +54,11 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
     }
   }
 
+  // ── Single ───────────────────────────────────────────────
+
   @override
   Future<OrderModel> getById(String id) async {
     try {
-      // ✅ Correct: no org scope on single order fetch
       final response = await _dio.get('/commerce/orders/$id');
       final data =
           response.data['data'] ?? response.data['order'] ?? response.data;
@@ -57,12 +68,13 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
     }
   }
 
+  // ── Create ───────────────────────────────────────────────
+
   @override
   Future<OrderModel> create(Map<String, dynamic> data) async {
     try {
       final orgId = _orgContext.effectiveOrgId;
 
-      // Build items for admin endpoint
       final items = (data['items'] as List<dynamic>)
           .map(
             (item) => {
@@ -79,6 +91,11 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
           'items': items,
           if (data['payment_ref'] != null) 'payment_ref': data['payment_ref'],
           'currency': 'TZS',
+          // Officer / admin identity — stored in order metadata by the API
+          'metadata': {
+            'created_by_name': data['created_by_name'],
+            'created_by_id': data['created_by_id'],
+          },
         },
       );
       final body = response.data['order'] ?? response.data;
@@ -88,21 +105,22 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
     }
   }
 
+  // ── Update (no-op — transitions via confirm/ship/deliver/cancel) ─────
+
   @override
   Future<OrderModel> update(String id, Map<String, dynamic> data) async {
     try {
-      // Orders in Nexora are updated via status transitions, not PATCH
-      // This is a no-op for now — status changes go through confirm/ship/deliver/cancel
       return await getById(id);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
   }
 
+  // ── Delete ───────────────────────────────────────────────
+
   @override
   Future<void> delete(String id) async {
     try {
-      // Nexora has no hard delete — cancel instead
       await _dio.post('/commerce/orders/$id/cancel');
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) return;
@@ -110,11 +128,14 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
     }
   }
 
+  // ── Status transitions ───────────────────────────────────
+
   @override
   Future<OrderModel> confirm(String id) async {
     try {
       final response = await _dio.post('/commerce/orders/$id/confirm');
-      final data = response.data['order'] ?? response.data;
+      final data =
+          response.data['order'] ?? response.data['data'] ?? response.data;
       return OrderModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -125,7 +146,8 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
   Future<OrderModel> ship(String id) async {
     try {
       final response = await _dio.post('/commerce/orders/$id/ship');
-      final data = response.data['order'] ?? response.data;
+      final data =
+          response.data['order'] ?? response.data['data'] ?? response.data;
       return OrderModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -136,7 +158,8 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
   Future<OrderModel> deliver(String id) async {
     try {
       final response = await _dio.post('/commerce/orders/$id/deliver');
-      final data = response.data['order'] ?? response.data;
+      final data =
+          response.data['order'] ?? response.data['data'] ?? response.data;
       return OrderModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -147,19 +170,12 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
   Future<OrderModel> cancel(String id) async {
     try {
       final response = await _dio.post('/commerce/orders/$id/cancel');
-      final data = response.data['order'] ?? response.data;
+      final data =
+          response.data['order'] ?? response.data['data'] ?? response.data;
       return OrderModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
-  }
-
-  String _msg(DioException e) {
-    final data = e.response?.data;
-    if (data is Map<String, dynamic> && data['message'] is String) {
-      return data['message'] as String;
-    }
-    return 'An error occurred. Please try again.';
   }
 
   @override
@@ -169,19 +185,31 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
     String? paymentRef,
   ) async {
     try {
-      final response = await _dio.patch(
-        '/commerce/orders/$id',
+      final response = await _dio.post(
+        '/commerce/orders/$id/mark-paid',
         data: {
-          'payment_status': 'paid',
-          'payment_verified_by': actorId,
-          'payment_verified_at': DateTime.now().toIso8601String(),
+          'actor_id': actorId,
           if (paymentRef != null) 'payment_ref': paymentRef,
         },
       );
-      final data = response.data['order'] ?? response.data;
+      final data =
+          response.data['order'] ?? response.data['data'] ?? response.data;
       return OrderModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
+  }
+
+  String _msg(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic>) {
+      if (data['message'] is String) return data['message'] as String;
+      if (data['errors'] is Map) {
+        final errors = data['errors'] as Map<String, dynamic>;
+        final first = errors.values.first;
+        if (first is List && first.isNotEmpty) return first.first.toString();
+      }
+    }
+    return 'An error occurred. Please try again.';
   }
 }

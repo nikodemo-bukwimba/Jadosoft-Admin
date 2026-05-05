@@ -1,13 +1,12 @@
-﻿import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../../core/usecase/usecase.dart';
-import '../../domain/services/order_domain_service.dart';
+﻿// order_bloc.dart — Admin App
+import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../domain/usecases/create_order_usecase.dart';
 import '../../domain/usecases/delete_order_usecase.dart';
 import '../../domain/usecases/get_order_usecase.dart';
-import '../../domain/usecases/get_all_order_usecase.dart';
-import '../../domain/usecases/update_order_usecase.dart';
-import '../../domain/value_objects/order_status.dart';
 import '../../domain/usecases/mark_order_paid_usecase.dart';
+import '../../domain/usecases/update_order_usecase.dart';
+import '../../domain/services/order_domain_service.dart';
+import '../../domain/usecases/get_all_order_usecase.dart';
 import 'order_event.dart';
 import 'order_state.dart';
 
@@ -47,7 +46,9 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     Emitter<OrderState> emit,
   ) async {
     emit(OrderLoading());
-    final result = await getAllUseCase(NoParams());
+    final result = await getAllUseCase(
+      GetAllOrderParams(createdById: event.createdById),
+    );
     result.fold(
       (f) => emit(OrderFailure(f.message)),
       (items) =>
@@ -99,7 +100,7 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     final result = await deleteUseCase(DeleteOrderParams(id: event.id));
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (_) => emit(OrderOperationSuccess('Order deleted successfully')),
+      (_) => emit(OrderOperationSuccess('Order deleted')),
     );
   }
 
@@ -108,15 +109,11 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     Emitter<OrderState> emit,
   ) async {
     emit(OrderLoading());
-    final result = await domainService.transition(
-      id: event.id,
-      targetStatus: OrderStatus.confirmed,
-    );
+    final result = await domainService.confirmOrder(event.id);
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (entity) => emit(
-        OrderOperationSuccess('Confirm Order successful', updatedItem: entity),
-      ),
+      (order) =>
+          emit(OrderOperationSuccess('Order confirmed', updatedItem: order)),
     );
   }
 
@@ -125,15 +122,11 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     Emitter<OrderState> emit,
   ) async {
     emit(OrderLoading());
-    final result = await domainService.transition(
-      id: event.id,
-      targetStatus: OrderStatus.shipped,
-    );
+    final result = await domainService.shipOrder(event.id);
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (entity) => emit(
-        OrderOperationSuccess('Ship Order successful', updatedItem: entity),
-      ),
+      (order) =>
+          emit(OrderOperationSuccess('Order shipped', updatedItem: order)),
     );
   }
 
@@ -142,15 +135,11 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     Emitter<OrderState> emit,
   ) async {
     emit(OrderLoading());
-    final result = await domainService.transition(
-      id: event.id,
-      targetStatus: OrderStatus.delivered,
-    );
+    final result = await domainService.deliverOrder(event.id);
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (entity) => emit(
-        OrderOperationSuccess('Mark Delivered successful', updatedItem: entity),
-      ),
+      (order) =>
+          emit(OrderOperationSuccess('Order delivered', updatedItem: order)),
     );
   }
 
@@ -159,15 +148,11 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     Emitter<OrderState> emit,
   ) async {
     emit(OrderLoading());
-    final result = await domainService.transition(
-      id: event.id,
-      targetStatus: OrderStatus.cancelled,
-    );
+    final result = await domainService.cancelOrder(event.id);
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (entity) => emit(
-        OrderOperationSuccess('Cancel Order successful', updatedItem: entity),
-      ),
+      (order) =>
+          emit(OrderOperationSuccess('Order cancelled', updatedItem: order)),
     );
   }
 
@@ -179,7 +164,8 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     final result = await markPaidUseCase(event.params);
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (order) => emit(OrderDetailLoaded(order)),
+      (order) =>
+          emit(OrderOperationSuccess('Payment recorded', updatedItem: order)),
     );
   }
 }

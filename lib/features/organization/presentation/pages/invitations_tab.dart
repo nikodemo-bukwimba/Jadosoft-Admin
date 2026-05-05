@@ -1,4 +1,3 @@
-// lib/features/organization/presentation/pages/invitations_tab.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -8,23 +7,8 @@ import '../bloc/organization_bloc.dart';
 import '../bloc/organization_event.dart';
 import '../bloc/organization_state.dart';
 
-class InvitationsTab extends StatefulWidget {
+class InvitationsTab extends StatelessWidget {
   const InvitationsTab({super.key});
-
-  @override
-  State<InvitationsTab> createState() => _InvitationsTabState();
-}
-
-class _InvitationsTabState extends State<InvitationsTab> {
-  String _statusFilter = 'pending';
-
-  static const _statusOptions = [
-    ('pending',   'Pending'),
-    ('accepted',  'Accepted'),
-    ('expired',   'Expired'),
-    ('cancelled', 'Cancelled'),
-    ('all',       'All'),
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -48,65 +32,148 @@ class _InvitationsTabState extends State<InvitationsTab> {
           );
         }
       },
-      child: Column(
-        children: [
-          // ── Status filter bar ────────────────────────────────
-          _StatusFilterBar(
-            selected: _statusFilter,
-            options: _statusOptions,
-            onChanged: (v) {
-              setState(() => _statusFilter = v);
-              context.read<OrganizationBloc>().add(
-                InvitationsLoadRequested(status: v),
+      child: const _InvitationsBody(),
+    );
+  }
+}
+
+// ── Body is its own StatefulWidget — isolated from BlocListener ────
+class _InvitationsBody extends StatefulWidget {
+  const _InvitationsBody();
+
+  @override
+  State<_InvitationsBody> createState() => _InvitationsBodyState();
+}
+
+class _InvitationsBodyState extends State<_InvitationsBody>
+    with AutomaticKeepAliveClientMixin {
+  String _statusFilter = 'pending';
+
+  @override
+  bool get wantKeepAlive => true;
+
+  static const _statusOptions = [
+    ('pending', 'Pending'),
+    ('accepted', 'Accepted'),
+    ('expired', 'Expired'),
+    ('cancelled', 'Cancelled'),
+    ('all', 'All'),
+  ];
+
+  void _selectFilter(String value) {
+    debugPrint('>>> TAPPED: $value  current: $_statusFilter');
+    setState(() => _statusFilter = value);
+    debugPrint('>>> AFTER setState: $_statusFilter');
+    context.read<OrganizationBloc>().add(
+      InvitationsLoadRequested(status: value),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return Column(
+      children: [
+        // ── Filter bar ───────────────────────────────────────
+        SizedBox(
+          height: 48,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemCount: _statusOptions.length,
+            itemBuilder: (_, i) {
+              final (value, label) = _statusOptions[i];
+              final isSelected = value == _statusFilter;
+              return GestureDetector(
+                onTap: () => _selectFilter(value),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Theme.of(context).colorScheme.primaryContainer
+                        : Theme.of(context).colorScheme.surfaceVariant,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.transparent,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isSelected) ...[
+                        Icon(
+                          Icons.check,
+                          size: 14,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               );
             },
           ),
+        ),
 
-          // ── List ─────────────────────────────────────────────
-          Expanded(
-            child: BlocBuilder<OrganizationBloc, OrganizationState>(
-              buildWhen: (_, s) =>
-                  s is InvitationsLoaded || s is OrganizationLoading,
-              builder: (context, state) {
-                if (state is OrganizationLoading) {
-                  return const Center(child: CircularProgressIndicator());
+        // ── List ─────────────────────────────────────────────
+        Expanded(
+          child: BlocBuilder<OrganizationBloc, OrganizationState>(
+            builder: (context, state) {
+              if (state is OrganizationLoading) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (state is InvitationsLoaded) {
+                if (state.invitations.isEmpty) {
+                  return _EmptyState(status: _statusFilter);
                 }
-                if (state is InvitationsLoaded) {
-                  if (state.invitations.isEmpty) {
-                    return _EmptyState(status: _statusFilter);
-                  }
-                  return RefreshIndicator(
-                    onRefresh: () async =>
-                        context.read<OrganizationBloc>().add(
-                          InvitationsLoadRequested(status: _statusFilter),
-                        ),
-                    child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                      itemCount: state.invitations.length,
-                      itemBuilder: (_, i) => _InvitationCard(
-                        invitation: state.invitations[i],
-                        onCancel: state.invitations[i].isPending
-                            ? () => _confirmCancel(context, state.invitations[i])
-                            : null,
-                      ),
+                return RefreshIndicator(
+                  onRefresh: () async => context.read<OrganizationBloc>().add(
+                    InvitationsLoadRequested(status: _statusFilter),
+                  ),
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    itemCount: state.invitations.length,
+                    itemBuilder: (_, i) => _InvitationCard(
+                      invitation: state.invitations[i],
+                      onCancel: state.invitations[i].isPending
+                          ? () => _confirmCancel(context, state.invitations[i])
+                          : null,
                     ),
-                  );
-                }
-                // Initial state — trigger load
-                return Center(
-                  child: FilledButton.icon(
-                    onPressed: () => context.read<OrganizationBloc>().add(
-                      InvitationsLoadRequested(status: _statusFilter),
-                    ),
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Load Invitations'),
                   ),
                 );
-              },
-            ),
+              }
+              return Center(
+                child: FilledButton.icon(
+                  onPressed: () => context.read<OrganizationBloc>().add(
+                    InvitationsLoadRequested(status: _statusFilter),
+                  ),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Load Invitations'),
+                ),
+              );
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -138,51 +205,6 @@ class _InvitationsTabState extends State<InvitationsTab> {
   }
 }
 
-// ── Status filter chip bar ─────────────────────────────────────────
-class _StatusFilterBar extends StatelessWidget {
-  final String selected;
-  final List<(String, String)> options;
-  final ValueChanged<String> onChanged;
-
-  const _StatusFilterBar({
-    required this.selected,
-    required this.options,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      height: 48,
-      color: scheme.surface,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemCount: options.length,
-        itemBuilder: (_, i) {
-          final (value, label) = options[i];
-          final isSelected = value == selected;
-          return FilterChip(
-            label: Text(label),
-            selected: isSelected,
-            onSelected: (_) => onChanged(value),
-            selectedColor: scheme.primaryContainer,
-            checkmarkColor: scheme.primary,
-            labelStyle: TextStyle(
-              color: isSelected ? scheme.primary : scheme.onSurfaceVariant,
-              fontWeight:
-                  isSelected ? FontWeight.w600 : FontWeight.normal,
-              fontSize: 12,
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
 // ── Individual invitation card ─────────────────────────────────────
 class _InvitationCard extends StatelessWidget {
   final OrgInvitationEntity invitation;
@@ -191,16 +213,16 @@ class _InvitationCard extends StatelessWidget {
   const _InvitationCard({required this.invitation, this.onCancel});
 
   Color _statusColor(BuildContext context) => switch (invitation.status) {
-    InvitationStatus.pending   => Colors.blue,
-    InvitationStatus.accepted  => Colors.green,
-    InvitationStatus.expired   => Colors.orange,
+    InvitationStatus.pending => Colors.blue,
+    InvitationStatus.accepted => Colors.green,
+    InvitationStatus.expired => Colors.orange,
     InvitationStatus.cancelled => Colors.grey,
   };
 
   String _statusLabel() => switch (invitation.status) {
-    InvitationStatus.pending   => 'Pending',
-    InvitationStatus.accepted  => 'Accepted',
-    InvitationStatus.expired   => 'Expired',
+    InvitationStatus.pending => 'Pending',
+    InvitationStatus.accepted => 'Accepted',
+    InvitationStatus.expired => 'Expired',
     InvitationStatus.cancelled => 'Cancelled',
   };
 
@@ -214,8 +236,7 @@ class _InvitationCard extends StatelessWidget {
       '${invitation.token}\n\n'
       'The invitation expires on ${_formatDate(invitation.expiresAt)}.';
 
-  String _formatDate(DateTime d) =>
-      '${d.day}/${d.month}/${d.year}';
+  String _formatDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
 
   Future<void> _copyToken(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: invitation.token));
@@ -236,16 +257,16 @@ class _InvitationCard extends StatelessWidget {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('WhatsApp not installed.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('WhatsApp not installed.')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color  = _statusColor(context);
+    final color = _statusColor(context);
     final isPending = invitation.isPending;
 
     return Card(
@@ -264,7 +285,6 @@ class _InvitationCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Header row ──────────────────────────────────
             Row(
               children: [
                 Expanded(
@@ -310,8 +330,6 @@ class _InvitationCard extends StatelessWidget {
                 ),
               ],
             ),
-
-            // ── Expiry ──────────────────────────────────────
             if (isPending) ...[
               const SizedBox(height: 6),
               Text(
@@ -320,12 +338,12 @@ class _InvitationCard extends StatelessWidget {
                     : 'Expires ${_formatDate(invitation.expiresAt)}',
                 style: TextStyle(
                   fontSize: 11,
-                  color: invitation.isExpired ? Colors.orange : scheme.onSurfaceVariant,
+                  color: invitation.isExpired
+                      ? Colors.orange
+                      : scheme.onSurfaceVariant,
                 ),
               ),
             ],
-
-            // ── Token box (only for pending) ─────────────────
             if (isPending && invitation.token.isNotEmpty) ...[
               const SizedBox(height: 10),
               Container(
@@ -347,11 +365,8 @@ class _InvitationCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-
-              // ── Action row ────────────────────────────────
               Row(
                 children: [
-                  // Copy token
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () => _copyToken(context),
@@ -367,7 +382,6 @@ class _InvitationCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // WhatsApp share
                   Expanded(
                     child: FilledButton.icon(
                       onPressed: () => _shareWhatsApp(context),
@@ -419,7 +433,9 @@ class _EmptyState extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            status == 'accepted' ? Icons.check_circle_outline : Icons.mail_outline,
+            status == 'accepted'
+                ? Icons.check_circle_outline
+                : Icons.mail_outline,
             size: 56,
             color: Colors.grey.shade400,
           ),

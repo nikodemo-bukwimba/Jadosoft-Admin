@@ -45,3 +45,8 @@ class VisitUnflagRequested extends VisitEvent {
   final String id;
   VisitUnflagRequested(this.id);
 }
+// Add alongside existing events:
+class VisitLoadByCustomerRequested extends VisitEvent {
+  final String customerId;
+  VisitLoadByCustomerRequested(this.customerId);
+}

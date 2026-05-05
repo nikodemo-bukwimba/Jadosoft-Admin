@@ -1,4 +1,6 @@
-﻿import 'package:dartz/dartz.dart';
+﻿// lib/features/order/domain/services/order_domain_service.dart
+
+import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../entities/order_entity.dart';
 import '../guards/order_transition_guard.dart';
@@ -10,6 +12,8 @@ class OrderDomainService {
   final OrderTransitionGuard guard;
 
   OrderDomainService({required this.repository, required this.guard});
+
+  // ── Generic transition ─────────────────────────────────────
 
   Future<Either<Failure, OrderEntity>> transition({
     required String id,
@@ -28,4 +32,18 @@ class OrderDomainService {
         return const Left(ValidationFailure('Transition not supported'));
     }
   }
+
+  // ── Named convenience methods used by OrderBloc ────────────
+
+  Future<Either<Failure, OrderEntity>> confirmOrder(String id) =>
+      repository.confirm(id);
+
+  Future<Either<Failure, OrderEntity>> shipOrder(String id) =>
+      repository.ship(id);
+
+  Future<Either<Failure, OrderEntity>> deliverOrder(String id) =>
+      repository.deliver(id);
+
+  Future<Either<Failure, OrderEntity>> cancelOrder(String id) =>
+      repository.cancel(id);
 }

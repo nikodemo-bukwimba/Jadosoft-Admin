@@ -13,4 +13,5 @@ abstract class VisitRepository {
     String? flagReason,
     String? adminComment,
   });
+  Future<Either<Failure, List<VisitEntity>>> getByCustomer(String customerId); // ← NEW
 }

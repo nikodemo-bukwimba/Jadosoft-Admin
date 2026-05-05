@@ -4,10 +4,11 @@ import '../models/visit_model.dart';
 
 abstract class VisitRemoteDataSource {
   Future<List<VisitModel>> getAll();
-  Future<VisitModel>       getById(String id);
-  Future<VisitModel>       create(Map<String, dynamic> data);
-  Future<VisitModel>       update(String id, Map<String, dynamic> data);
-  Future<void>                delete(String id);
+  Future<VisitModel> getById(String id);
+  Future<VisitModel> create(Map<String, dynamic> data);
+  Future<VisitModel> update(String id, Map<String, dynamic> data);
+  Future<void> delete(String id);
+  Future<List<VisitModel>> getByCustomer(String customerId); // ← NEW
 }
 
 class VisitRemoteDataSourceImpl implements VisitRemoteDataSource {
@@ -61,6 +62,29 @@ class VisitRemoteDataSourceImpl implements VisitRemoteDataSource {
   Future<void> delete(String id) async {
     try {
       await _dio.delete('/visits/$id');
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<List<VisitModel>> getByCustomer(String customerId) async {
+    try {
+      final response = await _dio.get(
+        '/visits',
+        queryParameters: {'customer_id': customerId, 'per_page': 100},
+      );
+      final raw = response.data;
+      final list =
+          (raw is Map
+                  ? (raw['data'] ?? raw['visits'] ?? raw['items'] ?? [])
+                  : raw)
+              as List? ??
+          [];
+      return list
+          .whereType<Map<String, dynamic>>()
+          .map((e) => VisitModel.fromJson(e))
+          .toList();
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }

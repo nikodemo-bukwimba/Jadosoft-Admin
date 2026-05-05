@@ -1,284 +1,283 @@
 ﻿// ================================================================
 // features_order_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-05-05 23:31:06
+// Generated    : 2026-05-03 21:48:53
 // Files        : 32
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
 
+// === FILE: lib/features/order/data/datasources/order_api_datasource.dart ===
+
+
 // === FILE: lib/features/order/data/datasources/order_mock_datasource.dart ===
-// import '../../domain/value_objects/order_status.dart';
-// import '../datasources/order_remote_datasource.dart';
-// import '../models/order_model.dart';
+import '../../domain/value_objects/order_status.dart';
+import '../datasources/order_remote_datasource.dart';
+import '../models/order_model.dart';
 
-// class OrderMockDataSource implements OrderRemoteDataSource {
-//   final List<OrderModel> _orders = [
-//     OrderModel(
-//       id: 'ord-001',
-//       customerId: 'cust-001',
-//       items: [
-//         {
-//           'productId': 'prod-001',
-//           'name': 'Amoxicillin 500mg',
-//           'qty': 10,
-//           'unitPrice': 2500.0,
-//           'subtotal': 25000.0,
-//         },
-//         {
-//           'productId': 'prod-002',
-//           'name': 'Paracetamol 1000mg',
-//           'qty': 5,
-//           'unitPrice': 1200.0,
-//           'subtotal': 6000.0,
-//         },
-//       ],
-//       total: 31000.0,
-//       paymentRef: 'MPESA-2024-001',
-//       status: OrderStatus.delivered.name,
-//       createdAt: DateTime.now().subtract(const Duration(days: 14)),
-//     ),
-//     OrderModel(
-//       id: 'ord-002',
-//       customerId: 'cust-002',
-//       items: [
-//         {
-//           'productId': 'prod-003',
-//           'name': 'Metformin 850mg',
-//           'qty': 30,
-//           'unitPrice': 800.0,
-//           'subtotal': 24000.0,
-//         },
-//       ],
-//       total: 24000.0,
-//       paymentRef: 'AIRTEL-2024-002',
-//       status: OrderStatus.shipped.name,
-//       createdAt: DateTime.now().subtract(const Duration(days: 7)),
-//     ),
-//     OrderModel(
-//       id: 'ord-003',
-//       customerId: 'cust-003',
-//       items: [
-//         {
-//           'productId': 'prod-004',
-//           'name': 'Omeprazole 20mg',
-//           'qty': 20,
-//           'unitPrice': 1500.0,
-//           'subtotal': 30000.0,
-//         },
-//         {
-//           'productId': 'prod-005',
-//           'name': 'Vitamin C 1000mg',
-//           'qty': 10,
-//           'unitPrice': 900.0,
-//           'subtotal': 9000.0,
-//         },
-//         {
-//           'productId': 'prod-001',
-//           'name': 'Amoxicillin 500mg',
-//           'qty': 15,
-//           'unitPrice': 2500.0,
-//           'subtotal': 37500.0,
-//         },
-//       ],
-//       total: 76500.0,
-//       paymentRef: 'MPESA-2024-003',
-//       status: OrderStatus.confirmed.name,
-//       createdAt: DateTime.now().subtract(const Duration(days: 3)),
-//     ),
-//     OrderModel(
-//       id: 'ord-004',
-//       customerId: 'cust-004',
-//       items: [
-//         {
-//           'productId': 'prod-006',
-//           'name': 'Ibuprofen 400mg',
-//           'qty': 25,
-//           'unitPrice': 700.0,
-//           'subtotal': 17500.0,
-//         },
-//       ],
-//       total: 17500.0,
-//       paymentRef: null,
-//       status: OrderStatus.draft.name,
-//       createdAt: DateTime.now().subtract(const Duration(days: 1)),
-//     ),
-//     OrderModel(
-//       id: 'ord-005',
-//       customerId: 'cust-005',
-//       items: [
-//         {
-//           'productId': 'prod-007',
-//           'name': 'Azithromycin 250mg',
-//           'qty': 6,
-//           'unitPrice': 3200.0,
-//           'subtotal': 19200.0,
-//         },
-//         {
-//           'productId': 'prod-002',
-//           'name': 'Paracetamol 1000mg',
-//           'qty': 12,
-//           'unitPrice': 1200.0,
-//           'subtotal': 14400.0,
-//         },
-//       ],
-//       total: 33600.0,
-//       paymentRef: null,
-//       status: OrderStatus.cancelled.name,
-//       createdAt: DateTime.now().subtract(const Duration(days: 5)),
-//     ),
-//     OrderModel(
-//       id: 'ord-006',
-//       customerId: 'cust-001',
-//       items: [
-//         {
-//           'productId': 'prod-008',
-//           'name': 'Atorvastatin 40mg',
-//           'qty': 30,
-//           'unitPrice': 1800.0,
-//           'subtotal': 54000.0,
-//         },
-//       ],
-//       total: 54000.0,
-//       paymentRef: 'MPESA-2024-006',
-//       status: OrderStatus.confirmed.name,
-//       createdAt: DateTime.now().subtract(const Duration(hours: 6)),
-//     ),
-//   ];
+class OrderMockDataSource implements OrderRemoteDataSource {
+  final List<OrderModel> _orders = [
+    OrderModel(
+      id: 'ord-001',
+      customerId: 'cust-001',
+      items: [
+        {
+          'productId': 'prod-001',
+          'name': 'Amoxicillin 500mg',
+          'qty': 10,
+          'unitPrice': 2500.0,
+          'subtotal': 25000.0,
+        },
+        {
+          'productId': 'prod-002',
+          'name': 'Paracetamol 1000mg',
+          'qty': 5,
+          'unitPrice': 1200.0,
+          'subtotal': 6000.0,
+        },
+      ],
+      total: 31000.0,
+      paymentRef: 'MPESA-2024-001',
+      status: OrderStatus.delivered.name,
+      createdAt: DateTime.now().subtract(const Duration(days: 14)),
+    ),
+    OrderModel(
+      id: 'ord-002',
+      customerId: 'cust-002',
+      items: [
+        {
+          'productId': 'prod-003',
+          'name': 'Metformin 850mg',
+          'qty': 30,
+          'unitPrice': 800.0,
+          'subtotal': 24000.0,
+        },
+      ],
+      total: 24000.0,
+      paymentRef: 'AIRTEL-2024-002',
+      status: OrderStatus.shipped.name,
+      createdAt: DateTime.now().subtract(const Duration(days: 7)),
+    ),
+    OrderModel(
+      id: 'ord-003',
+      customerId: 'cust-003',
+      items: [
+        {
+          'productId': 'prod-004',
+          'name': 'Omeprazole 20mg',
+          'qty': 20,
+          'unitPrice': 1500.0,
+          'subtotal': 30000.0,
+        },
+        {
+          'productId': 'prod-005',
+          'name': 'Vitamin C 1000mg',
+          'qty': 10,
+          'unitPrice': 900.0,
+          'subtotal': 9000.0,
+        },
+        {
+          'productId': 'prod-001',
+          'name': 'Amoxicillin 500mg',
+          'qty': 15,
+          'unitPrice': 2500.0,
+          'subtotal': 37500.0,
+        },
+      ],
+      total: 76500.0,
+      paymentRef: 'MPESA-2024-003',
+      status: OrderStatus.confirmed.name,
+      createdAt: DateTime.now().subtract(const Duration(days: 3)),
+    ),
+    OrderModel(
+      id: 'ord-004',
+      customerId: 'cust-004',
+      items: [
+        {
+          'productId': 'prod-006',
+          'name': 'Ibuprofen 400mg',
+          'qty': 25,
+          'unitPrice': 700.0,
+          'subtotal': 17500.0,
+        },
+      ],
+      total: 17500.0,
+      paymentRef: null,
+      status: OrderStatus.draft.name,
+      createdAt: DateTime.now().subtract(const Duration(days: 1)),
+    ),
+    OrderModel(
+      id: 'ord-005',
+      customerId: 'cust-005',
+      items: [
+        {
+          'productId': 'prod-007',
+          'name': 'Azithromycin 250mg',
+          'qty': 6,
+          'unitPrice': 3200.0,
+          'subtotal': 19200.0,
+        },
+        {
+          'productId': 'prod-002',
+          'name': 'Paracetamol 1000mg',
+          'qty': 12,
+          'unitPrice': 1200.0,
+          'subtotal': 14400.0,
+        },
+      ],
+      total: 33600.0,
+      paymentRef: null,
+      status: OrderStatus.cancelled.name,
+      createdAt: DateTime.now().subtract(const Duration(days: 5)),
+    ),
+    OrderModel(
+      id: 'ord-006',
+      customerId: 'cust-001',
+      items: [
+        {
+          'productId': 'prod-008',
+          'name': 'Atorvastatin 40mg',
+          'qty': 30,
+          'unitPrice': 1800.0,
+          'subtotal': 54000.0,
+        },
+      ],
+      total: 54000.0,
+      paymentRef: 'MPESA-2024-006',
+      status: OrderStatus.confirmed.name,
+      createdAt: DateTime.now().subtract(const Duration(hours: 6)),
+    ),
+  ];
 
-//   @override
-//   Future<List<OrderModel>> getAll() async {
-//     await Future.delayed(const Duration(milliseconds: 400));
-//     return List.from(_orders.reversed);
-//   }
+  @override
+  Future<List<OrderModel>> getAll() async {
+    await Future.delayed(const Duration(milliseconds: 400));
+    return List.from(_orders.reversed);
+  }
 
-//   @override
-//   Future<OrderModel> getById(String id) async {
-//     await Future.delayed(const Duration(milliseconds: 200));
-//     return _orders.firstWhere((o) => o.id == id);
-//   }
+  @override
+  Future<OrderModel> getById(String id) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    return _orders.firstWhere((o) => o.id == id);
+  }
 
-//   @override
-//   Future<OrderModel> create(Map<String, dynamic> data) async {
-//     await Future.delayed(const Duration(milliseconds: 300));
-//     final model = OrderModel(
-//       id: 'ord-${DateTime.now().millisecondsSinceEpoch}',
-//       customerId: data['customer_id'] as String,
-//       items: List<Map<String, dynamic>>.from(data['items'] as List? ?? []),
-//       total: (data['total'] as num).toDouble(),
-//       paymentRef: data['payment_ref'] as String?,
-//       status: OrderStatus.draft.name,
-//       createdAt: DateTime.now(),
-//     );
-//     _orders.add(model);
-//     return model;
-//   }
+  @override
+  Future<OrderModel> create(Map<String, dynamic> data) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final model = OrderModel(
+      id: 'ord-${DateTime.now().millisecondsSinceEpoch}',
+      customerId: data['customer_id'] as String,
+      items: List<Map<String, dynamic>>.from(data['items'] as List? ?? []),
+      total: (data['total'] as num).toDouble(),
+      paymentRef: data['payment_ref'] as String?,
+      status: OrderStatus.draft.name,
+      createdAt: DateTime.now(),
+    );
+    _orders.add(model);
+    return model;
+  }
 
-//   @override
-//   Future<OrderModel> update(String id, Map<String, dynamic> data) async {
-//     await Future.delayed(const Duration(milliseconds: 300));
-//     final index = _orders.indexWhere((o) => o.id == id);
-//     final updated = OrderModel(
-//       id: id,
-//       customerId: data['customer_id'] as String? ?? _orders[index].customerId,
-//       items: data['items'] != null
-//           ? List<Map<String, dynamic>>.from(data['items'] as List)
-//           : _orders[index].items,
-//       total: data['total'] != null
-//           ? (data['total'] as num).toDouble()
-//           : _orders[index].total,
-//       paymentRef: data['payment_ref'] as String? ?? _orders[index].paymentRef,
-//       status: data['status'] as String? ?? _orders[index].status,
-//       createdAt: _orders[index].createdAt,
-//     );
-//     _orders[index] = updated;
-//     return updated;
-//   }
+  @override
+  Future<OrderModel> update(String id, Map<String, dynamic> data) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final index = _orders.indexWhere((o) => o.id == id);
+    final updated = OrderModel(
+      id: id,
+      customerId: data['customer_id'] as String? ?? _orders[index].customerId,
+      items: data['items'] != null
+          ? List<Map<String, dynamic>>.from(data['items'] as List)
+          : _orders[index].items,
+      total: data['total'] != null
+          ? (data['total'] as num).toDouble()
+          : _orders[index].total,
+      paymentRef: data['payment_ref'] as String? ?? _orders[index].paymentRef,
+      status: data['status'] as String? ?? _orders[index].status,
+      createdAt: _orders[index].createdAt,
+    );
+    _orders[index] = updated;
+    return updated;
+  }
 
-//   @override
-//   Future<void> delete(String id) async {
-//     await Future.delayed(const Duration(milliseconds: 200));
-//     _orders.removeWhere((o) => o.id == id);
-//   }
+  @override
+  Future<void> delete(String id) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    _orders.removeWhere((o) => o.id == id);
+  }
 
-//   @override
-//   Future<OrderModel> confirm(String id) async {
-//     await Future.delayed(const Duration(milliseconds: 300));
-//     return _updateStatus(id, 'confirmed');
-//   }
+  @override
+  Future<OrderModel> confirm(String id) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return _updateStatus(id, 'confirmed');
+  }
 
-//   @override
-//   Future<OrderModel> ship(String id) async {
-//     await Future.delayed(const Duration(milliseconds: 300));
-//     return _updateStatus(id, 'shipped');
-//   }
+  @override
+  Future<OrderModel> ship(String id) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return _updateStatus(id, 'shipped');
+  }
 
-//   @override
-//   Future<OrderModel> deliver(String id) async {
-//     await Future.delayed(const Duration(milliseconds: 300));
-//     return _updateStatus(id, 'delivered');
-//   }
+  @override
+  Future<OrderModel> deliver(String id) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return _updateStatus(id, 'delivered');
+  }
 
-//   @override
-//   Future<OrderModel> cancel(String id) async {
-//     await Future.delayed(const Duration(milliseconds: 300));
-//     return _updateStatus(id, 'cancelled');
-//   }
+  @override
+  Future<OrderModel> cancel(String id) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return _updateStatus(id, 'cancelled');
+  }
 
-//   OrderModel _updateStatus(String id, String status) {
-//     final index = _orders.indexWhere((o) => o.id == id);
-//     if (index == -1) throw Exception('Order not found');
-//     final updated = OrderModel(
-//       id: _orders[index].id,
-//       customerId: _orders[index].customerId,
-//       items: _orders[index].items,
-//       total: _orders[index].total,
-//       paymentRef: _orders[index].paymentRef,
-//       status: status,
-//       createdAt: _orders[index].createdAt,
-//     );
-//     _orders[index] = updated;
-//     return updated;
-//   }
+  OrderModel _updateStatus(String id, String status) {
+    final index = _orders.indexWhere((o) => o.id == id);
+    if (index == -1) throw Exception('Order not found');
+    final updated = OrderModel(
+      id: _orders[index].id,
+      customerId: _orders[index].customerId,
+      items: _orders[index].items,
+      total: _orders[index].total,
+      paymentRef: _orders[index].paymentRef,
+      status: status,
+      createdAt: _orders[index].createdAt,
+    );
+    _orders[index] = updated;
+    return updated;
+  }
 
-//   @override
-//   Future<OrderModel> markPaid(
-//     String id,
-//     String actorId,
-//     String? paymentRef,
-//   ) async {
-//     await Future.delayed(const Duration(milliseconds: 200));
-//     final index = _orders.indexWhere((o) => o.id == id);
-//     if (index == -1) throw Exception('Order not found');
-//     final updated = OrderModel(
-//       id: _orders[index].id,
-//       customerId: _orders[index].customerId,
-//       items: _orders[index].items,
-//       total: _orders[index].total,
-//       paymentRef: paymentRef ?? _orders[index].paymentRef,
-//       status: _orders[index].status,
-//       createdAt: _orders[index].createdAt,
-//       paymentStatus: 'paid',
-//       paymentVerifiedBy: actorId,
-//       paymentVerifiedAt: DateTime.now(),
-//     );
-//     _orders[index] = updated;
-//     return updated;
-//   }
-// }
+  @override
+  Future<OrderModel> markPaid(
+    String id,
+    String actorId,
+    String? paymentRef,
+  ) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    final index = _orders.indexWhere((o) => o.id == id);
+    if (index == -1) throw Exception('Order not found');
+    final updated = OrderModel(
+      id: _orders[index].id,
+      customerId: _orders[index].customerId,
+      items: _orders[index].items,
+      total: _orders[index].total,
+      paymentRef: paymentRef ?? _orders[index].paymentRef,
+      status: _orders[index].status,
+      createdAt: _orders[index].createdAt,
+      paymentStatus: 'paid',
+      paymentVerifiedBy: actorId,
+      paymentVerifiedAt: DateTime.now(),
+    );
+    _orders[index] = updated;
+    return updated;
+  }
+}
 
 
 // === FILE: lib/features/order/data/datasources/order_remote_datasource.dart ===
-// order_remote_datasource.dart — Admin App
-// Sends created_by_name / created_by_id in metadata on order creation.
-// Supports ?created_by_id= query filter on seller list.
-
 import 'package:dio/dio.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/context/org_context.dart';
 import '../models/order_model.dart';
 
 abstract class OrderRemoteDataSource {
-  Future<List<OrderModel>> getAll({String? createdById});
+  Future<List<OrderModel>> getAll();
   Future<OrderModel> getById(String id);
   Future<OrderModel> create(Map<String, dynamic> data);
   Future<OrderModel> update(String id, Map<String, dynamic> data);
@@ -302,18 +301,12 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
   String get _sellerBase =>
       '/commerce/orgs/${_orgContext.effectiveOrgId}/orders';
 
-  // ── List ─────────────────────────────────────────────────
-
   @override
-  Future<List<OrderModel>> getAll({String? createdById}) async {
+  Future<List<OrderModel>> getAll() async {
     try {
       final response = await _dio.get(
         _sellerBase,
-        queryParameters: {
-          'per_page': 100,
-          if (createdById != null && createdById.isNotEmpty)
-            'created_by_id': createdById,
-        },
+        queryParameters: {'per_page': 100},
       );
       final data = (response.data['data'] ?? response.data) as List;
       return data
@@ -324,11 +317,10 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
     }
   }
 
-  // ── Single ───────────────────────────────────────────────
-
   @override
   Future<OrderModel> getById(String id) async {
     try {
+      // ✅ Correct: no org scope on single order fetch
       final response = await _dio.get('/commerce/orders/$id');
       final data =
           response.data['data'] ?? response.data['order'] ?? response.data;
@@ -338,13 +330,12 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
     }
   }
 
-  // ── Create ───────────────────────────────────────────────
-
   @override
   Future<OrderModel> create(Map<String, dynamic> data) async {
     try {
       final orgId = _orgContext.effectiveOrgId;
 
+      // Build items for admin endpoint
       final items = (data['items'] as List<dynamic>)
           .map(
             (item) => {
@@ -361,11 +352,6 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
           'items': items,
           if (data['payment_ref'] != null) 'payment_ref': data['payment_ref'],
           'currency': 'TZS',
-          // Officer / admin identity — stored in order metadata by the API
-          'metadata': {
-            'created_by_name': data['created_by_name'],
-            'created_by_id': data['created_by_id'],
-          },
         },
       );
       final body = response.data['order'] ?? response.data;
@@ -375,22 +361,21 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
     }
   }
 
-  // ── Update (no-op — transitions via confirm/ship/deliver/cancel) ─────
-
   @override
   Future<OrderModel> update(String id, Map<String, dynamic> data) async {
     try {
+      // Orders in Nexora are updated via status transitions, not PATCH
+      // This is a no-op for now — status changes go through confirm/ship/deliver/cancel
       return await getById(id);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
   }
 
-  // ── Delete ───────────────────────────────────────────────
-
   @override
   Future<void> delete(String id) async {
     try {
+      // Nexora has no hard delete — cancel instead
       await _dio.post('/commerce/orders/$id/cancel');
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) return;
@@ -398,14 +383,11 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
     }
   }
 
-  // ── Status transitions ───────────────────────────────────
-
   @override
   Future<OrderModel> confirm(String id) async {
     try {
       final response = await _dio.post('/commerce/orders/$id/confirm');
-      final data =
-          response.data['order'] ?? response.data['data'] ?? response.data;
+      final data = response.data['order'] ?? response.data;
       return OrderModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -416,8 +398,7 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
   Future<OrderModel> ship(String id) async {
     try {
       final response = await _dio.post('/commerce/orders/$id/ship');
-      final data =
-          response.data['order'] ?? response.data['data'] ?? response.data;
+      final data = response.data['order'] ?? response.data;
       return OrderModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -428,8 +409,7 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
   Future<OrderModel> deliver(String id) async {
     try {
       final response = await _dio.post('/commerce/orders/$id/deliver');
-      final data =
-          response.data['order'] ?? response.data['data'] ?? response.data;
+      final data = response.data['order'] ?? response.data;
       return OrderModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -440,12 +420,19 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
   Future<OrderModel> cancel(String id) async {
     try {
       final response = await _dio.post('/commerce/orders/$id/cancel');
-      final data =
-          response.data['order'] ?? response.data['data'] ?? response.data;
+      final data = response.data['order'] ?? response.data;
       return OrderModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
+  }
+
+  String _msg(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic> && data['message'] is String) {
+      return data['message'] as String;
+    }
+    return 'An error occurred. Please try again.';
   }
 
   @override
@@ -455,40 +442,27 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
     String? paymentRef,
   ) async {
     try {
-      final response = await _dio.post(
-        '/commerce/orders/$id/mark-paid',
+      final response = await _dio.patch(
+        '/commerce/orders/$id',
         data: {
-          'actor_id': actorId,
+          'payment_status': 'paid',
+          'payment_verified_by': actorId,
+          'payment_verified_at': DateTime.now().toIso8601String(),
           if (paymentRef != null) 'payment_ref': paymentRef,
         },
       );
-      final data =
-          response.data['order'] ?? response.data['data'] ?? response.data;
+      final data = response.data['order'] ?? response.data;
       return OrderModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
   }
-
-  String _msg(DioException e) {
-    final data = e.response?.data;
-    if (data is Map<String, dynamic>) {
-      if (data['message'] is String) return data['message'] as String;
-      if (data['errors'] is Map) {
-        final errors = data['errors'] as Map<String, dynamic>;
-        final first = errors.values.first;
-        if (first is List && first.isNotEmpty) return first.first.toString();
-      }
-    }
-    return 'An error occurred. Please try again.';
-  }
 }
 
 
 // === FILE: lib/features/order/data/models/order_model.dart ===
-// order_model.dart — Admin App
-import 'dart:convert';
 import '../../domain/entities/order_entity.dart';
+import 'dart:convert';
 
 class OrderModel extends OrderEntity {
   const OrderModel({
@@ -502,12 +476,9 @@ class OrderModel extends OrderEntity {
     super.paymentStatus = 'unpaid',
     super.paymentVerifiedBy,
     super.paymentVerifiedAt,
-    super.createdByName,
-    super.createdById,
   });
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
-    final meta = _meta(json);
     return OrderModel(
       id: json['id']?.toString() ?? '',
       customerId:
@@ -529,26 +500,21 @@ class OrderModel extends OrderEntity {
           ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
           : DateTime.now(),
       paymentStatus:
-          meta['payment_status']?.toString() ??
+          _meta(json)['payment_status']?.toString() ??
           json['payment_status']?.toString() ??
           'unpaid',
       paymentVerifiedBy:
-          meta['payment_verified_by']?.toString() ??
+          _meta(json)['payment_verified_by']?.toString() ??
           json['payment_verified_by']?.toString(),
       paymentVerifiedAt:
-          (meta['payment_verified_at'] ?? json['payment_verified_at']) != null
+          (_meta(json)['payment_verified_at'] ?? json['payment_verified_at']) !=
+              null
           ? DateTime.tryParse(
-              (meta['payment_verified_at'] ?? json['payment_verified_at'])
+              (_meta(json)['payment_verified_at'] ??
+                      json['payment_verified_at'])
                   .toString(),
             )
           : null,
-      // ── Order source ────────────────────────────────────
-      createdByName:
-          meta['created_by_name']?.toString() ??
-          json['created_by_name']?.toString(),
-      createdById:
-          meta['created_by_id']?.toString() ??
-          json['created_by_id']?.toString(),
     );
   }
 
@@ -597,8 +563,6 @@ class OrderModel extends OrderEntity {
     if (paymentVerifiedBy != null) 'payment_verified_by': paymentVerifiedBy,
     if (paymentVerifiedAt != null)
       'payment_verified_at': paymentVerifiedAt!.toIso8601String(),
-    if (createdByName != null) 'created_by_name': createdByName,
-    if (createdById != null) 'created_by_id': createdById,
   };
 
   factory OrderModel.fromEntity(OrderEntity entity) {
@@ -613,8 +577,6 @@ class OrderModel extends OrderEntity {
       paymentStatus: entity.paymentStatus,
       paymentVerifiedBy: entity.paymentVerifiedBy,
       paymentVerifiedAt: entity.paymentVerifiedAt,
-      createdByName: entity.createdByName,
-      createdById: entity.createdById,
     );
   }
 
@@ -634,7 +596,6 @@ class OrderModel extends OrderEntity {
 
 
 // === FILE: lib/features/order/data/repositories/order_repository_impl.dart ===
-// order_repository_impl.dart — Admin App
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
@@ -650,11 +611,9 @@ class OrderRepositoryImpl implements OrderRepository {
     : _remoteDataSource = remoteDataSource;
 
   @override
-  Future<Either<Failure, List<OrderEntity>>> getAll({
-    String? createdById,
-  }) async {
+  Future<Either<Failure, List<OrderEntity>>> getAll() async {
     try {
-      final result = await _remoteDataSource.getAll(createdById: createdById);
+      final result = await _remoteDataSource.getAll();
       return Right(result);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
@@ -681,16 +640,10 @@ class OrderRepositoryImpl implements OrderRepository {
   Future<Either<Failure, OrderEntity>> create(OrderEntity entity) async {
     try {
       final model = OrderModel.fromEntity(entity);
-      final data = <String, dynamic>{
-        'customer_id': entity.customerId,
-        'items': entity.items,
-        if (entity.paymentRef != null) 'payment_ref': entity.paymentRef,
-        // Pass officer / admin identity through to datasource
-        if (entity.createdByName != null)
-          'created_by_name': entity.createdByName,
-        if (entity.createdById != null) 'created_by_id': entity.createdById,
-      };
-      final result = await _remoteDataSource.create(data);
+      final json = model.toJson();
+      // Pass customerId explicitly for the admin endpoint
+      json['customer_id'] = entity.customerId;
+      final result = await _remoteDataSource.create(json);
       return Right(result);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
@@ -702,8 +655,17 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Either<Failure, OrderEntity>> update(OrderEntity entity) async {
     try {
-      final result = await _remoteDataSource.update(entity.id, {});
-      return Right(result);
+      // Payment status update — uses dedicated patch
+      if (entity.paymentStatus == 'paid') {
+        final result = await _remoteDataSource.markPaid(
+          entity.id,
+          entity.paymentVerifiedBy ?? 'admin',
+          entity.paymentRef,
+        );
+        return Right(result);
+      }
+      // General update (no-op for other fields — Nexora orders are status-transition only)
+      return Right(await _remoteDataSource.getById(entity.id));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
@@ -726,8 +688,7 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Either<Failure, OrderEntity>> confirm(String id) async {
     try {
-      final result = await _remoteDataSource.confirm(id);
-      return Right(result);
+      return Right(await _remoteDataSource.confirm(id));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
@@ -738,8 +699,7 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Either<Failure, OrderEntity>> ship(String id) async {
     try {
-      final result = await _remoteDataSource.ship(id);
-      return Right(result);
+      return Right(await _remoteDataSource.ship(id));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
@@ -750,8 +710,7 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Either<Failure, OrderEntity>> deliver(String id) async {
     try {
-      final result = await _remoteDataSource.deliver(id);
-      return Right(result);
+      return Right(await _remoteDataSource.deliver(id));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
@@ -762,53 +721,19 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Either<Failure, OrderEntity>> cancel(String id) async {
     try {
-      final result = await _remoteDataSource.cancel(id);
-      return Right(result);
+      return Right(await _remoteDataSource.cancel(id));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
       return Left(GenericFailure(e.toString()));
     }
-  }
-
-  @override
-  Future<Either<Failure, OrderEntity>> markPaid(
-    String id,
-    String actorId,
-    String? paymentRef,
-  ) async {
-    try {
-      final result = await _remoteDataSource.markPaid(id, actorId, paymentRef);
-      return Right(result);
-    } on ServerException catch (e) {
-      return Left(ServerFailure(e.message));
-    } catch (e) {
-      return Left(GenericFailure(e.toString()));
-    }
-  }
-
-  @override
-  Future<Either<Failure, OrderEntity>> transition({
-    required String id,
-    required String toStatus,
-  }) async {
-    return switch (toStatus) {
-      'confirmed' => confirm(id),
-      'shipped' => ship(id),
-      'delivered' => deliver(id),
-      'cancelled' => cancel(id),
-      _ => Left(ValidationFailure('Unknown transition: $toStatus')),
-    };
   }
 }
 
 
 // === FILE: lib/features/order/domain/entities/order_entity.dart ===
-// order_entity.dart — Admin App
-// Adds createdByName / createdById to track who placed the order
-// (officer or admin acting on behalf of a customer).
-
 import 'package:equatable/equatable.dart';
+import '../value_objects/order_status.dart';
 
 class OrderEntity extends Equatable {
   final String id;
@@ -818,20 +743,10 @@ class OrderEntity extends Equatable {
   final String? paymentRef;
   final String status;
   final DateTime createdAt;
-
   // ── Payment audit fields ──────────────────────────────────
-  final String paymentStatus; // unpaid | paid | partial | refunded
+  final String paymentStatus;      // unpaid | paid | partial | refunded
   final String? paymentVerifiedBy; // actor ID who toggled, or 'system'
   final DateTime? paymentVerifiedAt;
-
-  // ── Order source fields ───────────────────────────────────
-  /// Display name of the officer / admin who placed this order.
-  /// Populated from metadata.created_by_name returned by the API.
-  final String? createdByName;
-
-  /// Actor ID of the officer / admin who placed this order.
-  /// Populated from metadata.created_by_id returned by the API.
-  final String? createdById;
 
   const OrderEntity({
     required this.id,
@@ -844,8 +759,6 @@ class OrderEntity extends Equatable {
     this.paymentStatus = 'unpaid',
     this.paymentVerifiedBy,
     this.paymentVerifiedAt,
-    this.createdByName,
-    this.createdById,
   });
 
   OrderEntity copyWith({
@@ -859,8 +772,6 @@ class OrderEntity extends Equatable {
     String? paymentStatus,
     String? paymentVerifiedBy,
     DateTime? paymentVerifiedAt,
-    String? createdByName,
-    String? createdById,
   }) {
     return OrderEntity(
       id: id ?? this.id,
@@ -873,28 +784,15 @@ class OrderEntity extends Equatable {
       paymentStatus: paymentStatus ?? this.paymentStatus,
       paymentVerifiedBy: paymentVerifiedBy ?? this.paymentVerifiedBy,
       paymentVerifiedAt: paymentVerifiedAt ?? this.paymentVerifiedAt,
-      createdByName: createdByName ?? this.createdByName,
-      createdById: createdById ?? this.createdById,
     );
   }
 
   @override
   List<Object?> get props => [
-    id,
-    customerId,
-    items,
-    total,
-    paymentRef,
-    status,
-    createdAt,
-    paymentStatus,
-    paymentVerifiedBy,
-    paymentVerifiedAt,
-    createdByName,
-    createdById,
+    id, customerId, items, total, paymentRef, status, createdAt,
+    paymentStatus, paymentVerifiedBy, paymentVerifiedAt,
   ];
 }
-
 
 // === FILE: lib/features/order/domain/events/order_domain_events.dart ===
 import '../entities/order_entity.dart';
@@ -1030,38 +928,23 @@ class OrderTransitionGuard {
 
 
 // === FILE: lib/features/order/domain/repositories/order_repository.dart ===
-// order_repository.dart — Admin App
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../entities/order_entity.dart';
 
 abstract class OrderRepository {
-  /// [createdById] — when non-null, filters orders placed by that actor.
-  Future<Either<Failure, List<OrderEntity>>> getAll({String? createdById});
-  Future<Either<Failure, OrderEntity>> getById(String id);
-  Future<Either<Failure, OrderEntity>> create(OrderEntity entity);
-  Future<Either<Failure, OrderEntity>> update(OrderEntity entity);
-  Future<Either<Failure, void>> delete(String id);
-  Future<Either<Failure, OrderEntity>> confirm(String id);
-  Future<Either<Failure, OrderEntity>> ship(String id);
-  Future<Either<Failure, OrderEntity>> deliver(String id);
-  Future<Either<Failure, OrderEntity>> cancel(String id);
-  Future<Either<Failure, OrderEntity>> markPaid(
-    String id,
-    String actorId,
-    String? paymentRef,
-  );
-
-  Future<Either<Failure, OrderEntity>> transition({
-    required String id,
-    required String toStatus,
-  });
+  Future<Either<Failure, List<OrderEntity>>> getAll();
+  Future<Either<Failure, OrderEntity>>       getById(String id);
+  Future<Either<Failure, OrderEntity>>       create(OrderEntity entity);
+  Future<Either<Failure, OrderEntity>>       update(OrderEntity entity);
+  Future<Either<Failure, void>>              delete(String id);
+  Future<Either<Failure, OrderEntity>>       confirm(String id);
+  Future<Either<Failure, OrderEntity>>       ship(String id);
+  Future<Either<Failure, OrderEntity>>       deliver(String id);
+  Future<Either<Failure, OrderEntity>>       cancel(String id);
 }
 
-
 // === FILE: lib/features/order/domain/services/order_domain_service.dart ===
-// lib/features/order/domain/services/order_domain_service.dart
-
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../entities/order_entity.dart';
@@ -1074,8 +957,6 @@ class OrderDomainService {
   final OrderTransitionGuard guard;
 
   OrderDomainService({required this.repository, required this.guard});
-
-  // ── Generic transition ─────────────────────────────────────
 
   Future<Either<Failure, OrderEntity>> transition({
     required String id,
@@ -1094,61 +975,32 @@ class OrderDomainService {
         return const Left(ValidationFailure('Transition not supported'));
     }
   }
-
-  // ── Named convenience methods used by OrderBloc ────────────
-
-  Future<Either<Failure, OrderEntity>> confirmOrder(String id) =>
-      repository.confirm(id);
-
-  Future<Either<Failure, OrderEntity>> shipOrder(String id) =>
-      repository.ship(id);
-
-  Future<Either<Failure, OrderEntity>> deliverOrder(String id) =>
-      repository.deliver(id);
-
-  Future<Either<Failure, OrderEntity>> cancelOrder(String id) =>
-      repository.cancel(id);
 }
 
-
 // === FILE: lib/features/order/domain/usecases/create_order_usecase.dart ===
-// lib/features/order/domain/usecases/create_order_usecase.dart
-// CreateOrderParams carries createdByName / createdById.
-// GetAllOrderUseCase (with createdById filter) lives in get_all_order_usecase.dart.
-
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../entities/order_entity.dart';
 import '../repositories/order_repository.dart';
-import 'deduct_product_quantity_usecase.dart';
+import '../../../product/domain/usecases/deduct_product_quantity_usecase.dart';
 
 // ── Params ────────────────────────────────────────────────────
-
 class CreateOrderParams {
   final String customerId;
   final List<Map<String, dynamic>> items;
   final double total;
   final String? paymentRef;
 
-  /// Display name of the officer / admin placing the order.
-  final String? createdByName;
-
-  /// Actor ID of the officer / admin placing the order.
-  final String? createdById;
-
   const CreateOrderParams({
     required this.customerId,
     required this.items,
     required this.total,
     this.paymentRef,
-    this.createdByName,
-    this.createdById,
   });
 }
 
 // ── Use Case ──────────────────────────────────────────────────
-
 class CreateOrderUseCase implements UseCase<OrderEntity, CreateOrderParams> {
   final OrderRepository repository;
   final DeductProductQuantityUseCase deductQuantity;
@@ -1173,8 +1025,6 @@ class CreateOrderUseCase implements UseCase<OrderEntity, CreateOrderParams> {
         paymentRef: p.paymentRef?.trim(),
         status: '',
         createdAt: DateTime.now(),
-        createdByName: p.createdByName,
-        createdById: p.createdById,
       ),
     );
 
@@ -1194,38 +1044,6 @@ class CreateOrderUseCase implements UseCase<OrderEntity, CreateOrderParams> {
   }
 }
 
-
-// === FILE: lib/features/order/domain/usecases/deduct_product_quantity_usecase.dart ===
-// lib/features/order/domain/usecases/deduct_product_quantity_usecase.dart
-//
-// Stub use-case that create_order_usecase.dart depends on.
-// Wire a real ProductRepository here when inventory management is ready.
-
-import 'package:dartz/dartz.dart';
-import '../../../../core/error/failures.dart';
-import '../../../../core/usecase/usecase.dart';
-
-class DeductProductQuantityParams {
-  final String productId;
-  final int quantity;
-  const DeductProductQuantityParams({
-    required this.productId,
-    required this.quantity,
-  });
-}
-
-class DeductProductQuantityUseCase
-    implements UseCase<void, DeductProductQuantityParams> {
-  // Inject a ProductRepository (or inventory service) here when ready.
-  // For now this is a no-op stub so orders can be created without errors.
-  const DeductProductQuantityUseCase();
-
-  @override
-  Future<Either<Failure, void>> call(DeductProductQuantityParams p) async {
-    // TODO: deduct p.quantity units of p.productId from inventory.
-    return const Right(null);
-  }
-}
 
 // === FILE: lib/features/order/domain/usecases/delete_order_usecase.dart ===
 import 'package:dartz/dartz.dart';
@@ -1249,30 +1067,19 @@ class DeleteOrderUseCase implements UseCase<void, DeleteOrderParams> {
 
 
 // === FILE: lib/features/order/domain/usecases/get_all_order_usecase.dart ===
-// lib/features/order/domain/usecases/get_all_order_usecase.dart
-// Sole definition of GetAllOrderUseCase (with optional createdById filter).
-// create_order_usecase.dart no longer re-declares this class.
-
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../entities/order_entity.dart';
 import '../repositories/order_repository.dart';
 
-class GetAllOrderParams {
-  /// When non-null, only returns orders placed by this actor.
-  final String? createdById;
-  const GetAllOrderParams({this.createdById});
-}
-
-class GetAllOrderUseCase
-    implements UseCase<List<OrderEntity>, GetAllOrderParams> {
+class GetAllOrderUseCase implements UseCase<List<OrderEntity>, NoParams> {
   final OrderRepository repository;
   GetAllOrderUseCase(this.repository);
 
   @override
-  Future<Either<Failure, List<OrderEntity>>> call(GetAllOrderParams p) =>
-      repository.getAll(createdById: p.createdById);
+  Future<Either<Failure, List<OrderEntity>>> call(NoParams _) =>
+      repository.getAll();
 }
 
 
@@ -1500,15 +1307,16 @@ class OrderWorkflowExecutor {
 
 
 // === FILE: lib/features/order/presentation/bloc/order_bloc.dart ===
-// order_bloc.dart — Admin App
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../../domain/services/order_domain_service.dart';
 import '../../domain/usecases/create_order_usecase.dart';
 import '../../domain/usecases/delete_order_usecase.dart';
 import '../../domain/usecases/get_order_usecase.dart';
-import '../../domain/usecases/mark_order_paid_usecase.dart';
-import '../../domain/usecases/update_order_usecase.dart';
-import '../../domain/services/order_domain_service.dart';
 import '../../domain/usecases/get_all_order_usecase.dart';
+import '../../domain/usecases/update_order_usecase.dart';
+import '../../domain/value_objects/order_status.dart';
+import '../../domain/usecases/mark_order_paid_usecase.dart';
 import 'order_event.dart';
 import 'order_state.dart';
 
@@ -1548,9 +1356,7 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     Emitter<OrderState> emit,
   ) async {
     emit(OrderLoading());
-    final result = await getAllUseCase(
-      GetAllOrderParams(createdById: event.createdById),
-    );
+    final result = await getAllUseCase(NoParams());
     result.fold(
       (f) => emit(OrderFailure(f.message)),
       (items) =>
@@ -1602,7 +1408,7 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     final result = await deleteUseCase(DeleteOrderParams(id: event.id));
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (_) => emit(OrderOperationSuccess('Order deleted')),
+      (_) => emit(OrderOperationSuccess('Order deleted successfully')),
     );
   }
 
@@ -1611,11 +1417,15 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     Emitter<OrderState> emit,
   ) async {
     emit(OrderLoading());
-    final result = await domainService.confirmOrder(event.id);
+    final result = await domainService.transition(
+      id: event.id,
+      targetStatus: OrderStatus.confirmed,
+    );
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (order) =>
-          emit(OrderOperationSuccess('Order confirmed', updatedItem: order)),
+      (entity) => emit(
+        OrderOperationSuccess('Confirm Order successful', updatedItem: entity),
+      ),
     );
   }
 
@@ -1624,11 +1434,15 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     Emitter<OrderState> emit,
   ) async {
     emit(OrderLoading());
-    final result = await domainService.shipOrder(event.id);
+    final result = await domainService.transition(
+      id: event.id,
+      targetStatus: OrderStatus.shipped,
+    );
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (order) =>
-          emit(OrderOperationSuccess('Order shipped', updatedItem: order)),
+      (entity) => emit(
+        OrderOperationSuccess('Ship Order successful', updatedItem: entity),
+      ),
     );
   }
 
@@ -1637,11 +1451,15 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     Emitter<OrderState> emit,
   ) async {
     emit(OrderLoading());
-    final result = await domainService.deliverOrder(event.id);
+    final result = await domainService.transition(
+      id: event.id,
+      targetStatus: OrderStatus.delivered,
+    );
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (order) =>
-          emit(OrderOperationSuccess('Order delivered', updatedItem: order)),
+      (entity) => emit(
+        OrderOperationSuccess('Mark Delivered successful', updatedItem: entity),
+      ),
     );
   }
 
@@ -1650,11 +1468,15 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     Emitter<OrderState> emit,
   ) async {
     emit(OrderLoading());
-    final result = await domainService.cancelOrder(event.id);
+    final result = await domainService.transition(
+      id: event.id,
+      targetStatus: OrderStatus.cancelled,
+    );
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (order) =>
-          emit(OrderOperationSuccess('Order cancelled', updatedItem: order)),
+      (entity) => emit(
+        OrderOperationSuccess('Cancel Order successful', updatedItem: entity),
+      ),
     );
   }
 
@@ -1666,27 +1488,20 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     final result = await markPaidUseCase(event.params);
     result.fold(
       (f) => emit(OrderFailure(f.message)),
-      (order) =>
-          emit(OrderOperationSuccess('Payment recorded', updatedItem: order)),
+      (order) => emit(OrderDetailLoaded(order)),
     );
   }
 }
 
 
 // === FILE: lib/features/order/presentation/bloc/order_event.dart ===
-// order_event.dart — Admin App
-import '../../domain/usecases/create_order_usecase.dart';
-import '../../domain/usecases/update_order_usecase.dart';
-import '../../domain/usecases/mark_order_paid_usecase.dart';
 import '../../domain/entities/order_entity.dart';
+import '../../domain/usecases/create_order_usecase.dart';
+import '../../domain/usecases/mark_order_paid_usecase.dart';
 
 abstract class OrderEvent {}
 
-/// Load all orders. Pass [createdById] to filter by officer/admin.
-class OrderLoadAllRequested extends OrderEvent {
-  final String? createdById;
-  OrderLoadAllRequested({this.createdById});
-}
+class OrderLoadAllRequested extends OrderEvent {}
 
 class OrderLoadOneRequested extends OrderEvent {
   final String id;
@@ -1894,9 +1709,6 @@ class _OrderBody extends StatelessWidget {
                 'Created',
                 item.createdAt.toIso8601String().split('T').first,
               ),
-              // ── Officer / Admin who placed the order ────
-              if (item.createdByName != null && item.createdByName!.isNotEmpty)
-                _Field('Placed by', item.createdByName!),
             ],
           ),
           const SizedBox(height: 16),
@@ -2499,7 +2311,6 @@ import '../bloc/order_event.dart';
 import '../bloc/order_state.dart';
 import '../../domain/usecases/create_order_usecase.dart';
 import '../../../../config/di/injection_container.dart';
-import '../../../../core/context/org_context.dart';
 import '../../../customer/domain/repositories/customer_repository.dart';
 import '../../../customer/data/models/customer_model.dart';
 import '../../../product/domain/repositories/product_repository.dart';
@@ -3204,11 +3015,6 @@ class _OrderFormPageState extends State<OrderFormPage> {
       }
 
       // Build effective paymentRef — append mobile payment info if provided
-      final orgContext = sl<OrgContext>();
-      final adminName =
-          orgContext.actorName ?? orgContext.rootOrgName ?? 'Admin';
-      final adminId = orgContext.actorId ?? orgContext.effectiveOrgId;
-
       final baseRef = _paymentRefController.text.trim();
       final mobileNote =
           _sendMobilePayment && _paymentPhoneCtrl.text.trim().isNotEmpty
@@ -3226,9 +3032,6 @@ class _OrderFormPageState extends State<OrderFormPage> {
             items: items,
             total: _calculatedTotal,
             paymentRef: effectiveRef.isEmpty ? null : effectiveRef,
-            // ── Officer / Admin identity ──────────────────────
-            createdByName: adminName,
-            createdById: adminId,
           ),
         ),
       );
@@ -3791,12 +3594,6 @@ class _ProviderChip extends StatelessWidget {
 
 
 // === FILE: lib/features/order/presentation/pages/order_list_page.dart ===
-// order_list_page.dart — Admin App
-// Adds:
-//   • "Placed by" chip on each order card showing officer/admin name
-//   • Filter-by-admin dropdown (builds list from loaded orders)
-//   • Passes createdById filter through to OrderLoadAllRequested
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -3826,54 +3623,12 @@ class _OrderListPageState extends State<OrderListPage> {
   OrderStatus? _filterStatus;
   String _search = '';
 
-  // ── Admin/officer filter ──────────────────────────────────
-  /// actorId of the selected officer/admin filter, or null for "All".
-  String? _filterAdminId;
-
-  /// Map of actorId → display name built from loaded orders.
-  Map<String, String> _adminNames = {};
-
-  void _loadOrders() {
-    context.read<OrderBloc>().add(
-      OrderLoadAllRequested(createdById: _filterAdminId),
-    );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadOrders());
-  }
-
-  /// Build the actor-name map from a loaded list (runs client-side on
-  /// the already-fetched page; the server-side filter handles larger sets).
-  void _buildAdminNames(List<OrderEntity> items) {
-    final map = <String, String>{};
-    for (final o in items) {
-      if (o.createdById != null && o.createdById!.isNotEmpty) {
-        final name = o.createdByName ?? o.createdById!;
-        map[o.createdById!] = name;
-      }
-    }
-    if (map != _adminNames) {
-      // Update only when content changes to avoid rebuild loops
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() => _adminNames = map);
-      });
-    }
-  }
-
   List<OrderEntity> _apply(List<OrderEntity> all) {
     var result = all;
     if (_filterStatus != null) {
       result = result
           .where((o) => OrderStatusX.fromString(o.status) == _filterStatus)
           .toList();
-    }
-    // Client-side admin filter (supplements server-side filter for UX
-    // when switching between admins without a round-trip).
-    if (_filterAdminId != null) {
-      result = result.where((o) => o.createdById == _filterAdminId).toList();
     }
     if (_search.isNotEmpty) {
       final q = _search.toLowerCase();
@@ -3882,8 +3637,7 @@ class _OrderListPageState extends State<OrderListPage> {
             (o) =>
                 o.id.toLowerCase().contains(q) ||
                 o.customerId.toLowerCase().contains(q) ||
-                (o.paymentRef?.toLowerCase().contains(q) ?? false) ||
-                (o.createdByName?.toLowerCase().contains(q) ?? false),
+                (o.paymentRef?.toLowerCase().contains(q) ?? false),
           )
           .toList();
     }
@@ -3898,7 +3652,6 @@ class _OrderListPageState extends State<OrderListPage> {
       appBar: AppBar(
         title: const Text('Orders'),
         actions: [
-          // ── View-mode toggles ──────────────────────────────
           IconButton(
             icon: Icon(
               Icons.grid_view_outlined,
@@ -3926,10 +3679,12 @@ class _OrderListPageState extends State<OrderListPage> {
           IconButton(
             icon: const Icon(Icons.refresh_outlined),
             tooltip: 'Refresh',
-            onPressed: _loadOrders,
+            onPressed: () =>
+                context.read<OrderBloc>().add(OrderLoadAllRequested()),
           ),
         ],
       ),
+      // ── FAB: manual order creation ─────────────────────────────────────────
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push(AppRouter.orderCreate),
         icon: const Icon(Icons.add),
@@ -3937,7 +3692,7 @@ class _OrderListPageState extends State<OrderListPage> {
       ),
       body: Column(
         children: [
-          // ── Search + status filter ──────────────────────────
+          // Search + filter
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: Row(
@@ -3960,7 +3715,6 @@ class _OrderListPageState extends State<OrderListPage> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Status filter
                 PopupMenuButton<OrderStatus?>(
                   icon: Icon(
                     Icons.filter_list_outlined,
@@ -3976,53 +3730,23 @@ class _OrderListPageState extends State<OrderListPage> {
                     ...OrderStatus.values.map(
                       (s) => PopupMenuItem(
                         value: s,
-                        child: OrderStatusBadge(status: s, compact: true),
+                        child: Row(
+                          children: [
+                            OrderStatusBadge(status: s, compact: true),
+                          ],
+                        ),
                       ),
                     ),
                   ],
                 ),
-                // ── Admin/officer filter ───────────────────────
-                if (_adminNames.isNotEmpty)
-                  PopupMenuButton<String?>(
-                    icon: Icon(
-                      Icons.person_search_outlined,
-                      color: _filterAdminId != null ? scheme.primary : null,
-                    ),
-                    tooltip: 'Filter by admin / officer',
-                    onSelected: (v) {
-                      setState(() => _filterAdminId = v);
-                      // Re-fetch from server with the new filter
-                      context.read<OrderBloc>().add(
-                        OrderLoadAllRequested(createdById: v),
-                      );
-                    },
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(
-                        value: null,
-                        child: Text('All admins / officers'),
-                      ),
-                      ..._adminNames.entries.map(
-                        (e) => PopupMenuItem(
-                          value: e.key,
-                          child: Row(
-                            children: [
-                              const Icon(Icons.person_outline, size: 16),
-                              const SizedBox(width: 8),
-                              Text(e.value),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
               ],
             ),
           ),
 
-          // ── Status filter chips ─────────────────────────────
+          // Status filter chips
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
             child: Row(
               children: [
                 _Chip(
@@ -4042,31 +3766,7 @@ class _OrderListPageState extends State<OrderListPage> {
             ),
           ),
 
-          // ── Active admin filter chip ────────────────────────
-          if (_filterAdminId != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-              child: Row(
-                children: [
-                  FilterChip(
-                    avatar: const Icon(Icons.person_outline, size: 14),
-                    label: Text(_adminNames[_filterAdminId] ?? _filterAdminId!),
-                    selected: true,
-                    onSelected: (_) {
-                      setState(() => _filterAdminId = null);
-                      _loadOrders();
-                    },
-                    deleteIcon: const Icon(Icons.close, size: 14),
-                    onDeleted: () {
-                      setState(() => _filterAdminId = null);
-                      _loadOrders();
-                    },
-                  ),
-                ],
-              ),
-            ),
-
-          // ── Order list ──────────────────────────────────────
+          // List
           Expanded(
             child: BlocConsumer<OrderBloc, OrderState>(
               listener: (context, state) {
@@ -4074,7 +3774,7 @@ class _OrderListPageState extends State<OrderListPage> {
                   ScaffoldMessenger.of(
                     context,
                   ).showSnackBar(SnackBar(content: Text(state.message)));
-                  _loadOrders();
+                  context.read<OrderBloc>().add(OrderLoadAllRequested());
                 }
                 if (state is OrderFailure) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -4097,10 +3797,7 @@ class _OrderListPageState extends State<OrderListPage> {
                 }
 
                 List<OrderEntity> items = [];
-                if (state is OrderListLoaded) {
-                  items = state.items;
-                  _buildAdminNames(items);
-                }
+                if (state is OrderListLoaded) items = state.items;
 
                 final filtered = _apply(items);
                 if (filtered.isEmpty) {
@@ -4142,7 +3839,7 @@ class _OrderListPageState extends State<OrderListPage> {
         crossAxisCount: cols,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        childAspectRatio: 1.45,
+        childAspectRatio: 1.55,
       ),
       itemCount: items.length,
       itemBuilder: (_, i) => OrderCardTile(
@@ -4167,18 +3864,24 @@ class _OrderListPageState extends State<OrderListPage> {
 
   Widget _buildTable(List<OrderEntity> items) {
     final scheme = Theme.of(context).colorScheme;
+
+    // Fix: use LayoutBuilder to get bounded width, then use a DataTable-style
+    // Column with fixed widths — no IntrinsicWidth inside unbounded scroll.
     return LayoutBuilder(
       builder: (context, constraints) {
         final availableWidth = constraints.maxWidth;
+
+        // Column width allocation (must sum ≤ availableWidth)
         const idW = 120.0;
         const customerW = 140.0;
-        const placedByW = 110.0;
         const itemsW = 52.0;
         const totalW = 90.0;
         const statusW = 100.0;
         const actionsW = 44.0;
         const totalFixed =
-            idW + customerW + placedByW + itemsW + totalW + statusW + actionsW;
+            idW + customerW + itemsW + totalW + statusW + actionsW;
+
+        // If screen is wider than fixed total, stretch customer column
         final customerFlex = availableWidth > totalFixed
             ? availableWidth - (totalFixed - customerW)
             : customerW;
@@ -4192,38 +3895,60 @@ class _OrderListPageState extends State<OrderListPage> {
           ),
         );
 
-        return Column(
-          children: [
-            // Header
-            Container(
-              color: scheme.surfaceContainerHighest,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  headerCell('Order', idW),
-                  headerCell('Customer', customerFlex),
-                  headerCell('Placed by', placedByW),
-                  headerCell('Items', itemsW),
-                  headerCell('Total', totalW),
-                  headerCell('Status', statusW),
-                  SizedBox(width: actionsW),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                itemCount: items.length,
-                itemBuilder: (_, i) => OrderTableRow(
-                  item: items[i],
-                  isLast: i == items.length - 1,
-                  onTap: () =>
-                      context.push(AppRouter.orderDetailPath(items[i].id)),
-                  // FIX: supply the required onDelete callback
-                  onDelete: () => _confirmDelete(items[i]),
+        Widget buildRow(OrderEntity item, bool isLast) => OrderTableRow(
+          item: item,
+          isLast: isLast,
+          onTap: () => context.push(AppRouter.orderDetailPath(item.id)),
+          onDelete: () => _confirmDelete(item),
+        );
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(12),
+          child: Card(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                // Minimum width so table doesn't compress below readable size
+                width: availableWidth < totalFixed
+                    ? totalFixed
+                    : availableWidth,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Header
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerLow,
+                        border: Border(
+                          bottom: BorderSide(
+                            color: scheme.outlineVariant.withValues(alpha: 0.4),
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          headerCell('Order ID', idW),
+                          headerCell('Customer', customerFlex),
+                          headerCell('Items', itemsW),
+                          headerCell('Total', totalW),
+                          headerCell('Status', statusW),
+                          SizedBox(width: actionsW),
+                        ],
+                      ),
+                    ),
+                    // Rows
+                    ...items.asMap().entries.map(
+                      (e) => buildRow(e.value, e.key == items.length - 1),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ],
+          ),
         );
       },
     );
@@ -4240,8 +3965,6 @@ class _OrderListPageState extends State<OrderListPage> {
   }
 }
 
-// ── Filter chip ────────────────────────────────────────────────────────────
-
 class _Chip extends StatelessWidget {
   final String label;
   final bool selected;
@@ -4251,35 +3974,36 @@ class _Chip extends StatelessWidget {
   const _Chip({
     required this.label,
     required this.selected,
-    this.color,
     required this.onTap,
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final activeColor = color ?? scheme.primary;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(
-          color: selected
-              ? activeColor.withValues(alpha: 0.12)
-              : scheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? activeColor : scheme.outlineVariant,
+    final c = color ?? scheme.primary;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          decoration: BoxDecoration(
+            color: selected ? c.withValues(alpha: 0.15) : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected
+                  ? c
+                  : scheme.outlineVariant.withValues(alpha: 0.5),
+            ),
           ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-            color: selected ? activeColor : scheme.onSurfaceVariant,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? c : scheme.onSurfaceVariant,
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+            ),
           ),
         ),
       ),
@@ -4352,9 +4076,6 @@ Future<void> _confirmDelete(BuildContext context) async {
 
 
 // === FILE: lib/features/order/presentation/widgets/order_card_tile.dart ===
-// order_card_tile.dart — Admin App
-// Shows "Placed by" row when createdByName is available.
-
 import 'package:flutter/material.dart';
 import '../../domain/entities/order_entity.dart';
 import '../../domain/value_objects/order_status.dart';
@@ -4378,8 +4099,6 @@ class OrderCardTile extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final status = OrderStatusX.fromString(item.status);
-    final hasPlacedBy =
-        item.createdByName != null && item.createdByName!.isNotEmpty;
 
     return Card(
       margin: EdgeInsets.zero,
@@ -4391,7 +4110,7 @@ class OrderCardTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Header row ──────────────────────────────
+              // Header row
               Row(
                 children: [
                   Container(
@@ -4430,9 +4149,8 @@ class OrderCardTile extends StatelessWidget {
                   OrderStatusBadge(status: status, compact: true),
                 ],
               ),
-              const SizedBox(height: 10),
-
-              // ── Items count + total ──────────────────────
+              const SizedBox(height: 12),
+              // Items count + total
               Row(
                 children: [
                   Icon(
@@ -4457,10 +4175,8 @@ class OrderCardTile extends StatelessWidget {
                   ),
                 ],
               ),
-
-              // ── Payment ref ──────────────────────────────
-              if (item.paymentRef != null && item.paymentRef!.isNotEmpty) ...[
-                const SizedBox(height: 5),
+              if (item.paymentRef != null) ...[
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     Icon(
@@ -4469,47 +4185,17 @@ class OrderCardTile extends StatelessWidget {
                       color: scheme.tertiary,
                     ),
                     const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        item.paymentRef!,
-                        style: textTheme.bodySmall?.copyWith(
-                          color: scheme.tertiary,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                    Text(
+                      item.paymentRef!,
+                      style: textTheme.bodySmall?.copyWith(
+                        color: scheme.tertiary,
                       ),
                     ),
                   ],
                 ),
               ],
-
-              // ── Placed by (officer / admin) ──────────────
-              if (hasPlacedBy) ...[
-                const SizedBox(height: 5),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.badge_outlined,
-                      size: 13,
-                      color: scheme.secondary,
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        'By ${item.createdByName!}',
-                        style: textTheme.bodySmall?.copyWith(
-                          color: scheme.secondary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-
               const SizedBox(height: 10),
-
-              // ── Footer: customer + delete ────────────────
+              // Footer
               Row(
                 children: [
                   Icon(
@@ -4518,15 +4204,14 @@ class OrderCardTile extends StatelessWidget {
                     color: scheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      'Customer: ${item.customerId}',
-                      style: textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                  Text(
+                    'Customer: ${item.customerId}',
+                    style: textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
                     ),
+                    overflow: TextOverflow.ellipsis,
                   ),
+                  const Spacer(),
                   IconButton(
                     icon: Icon(
                       Icons.delete_outline,

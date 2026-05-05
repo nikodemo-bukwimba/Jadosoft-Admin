@@ -185,8 +185,6 @@ class VisitApiDataSource implements VisitRemoteDataSource {
       'officer_name': officerName,
       'flag_reason': j['flag_reason'],
       'admin_comments': j['admin_comments'] ?? <Map<String, dynamic>>[],
-      'flag_reason': j['flag_reason'],
-      'admin_comments': j['admin_comments'] ?? <Map<String, dynamic>>[],
     };
     return VisitModel.fromJson(mapped);
   }
@@ -262,4 +260,30 @@ class VisitApiDataSource implements VisitRemoteDataSource {
     }
     return 'An error occurred. Please try again.';
   }
+  // ── GET visits for a specific customer (all officers) ───────────────────────
+@override
+Future<List<VisitModel>> getByCustomer(String customerId) async {
+  try {
+    await _refreshOfficerNames();
+    final response = await _dio.get(
+      '/pharma/orgs/$_orgId/visits',
+      queryParameters: {
+        'customer_id': customerId,
+        'per_page': 100,
+      },
+    );
+    final raw = response.data;
+    final list = (raw is Map
+            ? (raw['data'] ?? raw['visits'] ?? raw['items'] ?? [])
+            : raw)
+        as List? ??
+        [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map(_mapPharmaToAdminModel)
+        .toList();
+  } on DioException catch (e) {
+    throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+  }
+}
 }

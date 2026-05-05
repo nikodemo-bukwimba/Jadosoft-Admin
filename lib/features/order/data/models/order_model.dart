@@ -1,5 +1,6 @@
-﻿import '../../domain/entities/order_entity.dart';
+﻿// order_model.dart — Admin App
 import 'dart:convert';
+import '../../domain/entities/order_entity.dart';
 
 class OrderModel extends OrderEntity {
   const OrderModel({
@@ -13,9 +14,12 @@ class OrderModel extends OrderEntity {
     super.paymentStatus = 'unpaid',
     super.paymentVerifiedBy,
     super.paymentVerifiedAt,
+    super.createdByName,
+    super.createdById,
   });
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
+    final meta = _meta(json);
     return OrderModel(
       id: json['id']?.toString() ?? '',
       customerId:
@@ -37,21 +41,26 @@ class OrderModel extends OrderEntity {
           ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
           : DateTime.now(),
       paymentStatus:
-          _meta(json)['payment_status']?.toString() ??
+          meta['payment_status']?.toString() ??
           json['payment_status']?.toString() ??
           'unpaid',
       paymentVerifiedBy:
-          _meta(json)['payment_verified_by']?.toString() ??
+          meta['payment_verified_by']?.toString() ??
           json['payment_verified_by']?.toString(),
       paymentVerifiedAt:
-          (_meta(json)['payment_verified_at'] ?? json['payment_verified_at']) !=
-              null
+          (meta['payment_verified_at'] ?? json['payment_verified_at']) != null
           ? DateTime.tryParse(
-              (_meta(json)['payment_verified_at'] ??
-                      json['payment_verified_at'])
+              (meta['payment_verified_at'] ?? json['payment_verified_at'])
                   .toString(),
             )
           : null,
+      // ── Order source ────────────────────────────────────
+      createdByName:
+          meta['created_by_name']?.toString() ??
+          json['created_by_name']?.toString(),
+      createdById:
+          meta['created_by_id']?.toString() ??
+          json['created_by_id']?.toString(),
     );
   }
 
@@ -100,6 +109,8 @@ class OrderModel extends OrderEntity {
     if (paymentVerifiedBy != null) 'payment_verified_by': paymentVerifiedBy,
     if (paymentVerifiedAt != null)
       'payment_verified_at': paymentVerifiedAt!.toIso8601String(),
+    if (createdByName != null) 'created_by_name': createdByName,
+    if (createdById != null) 'created_by_id': createdById,
   };
 
   factory OrderModel.fromEntity(OrderEntity entity) {
@@ -114,6 +125,8 @@ class OrderModel extends OrderEntity {
       paymentStatus: entity.paymentStatus,
       paymentVerifiedBy: entity.paymentVerifiedBy,
       paymentVerifiedAt: entity.paymentVerifiedAt,
+      createdByName: entity.createdByName,
+      createdById: entity.createdById,
     );
   }
 

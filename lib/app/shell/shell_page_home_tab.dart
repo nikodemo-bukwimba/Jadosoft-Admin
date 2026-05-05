@@ -91,7 +91,7 @@ class _SidePanel extends StatelessWidget {
             ),
             child: Center(
               child: Text(
-                (user.displayName as String).initials,
+                (user.displayName).initials,
                 style: textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
                   color: scheme.onPrimaryContainer,
@@ -108,7 +108,7 @@ class _SidePanel extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            (user.displayName as String).split(' ').first,
+            (user.displayName).split(' ').first,
             style: textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.w800,
               color: scheme.onSurface,
@@ -243,7 +243,7 @@ class _FeatureGrid extends StatelessWidget {
               const SizedBox(height: 28),
               _FeatureSection(
                 title: 'Products & Commerce',
-                subtitle: 'Catalog, promotions, orders & payments',
+                subtitle: 'Catalog, promotions & orders ',
                 accentColor: const Color(0xFFFF9800),
                 items: const [
                   _FeatureItem(
@@ -270,18 +270,18 @@ class _FeatureGrid extends StatelessWidget {
                     path: AppRouter.orderList,
                     accent: Color(0xFF009688),
                   ),
-                  _FeatureItem(
-                    icon: Icons.payments_outlined,
-                    label: 'Payments',
-                    path: AppRouter.paymentList,
-                    accent: Color(0xFF4CAF50),
-                  ),
+                  // _FeatureItem(
+                  //   icon: Icons.payments_outlined,
+                  //   label: 'Payments',
+                  //   path: AppRouter.paymentList,
+                  //   accent: Color(0xFF4CAF50),
+                  // ),
                 ],
               ),
               const SizedBox(height: 28),
               _FeatureSection(
                 title: 'Communication',
-                subtitle: 'Messages & notification centre',
+                subtitle: 'Messages',
                 accentColor: const Color(0xFF9C27B0),
                 items: const [
                   _FeatureItem(

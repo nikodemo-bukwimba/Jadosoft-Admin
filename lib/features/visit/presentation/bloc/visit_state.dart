@@ -27,3 +27,9 @@ class VisitFailure extends VisitState {
   final String message;
   VisitFailure(this.message);
 }
+// Add alongside existing states:
+class CustomerVisitHistoryLoaded extends VisitState {
+  final List<VisitEntity> items;
+  final String customerId;
+  CustomerVisitHistoryLoaded(this.items, {required this.customerId});
+}

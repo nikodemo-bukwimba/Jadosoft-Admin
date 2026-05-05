@@ -1,9 +1,10 @@
 // report_pdf_generator.dart
 // ─────────────────────────────────────────────────────────────────────────────
 // On-device PDF generator for all Barick Pharmacy report types.
-// Uses the 'pdf' package (dart PDF library) to generate real formatted PDFs
-// from mock data. When the Laravel API is ready, data will come from the API
-// instead of mock datasources — the generator itself stays unchanged.
+// Uses the 'pdf' package (dart PDF library) to generate real formatted PDFs.
+// Order data comes from OrderRemoteDataSource (real API).
+// All other datasources (customer, payment, product, visit, officer, plan)
+// remain on their existing datasource implementations.
 //
 // Report types supported:
 //   marketing_summary   — visits, officer performance, plan compliance
@@ -19,12 +20,13 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../../customer/data/datasources/customer_mock_datasource.dart';
-import '../../../order/data/datasources/order_mock_datasource.dart';
+import '../../../order/data/datasources/order_remote_datasource.dart';
 import '../../../payment/data/datasources/payment_mock_datasource.dart';
 import '../../../product/data/datasources/product_mock_datasource.dart';
 import '../../../visit/data/datasources/visit_mock_datasource.dart';
 import '../../../officer/data/datasources/officer_mock_datasource.dart';
 import '../../../weekly_plan/data/datasources/weekly_plan_mock_datasource.dart';
+import '../../../order/data/models/order_model.dart';
 
 // ── Colour palette ────────────────────────────────────────────────────────────
 const _primary = PdfColor.fromInt(0xFF1A6B4A);
@@ -38,9 +40,14 @@ const _red = PdfColor.fromInt(0xFFD32F2F);
 const _orange = PdfColor.fromInt(0xFFF57C00);
 
 class ReportPdfGenerator {
+  final OrderRemoteDataSource _orderDataSource;
+
+  const ReportPdfGenerator({required OrderRemoteDataSource orderDataSource})
+      : _orderDataSource = orderDataSource;
+
   // ── Public entry point ─────────────────────────────────────────────────────
 
-  static Future<File> generate({
+  Future<File> generate({
     required String reportType,
     String? referenceId,
     String? dateFrom,
@@ -291,7 +298,7 @@ class ReportPdfGenerator {
 
   // ── Marketing Summary ──────────────────────────────────────────────────────
 
-  static Future<void> _buildMarketingSummary(
+  Future<void> _buildMarketingSummary(
     pw.Document pdf,
     String? from,
     String? to,
@@ -422,16 +429,17 @@ class ReportPdfGenerator {
 
   // ── Sales Summary ──────────────────────────────────────────────────────────
 
-  static Future<void> _buildSalesSummary(
+  Future<void> _buildSalesSummary(
     pw.Document pdf,
     String? from,
     String? to,
   ) async {
-    final orderDs = OrderMockDataSource();
+    // ── Real order data from API ───────────────────────────
+    final orders = await _orderDataSource.getAll();
+
     final paymentDs = PaymentMockDataSource();
     final productDs = ProductMockDataSource();
 
-    final orders = await orderDs.getAll();
     final payments = await paymentDs.getAll();
     final products = await productDs.getAll();
 
@@ -475,9 +483,8 @@ class ReportPdfGenerator {
                 _table(
                   headers: ['Status', 'Count', 'Percentage'],
                   rows: byStatus.entries.map((e) {
-                    final pct = (e.value / orders.length * 100).toStringAsFixed(
-                      1,
-                    );
+                    final pct =
+                        (e.value / orders.length * 100).toStringAsFixed(1);
                     return [e.key.toUpperCase(), '${e.value}', '$pct%'];
                   }).toList(),
                 ),
@@ -487,6 +494,7 @@ class ReportPdfGenerator {
                   headers: [
                     'Order ID',
                     'Customer',
+                    'Placed By',
                     'Total (TZS)',
                     'Payment Ref',
                     'Status',
@@ -495,7 +503,8 @@ class ReportPdfGenerator {
                     const pw.FlexColumnWidth(1.2),
                     const pw.FlexColumnWidth(1.5),
                     const pw.FlexColumnWidth(1.5),
-                    const pw.FlexColumnWidth(2),
+                    const pw.FlexColumnWidth(1.2),
+                    const pw.FlexColumnWidth(1.8),
                     const pw.FlexColumnWidth(1.2),
                   ],
                   rows: orders
@@ -503,6 +512,7 @@ class ReportPdfGenerator {
                         (o) => [
                           o.id,
                           o.customerId,
+                          o.createdByName ?? '—',
                           _fmtNum(o.total),
                           o.paymentRef ?? '—',
                           o.status.toUpperCase(),
@@ -581,7 +591,7 @@ class ReportPdfGenerator {
 
   // ── Customer List ──────────────────────────────────────────────────────────
 
-  static Future<void> _buildCustomerList(pw.Document pdf) async {
+  Future<void> _buildCustomerList(pw.Document pdf) async {
     final ds = CustomerMockDataSource();
     final customers = (await ds.getAll()).items;
 
@@ -675,7 +685,7 @@ class ReportPdfGenerator {
 
   // ── Individual Customer ────────────────────────────────────────────────────
 
-  static Future<void> _buildCustomerIndividual(
+  Future<void> _buildCustomerIndividual(
     pw.Document pdf,
     String customerId,
   ) async {
@@ -786,7 +796,7 @@ class ReportPdfGenerator {
 
   // ── Product List ───────────────────────────────────────────────────────────
 
-  static Future<void> _buildProductList(pw.Document pdf) async {
+  Future<void> _buildProductList(pw.Document pdf) async {
     final ds = ProductMockDataSource();
     final products = await ds.getAll();
 
@@ -798,7 +808,6 @@ class ReportPdfGenerator {
       (s, p) => s + (p.quantityAvailable ?? 0),
     );
 
-    // Separate into groups for layout
     final available = products.where((p) => p.isAvailable).toList();
     final unavailable = products.where((p) => !p.isAvailable).toList();
 
@@ -817,7 +826,6 @@ class ReportPdfGenerator {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                // ── Overview KPIs ────────────────────────────────────────
                 _sectionTitle('CATALOGUE OVERVIEW'),
                 pw.SizedBox(height: 8),
                 _kpiRow([
@@ -828,14 +836,10 @@ class ReportPdfGenerator {
                   {'value': '$totalQty', 'label': 'Total Units'},
                 ]),
                 pw.SizedBox(height: 20),
-
-                // ── Available stock ──────────────────────────────────────
                 _sectionTitle('AVAILABLE STOCK (${available.length})'),
                 pw.SizedBox(height: 6),
                 _productTable(available),
                 pw.SizedBox(height: 20),
-
-                // ── Unavailable / out of stock ───────────────────────────
                 if (unavailable.isNotEmpty) ...[
                   _sectionTitle(
                     'UNAVAILABLE / OUT OF STOCK (${unavailable.length})',
@@ -844,21 +848,16 @@ class ReportPdfGenerator {
                   _productTable(unavailable),
                   pw.SizedBox(height: 20),
                 ],
-
-                // ── Expiry alert: products expiring within 12 months ─────
                 () {
                   final now = DateTime.now();
-                  final soon =
-                      products
-                          .where(
-                            (p) =>
-                                p.expiryDate != null &&
-                                p.expiryDate!.difference(now).inDays <= 365,
-                          )
-                          .toList()
-                        ..sort(
-                          (a, b) => a.expiryDate!.compareTo(b.expiryDate!),
-                        );
+                  final soon = products
+                      .where(
+                        (p) =>
+                            p.expiryDate != null &&
+                            p.expiryDate!.difference(now).inDays <= 365,
+                      )
+                      .toList()
+                    ..sort((a, b) => a.expiryDate!.compareTo(b.expiryDate!));
                   if (soon.isEmpty) return pw.SizedBox();
                   return pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -879,8 +878,6 @@ class ReportPdfGenerator {
       ),
     );
   }
-
-  // ── Product table — shared between sections ─────────────────────────────────
 
   static pw.Widget _productTable(List<dynamic> products) {
     return _table(
@@ -929,15 +926,20 @@ class ReportPdfGenerator {
 
   // ── Invoice ────────────────────────────────────────────────────────────────
 
-  static Future<void> _buildInvoice(pw.Document pdf, String orderId) async {
-    final orderDs = OrderMockDataSource();
-    final customerDs = CustomerMockDataSource();
+  Future<void> _buildInvoice(pw.Document pdf, String orderId) async {
+    // ── Real order data from API ───────────────────────────
+    OrderModel order;
+    try {
+      order = await _orderDataSource.getById(orderId);
+    } catch (_) {
+      // Fallback: fetch all and find by id
+      final all = await _orderDataSource.getAll();
+      final match = all.where((o) => o.id == orderId).toList();
+      if (match.isEmpty) throw Exception('Order $orderId not found');
+      order = match.first;
+    }
 
-    final orders = await orderDs.getAll();
-    final order = orders.firstWhere(
-      (o) => o.id == orderId,
-      orElse: () => orders.first,
-    );
+    final customerDs = CustomerMockDataSource();
     final customers = (await customerDs.getAll()).items;
     final customer = customers.firstWhere(
       (c) => c.id == order.customerId,
@@ -1085,6 +1087,9 @@ class ReportPdfGenerator {
                               '#${order.id.toUpperCase()}',
                             ),
                             _invoiceMetaRow('Date', _fmtDate(order.createdAt)),
+                            if (order.createdByName != null &&
+                                order.createdByName!.isNotEmpty)
+                              _invoiceMetaRow('Placed by', order.createdByName!),
                             _invoiceMetaRow(
                               'Payment Method',
                               order.paymentRef != null
@@ -1112,24 +1117,25 @@ class ReportPdfGenerator {
                     children: [
                       pw.TableRow(
                         decoration: const pw.BoxDecoration(color: _primary),
-                        children: ['PRODUCT', 'QTY', 'UNIT PRICE', 'SUBTOTAL']
-                            .map(
-                              (h) => pw.Padding(
-                                padding: const pw.EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 6,
-                                ),
-                                child: pw.Text(
-                                  h,
-                                  style: pw.TextStyle(
-                                    color: _white,
-                                    fontSize: 8,
-                                    fontWeight: pw.FontWeight.bold,
+                        children:
+                            ['PRODUCT', 'QTY', 'UNIT PRICE', 'SUBTOTAL']
+                                .map(
+                                  (h) => pw.Padding(
+                                    padding: const pw.EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 6,
+                                    ),
+                                    child: pw.Text(
+                                      h,
+                                      style: pw.TextStyle(
+                                        color: _white,
+                                        fontSize: 8,
+                                        fontWeight: pw.FontWeight.bold,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                            )
-                            .toList(),
+                                )
+                                .toList(),
                       ),
                       ...order.items.asMap().entries.map((e) {
                         final isEven = e.key % 2 == 0;

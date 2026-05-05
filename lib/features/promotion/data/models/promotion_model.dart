@@ -1,4 +1,7 @@
-﻿import '../../domain/entities/promotion_entity.dart';
+﻿// lib/features/promotion/data/models/promotion_model.dart
+// jadosoft_admin
+
+import '../../domain/entities/promotion_entity.dart';
 
 class PromotionModel extends PromotionEntity {
   final int targetCount;
@@ -19,47 +22,51 @@ class PromotionModel extends PromotionEntity {
   });
 
   factory PromotionModel.fromJson(Map<String, dynamic> json) {
+    final sentAt = json['broadcast_sent_at'] != null
+        ? DateTime.tryParse(json['broadcast_sent_at'] as String)
+        : null;
+    final createdAt = json['created_at'] != null
+        ? DateTime.tryParse(json['created_at'] as String) ?? DateTime.now()
+        : DateTime.now();
+
+    // Use persisted dates; fall back to sentAt or createdAt — never bare DateTime.now()
+    final anchor = sentAt ?? createdAt;
+    final startDate = json['start_date'] != null
+        ? DateTime.tryParse(json['start_date'] as String) ?? anchor
+        : anchor;
+    final endDate = json['end_date'] != null
+        ? DateTime.tryParse(json['end_date'] as String) ??
+              startDate.add(const Duration(days: 7))
+        : startDate.add(const Duration(days: 7));
+
     return PromotionModel(
       id: json['id'] as String? ?? '',
       title: json['title'] as String? ?? '',
       description: json['description'] as String?,
-      productIds: List<String>.from(
-          (json['product_ids'] as List?) ?? []),
-      startDate: json['start_date'] != null
-          ? DateTime.tryParse(json['start_date'] as String) ??
-              DateTime.now()
-          : DateTime.now(),
-      endDate: json['end_date'] != null
-          ? DateTime.tryParse(json['end_date'] as String) ??
-              DateTime.now()
-          : DateTime.now(),
-      channels: List<String>.from(
-          (json['channels'] as List?) ?? []),
+      productIds: List<String>.from((json['product_ids'] as List?) ?? []),
+      startDate: startDate,
+      endDate: endDate,
+      channels: List<String>.from((json['channels'] as List?) ?? []),
       status: json['status'] as String? ?? 'draft',
-      createdAt: json['created_at'] != null
-          ? DateTime.tryParse(json['created_at'] as String) ??
-              DateTime.now()
-          : DateTime.now(),
+      createdAt: createdAt,
       targetCount: json['target_count'] as int? ?? 0,
-      broadcastSentAt: json['broadcast_sent_at'] != null
-          ? DateTime.tryParse(json['broadcast_sent_at'] as String)
-          : null,
+      broadcastSentAt: sentAt,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'description': description,
-        'product_ids': productIds,
-        'start_date': startDate.toIso8601String(),
-        'end_date': endDate.toIso8601String(),
-        'channels': channels,
-        'status': status,
-        'created_at': createdAt.toIso8601String(),
-        'target_count': targetCount,
-        'broadcast_sent_at': broadcastSentAt?.toIso8601String(),
-      };
+    'id': id,
+    'title': title,
+    'description': description,
+    'product_ids': productIds,
+    'start_date': startDate.toIso8601String(),
+    'end_date': endDate.toIso8601String(),
+    'channels': channels,
+    'status': status,
+    'created_at': createdAt.toIso8601String(),
+    'target_count': targetCount,
+    'broadcast_sent_at': broadcastSentAt?.toIso8601String(),
+  };
 
   static PromotionModel fromEntity(PromotionEntity e) {
     if (e is PromotionModel) return e;
@@ -73,6 +80,34 @@ class PromotionModel extends PromotionEntity {
       channels: e.channels,
       status: e.status,
       createdAt: e.createdAt,
+    );
+  }
+
+  PromotionModel copyWith({
+    String? id,
+    String? title,
+    String? description,
+    List<String>? productIds,
+    DateTime? startDate,
+    DateTime? endDate,
+    List<String>? channels,
+    String? status,
+    DateTime? createdAt,
+    int? targetCount,
+    DateTime? broadcastSentAt,
+  }) {
+    return PromotionModel(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      productIds: productIds ?? this.productIds,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      channels: channels ?? this.channels,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
+      targetCount: targetCount ?? this.targetCount,
+      broadcastSentAt: broadcastSentAt ?? this.broadcastSentAt,
     );
   }
 }

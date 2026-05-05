@@ -6,7 +6,7 @@ import '../../domain/usecases/delete_visit_usecase.dart';
 import '../../domain/usecases/get_visit_usecase.dart';
 import '../../domain/usecases/get_all_visit_usecase.dart';
 import '../../domain/usecases/update_visit_usecase.dart';
-import '../../domain/value_objects/visit_status.dart';
+import '../../domain/usecases/get_customer_visits_usecase.dart';
 import 'visit_event.dart';
 import 'visit_state.dart';
 
@@ -17,6 +17,7 @@ class VisitBloc extends Bloc<VisitEvent, VisitState> {
   final UpdateVisitUseCase updateUseCase;
   final DeleteVisitUseCase deleteUseCase;
   final VisitDomainService domainService;
+  final GetCustomerVisitsUseCase getCustomerVisitsUseCase; // ← NEW
 
   VisitBloc({
     required this.getAllUseCase,
@@ -25,6 +26,7 @@ class VisitBloc extends Bloc<VisitEvent, VisitState> {
     required this.updateUseCase,
     required this.deleteUseCase,
     required this.domainService,
+    required this.getCustomerVisitsUseCase, // ← NEW
   }) : super(VisitInitial()) {
     on<VisitLoadAllRequested>(_onLoadAll);
     on<VisitLoadOneRequested>(_onLoadOne);
@@ -35,6 +37,7 @@ class VisitBloc extends Bloc<VisitEvent, VisitState> {
     on<VisitReviewRequested>(_onReview);
     on<VisitFlagRequested>(_onFlag);
     on<VisitUnflagRequested>(_onUnflag);
+    on<VisitLoadByCustomerRequested>(_onLoadByCustomer); // ← NEW
   }
 
   Future<void> _onLoadAll(
@@ -140,6 +143,21 @@ class VisitBloc extends Bloc<VisitEvent, VisitState> {
       (f) => emit(VisitFailure(f.message)),
       (entity) =>
           emit(VisitOperationSuccess('Flag removed', updatedItem: entity)),
+    );
+  }
+
+  Future<void> _onLoadByCustomer(
+    VisitLoadByCustomerRequested event,
+    Emitter<VisitState> emit,
+  ) async {
+    emit(VisitLoading());
+    final result = await getCustomerVisitsUseCase(
+      GetCustomerVisitsParams(customerId: event.customerId),
+    );
+    result.fold(
+      (f) => emit(VisitFailure(f.message)),
+      (items) =>
+          emit(CustomerVisitHistoryLoaded(items, customerId: event.customerId)),
     );
   }
 }
