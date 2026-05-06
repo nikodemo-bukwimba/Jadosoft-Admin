@@ -66,6 +66,7 @@ class VisitRepositoryImpl implements VisitRepository {
   }
 
   /// Admin-action update: passes status + extra action fields (flag_reason, admin_comment).
+  @override
   Future<Either<Failure, VisitEntity>> updateWithAction(
     VisitEntity entity, {
     String? flagReason,
@@ -74,8 +75,8 @@ class VisitRepositoryImpl implements VisitRepository {
     try {
       final payload = <String, dynamic>{
         'status': entity.status,
-        if (flagReason != null) 'flag_reason': flagReason,
-        if (adminComment != null) 'admin_comment': adminComment,
+        'flag_reason': ?flagReason,
+        'admin_comment': ?adminComment,
       };
       final result = await _remoteDataSource.update(entity.id, payload);
       return Right(result);
@@ -91,6 +92,20 @@ class VisitRepositoryImpl implements VisitRepository {
     try {
       await _remoteDataSource.delete(id);
       return const Right(null);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, List<VisitEntity>>> getByCustomer(
+    String customerId,
+  ) async {
+    try {
+      final result = await _remoteDataSource.getByCustomer(customerId);
+      return Right(result);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {

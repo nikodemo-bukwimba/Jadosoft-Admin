@@ -1,4 +1,10 @@
-﻿import 'package:flutter/material.dart';
+﻿// order_list_page.dart — Admin App
+// Adds:
+//   • "Placed by" chip on each order card showing officer/admin name
+//   • Filter-by-admin dropdown (builds list from loaded orders)
+//   • Passes createdById filter through to OrderLoadAllRequested
+
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../app/routes/app_router.dart';
@@ -27,12 +33,54 @@ class _OrderListPageState extends State<OrderListPage> {
   OrderStatus? _filterStatus;
   String _search = '';
 
+  // ── Admin/officer filter ──────────────────────────────────
+  /// actorId of the selected officer/admin filter, or null for "All".
+  String? _filterAdminId;
+
+  /// Map of actorId → display name built from loaded orders.
+  Map<String, String> _adminNames = {};
+
+  void _loadOrders() {
+    context.read<OrderBloc>().add(
+      OrderLoadAllRequested(createdById: _filterAdminId),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadOrders());
+  }
+
+  /// Build the actor-name map from a loaded list (runs client-side on
+  /// the already-fetched page; the server-side filter handles larger sets).
+  void _buildAdminNames(List<OrderEntity> items) {
+    final map = <String, String>{};
+    for (final o in items) {
+      if (o.createdById != null && o.createdById!.isNotEmpty) {
+        final name = o.createdByName ?? o.createdById!;
+        map[o.createdById!] = name;
+      }
+    }
+    if (map != _adminNames) {
+      // Update only when content changes to avoid rebuild loops
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _adminNames = map);
+      });
+    }
+  }
+
   List<OrderEntity> _apply(List<OrderEntity> all) {
     var result = all;
     if (_filterStatus != null) {
       result = result
           .where((o) => OrderStatusX.fromString(o.status) == _filterStatus)
           .toList();
+    }
+    // Client-side admin filter (supplements server-side filter for UX
+    // when switching between admins without a round-trip).
+    if (_filterAdminId != null) {
+      result = result.where((o) => o.createdById == _filterAdminId).toList();
     }
     if (_search.isNotEmpty) {
       final q = _search.toLowerCase();
@@ -41,7 +89,8 @@ class _OrderListPageState extends State<OrderListPage> {
             (o) =>
                 o.id.toLowerCase().contains(q) ||
                 o.customerId.toLowerCase().contains(q) ||
-                (o.paymentRef?.toLowerCase().contains(q) ?? false),
+                (o.paymentRef?.toLowerCase().contains(q) ?? false) ||
+                (o.createdByName?.toLowerCase().contains(q) ?? false),
           )
           .toList();
     }
@@ -56,6 +105,7 @@ class _OrderListPageState extends State<OrderListPage> {
       appBar: AppBar(
         title: const Text('Orders'),
         actions: [
+          // ── View-mode toggles ──────────────────────────────
           IconButton(
             icon: Icon(
               Icons.grid_view_outlined,
@@ -83,12 +133,10 @@ class _OrderListPageState extends State<OrderListPage> {
           IconButton(
             icon: const Icon(Icons.refresh_outlined),
             tooltip: 'Refresh',
-            onPressed: () =>
-                context.read<OrderBloc>().add(OrderLoadAllRequested()),
+            onPressed: _loadOrders,
           ),
         ],
       ),
-      // ── FAB: manual order creation ─────────────────────────────────────────
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push(AppRouter.orderCreate),
         icon: const Icon(Icons.add),
@@ -96,7 +144,7 @@ class _OrderListPageState extends State<OrderListPage> {
       ),
       body: Column(
         children: [
-          // Search + filter
+          // ── Search + status filter ──────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: Row(
@@ -119,6 +167,7 @@ class _OrderListPageState extends State<OrderListPage> {
                   ),
                 ),
                 const SizedBox(width: 8),
+                // Status filter
                 PopupMenuButton<OrderStatus?>(
                   icon: Icon(
                     Icons.filter_list_outlined,
@@ -134,23 +183,53 @@ class _OrderListPageState extends State<OrderListPage> {
                     ...OrderStatus.values.map(
                       (s) => PopupMenuItem(
                         value: s,
-                        child: Row(
-                          children: [
-                            OrderStatusBadge(status: s, compact: true),
-                          ],
-                        ),
+                        child: OrderStatusBadge(status: s, compact: true),
                       ),
                     ),
                   ],
                 ),
+                // ── Admin/officer filter ───────────────────────
+                if (_adminNames.isNotEmpty)
+                  PopupMenuButton<String?>(
+                    icon: Icon(
+                      Icons.person_search_outlined,
+                      color: _filterAdminId != null ? scheme.primary : null,
+                    ),
+                    tooltip: 'Filter by admin / officer',
+                    onSelected: (v) {
+                      setState(() => _filterAdminId = v);
+                      // Re-fetch from server with the new filter
+                      context.read<OrderBloc>().add(
+                        OrderLoadAllRequested(createdById: v),
+                      );
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(
+                        value: null,
+                        child: Text('All admins / officers'),
+                      ),
+                      ..._adminNames.entries.map(
+                        (e) => PopupMenuItem(
+                          value: e.key,
+                          child: Row(
+                            children: [
+                              const Icon(Icons.person_outline, size: 16),
+                              const SizedBox(width: 8),
+                              Text(e.value),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
               ],
             ),
           ),
 
-          // Status filter chips
+          // ── Status filter chips ─────────────────────────────
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
             child: Row(
               children: [
                 _Chip(
@@ -170,7 +249,31 @@ class _OrderListPageState extends State<OrderListPage> {
             ),
           ),
 
-          // List
+          // ── Active admin filter chip ────────────────────────
+          if (_filterAdminId != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+              child: Row(
+                children: [
+                  FilterChip(
+                    avatar: const Icon(Icons.person_outline, size: 14),
+                    label: Text(_adminNames[_filterAdminId] ?? _filterAdminId!),
+                    selected: true,
+                    onSelected: (_) {
+                      setState(() => _filterAdminId = null);
+                      _loadOrders();
+                    },
+                    deleteIcon: const Icon(Icons.close, size: 14),
+                    onDeleted: () {
+                      setState(() => _filterAdminId = null);
+                      _loadOrders();
+                    },
+                  ),
+                ],
+              ),
+            ),
+
+          // ── Order list ──────────────────────────────────────
           Expanded(
             child: BlocConsumer<OrderBloc, OrderState>(
               listener: (context, state) {
@@ -178,7 +281,7 @@ class _OrderListPageState extends State<OrderListPage> {
                   ScaffoldMessenger.of(
                     context,
                   ).showSnackBar(SnackBar(content: Text(state.message)));
-                  context.read<OrderBloc>().add(OrderLoadAllRequested());
+                  _loadOrders();
                 }
                 if (state is OrderFailure) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -201,7 +304,10 @@ class _OrderListPageState extends State<OrderListPage> {
                 }
 
                 List<OrderEntity> items = [];
-                if (state is OrderListLoaded) items = state.items;
+                if (state is OrderListLoaded) {
+                  items = state.items;
+                  _buildAdminNames(items);
+                }
 
                 final filtered = _apply(items);
                 if (filtered.isEmpty) {
@@ -243,7 +349,7 @@ class _OrderListPageState extends State<OrderListPage> {
         crossAxisCount: cols,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        childAspectRatio: 1.55,
+        childAspectRatio: 1.45,
       ),
       itemCount: items.length,
       itemBuilder: (_, i) => OrderCardTile(
@@ -268,24 +374,18 @@ class _OrderListPageState extends State<OrderListPage> {
 
   Widget _buildTable(List<OrderEntity> items) {
     final scheme = Theme.of(context).colorScheme;
-
-    // Fix: use LayoutBuilder to get bounded width, then use a DataTable-style
-    // Column with fixed widths — no IntrinsicWidth inside unbounded scroll.
     return LayoutBuilder(
       builder: (context, constraints) {
         final availableWidth = constraints.maxWidth;
-
-        // Column width allocation (must sum ≤ availableWidth)
         const idW = 120.0;
         const customerW = 140.0;
+        const placedByW = 110.0;
         const itemsW = 52.0;
         const totalW = 90.0;
         const statusW = 100.0;
         const actionsW = 44.0;
         const totalFixed =
-            idW + customerW + itemsW + totalW + statusW + actionsW;
-
-        // If screen is wider than fixed total, stretch customer column
+            idW + customerW + placedByW + itemsW + totalW + statusW + actionsW;
         final customerFlex = availableWidth > totalFixed
             ? availableWidth - (totalFixed - customerW)
             : customerW;
@@ -299,60 +399,38 @@ class _OrderListPageState extends State<OrderListPage> {
           ),
         );
 
-        Widget buildRow(OrderEntity item, bool isLast) => OrderTableRow(
-          item: item,
-          isLast: isLast,
-          onTap: () => context.push(AppRouter.orderDetailPath(item.id)),
-          onDelete: () => _confirmDelete(item),
-        );
-
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(12),
-          child: Card(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                // Minimum width so table doesn't compress below readable size
-                width: availableWidth < totalFixed
-                    ? totalFixed
-                    : availableWidth,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Header
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: scheme.surfaceContainerLow,
-                        border: Border(
-                          bottom: BorderSide(
-                            color: scheme.outlineVariant.withValues(alpha: 0.4),
-                          ),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          headerCell('Order ID', idW),
-                          headerCell('Customer', customerFlex),
-                          headerCell('Items', itemsW),
-                          headerCell('Total', totalW),
-                          headerCell('Status', statusW),
-                          SizedBox(width: actionsW),
-                        ],
-                      ),
-                    ),
-                    // Rows
-                    ...items.asMap().entries.map(
-                      (e) => buildRow(e.value, e.key == items.length - 1),
-                    ),
-                  ],
+        return Column(
+          children: [
+            // Header
+            Container(
+              color: scheme.surfaceContainerHighest,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  headerCell('Order', idW),
+                  headerCell('Customer', customerFlex),
+                  headerCell('Placed by', placedByW),
+                  headerCell('Items', itemsW),
+                  headerCell('Total', totalW),
+                  headerCell('Status', statusW),
+                  SizedBox(width: actionsW),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                itemCount: items.length,
+                itemBuilder: (_, i) => OrderTableRow(
+                  item: items[i],
+                  isLast: i == items.length - 1,
+                  onTap: () =>
+                      context.push(AppRouter.orderDetailPath(items[i].id)),
+                  // FIX: supply the required onDelete callback
+                  onDelete: () => _confirmDelete(items[i]),
                 ),
               ),
             ),
-          ),
+          ],
         );
       },
     );
@@ -369,6 +447,8 @@ class _OrderListPageState extends State<OrderListPage> {
   }
 }
 
+// ── Filter chip ────────────────────────────────────────────────────────────
+
 class _Chip extends StatelessWidget {
   final String label;
   final bool selected;
@@ -378,36 +458,35 @@ class _Chip extends StatelessWidget {
   const _Chip({
     required this.label,
     required this.selected,
-    required this.onTap,
     this.color,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final c = color ?? scheme.primary;
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(
-            color: selected ? c.withValues(alpha: 0.15) : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: selected
-                  ? c
-                  : scheme.outlineVariant.withValues(alpha: 0.5),
-            ),
+    final activeColor = color ?? scheme.primary;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected
+              ? activeColor.withValues(alpha: 0.12)
+              : scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? activeColor : scheme.outlineVariant,
           ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: selected ? c : scheme.onSurfaceVariant,
-              fontSize: 12,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-            ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+            color: selected ? activeColor : scheme.onSurfaceVariant,
           ),
         ),
       ),

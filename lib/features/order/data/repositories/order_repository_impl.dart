@@ -1,4 +1,5 @@
-﻿import 'package:dartz/dartz.dart';
+﻿// order_repository_impl.dart — Admin App
+import 'package:dartz/dartz.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
 import '../../domain/entities/order_entity.dart';
@@ -13,9 +14,11 @@ class OrderRepositoryImpl implements OrderRepository {
     : _remoteDataSource = remoteDataSource;
 
   @override
-  Future<Either<Failure, List<OrderEntity>>> getAll() async {
+  Future<Either<Failure, List<OrderEntity>>> getAll({
+    String? createdById,
+  }) async {
     try {
-      final result = await _remoteDataSource.getAll();
+      final result = await _remoteDataSource.getAll(createdById: createdById);
       return Right(result);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
@@ -42,10 +45,16 @@ class OrderRepositoryImpl implements OrderRepository {
   Future<Either<Failure, OrderEntity>> create(OrderEntity entity) async {
     try {
       final model = OrderModel.fromEntity(entity);
-      final json = model.toJson();
-      // Pass customerId explicitly for the admin endpoint
-      json['customer_id'] = entity.customerId;
-      final result = await _remoteDataSource.create(json);
+      final data = <String, dynamic>{
+        'customer_id': entity.customerId,
+        'items': entity.items,
+        if (entity.paymentRef != null) 'payment_ref': entity.paymentRef,
+        // Pass officer / admin identity through to datasource
+        if (entity.createdByName != null)
+          'created_by_name': entity.createdByName,
+        if (entity.createdById != null) 'created_by_id': entity.createdById,
+      };
+      final result = await _remoteDataSource.create(data);
       return Right(result);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
@@ -57,17 +66,8 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Either<Failure, OrderEntity>> update(OrderEntity entity) async {
     try {
-      // Payment status update — uses dedicated patch
-      if (entity.paymentStatus == 'paid') {
-        final result = await _remoteDataSource.markPaid(
-          entity.id,
-          entity.paymentVerifiedBy ?? 'admin',
-          entity.paymentRef,
-        );
-        return Right(result);
-      }
-      // General update (no-op for other fields — Nexora orders are status-transition only)
-      return Right(await _remoteDataSource.getById(entity.id));
+      final result = await _remoteDataSource.update(entity.id, {});
+      return Right(result);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
@@ -90,7 +90,8 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Either<Failure, OrderEntity>> confirm(String id) async {
     try {
-      return Right(await _remoteDataSource.confirm(id));
+      final result = await _remoteDataSource.confirm(id);
+      return Right(result);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
@@ -101,7 +102,8 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Either<Failure, OrderEntity>> ship(String id) async {
     try {
-      return Right(await _remoteDataSource.ship(id));
+      final result = await _remoteDataSource.ship(id);
+      return Right(result);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
@@ -112,7 +114,8 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Either<Failure, OrderEntity>> deliver(String id) async {
     try {
-      return Right(await _remoteDataSource.deliver(id));
+      final result = await _remoteDataSource.deliver(id);
+      return Right(result);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
@@ -123,11 +126,42 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Either<Failure, OrderEntity>> cancel(String id) async {
     try {
-      return Right(await _remoteDataSource.cancel(id));
+      final result = await _remoteDataSource.cancel(id);
+      return Right(result);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } catch (e) {
       return Left(GenericFailure(e.toString()));
     }
+  }
+
+  @override
+  Future<Either<Failure, OrderEntity>> markPaid(
+    String id,
+    String actorId,
+    String? paymentRef,
+  ) async {
+    try {
+      final result = await _remoteDataSource.markPaid(id, actorId, paymentRef);
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, OrderEntity>> transition({
+    required String id,
+    required String toStatus,
+  }) async {
+    return switch (toStatus) {
+      'confirmed' => confirm(id),
+      'shipped' => ship(id),
+      'delivered' => deliver(id),
+      'cancelled' => cancel(id),
+      _ => Left(ValidationFailure('Unknown transition: $toStatus')),
+    };
   }
 }

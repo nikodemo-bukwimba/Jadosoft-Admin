@@ -15,22 +15,37 @@ import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
 import '../bloc/customer_state.dart';
 import '../../../officer/data/datasources/officer_remote_datasource.dart';
+import '../../../visit/presentation/bloc/visit_bloc.dart';
+import '../../../visit/presentation/widgets/admin_customer_visit_history_tab.dart';
 
-class CustomerDetailPage extends StatelessWidget {
+class CustomerDetailPage extends StatefulWidget {
   const CustomerDetailPage({super.key});
 
-  /// Resolve officer display name from assigned_officer_id (actorId).
-  /// Uses the pharma officers endpoint which returns enriched PmOfficer data.
-  Future<String> _getOfficerName(
-    String? officerId,
-    String orgId,
-  ) async {
+  @override
+  State<CustomerDetailPage> createState() => _CustomerDetailPageState();
+}
+
+class _CustomerDetailPageState extends State<CustomerDetailPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<String> _getOfficerName(String? officerId, String orgId) async {
     if (officerId == null || officerId.isEmpty) return 'Not assigned';
     try {
       final ds = sl<OfficerRemoteDataSource>();
       final result = await ds.getAll();
-      // Match by actorId first (the value stored in assigned_officer_id),
-      // fall back to userId for backwards compatibility.
       final match =
           result.items.where((o) => o.actorId == officerId).firstOrNull ??
           result.items.where((o) => o.userId == officerId).firstOrNull;
@@ -82,13 +97,20 @@ class CustomerDetailPage extends StatelessWidget {
             },
           ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(icon: Icon(Icons.info_outline), text: 'Details'),
+            Tab(icon: Icon(Icons.history), text: 'Visits'),
+          ],
+        ),
       ),
       body: BlocConsumer<CustomerBloc, CustomerState>(
         listener: (context, state) {
           if (state is CustomerOperationSuccess) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(state.message)),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
             context.pop();
           }
           if (state is CustomerFailure) {
@@ -123,7 +145,20 @@ class CustomerDetailPage extends StatelessWidget {
             );
           }
           if (state is CustomerDetailLoaded) {
-            return _buildContent(context, state.item);
+            return TabBarView(
+              controller: _tabController,
+              children: [
+                _buildContent(context, state.item),
+                // VisitBloc is provided per-route in the router.
+                // We provide a fresh one here scoped to this tab.
+                BlocProvider(
+                  create: (_) => sl<VisitBloc>(),
+                  child: AdminCustomerVisitHistoryTab(
+                    customerId: state.item.id,
+                  ),
+                ),
+              ],
+            );
           }
           return const SizedBox.shrink();
         },
@@ -154,8 +189,9 @@ class CustomerDetailPage extends StatelessWidget {
                   children: [
                     CircleAvatar(
                       radius: 32,
-                      backgroundColor:
-                          scheme.primaryContainer.withValues(alpha: 0.5),
+                      backgroundColor: scheme.primaryContainer.withValues(
+                        alpha: 0.5,
+                      ),
                       child: Icon(
                         item.isB2B ? Icons.store : Icons.person,
                         color: scheme.primary,
@@ -172,9 +208,7 @@ class CustomerDetailPage extends StatelessWidget {
                               Expanded(
                                 child: Text(
                                   item.name,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleLarge
+                                  style: Theme.of(context).textTheme.titleLarge
                                       ?.copyWith(fontWeight: FontWeight.w800),
                                 ),
                               ),
@@ -210,11 +244,7 @@ class CustomerDetailPage extends StatelessWidget {
                               ),
                               if (item.category != null)
                                 _chip(context, item.category!, scheme.tertiary),
-                              _chip(
-                                context,
-                                item.tier,
-                                _tierColor(item.tier),
-                              ),
+                              _chip(context, item.tier, _tierColor(item.tier)),
                               _chip(
                                 context,
                                 item.status,
@@ -230,9 +260,7 @@ class CustomerDetailPage extends StatelessWidget {
                             const SizedBox(height: 6),
                             Text(
                               'Registered ${item.createdAt!.toIso8601String().split('T').first}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
+                              style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(color: scheme.onSurfaceVariant),
                             ),
                           ],
@@ -263,12 +291,7 @@ class CustomerDetailPage extends StatelessWidget {
                     if (item.phone != null)
                       _row(context, Icons.phone, 'Phone', item.phone!),
                     if (item.email != null)
-                      _row(
-                        context,
-                        Icons.email_outlined,
-                        'Email',
-                        item.email!,
-                      ),
+                      _row(context, Icons.email_outlined, 'Email', item.email!),
                     if (item.whatsappNumber != null)
                       _row(
                         context,
@@ -280,9 +303,7 @@ class CustomerDetailPage extends StatelessWidget {
                       const SizedBox(height: 8),
                       Text(
                         'Primary Contact',
-                        style: Theme.of(context)
-                            .textTheme
-                            .labelMedium
+                        style: Theme.of(context).textTheme.labelMedium
                             ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       _row(
@@ -303,9 +324,7 @@ class CustomerDetailPage extends StatelessWidget {
                       const SizedBox(height: 8),
                       Text(
                         'All Contacts (${item.contacts.length})',
-                        style: Theme.of(context)
-                            .textTheme
-                            .labelMedium
+                        style: Theme.of(context).textTheme.labelMedium
                             ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       ...item.contacts.map(
@@ -399,11 +418,7 @@ class CustomerDetailPage extends StatelessWidget {
     ),
     child: Text(
       label,
-      style: TextStyle(
-        color: color,
-        fontSize: 11,
-        fontWeight: FontWeight.w600,
-      ),
+      style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
     ),
   );
 
@@ -437,10 +452,9 @@ class CustomerDetailPage extends StatelessWidget {
                 width: 110,
                 child: Text(
                   'GPS',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               Expanded(
@@ -470,7 +484,9 @@ class CustomerDetailPage extends StatelessWidget {
     bool muted = false,
   }) {
     final scheme = Theme.of(context).colorScheme;
-    final color = muted ? scheme.onSurfaceVariant.withValues(alpha: 0.45) : null;
+    final color = muted
+        ? scheme.onSurfaceVariant.withValues(alpha: 0.45)
+        : null;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -487,10 +503,9 @@ class CustomerDetailPage extends StatelessWidget {
             width: 110,
             child: Text(
               label,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
           Expanded(

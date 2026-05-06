@@ -6,15 +6,13 @@ import '../../domain/value_objects/visit_status.dart';
 import '../bloc/visit_bloc.dart';
 import '../bloc/visit_event.dart';
 import '../bloc/visit_state.dart';
+import '../../../../core/widgets/rich_text_field.dart';
 import '../../../../core/utils/map_launcher.dart';
 
 class VisitDetailPage extends StatelessWidget {
   final String visitId;
 
-  const VisitDetailPage({
-    super.key,
-    required this.visitId,
-  });
+  const VisitDetailPage({super.key, required this.visitId});
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +22,9 @@ class VisitDetailPage extends StatelessWidget {
       body: BlocConsumer<VisitBloc, VisitState>(
         listener: (c, s) {
           if (s is VisitOperationSuccess) {
-            ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message)));
+            ScaffoldMessenger.of(
+              c,
+            ).showSnackBar(SnackBar(content: Text(s.message)));
             if (s.updatedItem != null) {
               c.read<VisitBloc>().add(VisitLoadOneRequested(s.updatedItem!.id));
             } else {
@@ -75,7 +75,8 @@ class VisitDetailPage extends StatelessWidget {
     final hasGps = item.gpsLat != null && item.gpsLng != null;
 
     // Use entity fields with fallbacks
-    final displayName = item.businessName ?? item.customerName ?? 'Unknown Business';
+    final displayName =
+        item.businessName ?? item.customerName ?? 'Unknown Business';
     final officerDisplay = item.officerName ?? item.officerId;
 
     return SingleChildScrollView(
@@ -106,34 +107,52 @@ class VisitDetailPage extends StatelessWidget {
                         children: [
                           Text(
                             displayName,
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             'Visited by $officerDisplay',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: scheme.primary,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: scheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
                           ),
                           if (item.visitType != null) ...[
                             const SizedBox(height: 4),
                             Text(
-                              item.visitType!.replaceAll('_', ' ').toUpperCase(),
-                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: scheme.onSurfaceVariant, letterSpacing: 0.5),
+                              item.visitType!
+                                  .replaceAll('_', ' ')
+                                  .toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: scheme.onSurfaceVariant,
+                                letterSpacing: 0.5,
+                              ),
                             ),
                           ],
                           const SizedBox(height: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
                               color: st.color.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: st.color.withValues(alpha: 0.4)),
+                              border: Border.all(
+                                color: st.color.withValues(alpha: 0.4),
+                              ),
                             ),
                             child: Text(
                               st.displayName,
-                              style: TextStyle(color: st.color, fontSize: 12, fontWeight: FontWeight.w600),
+                              style: TextStyle(
+                                color: st.color,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ],
@@ -164,9 +183,20 @@ class VisitDetailPage extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Flag Reason', style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Colors.red, fontWeight: FontWeight.w700)),
+                            Text(
+                              'Flag Reason',
+                              style: Theme.of(context).textTheme.labelMedium
+                                  ?.copyWith(
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
                             const SizedBox(height: 4),
-                            Text(item.flagReason!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.red.shade700)),
+                            Text(
+                              item.flagReason!,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: Colors.red.shade700),
+                            ),
                           ],
                         ),
                       ),
@@ -185,35 +215,70 @@ class VisitDetailPage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Admin Comments', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
-                      const Divider(height: 20),
-                      ...item.adminComments.map((c) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(Icons.admin_panel_settings, size: 16, color: scheme.primary),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(children: [
-                                    Text(c.authorName, style: Theme.of(context).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600, color: scheme.primary)),
-                                    const Spacer(),
-                                    Text(
-                                      '${c.createdAt.day}/${c.createdAt.month}/${c.createdAt.year} ${c.createdAt.hour.toString().padLeft(2, '0')}:${c.createdAt.minute.toString().padLeft(2, '0')}',
-                                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
-                                    ),
-                                  ]),
-                                  const SizedBox(height: 4),
-                                  Text(c.comment, style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4)),
-                                ],
-                              ),
-                            ),
-                          ],
+                      Text(
+                        'Admin Comments',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w700,
                         ),
-                      )),
+                      ),
+                      const Divider(height: 20),
+                      ...item.adminComments.map(
+                        (c) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.admin_panel_settings,
+                                size: 16,
+                                color: scheme.primary,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          c.authorName,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .labelMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w600,
+                                                color: scheme.primary,
+                                              ),
+                                        ),
+                                        const Spacer(),
+                                        Text(
+                                          '${c.createdAt.day}/${c.createdAt.month}/${c.createdAt.year} ${c.createdAt.hour.toString().padLeft(2, '0')}:${c.createdAt.minute.toString().padLeft(2, '0')}',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .labelSmall
+                                              ?.copyWith(
+                                                color: scheme.onSurfaceVariant
+                                                    .withValues(alpha: 0.6),
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      c.comment,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(height: 1.4),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -221,7 +286,8 @@ class VisitDetailPage extends StatelessWidget {
             ],
 
             // ── Discussion Summary ───────────────────────────────────
-            if (item.discussionSummary != null && item.discussionSummary!.isNotEmpty) ...[
+            if (item.discussionSummary != null &&
+                item.discussionSummary!.isNotEmpty) ...[
               const SizedBox(height: 12),
               Card(
                 child: Padding(
@@ -229,9 +295,20 @@ class VisitDetailPage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Discussion Summary', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
+                      Text(
+                        'Discussion Summary',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                       const Divider(height: 20),
-                      Text(item.discussionSummary!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5)),
+                      Text(
+                        item.discussionSummary!,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(height: 1.5),
+                      ),
                     ],
                   ),
                 ),
@@ -247,11 +324,35 @@ class VisitDetailPage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Outcome', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
+                      Text(
+                        'Outcome',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                       const Divider(height: 20),
-                      if (item.outcome != null) _row(context, Icons.check_circle_outline, 'Result', item.outcome!),
-                      if (item.outcomeStatus != null) _row(context, Icons.mood, 'Status', item.outcomeStatus!.replaceAll('_', ' ')),
-                      if (item.durationMinutes != null) _row(context, Icons.timer_outlined, 'Duration', '${item.durationMinutes} min'),
+                      if (item.outcome != null)
+                        _row(
+                          context,
+                          Icons.check_circle_outline,
+                          'Result',
+                          item.outcome!,
+                        ),
+                      if (item.outcomeStatus != null)
+                        _row(
+                          context,
+                          Icons.mood,
+                          'Status',
+                          item.outcomeStatus!.replaceAll('_', ' '),
+                        ),
+                      if (item.durationMinutes != null)
+                        _row(
+                          context,
+                          Icons.timer_outlined,
+                          'Duration',
+                          '${item.durationMinutes} min',
+                        ),
                     ],
                   ),
                 ),
@@ -266,18 +367,48 @@ class VisitDetailPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Visit Information', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
+                    Text(
+                      'Visit Information',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     const Divider(height: 24),
                     _row(context, Icons.store, 'Customer', displayName),
                     _row(context, Icons.badge, 'Officer', officerDisplay),
-                    _row(context, Icons.calendar_today, 'Visit Date', item.visitDate.toIso8601String().split('T').first),
-                    if (item.ownerPhone != null) _row(context, Icons.phone, 'Owner Phone', item.ownerPhone!),
-                    if (item.businessPhone != null) _row(context, Icons.phone_android, 'Business Phone', item.businessPhone!),
+                    _row(
+                      context,
+                      Icons.calendar_today,
+                      'Visit Date',
+                      item.visitDate.toIso8601String().split('T').first,
+                    ),
+                    if (item.ownerPhone != null)
+                      _row(
+                        context,
+                        Icons.phone,
+                        'Owner Phone',
+                        item.ownerPhone!,
+                      ),
+                    if (item.businessPhone != null)
+                      _row(
+                        context,
+                        Icons.phone_android,
+                        'Business Phone',
+                        item.businessPhone!,
+                      ),
                     if (hasGps)
                       _gpsRow(context, item)
                     else
-                      _row(context, Icons.gps_not_fixed_outlined, 'GPS', 'Not recorded', muted: true),
-                    if (item.notes != null && item.notes!.isNotEmpty) _row(context, Icons.notes, 'Notes', item.notes!),
+                      _row(
+                        context,
+                        Icons.gps_not_fixed_outlined,
+                        'GPS',
+                        'Not recorded',
+                        muted: true,
+                      ),
+                    if (item.notes != null && item.notes!.isNotEmpty)
+                      _row(context, Icons.notes, 'Notes', item.notes!),
                     _row(context, Icons.fingerprint, 'ID', item.id),
                   ],
                 ),
@@ -293,7 +424,13 @@ class VisitDetailPage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Photos (${item.imageUrls!.length})', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
+                      Text(
+                        'Photos (${item.imageUrls!.length})',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                       const SizedBox(height: 12),
                       SizedBox(
                         height: 120,
@@ -305,8 +442,19 @@ class VisitDetailPage extends StatelessWidget {
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(12),
                               child: Image.network(
-                                item.imageUrls![i], width: 120, height: 120, fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(width: 120, height: 120, color: scheme.surfaceContainerHighest, child: Icon(Icons.broken_image, color: scheme.onSurfaceVariant)),
+                                item.imageUrls![i],
+                                width: 120,
+                                height: 120,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => Container(
+                                  width: 120,
+                                  height: 120,
+                                  color: scheme.surfaceContainerHighest,
+                                  child: Icon(
+                                    Icons.broken_image,
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -326,21 +474,42 @@ class VisitDetailPage extends StatelessWidget {
 
   Widget _gpsRow(BuildContext context, VisitEntity item) {
     final scheme = Theme.of(context).colorScheme;
-    final coords = '${item.gpsLat!.toStringAsFixed(4)}, ${item.gpsLng!.toStringAsFixed(4)}';
+    final coords =
+        '${item.gpsLat!.toStringAsFixed(4)}, ${item.gpsLng!.toStringAsFixed(4)}';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Tooltip(
         message: 'Open in Map',
         child: InkWell(
-          onTap: () => MapLauncher.open(lat: item.gpsLat!, lng: item.gpsLng!, label: item.businessName ?? 'Visit Location'),
+          onTap: () => MapLauncher.open(
+            lat: item.gpsLat!,
+            lng: item.gpsLng!,
+            label: item.businessName ?? 'Visit Location',
+          ),
           borderRadius: BorderRadius.circular(6),
           child: Row(
             children: [
               Icon(Icons.gps_fixed, size: 20, color: scheme.primary),
               const SizedBox(width: 12),
-              SizedBox(width: 100, child: Text('GPS', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant))),
+              SizedBox(
+                width: 100,
+                child: Text(
+                  'GPS',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
               Expanded(
-                child: Text(coords, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500, color: scheme.primary, decoration: TextDecoration.underline, decorationColor: scheme.primary)),
+                child: Text(
+                  coords,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                    color: scheme.primary,
+                    decoration: TextDecoration.underline,
+                    decorationColor: scheme.primary,
+                  ),
+                ),
               ),
               Icon(Icons.open_in_new, size: 14, color: scheme.primary),
             ],
@@ -353,13 +522,37 @@ class VisitDetailPage extends StatelessWidget {
   Widget _actions(BuildContext context, VisitEntity item, VisitStatus st) {
     final actions = <Widget>[];
     if (st == VisitStatus.pending) {
-      actions.add(_btn(context, Icons.check_circle_outline, 'Accept', Colors.green, () => _showAcceptDialog(context, item)));
+      actions.add(
+        _btn(
+          context,
+          Icons.check_circle_outline,
+          'Accept',
+          Colors.green,
+          () => _showAcceptDialog(context, item),
+        ),
+      );
     }
     if (st == VisitStatus.pending || st == VisitStatus.reviewed) {
-      actions.add(_btn(context, Icons.flag_outlined, 'Flag Visit', Colors.red, () => _showFlagDialog(context, item)));
+      actions.add(
+        _btn(
+          context,
+          Icons.flag_outlined,
+          'Flag Visit',
+          Colors.red,
+          () => _showFlagDialog(context, item),
+        ),
+      );
     }
     if (st == VisitStatus.flagged) {
-      actions.add(_btn(context, Icons.flag, 'Remove Flag', Colors.green, () => context.read<VisitBloc>().add(VisitUnflagRequested(item.id))));
+      actions.add(
+        _btn(
+          context,
+          Icons.flag,
+          'Remove Flag',
+          Colors.green,
+          () => context.read<VisitBloc>().add(VisitUnflagRequested(item.id)),
+        ),
+      );
     }
     if (actions.isEmpty) return const SizedBox.shrink();
     return Card(
@@ -368,7 +561,13 @@ class VisitDetailPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Admin Actions', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w700)),
+            Text(
+              'Admin Actions',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             const Divider(height: 20),
             Wrap(spacing: 10, runSpacing: 10, children: actions),
           ],
@@ -378,87 +577,327 @@ class VisitDetailPage extends StatelessWidget {
   }
 
   void _showAcceptDialog(BuildContext context, VisitEntity item) {
-    final ctrl = TextEditingController();
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Accept Visit'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Confirm you have reviewed this visit\'s GPS, photos, and discussion.'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ctrl,
-              decoration: const InputDecoration(labelText: 'Comment (optional)', hintText: 'Feedback for the officer...', border: OutlineInputBorder()),
-              maxLines: 3,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _AcceptSheet(
+        onSubmit: (comment) {
+          context.read<VisitBloc>().add(
+            VisitReviewRequested(
+              item.id,
+              comment: comment.isNotEmpty ? comment : null,
             ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              final comment = ctrl.text.trim();
-              context.read<VisitBloc>().add(VisitReviewRequested(item.id, comment: comment.isNotEmpty ? comment : null));
-            },
-            child: const Text('Accept'),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
   void _showFlagDialog(BuildContext context, VisitEntity item) {
-    final ctrl = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Flag Visit'),
-        content: Form(
-          key: formKey,
-          child: TextFormField(
-            controller: ctrl,
-            decoration: const InputDecoration(labelText: 'Reason for flagging *', hintText: 'e.g. GPS mismatch, missing photos...', border: OutlineInputBorder()),
-            maxLines: 3,
-            autofocus: true,
-            validator: (v) => (v == null || v.trim().isEmpty) ? 'A comment is required when flagging' : null,
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              if (!formKey.currentState!.validate()) return;
-              Navigator.pop(ctx);
-              context.read<VisitBloc>().add(VisitFlagRequested(item.id, comment: ctrl.text.trim()));
-            },
-            child: const Text('Flag'),
-          ),
-        ],
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _FlagSheet(
+        onSubmit: (reason) {
+          context.read<VisitBloc>().add(
+            VisitFlagRequested(item.id, comment: reason),
+          );
+        },
       ),
     );
   }
 
-  Widget _btn(BuildContext c, IconData icon, String label, Color color, VoidCallback onPressed) => FilledButton.tonalIcon(
-    onPressed: onPressed, icon: Icon(icon, size: 18, color: color), label: Text(label),
-    style: FilledButton.styleFrom(minimumSize: Size.zero, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
+  Widget _btn(
+    BuildContext c,
+    IconData icon,
+    String label,
+    Color color,
+    VoidCallback onPressed,
+  ) => FilledButton.tonalIcon(
+    onPressed: onPressed,
+    icon: Icon(icon, size: 18, color: color),
+    label: Text(label),
+    style: FilledButton.styleFrom(
+      minimumSize: Size.zero,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    ),
   );
 
-  Widget _row(BuildContext c, IconData icon, String label, String value, {bool muted = false}) {
+  Widget _row(
+    BuildContext c,
+    IconData icon,
+    String label,
+    String value, {
+    bool muted = false,
+  }) {
     final scheme = Theme.of(c).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: muted ? scheme.onSurfaceVariant.withValues(alpha: 0.4) : scheme.onSurfaceVariant),
+          Icon(
+            icon,
+            size: 20,
+            color: muted
+                ? scheme.onSurfaceVariant.withValues(alpha: 0.4)
+                : scheme.onSurfaceVariant,
+          ),
           const SizedBox(width: 12),
-          SizedBox(width: 100, child: Text(label, style: Theme.of(c).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant))),
-          Expanded(child: Text(value, style: Theme.of(c).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500, color: muted ? scheme.onSurfaceVariant.withValues(alpha: 0.45) : null))),
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: Theme.of(
+                c,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: Theme.of(c).textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+                color: muted
+                    ? scheme.onSurfaceVariant.withValues(alpha: 0.45)
+                    : null,
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Accept sheet ─────────────────────────────────────────────────────────────
+
+class _AcceptSheet extends StatefulWidget {
+  final void Function(String comment) onSubmit;
+  const _AcceptSheet({required this.onSubmit});
+
+  @override
+  State<_AcceptSheet> createState() => _AcceptSheetState();
+}
+
+class _AcceptSheetState extends State<_AcceptSheet> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: scheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Text(
+              'Accept Visit',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Confirm you have reviewed this visit\'s GPS, photos, and discussion.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 20),
+            RichTextField(
+              controller: _ctrl,
+              label: 'Comment (optional)',
+              hint: 'Feedback for the officer...',
+              minLines: 3,
+              maxLines: 8,
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      widget.onSubmit(_ctrl.text.trim());
+                    },
+                    icon: const Icon(Icons.check_circle_outline, size: 18),
+                    label: const Text('Accept'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Flag sheet ────────────────────────────────────────────────────────────────
+
+class _FlagSheet extends StatefulWidget {
+  final void Function(String reason) onSubmit;
+  const _FlagSheet({required this.onSubmit});
+
+  @override
+  State<_FlagSheet> createState() => _FlagSheetState();
+}
+
+class _FlagSheetState extends State<_FlagSheet> {
+  final _ctrl = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    color: scheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Icon(Icons.flag, color: scheme.error, size: 22),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Flag Visit',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: scheme.error,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Provide a clear reason. This will be visible to the officer.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Wrap RichTextField in FormField for validation
+              FormField<String>(
+                validator: (_) => _ctrl.text.trim().isEmpty
+                    ? 'A reason is required when flagging'
+                    : null,
+                builder: (field) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    RichTextField(
+                      controller: _ctrl,
+                      label: 'Reason for flagging *',
+                      hint:
+                          'e.g. GPS mismatch, missing photos, incorrect report...',
+                      minLines: 3,
+                      maxLines: 8,
+                      highlight: true,
+                    ),
+                    if (field.hasError)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6, left: 12),
+                        child: Text(
+                          field.errorText!,
+                          style: TextStyle(color: scheme.error, fontSize: 12),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: scheme.error,
+                      ),
+                      onPressed: () {
+                        if (!_formKey.currentState!.validate()) return;
+                        Navigator.pop(context);
+                        widget.onSubmit(_ctrl.text.trim());
+                      },
+                      icon: const Icon(Icons.flag, size: 18),
+                      label: const Text('Flag Visit'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -1,10 +1,16 @@
-﻿import '../../domain/entities/order_entity.dart';
+﻿// order_event.dart — Admin App
 import '../../domain/usecases/create_order_usecase.dart';
+import '../../domain/usecases/update_order_usecase.dart';
 import '../../domain/usecases/mark_order_paid_usecase.dart';
+import '../../domain/entities/order_entity.dart';
 
 abstract class OrderEvent {}
 
-class OrderLoadAllRequested extends OrderEvent {}
+/// Load all orders. Pass [createdById] to filter by officer/admin.
+class OrderLoadAllRequested extends OrderEvent {
+  final String? createdById;
+  OrderLoadAllRequested({this.createdById});
+}
 
 class OrderLoadOneRequested extends OrderEvent {
   final String id;

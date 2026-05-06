@@ -17,7 +17,6 @@ import 'package:jadosoft_admin/features/actor/domain/usecases/update_actor_useca
 import 'package:jadosoft_admin/features/actor/domain/usecases/delete_actor_usecase.dart';
 import 'package:jadosoft_admin/features/actor/presentation/bloc/actor_bloc.dart';
 import 'package:jadosoft_admin/core/database/actor_cache_dao.dart';
-import 'package:jadosoft_admin/features/product/domain/usecases/deduct_product_quantity_usecase.dart';
 
 // Phase 3 ? SMS Gateway (L5) ? data/client/ (singular)
 import 'package:jadosoft_admin/features/sms_gateway/data/client/sms_gateway_client.dart';
@@ -101,6 +100,7 @@ import 'package:jadosoft_admin/features/visit/data/repositories/visit_repository
 import 'package:jadosoft_admin/features/visit/domain/repositories/visit_repository.dart';
 import 'package:jadosoft_admin/features/visit/domain/usecases/get_all_visit_usecase.dart';
 import 'package:jadosoft_admin/features/visit/domain/usecases/get_visit_usecase.dart';
+import 'package:jadosoft_admin/features/visit/domain/usecases/get_customer_visits_usecase.dart';
 import 'package:jadosoft_admin/features/visit/domain/usecases/create_visit_usecase.dart';
 import 'package:jadosoft_admin/features/visit/domain/usecases/update_visit_usecase.dart';
 import 'package:jadosoft_admin/features/visit/domain/usecases/delete_visit_usecase.dart';
@@ -154,6 +154,8 @@ import 'package:jadosoft_admin/features/order/domain/usecases/update_order_useca
 import 'package:jadosoft_admin/features/order/domain/usecases/delete_order_usecase.dart';
 import 'package:jadosoft_admin/features/order/domain/services/order_domain_service.dart';
 import 'package:jadosoft_admin/features/order/presentation/bloc/order_bloc.dart';
+import 'package:jadosoft_admin/features/order/domain/usecases/deduct_product_quantity_usecase.dart';
+import 'package:jadosoft_admin/features/order/domain/usecases/mark_order_paid_usecase.dart';
 
 // Phase 8 ? Payments (L1)
 import 'package:jadosoft_admin/features/payment/data/datasources/payment_remote_datasource.dart';
@@ -190,6 +192,7 @@ import 'package:jadosoft_admin/features/sales_dashboard/presentation/cubit/sales
 import 'package:jadosoft_admin/features/report_export/data/client/report_export_client.dart';
 import 'package:jadosoft_admin/features/report_export/domain/services/report_export_service.dart';
 import 'package:jadosoft_admin/features/report_export/presentation/cubit/report_export_cubit.dart';
+import 'package:jadosoft_admin/features/report_export/domain/services/report_pdf_generator.dart';
 
 // Phase 9 ? Activity Logs (L1)
 import 'package:jadosoft_admin/features/activity_log/data/datasources/activity_log_remote_datasource.dart';
@@ -265,7 +268,6 @@ import 'package:jadosoft_admin/features/sales_dashboard/domain/providers/payment
 import 'package:jadosoft_admin/features/sales_dashboard/domain/providers/product_data_provider.dart';
 import 'package:jadosoft_admin/features/notification/data/datasources/notification_mock_datasource.dart';
 import 'package:jadosoft_admin/features/payment/data/datasources/payment_mock_datasource.dart';
-import 'package:jadosoft_admin/features/report_export/data/client/report_export_mock_client.dart';
 
 // SMS Gateway
 import 'package:jadosoft_admin/features/sms_gateway/data/client/sms_gateway_mock_client.dart';
@@ -281,8 +283,6 @@ import 'package:jadosoft_admin/features/organization/data/datasources/organizati
 import 'package:jadosoft_admin/features/organization/data/repositories/organization_repository_impl.dart';
 import 'package:jadosoft_admin/features/organization/domain/repositories/organization_repository.dart';
 import 'package:jadosoft_admin/features/organization/presentation/bloc/organization_bloc.dart';
-
-import 'package:jadosoft_admin/features/order/domain/usecases/mark_order_paid_usecase.dart';
 
 final sl = GetIt.instance;
 
@@ -629,6 +629,7 @@ Future<void> initDependencies() async {
   );
   sl.registerLazySingleton(() => GetAllVisitUseCase(sl()));
   sl.registerLazySingleton(() => GetVisitUseCase(sl()));
+  sl.registerLazySingleton(() => GetCustomerVisitsUseCase(sl()));
   sl.registerLazySingleton(() => CreateVisitUseCase(sl()));
   sl.registerLazySingleton(() => UpdateVisitUseCase(sl()));
   sl.registerLazySingleton(() => DeleteVisitUseCase(sl()));
@@ -636,6 +637,7 @@ Future<void> initDependencies() async {
     () => VisitBloc(
       getAllUseCase: sl(),
       getUseCase: sl(),
+      getCustomerVisitsUseCase: sl(),
       createUseCase: sl(),
       updateUseCase: sl(),
       deleteUseCase: sl(),
@@ -837,12 +839,15 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton(
     () => OrderDomainService(repository: sl(), guard: sl()),
   );
+  // FIX: GetAllOrderUseCase is now imported solely from get_all_order_usecase.dart.
+  // create_order_usecase.dart no longer re-exports it, so there is no ambiguity.
   sl.registerLazySingleton(() => GetAllOrderUseCase(sl()));
   sl.registerLazySingleton(() => GetOrderUseCase(sl()));
+  // FIX: DeductProductQuantityUseCase has a const no-arg constructor.
+  sl.registerLazySingleton(() => DeductProductQuantityUseCase());
   sl.registerLazySingleton(
     () => CreateOrderUseCase(repository: sl(), deductQuantity: sl()),
   );
-  sl.registerLazySingleton(() => DeductProductQuantityUseCase(sl()));
   sl.registerLazySingleton(() => UpdateOrderUseCase(sl()));
   sl.registerLazySingleton(() => DeleteOrderUseCase(sl()));
   sl.registerLazySingleton(() => MarkOrderPaidUseCase(sl()));
@@ -854,7 +859,7 @@ Future<void> initDependencies() async {
       updateUseCase: sl(),
       deleteUseCase: sl(),
       domainService: sl(),
-      markPaidUseCase: sl(), // ← ADD
+      markPaidUseCase: sl(),
     ),
   );
 
@@ -975,7 +980,7 @@ Future<void> initDependencies() async {
   // Seq 20 ? Report Export (L5)
   //     sl.registerLazySingleton<ReportExportClient>(
   //       () => ReportExportClientImpl(dio: sl()));
-  sl.registerLazySingleton<ReportExportClient>(() => ReportExportMockClient());
+  // sl.registerLazySingleton<ReportExportClient>(() => ReportExportMockClient());
   sl.registerLazySingleton<ReportExportService>(
     () => ReportExportService(client: sl<ReportExportClient>()),
   );

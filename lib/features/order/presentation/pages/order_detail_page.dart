@@ -116,6 +116,9 @@ class _OrderBody extends StatelessWidget {
                 'Created',
                 item.createdAt.toIso8601String().split('T').first,
               ),
+              // ── Officer / Admin who placed the order ────
+              if (item.createdByName != null && item.createdByName!.isNotEmpty)
+                _Field('Placed by', item.createdByName!),
             ],
           ),
           const SizedBox(height: 16),

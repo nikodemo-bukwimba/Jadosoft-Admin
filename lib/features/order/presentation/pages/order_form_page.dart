@@ -7,6 +7,7 @@ import '../bloc/order_event.dart';
 import '../bloc/order_state.dart';
 import '../../domain/usecases/create_order_usecase.dart';
 import '../../../../config/di/injection_container.dart';
+import '../../../../core/context/org_context.dart';
 import '../../../customer/domain/repositories/customer_repository.dart';
 import '../../../customer/data/models/customer_model.dart';
 import '../../../product/domain/repositories/product_repository.dart';
@@ -711,6 +712,11 @@ class _OrderFormPageState extends State<OrderFormPage> {
       }
 
       // Build effective paymentRef — append mobile payment info if provided
+      final orgContext = sl<OrgContext>();
+      final adminName =
+          orgContext.actorName ?? orgContext.rootOrgName ?? 'Admin';
+      final adminId = orgContext.actorId ?? orgContext.effectiveOrgId;
+
       final baseRef = _paymentRefController.text.trim();
       final mobileNote =
           _sendMobilePayment && _paymentPhoneCtrl.text.trim().isNotEmpty
@@ -728,6 +734,9 @@ class _OrderFormPageState extends State<OrderFormPage> {
             items: items,
             total: _calculatedTotal,
             paymentRef: effectiveRef.isEmpty ? null : effectiveRef,
+            // ── Officer / Admin identity ──────────────────────
+            createdByName: adminName,
+            createdById: adminId,
           ),
         ),
       );

@@ -1,3 +1,6 @@
+// order_card_tile.dart — Admin App
+// Shows "Placed by" row when createdByName is available.
+
 import 'package:flutter/material.dart';
 import '../../domain/entities/order_entity.dart';
 import '../../domain/value_objects/order_status.dart';
@@ -21,6 +24,8 @@ class OrderCardTile extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final status = OrderStatusX.fromString(item.status);
+    final hasPlacedBy =
+        item.createdByName != null && item.createdByName!.isNotEmpty;
 
     return Card(
       margin: EdgeInsets.zero,
@@ -32,7 +37,7 @@ class OrderCardTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header row
+              // ── Header row ──────────────────────────────
               Row(
                 children: [
                   Container(
@@ -71,8 +76,9 @@ class OrderCardTile extends StatelessWidget {
                   OrderStatusBadge(status: status, compact: true),
                 ],
               ),
-              const SizedBox(height: 12),
-              // Items count + total
+              const SizedBox(height: 10),
+
+              // ── Items count + total ──────────────────────
               Row(
                 children: [
                   Icon(
@@ -97,8 +103,10 @@ class OrderCardTile extends StatelessWidget {
                   ),
                 ],
               ),
-              if (item.paymentRef != null) ...[
-                const SizedBox(height: 6),
+
+              // ── Payment ref ──────────────────────────────
+              if (item.paymentRef != null && item.paymentRef!.isNotEmpty) ...[
+                const SizedBox(height: 5),
                 Row(
                   children: [
                     Icon(
@@ -107,17 +115,47 @@ class OrderCardTile extends StatelessWidget {
                       color: scheme.tertiary,
                     ),
                     const SizedBox(width: 4),
-                    Text(
-                      item.paymentRef!,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: scheme.tertiary,
+                    Expanded(
+                      child: Text(
+                        item.paymentRef!,
+                        style: textTheme.bodySmall?.copyWith(
+                          color: scheme.tertiary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
               ],
+
+              // ── Placed by (officer / admin) ──────────────
+              if (hasPlacedBy) ...[
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.badge_outlined,
+                      size: 13,
+                      color: scheme.secondary,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        'By ${item.createdByName!}',
+                        style: textTheme.bodySmall?.copyWith(
+                          color: scheme.secondary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
               const SizedBox(height: 10),
-              // Footer
+
+              // ── Footer: customer + delete ────────────────
               Row(
                 children: [
                   Icon(
@@ -126,14 +164,15 @@ class OrderCardTile extends StatelessWidget {
                     color: scheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: 4),
-                  Text(
-                    'Customer: ${item.customerId}',
-                    style: textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
+                  Expanded(
+                    child: Text(
+                      'Customer: ${item.customerId}',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  const Spacer(),
                   IconButton(
                     icon: Icon(
                       Icons.delete_outline,

@@ -17,17 +17,26 @@ class MemberTab extends StatelessWidget {
 
   const MemberTab({super.key, this.viewingBranchId, this.onBackToRootMembers});
 
+  static const _staffCategories = {'owner', 'manager', 'officer'};
+
+  List<OrgMemberEntity> _toStaffList(List<OrgMemberEntity> raw) {
+    final Map<String, OrgMemberEntity> seen = {};
+    for (final m in raw) {
+      if (!_staffCategories.contains(m.roleCategory)) continue;
+      final existing = seen[m.userId];
+      if (existing == null || m.authorityLevel > existing.authorityLevel) {
+        seen[m.userId] = m;
+      }
+    }
+    return seen.values.toList()
+      ..sort((a, b) => b.authorityLevel.compareTo(a.authorityLevel));
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocListener<OrganizationBloc, OrganizationState>(
-<<<<<<< HEAD
-      // NOTE: MemberInvitedWithToken is intentionally NOT handled here.
-      // It is handled at OrganizationHubPage level so the sheet always
-      // opens from a stable, top-level Scaffold context.
-=======
       // MemberInvitedWithToken is handled at OrganizationHubPage level —
       // do NOT handle it here to avoid stale-context sheet failures.
->>>>>>> promotion_and_bulk_sms
       listener: (context, state) {
         if (state is OrganizationOperationSuccess) {
           ScaffoldMessenger.of(context)
@@ -61,12 +70,13 @@ class MemberTab extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
           if (s is MembersLoaded) {
+            final staffMembers = _toStaffList(s.members);
             return Column(
               children: [
                 if (viewingBranchId != null)
                   _BranchScopeBar(onBack: onBackToRootMembers),
                 Expanded(
-                  child: s.members.isEmpty
+                  child: staffMembers.isEmpty
                       ? _EmptyState(
                           isBranch: viewingBranchId != null,
                           onInvite: () => _showInviteDialog(c),
@@ -90,9 +100,9 @@ class MemberTab extends StatelessWidget {
                                   16,
                                   80,
                                 ),
-                                itemCount: s.members.length,
+                                itemCount: staffMembers.length,
                                 itemBuilder: (_, i) => MemberCardTile(
-                                  member: s.members[i],
+                                  member: staffMembers[i],
                                   onSuspend: (uid) =>
                                       c.read<OrganizationBloc>().add(
                                         MemberUpdateRequested(
@@ -275,15 +285,11 @@ class _InviteDialogState extends State<_InviteDialog> {
 
   // FIX: Use value: (controlled) not initialValue: (uncontrolled).
   // initialValue is read-only on first render — it NEVER reflects
-  // async setState() changes, so selectedBranchId/selectedRoleId
-  // stayed null even after the user visually picked an item.
->>>>>>> promotion_and_bulk_sms
   String? selectedBranchId;
   String? selectedRoleId;
 
   @override
   void initState() {
-    super.initState();
     _load();
   }
 
@@ -389,19 +395,10 @@ class _InviteDialogState extends State<_InviteDialog> {
 =======
 
                   // ── Branch — value: (controlled) ─────────────
-                  DropdownButtonFormField<String>(
-                    value: selectedBranchId, // ← FIX
->>>>>>> promotion_and_bulk_sms
-                    decoration: const InputDecoration(
-                      labelText: 'Target Branch *',
-                      hintText: 'Select the branch they will join',
-                      prefixIcon: Icon(Icons.store_outlined),
-                      border: OutlineInputBorder(),
                     ),
                     items: [
                       DropdownMenuItem(
                         value: widget.bloc.orgContext.rootOrgId,
-                        child: const Text('HQ (Root Organization)'),
                       ),
                       ...branches.map(
                         (b) => DropdownMenuItem(
@@ -432,16 +429,10 @@ class _InviteDialogState extends State<_InviteDialog> {
                         .map(
                           (r) => DropdownMenuItem(
                             value: r.id,
-                            child: Text(
-                              r.name,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
                         )
                         .toList(),
                     onChanged: (v) => setState(() => selectedRoleId = v),
                   ),
-                  const SizedBox(height: 12),
 
                   // ── Level ────────────────────────────────────
                   TextField(

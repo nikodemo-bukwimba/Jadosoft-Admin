@@ -131,13 +131,13 @@ abstract class ShellNavItems {
           path: AppRouter.orderList,
         ),
 
-      if (auth.can('payments.view'))
-        NavItem(
-          id: 'payment',
-          label: 'Payments',
-          icon: Icons.payments_outlined,
-          path: AppRouter.paymentList,
-        ),
+      // if (auth.can('payments.view'))
+      //   NavItem(
+      //     id: 'payment',
+      //     label: 'Payments',
+      //     icon: Icons.payments_outlined,
+      //     path: AppRouter.paymentList,
+      //   ),
 
       // ┌──────────────────────────────────────────────────────
       // │ COMMUNICATION
@@ -150,13 +150,13 @@ abstract class ShellNavItems {
           path: AppRouter.conversationList,
         ),
 
-      if (auth.can('notifications.view'))
-        NavItem(
-          id: 'notification',
-          label: 'Notifications',
-          icon: Icons.notifications_outlined,
-          path: AppRouter.notificationList,
-        ),
+      // if (auth.can('notifications.view'))
+      //   NavItem(
+      //     id: 'notification',
+      //     label: 'Notifications',
+      //     icon: Icons.notifications_outlined,
+      //     path: AppRouter.notificationList,
+      //   ),
 
       // ┌──────────────────────────────────────────────────────
       // │ ANALYTICS & REPORTS
@@ -193,25 +193,25 @@ abstract class ShellNavItems {
           path: AppRouter.activityLogList,
         ),
 
-      // Actor (HMSCP core)
-      if (auth.can('actors.view'))
-        NavItem(
-          id: 'actor',
-          label: 'Actors',
-          icon: Icons.people_outlined,
-          path: AppRouter.actorList,
-        ),
+      // // Actor (HMSCP core)
+      // if (auth.can('actors.view'))
+      //   NavItem(
+      //     id: 'actor',
+      //     label: 'Actors',
+      //     icon: Icons.people_outlined,
+      //     path: AppRouter.actorList,
+      //   ),
 
       // ── END GENERATOR TABS ─────────────────────────────────
 
       // ── Permission-gated — Dashboard ───────────────────────
-      if (auth.canViewDashboard)
-        NavItem(
-          id: 'dashboard',
-          label: 'Dashboard',
-          icon: Icons.dashboard_outlined,
-          path: AppRouter.dashboard,
-        ),
+      // if (auth.canViewDashboard)
+      //   NavItem(
+      //     id: 'dashboard',
+      //     label: 'Dashboard',
+      //     icon: Icons.dashboard_outlined,
+      //     path: AppRouter.dashboard,
+      //   ),
 
       // ── Always visible — Profile (always last) ──────────────
       NavItem(

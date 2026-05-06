@@ -490,9 +490,18 @@ class AppRouter {
               path: officerDetail,
               builder: (_, s) {
                 final id = s.pathParameters['id'] ?? '';
-                return BlocProvider(
-                  create: (_) =>
-                      sl<OfficerBloc>()..add(OfficerLoadOneRequested(id)),
+                return MultiBlocProvider(
+                  providers: [
+                    BlocProvider(
+                      create: (_) =>
+                          sl<OfficerBloc>()..add(OfficerLoadOneRequested(id)),
+                    ),
+                    BlocProvider(
+                      create: (_) => sl<OrganizationBloc>()
+                        ..add(BranchesLoadRequested())
+                        ..add(RolesLoadRequested()),
+                    ),
+                  ],
                   child: const OfficerDetailPage(),
                 );
               },
