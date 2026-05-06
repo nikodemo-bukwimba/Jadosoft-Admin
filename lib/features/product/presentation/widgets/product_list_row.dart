@@ -53,9 +53,7 @@ class ProductListRow extends StatelessWidget {
                           Flexible(
                             child: Text(
                               item.name,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
+                              style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(fontWeight: FontWeight.w600),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -65,7 +63,9 @@ class ProductListRow extends StatelessWidget {
                             const SizedBox(width: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 5, vertical: 1),
+                                horizontal: 5,
+                                vertical: 1,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.blue.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(4),
@@ -83,12 +83,30 @@ class ProductListRow extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 1),
-                      Text(
-                        formatPrice(item.price),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: scheme.primary,
-                              fontWeight: FontWeight.w600,
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            formatPrice(item.displayPrice),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: item.isOnPromotion
+                                      ? Colors.green
+                                      : scheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          if (item.isOnPromotion)
+                            Text(
+                              formatPrice(item.price),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    decoration: TextDecoration.lineThrough,
+                                    fontSize: 10,
+                                  ),
                             ),
+                        ],
                       ),
                     ],
                   ),
@@ -100,8 +118,11 @@ class ProductListRow extends StatelessWidget {
                 SizedBox(
                   width: 36,
                   child: IconButton(
-                    icon: Icon(Icons.delete_outline,
-                        color: scheme.error, size: 18),
+                    icon: Icon(
+                      Icons.delete_outline,
+                      color: scheme.error,
+                      size: 18,
+                    ),
                     onPressed: onDelete,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),

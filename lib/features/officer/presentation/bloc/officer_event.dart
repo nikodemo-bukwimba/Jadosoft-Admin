@@ -1,8 +1,7 @@
 // lib/features/officer/presentation/bloc/officer_event.dart
 //
-// FIX 3: OfficerReassignBranchRequested now includes `fromBranchId`
-// so the datasource can remove the existing membership before creating
-// the new one in the target branch.
+// Added `branchId` to OfficerLoadOneRequested so the datasource
+// can call GET /orgs/{branchId}/members/{userId} for branch-only officers.
 
 import '../../domain/entities/officer_entity.dart';
 import '../../domain/usecases/create_officer_usecase.dart';
@@ -13,7 +12,10 @@ class OfficerLoadAllRequested extends OfficerEvent {}
 
 class OfficerLoadOneRequested extends OfficerEvent {
   final String userId;
-  OfficerLoadOneRequested(this.userId);
+
+  /// The officer's actual org/branch id. Null = fall back to root org.
+  final String? branchId;
+  OfficerLoadOneRequested(this.userId, {this.branchId});
 }
 
 class OfficerCreateRequested extends OfficerEvent {
@@ -48,11 +50,9 @@ class OfficerDeactivateRequested extends OfficerEvent {
   OfficerDeactivateRequested(this.userId);
 }
 
-/// FIX: Added `fromBranchId` — the officer's current branch that will
-/// have its membership removed before the new assignment is created.
 class OfficerReassignBranchRequested extends OfficerEvent {
   final String userId;
-  final String fromBranchId; // ← was missing; needed by datasource
+  final String fromBranchId;
   final String toBranchId;
   final String orgRoleId;
 

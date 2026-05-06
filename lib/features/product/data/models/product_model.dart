@@ -1,4 +1,6 @@
-﻿import '../../domain/entities/product_entity.dart';
+﻿// lib/features/product/data/models/product_model.dart
+
+import '../../domain/entities/product_entity.dart';
 
 class ProductModel extends ProductEntity {
   const ProductModel({
@@ -6,6 +8,10 @@ class ProductModel extends ProductEntity {
     required super.name,
     super.description,
     required super.price,
+    super.effectivePrice,
+    super.discountPercentage,
+    super.promotionId,
+    super.hasPromotion,
     required super.categoryId,
     super.variantId,
     required super.isAvailable,
@@ -21,11 +27,20 @@ class ProductModel extends ProductEntity {
   });
 
   factory ProductModel.fromJson(Map<String, dynamic> json) {
+    final basePrice = (json['base_price'] as num? ?? json['price'] as num? ?? 0)
+        .toDouble();
+    final effectivePrice =
+        (json['effective_price'] as num?)?.toDouble() ?? basePrice;
+
     return ProductModel(
       id: json['id']?.toString() ?? '',
       name: json['name'] as String? ?? '',
       description: json['description'] as String?,
-      price: (json['price'] as num? ?? 0).toDouble(),
+      price: basePrice,
+      effectivePrice: effectivePrice,
+      discountPercentage: (json['discount_percentage'] as num?)?.toDouble(),
+      promotionId: json['promotion_id'] as String?,
+      hasPromotion: json['has_promotion'] as bool? ?? false,
       categoryId: json['category_id']?.toString() ?? '',
       variantId: json['variant_id'] as String?,
       isAvailable: json['is_available'] as bool? ?? false,
@@ -50,6 +65,10 @@ class ProductModel extends ProductEntity {
     'name': name,
     'description': description,
     'price': price,
+    'effective_price': effectivePrice,
+    'discount_percentage': discountPercentage,
+    'promotion_id': promotionId,
+    'has_promotion': hasPromotion,
     'category_id': categoryId,
     if (variantId != null) 'variant_id': variantId,
     'is_available': isAvailable,
@@ -64,24 +83,76 @@ class ProductModel extends ProductEntity {
     'quantity_available': quantityAvailable,
   };
 
-  factory ProductModel.fromEntity(ProductEntity entity) {
+  factory ProductModel.fromEntity(ProductEntity e) {
+    if (e is ProductModel) return e;
     return ProductModel(
-      id: entity.id,
-      name: entity.name,
-      description: entity.description,
-      price: entity.price,
-      categoryId: entity.categoryId,
-      variantId: entity.variantId,
-      isAvailable: entity.isAvailable,
-      isFeatured: entity.isFeatured,
-      isNew: entity.isNew,
-      status: entity.status,
-      imageUrl: entity.imageUrl,
-      createdAt: entity.createdAt,
-      batchNumber: entity.batchNumber,
-      expiryDate: entity.expiryDate,
-      packSize: entity.packSize,
-      quantityAvailable: entity.quantityAvailable,
+      id: e.id,
+      name: e.name,
+      description: e.description,
+      price: e.price,
+      effectivePrice: e.effectivePrice,
+      discountPercentage: e.discountPercentage,
+      promotionId: e.promotionId,
+      hasPromotion: e.hasPromotion,
+      categoryId: e.categoryId,
+      variantId: e.variantId,
+      isAvailable: e.isAvailable,
+      isFeatured: e.isFeatured,
+      isNew: e.isNew,
+      status: e.status,
+      imageUrl: e.imageUrl,
+      createdAt: e.createdAt,
+      batchNumber: e.batchNumber,
+      expiryDate: e.expiryDate,
+      packSize: e.packSize,
+      quantityAvailable: e.quantityAvailable,
+    );
+  }
+
+  @override
+  ProductModel copyWith({
+    String? id,
+    String? name,
+    String? description,
+    double? price,
+    double? effectivePrice,
+    double? discountPercentage,
+    String? promotionId,
+    bool? hasPromotion,
+    String? categoryId,
+    String? variantId,
+    bool? isAvailable,
+    bool? isFeatured,
+    bool? isNew,
+    String? status,
+    String? imageUrl,
+    DateTime? createdAt,
+    String? batchNumber,
+    DateTime? expiryDate,
+    String? packSize,
+    int? quantityAvailable,
+  }) {
+    return ProductModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      price: price ?? this.price,
+      effectivePrice: effectivePrice ?? this.effectivePrice,
+      discountPercentage: discountPercentage ?? this.discountPercentage,
+      promotionId: promotionId ?? this.promotionId,
+      hasPromotion: hasPromotion ?? this.hasPromotion,
+      categoryId: categoryId ?? this.categoryId,
+      variantId: variantId ?? this.variantId,
+      isAvailable: isAvailable ?? this.isAvailable,
+      isFeatured: isFeatured ?? this.isFeatured,
+      isNew: isNew ?? this.isNew,
+      status: status ?? this.status,
+      imageUrl: imageUrl ?? this.imageUrl,
+      createdAt: createdAt ?? this.createdAt,
+      batchNumber: batchNumber ?? this.batchNumber,
+      expiryDate: expiryDate ?? this.expiryDate,
+      packSize: packSize ?? this.packSize,
+      quantityAvailable: quantityAvailable ?? this.quantityAvailable,
     );
   }
 }

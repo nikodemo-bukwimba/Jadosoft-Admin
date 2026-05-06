@@ -1,5 +1,4 @@
 ﻿// lib/features/promotion/data/models/promotion_model.dart
-// jadosoft_admin
 
 import '../../domain/entities/promotion_entity.dart';
 
@@ -17,6 +16,7 @@ class PromotionModel extends PromotionEntity {
     required super.channels,
     required super.status,
     required super.createdAt,
+    super.discountPercentage,
     this.targetCount = 0,
     this.broadcastSentAt,
   });
@@ -28,8 +28,6 @@ class PromotionModel extends PromotionEntity {
     final createdAt = json['created_at'] != null
         ? DateTime.tryParse(json['created_at'] as String) ?? DateTime.now()
         : DateTime.now();
-
-    // Use persisted dates; fall back to sentAt or createdAt — never bare DateTime.now()
     final anchor = sentAt ?? createdAt;
     final startDate = json['start_date'] != null
         ? DateTime.tryParse(json['start_date'] as String) ?? anchor
@@ -49,6 +47,7 @@ class PromotionModel extends PromotionEntity {
       channels: List<String>.from((json['channels'] as List?) ?? []),
       status: json['status'] as String? ?? 'draft',
       createdAt: createdAt,
+      discountPercentage: (json['discount_percentage'] as num?)?.toDouble(),
       targetCount: json['target_count'] as int? ?? 0,
       broadcastSentAt: sentAt,
     );
@@ -66,6 +65,7 @@ class PromotionModel extends PromotionEntity {
     'created_at': createdAt.toIso8601String(),
     'target_count': targetCount,
     'broadcast_sent_at': broadcastSentAt?.toIso8601String(),
+    'discount_percentage': discountPercentage,
   };
 
   static PromotionModel fromEntity(PromotionEntity e) {
@@ -80,9 +80,11 @@ class PromotionModel extends PromotionEntity {
       channels: e.channels,
       status: e.status,
       createdAt: e.createdAt,
+      discountPercentage: e.discountPercentage,
     );
   }
 
+  @override
   PromotionModel copyWith({
     String? id,
     String? title,
@@ -93,6 +95,8 @@ class PromotionModel extends PromotionEntity {
     List<String>? channels,
     String? status,
     DateTime? createdAt,
+    double? discountPercentage,
+    bool clearDiscount = false,
     int? targetCount,
     DateTime? broadcastSentAt,
   }) {
@@ -106,6 +110,9 @@ class PromotionModel extends PromotionEntity {
       channels: channels ?? this.channels,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
+      discountPercentage: clearDiscount
+          ? null
+          : (discountPercentage ?? this.discountPercentage),
       targetCount: targetCount ?? this.targetCount,
       broadcastSentAt: broadcastSentAt ?? this.broadcastSentAt,
     );

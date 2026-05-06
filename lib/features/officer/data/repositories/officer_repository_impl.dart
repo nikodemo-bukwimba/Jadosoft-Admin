@@ -10,6 +10,7 @@ import '../datasources/officer_remote_datasource.dart';
 
 class OfficerRepositoryImpl implements OfficerRepository {
   final OfficerRemoteDataSource _remote;
+
   OfficerRepositoryImpl({required OfficerRemoteDataSource remoteDataSource})
     : _remote = remoteDataSource;
 
@@ -43,8 +44,10 @@ class OfficerRepositoryImpl implements OfficerRepository {
   );
 
   @override
-  Future<Either<Failure, OfficerEntity>> getById(String userId) =>
-      _guard(() => _remote.getById(userId));
+  Future<Either<Failure, OfficerEntity>> getById(
+    String userId, {
+    String? branchId,
+  }) => _guard(() => _remote.getById(userId, branchId: branchId));
 
   @override
   Future<Either<Failure, OfficerEntity>> invite({
@@ -73,7 +76,7 @@ class OfficerRepositoryImpl implements OfficerRepository {
     String? orgRoleId,
     int? level,
     String? status,
-    String? branchId, // ← forwarded to datasource
+    String? branchId,
   }) => _guard(
     () => _remote.updateMembership(
       userId,
