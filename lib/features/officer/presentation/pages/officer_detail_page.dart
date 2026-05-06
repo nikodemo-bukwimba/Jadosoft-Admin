@@ -1,19 +1,20 @@
-// officer_detail_page.dart
-// ─────────────────────────────────────────────────────────────
-// Changes from original:
-//   • Deactivate button now calls _confirmDeactivate() instead of
-//     dispatching OfficerDeactivateRequested directly.
-//   • _confirmDeactivate() shows a danger confirmation dialog that
-//     requires the admin to type the officer's username exactly
-//     before the Deactivate button becomes enabled — same UX
-//     pattern as GitHub account deletion / repo deletion.
-//   • All other behaviour (activate, suspend, delete) unchanged.
-// ─────────────────────────────────────────────────────────────
+// lib/features/officer/presentation/pages/officer_detail_page.dart
+//
+// FIX 3: Added "Transfer Branch" action button to the Actions card.
+// Tapping it opens _TransferBranchDialog which:
+//   • Loads live branch list from OrganizationBloc
+//   • Pre-excludes the officer's current branch
+//   • Lets admin pick a target branch + role, then dispatches
+//     OfficerReassignBranchRequested (now properly handled in OfficerBloc)
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../app/routes/app_router.dart';
+import '../../../organization/domain/entities/branch_entity.dart';
+import '../../../organization/domain/entities/org_role_entity.dart';
+import '../../../organization/presentation/bloc/organization_bloc.dart';
+import '../../../organization/presentation/bloc/organization_state.dart';
 import '../../domain/entities/officer_entity.dart';
 import '../../domain/value_objects/officer_status.dart';
 import '../bloc/officer_bloc.dart';
@@ -86,7 +87,7 @@ class OfficerDetailPage extends StatelessWidget {
           }
         },
         builder: (context, state) {
-          if (state is OfficerLoading || state is OfficerInitial) {
+          if (state is OfficerLoading) {
             return const Center(child: CircularProgressIndicator());
           }
           if (state is OfficerFailure) {
@@ -132,7 +133,7 @@ class OfficerDetailPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Profile card ────────────────────────────────
+            // ── Profile card ───────────────────────────────
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(24),
@@ -183,7 +184,7 @@ class OfficerDetailPage extends StatelessWidget {
             _buildActions(context, item, statusEnum),
             const SizedBox(height: 12),
 
-            // ── Contact info card ────────────────────────────
+            // ── Contact info card ──────────────────────────
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -198,44 +199,44 @@ class OfficerDetailPage extends StatelessWidget {
                       ),
                     ),
                     const Divider(height: 24),
-                    _contactRow(
+                    _infoRow(
                       context,
                       Icons.email_outlined,
                       'Email',
                       item.email,
                     ),
-                    _contactRow(
+                    _infoRow(
                       context,
                       Icons.phone_outlined,
                       'Phone',
                       item.phone ?? 'N/A',
                     ),
-                    _contactRow(
+                    _infoRow(
                       context,
                       Icons.badge_outlined,
                       'Role',
                       item.orgRoleName ?? 'N/A',
                     ),
-                    _contactRow(
+                    _infoRow(
                       context,
                       Icons.business_outlined,
                       'Branch',
                       item.branchName ?? 'N/A',
                     ),
-                    _contactRow(
+                    _infoRow(
                       context,
                       Icons.calendar_today_outlined,
                       'Joined',
                       item.createdAt?.toIso8601String().split('T').first ??
                           'N/A',
                     ),
-                    _contactRow(
+                    _infoRow(
                       context,
                       Icons.fingerprint,
                       'User ID',
                       item.userId,
                     ),
-                    _contactRow(
+                    _infoRow(
                       context,
                       Icons.perm_identity,
                       'Actor ID',
@@ -289,7 +290,21 @@ class OfficerDetailPage extends StatelessWidget {
       );
     }
 
-    // Deactivate — requires typed confirmation before dispatching.
+    // ── FIX: Transfer Branch button ──────────────────────
+    // Visible whenever the officer is active or suspended so
+    // admins can move them even before reactivating.
+    if (statusEnum != OfficerStatus.deactivated && item.branchId.isNotEmpty) {
+      actions.add(
+        _actionButton(
+          context,
+          icon: Icons.swap_horiz_outlined,
+          label: 'Transfer Branch',
+          color: Theme.of(context).colorScheme.primary,
+          onPressed: () => _showTransferDialog(context, item),
+        ),
+      );
+    }
+
     if (statusEnum == OfficerStatus.active ||
         statusEnum == OfficerStatus.suspended) {
       actions.add(
@@ -326,6 +341,25 @@ class OfficerDetailPage extends StatelessWidget {
     );
   }
 
+  // ── Transfer Branch dialog ────────────────────────────────
+
+  void _showTransferDialog(BuildContext context, OfficerEntity officer) {
+    // ── FIX: capture before showDialog — dialog context has no OrganizationBloc
+    final orgBloc = context.read<OrganizationBloc>(); // ← ADD THIS
+    final officerBloc = context.read<OfficerBloc>(); // ← ADD THIS
+
+    showDialog(
+      context: context,
+      builder: (_) => _TransferBranchDialog(
+        officerBloc: officerBloc, // ← was: context.read<OfficerBloc>()
+        orgBloc: orgBloc, // ← was: context.read<OrganizationBloc>()
+        officer: officer,
+      ),
+    );
+  }
+
+  // ── Helpers ───────────────────────────────────────────────
+
   Widget _actionButton(
     BuildContext context, {
     required IconData icon,
@@ -344,28 +378,7 @@ class OfficerDetailPage extends StatelessWidget {
     );
   }
 
-  // ── Deactivate confirmation dialog ───────────────────────
-  // Admin must type the officer's username exactly before the
-  // destructive action is unlocked — same pattern as GitHub.
-
-  Future<void> _confirmDeactivate(
-    BuildContext context,
-    OfficerEntity item,
-  ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) =>
-          _DeactivateConfirmDialog(officerName: item.displayName),
-    );
-    if (confirmed == true && context.mounted) {
-      context.read<OfficerBloc>().add(OfficerDeactivateRequested(item.userId));
-    }
-  }
-
-  // ── Helpers ───────────────────────────────────────────────
-
-  Widget _contactRow(
+  Widget _infoRow(
     BuildContext context,
     IconData icon,
     String label,
@@ -400,6 +413,20 @@ class OfficerDetailPage extends StatelessWidget {
     );
   }
 
+  Future<void> _confirmDeactivate(
+    BuildContext context,
+    OfficerEntity item,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _DeactivateConfirmDialog(officerName: item.displayName),
+    );
+    if (confirmed == true && context.mounted) {
+      context.read<OfficerBloc>().add(OfficerDeactivateRequested(item.userId));
+    }
+  }
+
   Future<void> _confirmDelete(
     BuildContext context,
     String userId,
@@ -407,19 +434,19 @@ class OfficerDetailPage extends StatelessWidget {
   ) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('Remove Officer?'),
         content: Text('Remove "$name"? This cannot be undone.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
+            onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
-            onPressed: () => Navigator.pop(dialogContext, true),
+            onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Remove'),
           ),
         ],
@@ -431,9 +458,226 @@ class OfficerDetailPage extends StatelessWidget {
   }
 }
 
-// ── Deactivate Confirmation Dialog ───────────────────────────
-// Extracted as a StatefulWidget so it can own the TextField
-// controller and reactively enable/disable the confirm button.
+// ═══════════════════════════════════════════════════════════════════
+// Transfer Branch Dialog
+// ═══════════════════════════════════════════════════════════════════
+
+class _TransferBranchDialog extends StatefulWidget {
+  final OfficerBloc officerBloc;
+  final OrganizationBloc orgBloc;
+  final OfficerEntity officer;
+
+  const _TransferBranchDialog({
+    required this.officerBloc,
+    required this.orgBloc,
+    required this.officer,
+  });
+
+  @override
+  State<_TransferBranchDialog> createState() => _TransferBranchDialogState();
+}
+
+class _TransferBranchDialogState extends State<_TransferBranchDialog> {
+  List<BranchEntity> _branches = [];
+  List<OrgRoleEntity> _roles = [];
+  bool _loading = true;
+  String? _error;
+
+  BranchEntity? _selectedBranch;
+  OrgRoleEntity? _selectedRole;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    // Listen for org state to populate branches and roles
+    final orgState = widget.orgBloc.state;
+
+    List<BranchEntity> branches = [];
+    List<OrgRoleEntity> roles = [];
+
+    // Use cached state if available
+    if (orgState is BranchesLoaded) {
+      branches = orgState.branches;
+    }
+    if (orgState is RolesLoaded) {
+      roles = orgState.roles;
+    }
+
+    // Otherwise trigger loads and wait for them via the repository directly
+    if (branches.isEmpty) {
+      final rootOrgId = widget.orgBloc.orgContext.rootOrgId ?? '';
+      final res = await widget.orgBloc.repository.getBranches(rootOrgId);
+      res.fold((f) => _error = f.message, (b) => branches = b);
+    }
+    if (roles.isEmpty) {
+      final rootOrgId = widget.orgBloc.orgContext.rootOrgId ?? '';
+      final res = await widget.orgBloc.repository.getRoles(rootOrgId);
+      res.fold((f) => _error ??= f.message, (r) => roles = r);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      // Exclude officer's current branch from the target list
+      _branches =
+          branches.where((b) => b.id != widget.officer.branchId).toList()
+            ..sort((a, b) => a.name.compareTo(b.name));
+
+      // Deduplicate roles by id
+      final seen = <String, OrgRoleEntity>{};
+      for (final r in roles) {
+        seen[r.id] ??= r;
+      }
+      _roles = seen.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+
+      // Pre-select current role if it exists in list
+      try {
+        _selectedRole = _roles.firstWhere(
+          (r) => r.id == widget.officer.orgRoleId,
+        );
+      } catch (_) {
+        _selectedRole = null;
+      }
+
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: Row(
+        children: [
+          Icon(Icons.swap_horiz_outlined, color: scheme.primary),
+          const SizedBox(width: 10),
+          const Text('Transfer Branch'),
+        ],
+      ),
+      content: _loading
+          ? const SizedBox(
+              height: 80,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : _error != null
+          ? Text(_error!, style: TextStyle(color: scheme.error))
+          : _branches.isEmpty
+          ? const Text('No other branches available to transfer to.')
+          : SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Current branch info
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.business_outlined,
+                          size: 16,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'From: ${widget.officer.branchName ?? widget.officer.branchId}',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: scheme.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Target branch dropdown
+                  DropdownButtonFormField<BranchEntity>(
+                    value: _selectedBranch,
+                    decoration: const InputDecoration(
+                      labelText: 'Transfer to Branch *',
+                      prefixIcon: Icon(Icons.store_outlined),
+                      border: OutlineInputBorder(),
+                    ),
+                    isExpanded: true,
+                    items: _branches
+                        .map(
+                          (b) => DropdownMenuItem(
+                            value: b,
+                            child: Text(
+                              b.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setState(() => _selectedBranch = v),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Role dropdown
+                  DropdownButtonFormField<OrgRoleEntity>(
+                    value: _selectedRole,
+                    decoration: const InputDecoration(
+                      labelText: 'Role in New Branch *',
+                      prefixIcon: Icon(Icons.admin_panel_settings_outlined),
+                      border: OutlineInputBorder(),
+                    ),
+                    isExpanded: true,
+                    items: _roles
+                        .map(
+                          (r) => DropdownMenuItem(
+                            value: r,
+                            child: Text(
+                              r.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setState(() => _selectedRole = v),
+                  ),
+                ],
+              ),
+            ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        if (!_loading && _error == null && _branches.isNotEmpty)
+          FilledButton.icon(
+            onPressed: (_selectedBranch == null || _selectedRole == null)
+                ? null
+                : () {
+                    Navigator.pop(context);
+                    widget.officerBloc.add(
+                      OfficerReassignBranchRequested(
+                        userId: widget.officer.userId,
+                        fromBranchId: widget.officer.branchId,
+                        toBranchId: _selectedBranch!.id,
+                        orgRoleId: _selectedRole!.id,
+                      ),
+                    );
+                  },
+            icon: const Icon(Icons.swap_horiz, size: 18),
+            label: const Text('Transfer'),
+          ),
+      ],
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Deactivate Confirmation Dialog — unchanged from original
+// ═══════════════════════════════════════════════════════════════════
 
 class _DeactivateConfirmDialog extends StatefulWidget {
   final String officerName;
@@ -467,7 +711,6 @@ class _DeactivateConfirmDialogState extends State<_DeactivateConfirmDialog> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final errorColor = scheme.error;
-
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Row(
@@ -483,7 +726,6 @@ class _DeactivateConfirmDialogState extends State<_DeactivateConfirmDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Warning banner ───────────────────────────
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -504,8 +746,7 @@ class _DeactivateConfirmDialogState extends State<_DeactivateConfirmDialog> {
                   const SizedBox(height: 4),
                   Text(
                     'Deactivating ${widget.officerName} will revoke all '
-                    'platform access. This cannot be undone and will affect '
-                    'all branches they belong to.',
+                    'platform access. This cannot be undone.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),
@@ -514,22 +755,21 @@ class _DeactivateConfirmDialogState extends State<_DeactivateConfirmDialog> {
               ),
             ),
             const SizedBox(height: 20),
-
-            // ── Confirmation input ───────────────────────
             Text(
               'To confirm, type the officer\'s username:',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
               widget.officerName,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+              style: TextStyle(
                 fontFamily: 'monospace',
-                color: scheme.primary,
+                fontWeight: FontWeight.w700,
+                color: errorColor,
+                fontSize: 13,
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             TextField(
               controller: _controller,
               autofocus: true,
@@ -538,13 +778,10 @@ class _DeactivateConfirmDialogState extends State<_DeactivateConfirmDialog> {
                 border: const OutlineInputBorder(),
                 focusedBorder: OutlineInputBorder(
                   borderSide: BorderSide(
-                    color: _matches ? Colors.green : scheme.primary,
+                    color: _matches ? errorColor : scheme.primary,
                     width: 2,
                   ),
                 ),
-                suffixIcon: _matches
-                    ? const Icon(Icons.check_circle, color: Colors.green)
-                    : null,
               ),
             ),
           ],

@@ -6,25 +6,12 @@ import '../../domain/value_objects/weekly_plan_status.dart';
 import '../bloc/weekly_plan_bloc.dart';
 import '../bloc/weekly_plan_event.dart';
 import '../bloc/weekly_plan_state.dart';
-import '../../../officer/data/datasources/officer_mock_datasource.dart';
 
 class WeeklyPlanDetailPage extends StatelessWidget {
   const WeeklyPlanDetailPage({super.key});
 
-  // Only called if officerName is null (mock fallback)
-  Future<String> _resolveOfficerName(String id, String? name) async {
-    if (name != null && name.isNotEmpty) return name;
-    try {
-      return (await OfficerMockDataSource().getById(id)).displayName;
-    } catch (_) {
-      return id;
-    }
-  }
-
   String _fmtDate(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-
-  // String _fmtDateOpt(DateTime? d) => d != null ? _fmtDate(d) : '—';
 
   @override
   Widget build(BuildContext context) {
@@ -122,30 +109,26 @@ class WeeklyPlanDetailPage extends StatelessWidget {
                                 ?.copyWith(fontWeight: FontWeight.w800),
                           ),
                           const SizedBox(height: 4),
-                          // Officer name — prefer API value, fallback mock
-                          FutureBuilder<String>(
-                            future: _resolveOfficerName(
-                              item.officerId,
-                              item.officerName,
-                            ),
-                            builder: (_, s) => Row(
-                              children: [
-                                Icon(
-                                  Icons.person_outline,
-                                  size: 16,
-                                  color: scheme.primary,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  s.data ?? '...',
-                                  style: Theme.of(context).textTheme.bodyMedium
-                                      ?.copyWith(
-                                        color: scheme.primary,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                ),
-                              ],
-                            ),
+                          // Officer name — use API value, fall back to officerId
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.person_outline,
+                                size: 16,
+                                color: scheme.primary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                item.officerName?.isNotEmpty == true
+                                    ? item.officerName!
+                                    : item.officerId,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: scheme.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 6),
                           Container(
@@ -253,7 +236,6 @@ class WeeklyPlanDetailPage extends StatelessWidget {
               ),
             ] else if (item.plannedCustomerIds != null &&
                 item.plannedCustomerIds!.isNotEmpty) ...[
-              // Fallback: only IDs available (old mock data)
               const SizedBox(height: 12),
               Card(
                 child: Padding(
@@ -377,7 +359,6 @@ class WeeklyPlanDetailPage extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Index circle
           CircleAvatar(
             radius: 14,
             backgroundColor: scheme.primaryContainer,
@@ -395,7 +376,6 @@ class WeeklyPlanDetailPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Customer name or title
                 Row(
                   children: [
                     Icon(
@@ -417,7 +397,6 @@ class WeeklyPlanDetailPage extends StatelessWidget {
                   ],
                 ),
 
-                // Customer ID label (small, for reference)
                 if (hasCustomer && visit.customerId != null) ...[
                   const SizedBox(height: 2),
                   Text(
@@ -428,7 +407,6 @@ class WeeklyPlanDetailPage extends StatelessWidget {
                   ),
                 ],
 
-                // Planned date + time
                 if (hasDate) ...[
                   const SizedBox(height: 6),
                   Row(
@@ -466,7 +444,6 @@ class WeeklyPlanDetailPage extends StatelessWidget {
                   ),
                 ],
 
-                // Title (if customer is set, title is extra context)
                 if (hasCustomer &&
                     visit.title != null &&
                     visit.title!.isNotEmpty) ...[
@@ -480,7 +457,6 @@ class WeeklyPlanDetailPage extends StatelessWidget {
                   ),
                 ],
 
-                // Objective
                 if (visit.objective != null && visit.objective!.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Row(
@@ -504,7 +480,6 @@ class WeeklyPlanDetailPage extends StatelessWidget {
                   ),
                 ],
 
-                // Notes
                 if (visit.notes != null && visit.notes!.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Row(
@@ -526,7 +501,6 @@ class WeeklyPlanDetailPage extends StatelessWidget {
                   ),
                 ],
 
-                // Status badge
                 const SizedBox(height: 6),
                 Container(
                   padding: const EdgeInsets.symmetric(

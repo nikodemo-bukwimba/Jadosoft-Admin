@@ -1,3 +1,8 @@
+// lib/features/officer/domain/repositories/officer_repository.dart
+//
+// Added `branchId` to updateMembership, activate, suspend so the domain
+// layer can pass the officer's actual branch through to the datasource.
+
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/network/paginated_response.dart';
@@ -10,7 +15,9 @@ abstract class OfficerRepository {
     int? perPage,
     int? page,
   });
+
   Future<Either<Failure, OfficerEntity>> getById(String userId);
+
   Future<Either<Failure, OfficerEntity>> invite({
     required String email,
     String? username,
@@ -20,20 +27,34 @@ abstract class OfficerRepository {
     String? appPassword,
     String? appPasswordConfirmation,
   });
+
+  /// [branchId] must be the officer's actual branch membership org id,
+  /// NOT the root org id.
   Future<Either<Failure, OfficerEntity>> updateMembership(
     String userId, {
     String? orgRoleId,
     int? level,
     String? status,
+    String? branchId,
   });
+
   Future<Either<Failure, void>> reassignBranch({
     required String userId,
     required String fromBranchId,
     required String toBranchId,
     required String orgRoleId,
   });
-  Future<Either<Failure, OfficerEntity>> suspend(String userId);
-  Future<Either<Failure, OfficerEntity>> activate(String userId);
+
+  Future<Either<Failure, OfficerEntity>> suspend(
+    String userId, {
+    String? branchId,
+  });
+
+  Future<Either<Failure, OfficerEntity>> activate(
+    String userId, {
+    String? branchId,
+  });
+
   Future<Either<Failure, void>> suspendUser(String userId);
   Future<Either<Failure, void>> deactivateUser(String userId);
   Future<Either<Failure, void>> remove(String userId);

@@ -17,6 +17,21 @@ class MemberTab extends StatelessWidget {
 
   const MemberTab({super.key, this.viewingBranchId, this.onBackToRootMembers});
 
+  static const _staffCategories = {'owner', 'manager', 'officer'};
+
+  List<OrgMemberEntity> _toStaffList(List<OrgMemberEntity> raw) {
+    final Map<String, OrgMemberEntity> seen = {};
+    for (final m in raw) {
+      if (!_staffCategories.contains(m.roleCategory)) continue;
+      final existing = seen[m.userId];
+      if (existing == null || m.authorityLevel > existing.authorityLevel) {
+        seen[m.userId] = m;
+      }
+    }
+    return seen.values.toList()
+      ..sort((a, b) => b.authorityLevel.compareTo(a.authorityLevel));
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocListener<OrganizationBloc, OrganizationState>(
@@ -55,12 +70,13 @@ class MemberTab extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
           if (s is MembersLoaded) {
+            final staffMembers = _toStaffList(s.members);
             return Column(
               children: [
                 if (viewingBranchId != null)
                   _BranchScopeBar(onBack: onBackToRootMembers),
                 Expanded(
-                  child: s.members.isEmpty
+                  child: staffMembers.isEmpty
                       ? _EmptyState(
                           isBranch: viewingBranchId != null,
                           onInvite: () => _showInviteDialog(c),
@@ -84,9 +100,9 @@ class MemberTab extends StatelessWidget {
                                   16,
                                   80,
                                 ),
-                                itemCount: s.members.length,
+                                itemCount: staffMembers.length,
                                 itemBuilder: (_, i) => MemberCardTile(
-                                  member: s.members[i],
+                                  member: staffMembers[i],
                                   onSuspend: (uid) =>
                                       c.read<OrganizationBloc>().add(
                                         MemberUpdateRequested(

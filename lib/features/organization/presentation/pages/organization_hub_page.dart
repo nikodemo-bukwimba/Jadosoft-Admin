@@ -1,16 +1,38 @@
-// organization_hub_page.dart
+// lib/features/organization/presentation/pages/organization_hub_page.dart
+//
+// FIX 1 — Invitation filter indicator stuck on "Pending"
+// ─────────────────────────────────────────────────────────────────────
+// Root cause:
+//   The outer BlocConsumer.builder returned a *brand-new* loading Scaffold
+//   every time OrganizationLoading was emitted — even for sub-tab loads
+//   (InvitationsLoadRequested, MembersLoadRequested, etc.).
+//   This destroyed and recreated the TabBarView on every filter tap, which
+//   reset _InvitationsBodyState._statusFilter back to 'pending'.
+//
+// Fix:
+//   Add `_orgLoaded` bool to the State.  Once the active hub has been shown
+//   at least once, OrganizationLoading/OrganizationInitial no longer replace
+//   the hub Scaffold with a bare spinner.  The individual tab BlocBuilders
+//   (which already check for OrganizationLoading) show their own local
+//   spinners — which is the correct, intended behaviour.
+//
+//   `_orgLoaded` is reset to false when an org-level transition occurs
+//   (NoOrg, pending, rejected, suspended) so the initial-load screen still
+//   appears correctly on first open or after a hard reset.
+// ─────────────────────────────────────────────────────────────────────
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/organization_bloc.dart';
 import '../bloc/organization_event.dart';
 import '../bloc/organization_state.dart';
-import 'branch_tab.dart';
-import 'role_tab.dart';
-import 'member_tab.dart';
-import 'invitations_tab.dart';
-import 'delegation_tab.dart';
-import 'permission_request_tab.dart';
-import 'create_organization_page.dart';
+import '../pages/branch_tab.dart';
+import '../pages/role_tab.dart';
+import '../pages/member_tab.dart';
+import '../pages/invitations_tab.dart';
+import '../pages/delegation_tab.dart';
+import '../pages/permission_request_tab.dart';
+import '../pages/create_organization_page.dart';
 import 'accept_invitation_dialog.dart';
 import '../widgets/org_header_card.dart';
 import '../../domain/entities/organization_entity.dart';
@@ -26,6 +48,11 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
   TabController? _tabController;
   String? _viewingBranchMembers;
   bool _skipNextMemberLoad = false;
+
+  // ── FIX: track whether the active hub scaffold has been rendered ───
+  // Once true, OrganizationLoading no longer tears down the TabBarView.
+  // Each individual tab handles its own per-tab loading indicator.
+  bool _orgLoaded = false;
 
   static const _tabs = [
     Tab(icon: Icon(Icons.account_tree_outlined), text: 'Branches'),
@@ -129,11 +156,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
           c.read<OrganizationBloc>().add(OrgLoadRequested());
         }
 
-        // ── Token sheet — hub-level Scaffold, always stable ─────────
-        // addPostFrameCallback prevents calling showModalBottomSheet
-        // during a build/emit cycle (OrganizationLoading fires first,
-        // causing inner builders to rebuild before MemberInvitedWithToken
-        // arrives — handling it here avoids the stale-context issue).
+        // ── Token sheet — handled here at hub level (stable Scaffold) ──
         if (s is MemberInvitedWithToken) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
@@ -143,15 +166,22 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
               token: s.token,
               orgName: s.orgName,
             );
-            // Refresh members list and invitations tab automatically
             context.read<OrganizationBloc>()
               ..add(MembersLoadRequested(orgId: _viewingBranchMembers))
               ..add(InvitationsLoadRequested());
           });
         }
       },
+
+      // ── FIX: builder ────────────────────────────────────────────────
+      // Once the active hub has been shown (_orgLoaded == true),
+      // OrganizationLoading/OrganizationInitial must NOT replace the hub
+      // with a bare-spinner Scaffold.  Sub-tab operations emit these states
+      // and the per-tab BlocBuilders handle the local spinners themselves.
       builder: (c, s) {
+        // ── Org-level states that need a dedicated top-level screen ───
         if (s is NoOrganizationState) {
+          _orgLoaded = false;
           return Scaffold(
             appBar: AppBar(
               title: const Text('Organization'),
@@ -160,12 +190,25 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
             body: const CreateOrganizationPage(),
           );
         }
-        if (s is OrgLoaded && s.org.isPending)
+
+        if (s is OrgLoaded && s.org.isPending) {
+          _orgLoaded = false;
           return _pendingApprovalView(c, s.org);
-        if (s is OrgLoaded && s.org.isRejected) return _rejectedView(c, s.org);
-        if (s is OrgLoaded && s.org.isSuspended)
+        }
+
+        if (s is OrgLoaded && s.org.isRejected) {
+          _orgLoaded = false;
+          return _rejectedView(c, s.org);
+        }
+
+        if (s is OrgLoaded && s.org.isSuspended) {
+          _orgLoaded = false;
           return _suspendedView(c, s.org);
-        if (s is OrganizationLoading || s is OrganizationInitial) {
+        }
+
+        // ── Initial loading — only show bare spinner before first load ─
+        if ((s is OrganizationLoading || s is OrganizationInitial) &&
+            !_orgLoaded) {
           return Scaffold(
             appBar: AppBar(
               title: const Text('Organization'),
@@ -174,6 +217,10 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
             body: const Center(child: CircularProgressIndicator()),
           );
         }
+
+        // ── Active hub — any other state (including OrganizationLoading
+        //   for sub-tab ops) keeps the hub alive so tab state is preserved.
+        _orgLoaded = true;
         return _buildActiveHub(c, s);
       },
     );
@@ -222,7 +269,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
                     c.read<OrganizationBloc>().add(MembersLoadRequested());
                   },
                 ),
-                const InvitationsTab(), // ← persistent invitations list
+                const InvitationsTab(),
                 const DelegationTab(),
                 const PermissionRequestTab(),
               ],
@@ -365,7 +412,8 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
               ),
               const SizedBox(height: 12),
               Text(
-                'Your organization "${org.name}" has been suspended. Contact platform support.',
+                'Your organization "${org.name}" has been suspended. '
+                'Contact platform support.',
                 textAlign: TextAlign.center,
                 style: Theme.of(c).textTheme.bodyMedium?.copyWith(
                   color: scheme.onSurfaceVariant,

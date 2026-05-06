@@ -1,26 +1,29 @@
-// officer_remote_datasource.dart
-// Fix: dedup returned members by actorId so the customer form officer
-// dropdown never receives two items with the same value (which causes
-// the Flutter assertion "There should be exactly one item with value X").
+// lib/features/officer/data/datasources/officer_remote_datasource.dart
 //
-// Root cause: GET /orgs/{rootOrgId}/members returns ALL members across
-// the full org tree (root + all branches).  A user who is a member of
-// both the root org AND a branch node appears twice in the list, each
-// entry with the same actorId.  Flutter's DropdownButtonFormField
-// requires every value to be unique — duplicates throw the assertion.
+// FIX 3 — Officer update fails + branch transfer broken
+// ─────────────────────────────────────────────────────────────────────
+// Root causes fixed here:
 //
-// Fix strategy:
-//   1. Fetch the full list as before.
-//   2. Deduplicate by actorId, keeping the entry with the higher level
-//      (preferred) or, on tie, the one with membershipStatus == 'active'.
-//   3. Return the deduplicated list wrapped in the same PaginatedResponse.
+// A) updateMembership / activate / suspend used _orgContext.effectiveOrgId
+//    (the root org) as the {orgId} segment.  The backend only stores the
+//    membership on the specific *branch* the officer was assigned to, so
+//    PATCH /api/v1/orgs/{rootOrgId}/members/{userId} returns 404.
+//    Fix: accept an optional `branchId`; fall back to effectiveOrgId only
+//    when no branchId is supplied (so callers that already know the branch
+//    pass it explicitly).
+//
+// B) reassignBranch POSTed to /invite instead of /assign.
+//    /invite requires an email address and dispatches an invitation email.
+//    /assign accepts user_id directly and creates an active membership.
+//    Fix: use /assign endpoint.
+// ─────────────────────────────────────────────────────────────────────
 
-import 'package:dio/dio.dart';
-import '../../../../core/context/org_context.dart';
 import '../../../../core/network/api_paths.dart';
 import '../../../../core/network/base_remote_datasource.dart';
 import '../../../../core/network/paginated_response.dart';
 import '../models/officer_model.dart';
+import 'package:dio/dio.dart';
+import '../../../../core/context/org_context.dart';
 
 abstract class OfficerRemoteDataSource {
   Future<PaginatedResponse<OfficerModel>> getAll({
@@ -42,11 +45,14 @@ abstract class OfficerRemoteDataSource {
     String? appPasswordConfirmation,
   });
 
+  /// [branchId] — the branch whose membership record to update.
+  /// Must be the officer's actual branch, NOT the root org id.
   Future<OfficerModel> updateMembership(
     String userId, {
     String? orgRoleId,
     int? level,
     String? status,
+    String? branchId, // ← FIX A: caller supplies officer's branchId
   });
 
   Future<void> reassignBranch({
@@ -56,16 +62,17 @@ abstract class OfficerRemoteDataSource {
     required String orgRoleId,
   });
 
-  Future<OfficerModel> suspend(String userId);
-
-  Future<OfficerModel> activate(String userId);
+  Future<OfficerModel> suspend(String userId, {String? branchId});
+  Future<OfficerModel> activate(String userId, {String? branchId});
 
   Future<void> suspendUser(String userId);
-
   Future<void> deactivateUser(String userId);
-
   Future<void> remove(String userId);
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Implementation
+// ─────────────────────────────────────────────────────────────────────
 
 class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     implements OfficerRemoteDataSource {
@@ -77,7 +84,7 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
   }) : _orgContext = orgContext,
        super(dio: dio);
 
-  // ── LIST ─────────────────────────────────────────────────
+  // ── GET ALL ──────────────────────────────────────────────
 
   @override
   Future<PaginatedResponse<OfficerModel>> getAll({
@@ -90,7 +97,6 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     final params = <String, dynamic>{
       if (status != null) 'status': status,
       if (search != null) 'search': search,
-      // Always fetch a large page so we don't miss members when deduping.
       'per_page': perPage ?? 200,
       if (page != null) 'page': page,
     };
@@ -101,15 +107,8 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
       queryParams: params,
     );
 
-    // ── Deduplicate by actorId ────────────────────────────
-    // The org members endpoint for a root org returns ALL members of
-    // every branch in the tree.  Users with multiple memberships
-    // (root + branch) appear more than once with the same actorId.
-    // Flutter DropdownButtonFormField requires unique values —
-    // duplicates throw an assertion error at runtime.
-    //
-    // We keep the membership with the highest level, breaking ties by
-    // preferring 'active' status, then by most recent createdAt.
+    // Deduplicate by actorId — root-org query returns one row per
+    // membership; users belonging to both root + branch appear twice.
     final Map<String, OfficerModel> byActor = {};
     for (final officer in raw.items) {
       final key = officer.actorId;
@@ -118,15 +117,12 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
       if (existing == null) {
         byActor[key] = officer;
       } else {
-        // Prefer higher level
         if (officer.level > existing.level) {
           byActor[key] = officer;
-        } else if (officer.level == existing.level) {
-          // Prefer active membership status
-          if (officer.membershipStatus == 'active' &&
-              existing.membershipStatus != 'active') {
-            byActor[key] = officer;
-          }
+        } else if (officer.level == existing.level &&
+            officer.membershipStatus == 'active' &&
+            existing.membershipStatus != 'active') {
+          byActor[key] = officer;
         }
       }
     }
@@ -182,7 +178,8 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     return OfficerModel.fromJson(raw as Map<String, dynamic>);
   }
 
-  // ── UPDATE MEMBERSHIP ────────────────────────────────────
+  // ── UPDATE MEMBERSHIP ─────────────────────────────────────
+  // FIX A: use officer's own branchId, NOT the root org id.
 
   @override
   Future<OfficerModel> updateMembership(
@@ -190,8 +187,13 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     String? orgRoleId,
     int? level,
     String? status,
+    String? branchId, // ← supplied by domain layer; never empty in practice
   }) async {
-    final orgId = _orgContext.effectiveOrgId;
+    // Use the officer's actual branch; fall back to root only if truly unknown.
+    final orgId = (branchId != null && branchId.isNotEmpty)
+        ? branchId
+        : _orgContext.effectiveOrgId;
+
     return patchAndParse(
       ApiPaths.orgs.member(orgId, userId),
       {
@@ -204,7 +206,10 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     );
   }
 
-  // ── REASSIGN BRANCH ──────────────────────────────────────
+  // ── REASSIGN BRANCH ───────────────────────────────────────
+  // FIX B: use /assign endpoint (not /invite).
+  //   • /assign: accepts user_id, creates active membership immediately.
+  //   • /invite: accepts email, sends invitation email — wrong for transfers.
 
   @override
   Future<void> reassignBranch({
@@ -213,24 +218,28 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     required String toBranchId,
     required String orgRoleId,
   }) async {
+    // 1. Remove from current branch
     await deleteResource(ApiPaths.orgs.member(fromBranchId, userId));
+
+    // 2. Assign directly to new branch (no invitation email sent)
     await dio.post(
-      '${ApiPaths.orgs.members(toBranchId)}/invite',
+      '${ApiPaths.orgs.members(toBranchId)}/assign',
       data: {'user_id': userId, 'org_role_id': orgRoleId},
     );
   }
 
-  // ── SUSPEND / ACTIVATE ───────────────────────────────────
+  // ── SUSPEND / ACTIVATE ────────────────────────────────────
+  // FIX A applied: accept branchId and forward to updateMembership.
 
   @override
-  Future<OfficerModel> suspend(String userId) =>
-      updateMembership(userId, status: 'suspended');
+  Future<OfficerModel> suspend(String userId, {String? branchId}) =>
+      updateMembership(userId, status: 'suspended', branchId: branchId);
 
   @override
-  Future<OfficerModel> activate(String userId) =>
-      updateMembership(userId, status: 'active');
+  Future<OfficerModel> activate(String userId, {String? branchId}) =>
+      updateMembership(userId, status: 'active', branchId: branchId);
 
-  // ── PLATFORM-LEVEL ACTIONS ───────────────────────────────
+  // ── PLATFORM-LEVEL ACTIONS ────────────────────────────────
 
   @override
   Future<void> suspendUser(String userId) async {
@@ -248,7 +257,7 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     );
   }
 
-  // ── REMOVE FROM ORG ──────────────────────────────────────
+  // ── REMOVE FROM ORG ───────────────────────────────────────
 
   @override
   Future<void> remove(String userId) async {

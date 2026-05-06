@@ -1,3 +1,5 @@
+// lib/features/officer/data/repositories/officer_repository_impl.dart
+
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
@@ -43,6 +45,7 @@ class OfficerRepositoryImpl implements OfficerRepository {
   @override
   Future<Either<Failure, OfficerEntity>> getById(String userId) =>
       _guard(() => _remote.getById(userId));
+
   @override
   Future<Either<Failure, OfficerEntity>> invite({
     required String email,
@@ -63,20 +66,24 @@ class OfficerRepositoryImpl implements OfficerRepository {
       appPasswordConfirmation: appPasswordConfirmation,
     ),
   );
+
   @override
   Future<Either<Failure, OfficerEntity>> updateMembership(
     String userId, {
     String? orgRoleId,
     int? level,
     String? status,
+    String? branchId, // ← forwarded to datasource
   }) => _guard(
     () => _remote.updateMembership(
       userId,
       orgRoleId: orgRoleId,
       level: level,
       status: status,
+      branchId: branchId,
     ),
   );
+
   @override
   Future<Either<Failure, void>> reassignBranch({
     required String userId,
@@ -91,18 +98,27 @@ class OfficerRepositoryImpl implements OfficerRepository {
       orgRoleId: orgRoleId,
     ),
   );
+
   @override
-  Future<Either<Failure, OfficerEntity>> suspend(String userId) =>
-      _guard(() => _remote.suspend(userId));
+  Future<Either<Failure, OfficerEntity>> suspend(
+    String userId, {
+    String? branchId,
+  }) => _guard(() => _remote.suspend(userId, branchId: branchId));
+
   @override
-  Future<Either<Failure, OfficerEntity>> activate(String userId) =>
-      _guard(() => _remote.activate(userId));
+  Future<Either<Failure, OfficerEntity>> activate(
+    String userId, {
+    String? branchId,
+  }) => _guard(() => _remote.activate(userId, branchId: branchId));
+
   @override
   Future<Either<Failure, void>> suspendUser(String userId) =>
       _guard(() => _remote.suspendUser(userId));
+
   @override
   Future<Either<Failure, void>> deactivateUser(String userId) =>
       _guard(() => _remote.deactivateUser(userId));
+
   @override
   Future<Either<Failure, void>> remove(String userId) =>
       _guard(() => _remote.remove(userId));

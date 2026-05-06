@@ -5,8 +5,10 @@ import '../bloc/weekly_plan_bloc.dart';
 import '../bloc/weekly_plan_event.dart';
 import '../bloc/weekly_plan_state.dart';
 import '../../domain/usecases/create_weekly_plan_usecase.dart';
-import '../../../officer/data/datasources/officer_mock_datasource.dart';
 import '../../../officer/domain/entities/officer_entity.dart';
+import '../../../officer/presentation/bloc/officer_bloc.dart';
+import '../../../officer/presentation/bloc/officer_event.dart';
+import '../../../officer/presentation/bloc/officer_state.dart';
 
 class WeeklyPlanFormPage extends StatefulWidget {
   final WeeklyPlanFormNode mode;
@@ -29,27 +31,10 @@ class _WeeklyPlanFormPageState extends State<WeeklyPlanFormPage> {
   bool _isSubmitting = false, _fieldsPopulated = false;
   bool get _isEdit => widget.mode == WeeklyPlanFormNode.edit;
 
-  List<OfficerEntity> _officers = [];
-  bool _loading = true;
-
   @override
   void initState() {
     super.initState();
-    _loadOfficers();
-  }
-
-  Future<void> _loadOfficers() async {
-    try {
-      final response = await OfficerMockDataSource().getAll();
-      if (mounted) {
-        setState(() {
-          _officers = response.items;
-          _loading = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
-    }
+    context.read<OfficerBloc>().add(OfficerLoadAllRequested());
   }
 
   @override
@@ -112,128 +97,152 @@ class _WeeklyPlanFormPageState extends State<WeeklyPlanFormPage> {
             );
           }
         },
-        builder: (c, s) {
-          if (_isEdit && s is WeeklyPlanLoading && !_fieldsPopulated) {
+        builder: (c, weeklyPlanState) {
+          if (_isEdit &&
+              weeklyPlanState is WeeklyPlanLoading &&
+              !_fieldsPopulated) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (_loading) return const Center(child: CircularProgressIndicator());
 
-          return Form(
-            key: _formKey,
-            child: SingleChildScrollView(
-              padding: EdgeInsets.symmetric(
-                horizontal: isWide
-                    ? MediaQuery.of(context).size.width * 0.1
-                    : 16,
-                vertical: 16,
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 720),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Officer
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedOfficerId,
-                      decoration: const InputDecoration(
-                        labelText: 'Officer',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.badge_outlined),
-                      ),
-                      items: _officers
-                          .where((o) => o.effectiveStatus == 'active')
-                          .map(
-                            (o) => DropdownMenuItem(
-                              value: o.userId,
-                              child: Text(o.displayName),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) => setState(() => _selectedOfficerId = v),
-                      validator: (v) =>
-                          v == null || v.isEmpty ? 'Officer is required' : null,
-                    ),
-                    const SizedBox(height: 16),
+          return BlocBuilder<OfficerBloc, OfficerState>(
+            builder: (_, officerState) {
+              final isLoadingOfficers =
+                  officerState is OfficerInitial ||
+                  officerState is OfficerLoading;
 
-                    // Date range
-                    if (isWide)
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _dateTile(
-                              context,
-                              'Week Start',
-                              _weekStart,
-                              () => _pickDate(true),
-                            ),
+              if (isLoadingOfficers) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final officers = officerState is OfficerListLoaded
+                  ? officerState.items
+                        .where((o) => o.effectiveStatus == 'active')
+                        .toList()
+                  : <OfficerEntity>[];
+
+              return Form(
+                key: _formKey,
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isWide
+                        ? MediaQuery.of(context).size.width * 0.1
+                        : 16,
+                    vertical: 16,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 720),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Officer
+                        DropdownButtonFormField<String>(
+                          value: _selectedOfficerId,
+                          decoration: const InputDecoration(
+                            labelText: 'Officer',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.badge_outlined),
                           ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _dateTile(
-                              context,
-                              'Week End',
-                              _weekEnd,
-                              () => _pickDate(false),
-                            ),
+                          items: officers
+                              .map(
+                                (o) => DropdownMenuItem(
+                                  value: o.userId,
+                                  child: Text(o.displayName),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) =>
+                              setState(() => _selectedOfficerId = v),
+                          validator: (v) => v == null || v.isEmpty
+                              ? 'Officer is required'
+                              : null,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Date range
+                        if (isWide)
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _dateTile(
+                                  context,
+                                  'Week Start',
+                                  _weekStart,
+                                  () => _pickDate(true),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _dateTile(
+                                  context,
+                                  'Week End',
+                                  _weekEnd,
+                                  () => _pickDate(false),
+                                ),
+                              ),
+                            ],
+                          )
+                        else ...[
+                          _dateTile(
+                            context,
+                            'Week Start',
+                            _weekStart,
+                            () => _pickDate(true),
+                          ),
+                          const SizedBox(height: 16),
+                          _dateTile(
+                            context,
+                            'Week End',
+                            _weekEnd,
+                            () => _pickDate(false),
                           ),
                         ],
-                      )
-                    else ...[
-                      _dateTile(
-                        context,
-                        'Week Start',
-                        _weekStart,
-                        () => _pickDate(true),
-                      ),
-                      const SizedBox(height: 16),
-                      _dateTile(
-                        context,
-                        'Week End',
-                        _weekEnd,
-                        () => _pickDate(false),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
+                        const SizedBox(height: 16),
 
-                    TextFormField(
-                      controller: _activitiesCtl,
-                      decoration: const InputDecoration(
-                        labelText: 'Planned Activities',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.task_outlined),
-                      ),
-                      maxLines: 4,
-                      textCapitalization: TextCapitalization.sentences,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _notesCtl,
-                      decoration: const InputDecoration(
-                        labelText: 'Notes',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.notes_outlined),
-                      ),
-                      maxLines: 2,
-                      textCapitalization: TextCapitalization.sentences,
-                    ),
-                    const SizedBox(height: 32),
+                        TextFormField(
+                          controller: _activitiesCtl,
+                          decoration: const InputDecoration(
+                            labelText: 'Planned Activities',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.task_outlined),
+                          ),
+                          maxLines: 4,
+                          textCapitalization: TextCapitalization.sentences,
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _notesCtl,
+                          decoration: const InputDecoration(
+                            labelText: 'Notes',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.notes_outlined),
+                          ),
+                          maxLines: 2,
+                          textCapitalization: TextCapitalization.sentences,
+                        ),
+                        const SizedBox(height: 32),
 
-                    FilledButton.icon(
-                      onPressed: _isSubmitting ? null : _submit,
-                      icon: _isSubmitting
-                          ? const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Icon(_isEdit ? Icons.save : Icons.calendar_month),
-                      label: Text(_isEdit ? 'Save Changes' : 'Create Plan'),
+                        FilledButton.icon(
+                          onPressed: _isSubmitting ? null : _submit,
+                          icon: _isSubmitting
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Icon(
+                                  _isEdit ? Icons.save : Icons.calendar_month,
+                                ),
+                          label: Text(_isEdit ? 'Save Changes' : 'Create Plan'),
+                        ),
+                        const SizedBox(height: 32),
+                      ],
                     ),
-                    const SizedBox(height: 32),
-                  ],
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           );
         },
       ),
