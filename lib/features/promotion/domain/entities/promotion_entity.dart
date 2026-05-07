@@ -1,5 +1,6 @@
+// lib/features/promotion/domain/entities/promotion_entity.dart
+
 import 'package:equatable/equatable.dart';
-import '../value_objects/promotion_status.dart';
 
 class PromotionEntity extends Equatable {
   final String id;
@@ -11,6 +12,7 @@ class PromotionEntity extends Equatable {
   final List<String> channels;
   final String status;
   final DateTime createdAt;
+  final double? discountPercentage; // null = new product campaign
 
   const PromotionEntity({
     required this.id,
@@ -22,6 +24,7 @@ class PromotionEntity extends Equatable {
     required this.channels,
     required this.status,
     required this.createdAt,
+    this.discountPercentage,
   });
 
   PromotionEntity copyWith({
@@ -34,6 +37,8 @@ class PromotionEntity extends Equatable {
     List<String>? channels,
     String? status,
     DateTime? createdAt,
+    double? discountPercentage,
+    bool clearDiscount = false,
   }) {
     return PromotionEntity(
       id: id ?? this.id,
@@ -45,9 +50,23 @@ class PromotionEntity extends Equatable {
       channels: channels ?? this.channels,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
+      discountPercentage: clearDiscount
+          ? null
+          : (discountPercentage ?? this.discountPercentage),
     );
   }
 
   @override
-  List<Object?> get props => [id, title, description, productIds, startDate, endDate, channels, status, createdAt];
+  List<Object?> get props => [
+    id,
+    title,
+    description,
+    productIds,
+    startDate,
+    endDate,
+    channels,
+    status,
+    createdAt,
+    discountPercentage,
+  ];
 }

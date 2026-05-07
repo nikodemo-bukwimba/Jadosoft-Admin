@@ -1,29 +1,11 @@
 // lib/features/officer/data/datasources/officer_remote_datasource.dart
-//
-// FIX 3 — Officer update fails + branch transfer broken
-// ─────────────────────────────────────────────────────────────────────
-// Root causes fixed here:
-//
-// A) updateMembership / activate / suspend used _orgContext.effectiveOrgId
-//    (the root org) as the {orgId} segment.  The backend only stores the
-//    membership on the specific *branch* the officer was assigned to, so
-//    PATCH /api/v1/orgs/{rootOrgId}/members/{userId} returns 404.
-//    Fix: accept an optional `branchId`; fall back to effectiveOrgId only
-//    when no branchId is supplied (so callers that already know the branch
-//    pass it explicitly).
-//
-// B) reassignBranch POSTed to /invite instead of /assign.
-//    /invite requires an email address and dispatches an invitation email.
-//    /assign accepts user_id directly and creates an active membership.
-//    Fix: use /assign endpoint.
-// ─────────────────────────────────────────────────────────────────────
 
+import 'package:dio/dio.dart';
+import '../../../../core/context/org_context.dart';
 import '../../../../core/network/api_paths.dart';
 import '../../../../core/network/base_remote_datasource.dart';
 import '../../../../core/network/paginated_response.dart';
 import '../models/officer_model.dart';
-import 'package:dio/dio.dart';
-import '../../../../core/context/org_context.dart';
 
 abstract class OfficerRemoteDataSource {
   Future<PaginatedResponse<OfficerModel>> getAll({
@@ -33,7 +15,9 @@ abstract class OfficerRemoteDataSource {
     int? page,
   });
 
-  Future<OfficerModel> getById(String userId);
+  /// [branchId] — the org the officer actually belongs to.
+  /// Branch-only officers 404 on root org; pass their branchId here.
+  Future<OfficerModel> getById(String userId, {String? branchId});
 
   Future<OfficerModel> invite({
     required String email,
@@ -45,14 +29,12 @@ abstract class OfficerRemoteDataSource {
     String? appPasswordConfirmation,
   });
 
-  /// [branchId] — the branch whose membership record to update.
-  /// Must be the officer's actual branch, NOT the root org id.
   Future<OfficerModel> updateMembership(
     String userId, {
     String? orgRoleId,
     int? level,
     String? status,
-    String? branchId, // ← FIX A: caller supplies officer's branchId
+    String? branchId,
   });
 
   Future<void> reassignBranch({
@@ -64,15 +46,10 @@ abstract class OfficerRemoteDataSource {
 
   Future<OfficerModel> suspend(String userId, {String? branchId});
   Future<OfficerModel> activate(String userId, {String? branchId});
-
   Future<void> suspendUser(String userId);
   Future<void> deactivateUser(String userId);
   Future<void> remove(String userId);
 }
-
-// ─────────────────────────────────────────────────────────────────────
-// Implementation
-// ─────────────────────────────────────────────────────────────────────
 
 class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     implements OfficerRemoteDataSource {
@@ -84,7 +61,7 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
   }) : _orgContext = orgContext,
        super(dio: dio);
 
-  // ── GET ALL ──────────────────────────────────────────────
+  // ── LIST ──────────────────────────────────────────────────
 
   @override
   Future<PaginatedResponse<OfficerModel>> getAll({
@@ -97,51 +74,28 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     final params = <String, dynamic>{
       if (status != null) 'status': status,
       if (search != null) 'search': search,
-      'per_page': perPage ?? 200,
+      if (perPage != null) 'per_page': perPage,
       if (page != null) 'page': page,
     };
-
-    final raw = await fetchPaginatedList(
+    return fetchPaginatedList(
       ApiPaths.orgs.members(orgId),
       OfficerModel.fromJson,
-      queryParams: params,
-    );
-
-    // Deduplicate by actorId — root-org query returns one row per
-    // membership; users belonging to both root + branch appear twice.
-    final Map<String, OfficerModel> byActor = {};
-    for (final officer in raw.items) {
-      final key = officer.actorId;
-      if (key.isEmpty) continue;
-      final existing = byActor[key];
-      if (existing == null) {
-        byActor[key] = officer;
-      } else {
-        if (officer.level > existing.level) {
-          byActor[key] = officer;
-        } else if (officer.level == existing.level &&
-            officer.membershipStatus == 'active' &&
-            existing.membershipStatus != 'active') {
-          byActor[key] = officer;
-        }
-      }
-    }
-
-    final deduped = byActor.values.toList();
-    return PaginatedResponse(
-      items: deduped,
-      currentPage: raw.currentPage,
-      lastPage: raw.lastPage,
-      total: deduped.length,
-      perPage: raw.perPage,
+      queryParams: params.isNotEmpty ? params : null,
     );
   }
 
-  // ── GET BY ID ────────────────────────────────────────────
+  // ── GET BY ID ─────────────────────────────────────────────
+  // FIX 1: Use officer's actual branchId, not always the root org.
+  // Officers who are branch-only members have no root membership row,
+  // so GET /orgs/{rootOrgId}/members/{userId} returns 404 for them.
+  // The list response includes branchId — callers pass it here.
 
   @override
-  Future<OfficerModel> getById(String userId) async {
-    final orgId = _orgContext.effectiveOrgId;
+  Future<OfficerModel> getById(String userId, {String? branchId}) async {
+    final orgId = (branchId != null && branchId.isNotEmpty)
+        ? branchId
+        : _orgContext.effectiveOrgId;
+
     return fetchSingle(
       '${ApiPaths.orgs.members(orgId)}/$userId',
       OfficerModel.fromJson,
@@ -149,7 +103,7 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     );
   }
 
-  // ── INVITE ───────────────────────────────────────────────
+  // ── INVITE ────────────────────────────────────────────────
 
   @override
   Future<OfficerModel> invite({
@@ -179,7 +133,6 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
   }
 
   // ── UPDATE MEMBERSHIP ─────────────────────────────────────
-  // FIX A: use officer's own branchId, NOT the root org id.
 
   @override
   Future<OfficerModel> updateMembership(
@@ -187,9 +140,8 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     String? orgRoleId,
     int? level,
     String? status,
-    String? branchId, // ← supplied by domain layer; never empty in practice
+    String? branchId,
   }) async {
-    // Use the officer's actual branch; fall back to root only if truly unknown.
     final orgId = (branchId != null && branchId.isNotEmpty)
         ? branchId
         : _orgContext.effectiveOrgId;
@@ -207,9 +159,19 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
   }
 
   // ── REASSIGN BRANCH ───────────────────────────────────────
-  // FIX B: use /assign endpoint (not /invite).
-  //   • /assign: accepts user_id, creates active membership immediately.
-  //   • /invite: accepts email, sends invitation email — wrong for transfers.
+  // FIX 2: Never delete the root-org membership.
+  //
+  // The backend /assign endpoint guard:
+  //   "User must be an active member of the root organization first."
+  //
+  // The root membership is the anchor — it must stay alive so /assign
+  // can validate it. Only the branch membership should be moved.
+  //
+  // Logic:
+  //   • fromBranchId == rootOrgId → officer is at root level only,
+  //     no branch row to delete; just /assign to new branch.
+  //   • fromBranchId != rootOrgId → delete old branch row, /assign
+  //     to new branch (root row is untouched → /assign passes guard).
 
   @override
   Future<void> reassignBranch({
@@ -218,10 +180,15 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     required String toBranchId,
     required String orgRoleId,
   }) async {
-    // 1. Remove from current branch
-    await deleteResource(ApiPaths.orgs.member(fromBranchId, userId));
+    final rootOrgId = _orgContext.rootOrgId ?? _orgContext.effectiveOrgId;
 
-    // 2. Assign directly to new branch (no invitation email sent)
+    // Step 1: Remove old branch membership — never touch root org.
+    if (fromBranchId != rootOrgId) {
+      await deleteResource(ApiPaths.orgs.member(fromBranchId, userId));
+    }
+
+    // Step 2: Assign to new branch.
+    // /assign verifies root membership still active → succeeds.
     await dio.post(
       '${ApiPaths.orgs.members(toBranchId)}/assign',
       data: {'user_id': userId, 'org_role_id': orgRoleId},
@@ -229,7 +196,6 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
   }
 
   // ── SUSPEND / ACTIVATE ────────────────────────────────────
-  // FIX A applied: accept branchId and forward to updateMembership.
 
   @override
   Future<OfficerModel> suspend(String userId, {String? branchId}) =>

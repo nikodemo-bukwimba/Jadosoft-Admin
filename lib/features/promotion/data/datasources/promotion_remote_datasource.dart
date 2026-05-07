@@ -88,6 +88,9 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
           : DateTime.now(),
       targetCount: j['total_recipients'] as int? ?? 0,
       broadcastSentAt: sentAt,
+      discountPercentage: j['discount_percentage'] == null
+          ? null
+          : double.tryParse(j['discount_percentage'].toString()),
     );
   }
 
@@ -130,6 +133,8 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
       if (startDate != null)
         'start_date': startDate.toString().substring(0, 10),
       if (endDate != null) 'end_date': endDate.toString().substring(0, 10),
+      if (d['discount_percentage'] != null)
+        'discount_percentage': d['discount_percentage'],
     };
   }
 
@@ -148,6 +153,8 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
       if (startDate != null)
         'start_date': startDate.toString().substring(0, 10),
       if (endDate != null) 'end_date': endDate.toString().substring(0, 10),
+      if (d['discount_percentage'] != null)
+        'discount_percentage': d['discount_percentage'],
     };
 
     if (d['status'] != null) {

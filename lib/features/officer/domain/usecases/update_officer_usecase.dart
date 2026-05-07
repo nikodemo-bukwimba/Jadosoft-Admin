@@ -1,6 +1,4 @@
 // lib/features/officer/domain/usecases/update_officer_usecase.dart
-//
-// FIX 3: Pass entity.branchId so updateMembership hits the correct URL.
 
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
@@ -24,8 +22,6 @@ class UpdateOfficerUseCase
         p.entity.userId,
         orgRoleId: p.entity.orgRoleId,
         status: p.entity.membershipStatus,
-        // FIX: pass the officer's actual branch so the PATCH goes to
-        // /orgs/{branchId}/members/{userId}, not /orgs/{rootOrgId}/...
-        branchId: p.entity.branchId,
+        branchId: p.entity.branchId, // use officer's actual branch
       );
 }

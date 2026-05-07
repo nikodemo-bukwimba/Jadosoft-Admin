@@ -1,10 +1,15 @@
 ﻿// promotion_form_page.dart
 // Products are fetched from the real Nexora Commerce Products endpoint:
-//   GET /api/v1/products?org_id={orgId}&per_page=200
+//   GET /api/v1/commerce/orgs/{orgId}/products?per_page=200&status=active
 // No hardcoded product map. Products load on page init via _loadProducts().
+//
+// UPDATED: Added discount_percentage field (optional).
+//   null  → normal product campaign
+//   0-100 → discount campaign (percentage)
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
@@ -31,14 +36,16 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
   final _formKey = GlobalKey<FormState>();
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
+  final _discountCtrl = TextEditingController();
 
   DateTime _startDate = DateTime.now();
   DateTime _endDate = DateTime.now().add(const Duration(days: 7));
   final List<String> _selectedProducts = [];
   final List<String> _selectedChannels = ['sms', 'whatsapp'];
+  bool _hasDiscount = false;
 
   bool _populated = false;
-  PromotionEntity? _originalEntity; // ← ADD
+  PromotionEntity? _originalEntity;
 
   // ── Product catalogue (loaded from API) ───────────────────
   Map<String, String> _productMap = {};
@@ -48,13 +55,8 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
   @override
   void initState() {
     super.initState();
-    _startDate = DateTime.now();
-    _endDate = DateTime.now().add(const Duration(days: 7));
     _loadProducts();
 
-    // Populate immediately from current bloc state if already loaded
-    // This handles the case where bloc state is PromotionDetailLoaded
-    // before the page is built (navigating from detail → edit).
     if (widget.mode == PromotionFormNode.edit) {
       final currentState = context.read<PromotionBloc>().state;
       if (currentState is PromotionDetailLoaded) {
@@ -63,8 +65,6 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
     }
   }
 
-  /// Fetches products from Nexora Commerce Products endpoint.
-  /// Maps id → name for the picker.
   Future<void> _loadProducts() async {
     setState(() {
       _productsLoading = true;
@@ -112,6 +112,7 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
   void dispose() {
     _titleCtrl.dispose();
     _descCtrl.dispose();
+    _discountCtrl.dispose();
     super.dispose();
   }
 
@@ -129,6 +130,13 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
     _selectedChannels
       ..clear()
       ..addAll(item.channels);
+
+    if (item.discountPercentage != null) {
+      _hasDiscount = true;
+      _discountCtrl.text = item.discountPercentage!.toStringAsFixed(
+        item.discountPercentage! % 1 == 0 ? 0 : 2,
+      );
+    }
   }
 
   @override
@@ -174,7 +182,6 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
             centerTitle: false,
           ),
           body: SingleChildScrollView(
-            // ← removed PromotionLoading check here
             padding: EdgeInsets.symmetric(
               horizontal: isWide ? 48 : 16,
               vertical: 16,
@@ -187,6 +194,7 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      // ── Promotion Details ─────────────────────
                       _SectionCard(
                         title: 'Promotion Details',
                         icon: Icons.campaign_outlined,
@@ -226,6 +234,91 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
                       ),
                       const SizedBox(height: 12),
 
+                      // ── Discount / Campaign Type ──────────────
+                      _SectionCard(
+                        title: 'Campaign Type',
+                        icon: Icons.local_offer_outlined,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Toggle between product campaign and discount campaign
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _CampaignTypeButton(
+                                    label: 'Product Campaign',
+                                    subtitle:
+                                        'Announce new or featured products',
+                                    icon: Icons.medication_outlined,
+                                    selected: !_hasDiscount,
+                                    onTap: () => setState(() {
+                                      _hasDiscount = false;
+                                      _discountCtrl.clear();
+                                    }),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _CampaignTypeButton(
+                                    label: 'Discount Campaign',
+                                    subtitle: 'Offer a percentage discount',
+                                    icon: Icons.percent_outlined,
+                                    selected: _hasDiscount,
+                                    onTap: () =>
+                                        setState(() => _hasDiscount = true),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (_hasDiscount) ...[
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: _discountCtrl,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                    RegExp(r'^\d{0,3}(\.\d{0,2})?'),
+                                  ),
+                                ],
+                                decoration: InputDecoration(
+                                  labelText: 'Discount Percentage *',
+                                  hintText: 'e.g. 15',
+                                  border: const OutlineInputBorder(),
+                                  suffixText: '%',
+                                  suffixStyle: TextStyle(
+                                    color: theme.colorScheme.primary,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 16,
+                                  ),
+                                  helperText:
+                                      'Applied to all selected products. '
+                                      'Variant-level overrides can be set after publishing.',
+                                ),
+                                validator: (v) {
+                                  if (!_hasDiscount) return null;
+                                  if (v == null || v.trim().isEmpty) {
+                                    return 'Discount percentage is required';
+                                  }
+                                  final parsed = double.tryParse(v.trim());
+                                  if (parsed == null) {
+                                    return 'Enter a valid number';
+                                  }
+                                  if (parsed < 0 || parsed > 100) {
+                                    return 'Must be between 0 and 100';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // ── Date Range ────────────────────────────
                       _SectionCard(
                         title: 'Date Range',
                         icon: Icons.date_range_outlined,
@@ -273,6 +366,7 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
                       ),
                       const SizedBox(height: 12),
 
+                      // ── Broadcast Channels ────────────────────
                       _SectionCard(
                         title: 'Broadcast Channels',
                         icon: Icons.cell_tower_outlined,
@@ -325,6 +419,7 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
                       ),
                       const SizedBox(height: 12),
 
+                      // ── Products ──────────────────────────────
                       _SectionCard(
                         title:
                             'Products to Promote (${_selectedProducts.length} selected)',
@@ -381,7 +476,7 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
                         ),
                       const SizedBox(height: 24),
 
-                      // ── Submit button with its own loading state ──
+                      // ── Submit ────────────────────────────────
                       BlocBuilder<PromotionBloc, PromotionState>(
                         buildWhen: (_, state) =>
                             state is PromotionLoading ||
@@ -433,6 +528,12 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
     final bloc = context.read<PromotionBloc>();
     final isEdit = widget.mode == PromotionFormNode.edit;
 
+    // Resolve discount percentage
+    double? discountPercentage;
+    if (_hasDiscount && _discountCtrl.text.trim().isNotEmpty) {
+      discountPercentage = double.tryParse(_discountCtrl.text.trim());
+    }
+
     if (isEdit) {
       if (_originalEntity == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -452,6 +553,8 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
         startDate: _startDate,
         endDate: _endDate,
         channels: List<String>.from(_selectedChannels),
+        discountPercentage: discountPercentage,
+        clearDiscount: !_hasDiscount,
       );
       bloc.add(PromotionUpdateRequested(updated));
     } else {
@@ -466,10 +569,81 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
             startDate: _startDate,
             endDate: _endDate,
             channels: List<String>.from(_selectedChannels),
+            discountPercentage: discountPercentage,
           ),
         ),
       );
     }
+  }
+}
+
+// ─── Campaign Type Button ──────────────────────────────────────────────────
+
+class _CampaignTypeButton extends StatelessWidget {
+  final String label;
+  final String subtitle;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CampaignTypeButton({
+    required this.label,
+    required this.subtitle,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = selected ? theme.colorScheme.primary : Colors.grey;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: selected ? color.withOpacity(0.08) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected
+                ? color.withOpacity(0.5)
+                : Colors.grey.withOpacity(0.3),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 20, color: color),
+                const Spacer(),
+                if (selected) Icon(Icons.check_circle, size: 18, color: color),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: selected ? color : null,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -543,7 +717,7 @@ class _ProductPickerField extends StatelessWidget {
   }
 }
 
-// ─── Products error/retry state ────────────────────────────────────────────
+// ─── Products Error/Retry State ────────────────────────────────────────────
 
 class _ProductsErrorState extends StatelessWidget {
   final String message;

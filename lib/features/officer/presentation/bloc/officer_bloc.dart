@@ -1,7 +1,4 @@
 // lib/features/officer/presentation/bloc/officer_bloc.dart
-//
-// FIX 3: Register handler for OfficerReassignBranchRequested.
-// The event was defined but had no on<> registration — adding it here.
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/usecase/usecase.dart';
@@ -40,7 +37,6 @@ class OfficerBloc extends Bloc<OfficerEvent, OfficerState> {
     on<OfficerActivateRequested>(_onActivate);
     on<OfficerSuspendRequested>(_onSuspend);
     on<OfficerDeactivateRequested>(_onDeactivate);
-    // FIX: register the previously unhandled reassign event
     on<OfficerReassignBranchRequested>(_onReassignBranch);
   }
 
@@ -52,18 +48,21 @@ class OfficerBloc extends Bloc<OfficerEvent, OfficerState> {
     final result = await getAllUseCase(NoParams());
     result.fold(
       (f) => emit(OfficerFailure(f.message)),
-      (paginated) => paginated.items.isEmpty
+      (p) => p.items.isEmpty
           ? emit(OfficerEmpty())
-          : emit(OfficerListLoaded(paginated.items)),
+          : emit(OfficerListLoaded(p.items)),
     );
   }
 
+  // FIX 1: forward branchId so getById uses the correct org URL.
   Future<void> _onLoadOne(
     OfficerLoadOneRequested event,
     Emitter<OfficerState> emit,
   ) async {
     emit(OfficerLoading());
-    final result = await getUseCase(GetOfficerParams(userId: event.userId));
+    final result = await getUseCase(
+      GetOfficerParams(userId: event.userId, branchId: event.branchId),
+    );
     result.fold(
       (f) => emit(OfficerFailure(f.message)),
       (item) => emit(OfficerDetailLoaded(item)),
@@ -110,14 +109,24 @@ class OfficerBloc extends Bloc<OfficerEvent, OfficerState> {
     );
   }
 
+  // FIX 1: Load the officer first (with branchId) so domainService.transition
+  // can use the correct org URL for activate/suspend PATCH calls.
   Future<void> _onActivate(
     OfficerActivateRequested event,
     Emitter<OfficerState> emit,
   ) async {
     emit(OfficerLoading());
+    // Load first to get branchId, then transition
+    final loaded = await getUseCase(GetOfficerParams(userId: event.userId));
+    if (loaded.isLeft()) {
+      loaded.fold((f) => emit(OfficerFailure(f.message)), (_) {});
+      return;
+    }
+    final branchId = loaded.getOrElse(() => throw StateError('')).branchId;
     final result = await domainService.transition(
       userId: event.userId,
       targetStatus: OfficerStatus.active,
+      branchId: branchId,
     );
     result.fold(
       (f) => emit(OfficerFailure(f.message)),
@@ -130,9 +139,16 @@ class OfficerBloc extends Bloc<OfficerEvent, OfficerState> {
     Emitter<OfficerState> emit,
   ) async {
     emit(OfficerLoading());
+    final loaded = await getUseCase(GetOfficerParams(userId: event.userId));
+    if (loaded.isLeft()) {
+      loaded.fold((f) => emit(OfficerFailure(f.message)), (_) {});
+      return;
+    }
+    final branchId = loaded.getOrElse(() => throw StateError('')).branchId;
     final result = await domainService.transition(
       userId: event.userId,
       targetStatus: OfficerStatus.suspended,
+      branchId: branchId,
     );
     result.fold(
       (f) => emit(OfficerFailure(f.message)),
@@ -145,9 +161,16 @@ class OfficerBloc extends Bloc<OfficerEvent, OfficerState> {
     Emitter<OfficerState> emit,
   ) async {
     emit(OfficerLoading());
+    final loaded = await getUseCase(GetOfficerParams(userId: event.userId));
+    if (loaded.isLeft()) {
+      loaded.fold((f) => emit(OfficerFailure(f.message)), (_) {});
+      return;
+    }
+    final branchId = loaded.getOrElse(() => throw StateError('')).branchId;
     final result = await domainService.transition(
       userId: event.userId,
       targetStatus: OfficerStatus.deactivated,
+      branchId: branchId,
     );
     result.fold(
       (f) => emit(OfficerFailure(f.message)),
@@ -155,7 +178,6 @@ class OfficerBloc extends Bloc<OfficerEvent, OfficerState> {
     );
   }
 
-  // ── FIX: handler for branch reassignment ─────────────────
   Future<void> _onReassignBranch(
     OfficerReassignBranchRequested event,
     Emitter<OfficerState> emit,

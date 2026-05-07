@@ -1,7 +1,4 @@
 // lib/features/officer/domain/repositories/officer_repository.dart
-//
-// Added `branchId` to updateMembership, activate, suspend so the domain
-// layer can pass the officer's actual branch through to the datasource.
 
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
@@ -16,7 +13,11 @@ abstract class OfficerRepository {
     int? page,
   });
 
-  Future<Either<Failure, OfficerEntity>> getById(String userId);
+  /// [branchId] — officer's actual branch; null falls back to root org.
+  Future<Either<Failure, OfficerEntity>> getById(
+    String userId, {
+    String? branchId,
+  });
 
   Future<Either<Failure, OfficerEntity>> invite({
     required String email,
@@ -28,8 +29,6 @@ abstract class OfficerRepository {
     String? appPasswordConfirmation,
   });
 
-  /// [branchId] must be the officer's actual branch membership org id,
-  /// NOT the root org id.
   Future<Either<Failure, OfficerEntity>> updateMembership(
     String userId, {
     String? orgRoleId,

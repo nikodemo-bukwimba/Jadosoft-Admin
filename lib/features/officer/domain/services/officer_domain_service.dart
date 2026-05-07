@@ -1,9 +1,4 @@
 // lib/features/officer/domain/services/officer_domain_service.dart
-//
-// FIX 3: Pass officer's actual branchId when calling activate/suspend.
-// Previously `repository.activate(userId)` would fall through to the
-// datasource which used `_orgContext.effectiveOrgId` (root), causing 404.
-// Now we load the officer first, extract branchId, and forward it.
 
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
@@ -21,14 +16,14 @@ class OfficerDomainService {
   Future<Either<Failure, OfficerEntity>> transition({
     required String userId,
     required OfficerStatus targetStatus,
+    String? branchId, // forwarded from the loaded entity
   }) async {
-    // Load the officer to get their actual branchId and current status
-    final loadResult = await repository.getById(userId);
+    // Load officer using their actual branchId to avoid 404
+    final loadResult = await repository.getById(userId, branchId: branchId);
     if (loadResult.isLeft()) return loadResult;
 
     final entity = loadResult.getOrElse(() => throw StateError('unreachable'));
 
-    // Guard: validate the transition is permitted
     final guardResult = guard.validate(
       current: OfficerStatusX.fromString(entity.effectiveStatus),
       target: targetStatus,
@@ -37,8 +32,7 @@ class OfficerDomainService {
       return guardResult.fold((f) => Left(f), (_) => throw StateError(''));
     }
 
-    // FIX: pass entity.branchId so the datasource uses the correct
-    // membership URL instead of the root org fallback.
+    // Use entity.branchId for the actual PATCH URL
     switch (targetStatus) {
       case OfficerStatus.active:
         return repository.activate(userId, branchId: entity.branchId);
@@ -46,7 +40,10 @@ class OfficerDomainService {
         return repository.suspend(userId, branchId: entity.branchId);
       case OfficerStatus.deactivated:
         final r = await repository.deactivateUser(userId);
-        return r.fold((f) => Left(f), (_) => repository.getById(userId));
+        return r.fold(
+          (f) => Left(f),
+          (_) => repository.getById(userId, branchId: entity.branchId),
+        );
     }
   }
 

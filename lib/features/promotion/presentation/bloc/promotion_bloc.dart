@@ -35,9 +35,6 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
     on<PromotionActivateRequested>(_onActivate);
     on<PromotionEndRequested>(_onEnd);
     on<PromotionCancelRequested>(_onCancel);
-    on<PromotionStatusOverridden>(
-      (event, emit) => emit(PromotionDetailLoaded(event.entity)),
-    );
   }
 
   Future<void> _onLoadAll(
@@ -88,10 +85,16 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
       UpdatePromotionParams(entity: event.entity),
     );
     if (emit.isDone) return;
-    result.fold(
-      (f) => emit(PromotionFailure(f.message)),
-      (_) => emit(PromotionOperationSuccess('Promotion updated successfully')),
-    );
+    result.fold((f) => emit(PromotionFailure(f.message)), (updated) {
+      emit(
+        PromotionOperationSuccess(
+          'Promotion updated successfully',
+          updatedItem: updated,
+        ),
+      );
+
+      emit(PromotionDetailLoaded(updated));
+    });
   }
 
   Future<void> _onDelete(
@@ -117,15 +120,16 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
       targetStatus: PromotionStatus.ended,
     );
     if (emit.isDone) return;
-    result.fold(
-      (f) => emit(PromotionFailure(f.message)),
-      (entity) => emit(
+    result.fold((f) => emit(PromotionFailure(f.message)), (entity) {
+      emit(
         PromotionOperationSuccess(
           'End Promotion successful',
           updatedItem: entity,
         ),
-      ),
-    );
+      );
+
+      emit(PromotionDetailLoaded(entity));
+    });
   }
 
   Future<void> _onCancel(
@@ -138,15 +142,16 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
       targetStatus: PromotionStatus.cancelled,
     );
     if (emit.isDone) return;
-    result.fold(
-      (f) => emit(PromotionFailure(f.message)),
-      (entity) => emit(
+    result.fold((f) => emit(PromotionFailure(f.message)), (entity) {
+      emit(
         PromotionOperationSuccess(
           'Cancel Promotion successful',
           updatedItem: entity,
         ),
-      ),
-    );
+      );
+
+      emit(PromotionDetailLoaded(entity));
+    });
   }
 
   Future<void> _onActivate(
@@ -159,14 +164,15 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
       targetStatus: PromotionStatus.active,
     );
     if (emit.isDone) return;
-    result.fold(
-      (f) => emit(PromotionFailure(f.message)),
-      (entity) => emit(
+    result.fold((f) => emit(PromotionFailure(f.message)), (entity) {
+      emit(
         PromotionOperationSuccess(
           'Activate Promotion successful',
           updatedItem: entity,
         ),
-      ),
-    );
+      );
+
+      emit(PromotionDetailLoaded(entity));
+    });
   }
 }

@@ -1,10 +1,16 @@
-﻿import 'package:equatable/equatable.dart';
+﻿// lib/features/product/domain/entities/product_entity.dart
+
+import 'package:equatable/equatable.dart';
 
 class ProductEntity extends Equatable {
   final String id;
   final String name;
   final String? description;
-  final double price;
+  final double price; // base price — never changes
+  final double effectivePrice; // promotion price if active, else == price
+  final double? discountPercentage; // null if no active promotion
+  final String? promotionId; // null if no active promotion
+  final bool hasPromotion;
   final String categoryId;
   final String? variantId;
   final bool isAvailable;
@@ -13,7 +19,6 @@ class ProductEntity extends Equatable {
   final String status;
   final String? imageUrl;
   final DateTime createdAt;
-  // ── Inventory fields ──────────────────────────────────────────────────────
   final String? batchNumber;
   final DateTime? expiryDate;
   final String? packSize;
@@ -24,6 +29,10 @@ class ProductEntity extends Equatable {
     required this.name,
     this.description,
     required this.price,
+    double? effectivePrice,
+    this.discountPercentage,
+    this.promotionId,
+    this.hasPromotion = false,
     required this.categoryId,
     this.variantId,
     required this.isAvailable,
@@ -36,13 +45,23 @@ class ProductEntity extends Equatable {
     this.expiryDate,
     this.packSize,
     this.quantityAvailable,
-  });
+  }) : effectivePrice = effectivePrice ?? price;
+
+  /// The price to display prominently in the UI.
+  double get displayPrice => effectivePrice;
+
+  /// True when there is a live discount reducing the price.
+  bool get isOnPromotion => hasPromotion && effectivePrice < price;
 
   ProductEntity copyWith({
     String? id,
     String? name,
     String? description,
     double? price,
+    double? effectivePrice,
+    double? discountPercentage,
+    String? promotionId,
+    bool? hasPromotion,
     String? categoryId,
     String? variantId,
     bool? isAvailable,
@@ -58,11 +77,15 @@ class ProductEntity extends Equatable {
   }) {
     return ProductEntity(
       id: id ?? this.id,
-      variantId: variantId ?? this.variantId,
       name: name ?? this.name,
       description: description ?? this.description,
       price: price ?? this.price,
+      effectivePrice: effectivePrice ?? this.effectivePrice,
+      discountPercentage: discountPercentage ?? this.discountPercentage,
+      promotionId: promotionId ?? this.promotionId,
+      hasPromotion: hasPromotion ?? this.hasPromotion,
       categoryId: categoryId ?? this.categoryId,
+      variantId: variantId ?? this.variantId,
       isAvailable: isAvailable ?? this.isAvailable,
       isFeatured: isFeatured ?? this.isFeatured,
       isNew: isNew ?? this.isNew,
@@ -79,11 +102,15 @@ class ProductEntity extends Equatable {
   @override
   List<Object?> get props => [
     id,
-    variantId,
     name,
     description,
     price,
+    effectivePrice,
+    discountPercentage,
+    promotionId,
+    hasPromotion,
     categoryId,
+    variantId,
     isAvailable,
     isFeatured,
     isNew,

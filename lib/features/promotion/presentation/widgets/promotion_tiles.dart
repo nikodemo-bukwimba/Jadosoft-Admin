@@ -2,6 +2,8 @@
 // Removed all references to PromotionMockDataSource.productName().
 // Product IDs are displayed as-is until the Product feature (Seq 7)
 // provides a name cache/repository.
+//
+// UPDATED: List row and table row now show discount percentage when set.
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -19,6 +21,7 @@ class PromotionListRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final status = PromotionStatusX.fromString(item.status);
+    final hasDiscount = item.discountPercentage != null;
 
     return InkWell(
       onTap: () => context.go('/promotions/${item.id}'),
@@ -34,7 +37,9 @@ class PromotionListRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
-                Icons.campaign_outlined,
+                hasDiscount
+                    ? Icons.local_offer_outlined
+                    : Icons.campaign_outlined,
                 size: 18,
                 color: status.color,
               ),
@@ -53,12 +58,22 @@ class PromotionListRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    '${item.productIds.length} products · '
-                    '${_fmtDate(item.startDate)} – ${_fmtDate(item.endDate)}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        '${item.productIds.length} products · '
+                        '${_fmtDate(item.startDate)} – ${_fmtDate(item.endDate)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (hasDiscount) ...[
+                        const SizedBox(width: 6),
+                        _InlineDiscountBadge(
+                          percentage: item.discountPercentage!,
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -112,6 +127,7 @@ class PromotionTableRow extends StatelessWidget {
         children: [
           _hcell('Title', flex: 3, theme: theme),
           _hcell('Products', flex: 2, theme: theme),
+          _hcell('Discount', flex: 1, theme: theme),
           _hcell('Channels', flex: 2, theme: theme),
           _hcell('Date Range', flex: 2, theme: theme),
           _hcell('Status', flex: 1, theme: theme),
@@ -124,12 +140,14 @@ class PromotionTableRow extends StatelessWidget {
     final e = item!;
     final status = PromotionStatusX.fromString(e.status);
 
-    // Product IDs truncated to 2 visible + overflow count.
-    // Full names will be shown when Product feature cache is available.
     final productDisplay = e.productIds.isEmpty
         ? '—'
         : e.productIds.take(2).join(', ') +
               (e.productIds.length > 2 ? ' +${e.productIds.length - 2}' : '');
+
+    final discountDisplay = e.discountPercentage != null
+        ? '${e.discountPercentage!.toStringAsFixed(e.discountPercentage! % 1 == 0 ? 0 : 1)}%'
+        : '—';
 
     return InkWell(
       onTap: () => context.go('/promotions/${e.id}'),
@@ -161,6 +179,24 @@ class PromotionTableRow extends StatelessWidget {
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
+            ),
+            Expanded(
+              flex: 1,
+              child: e.discountPercentage != null
+                  ? Text(
+                      discountDisplay,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.deepOrange,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    )
+                  : Text(
+                      '—',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
             ),
             Expanded(
               flex: 2,
@@ -229,5 +265,36 @@ class PromotionTableRow extends StatelessWidget {
       'Dec',
     ];
     return '${m[d.month - 1]} ${d.day}';
+  }
+}
+
+// ─── Inline Discount Badge ─────────────────────────────────────────────────
+
+class _InlineDiscountBadge extends StatelessWidget {
+  final double percentage;
+  const _InlineDiscountBadge({required this.percentage});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = percentage % 1 == 0
+        ? '${percentage.toInt()}%'
+        : '${percentage.toStringAsFixed(1)}%';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: Colors.deepOrange.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.deepOrange.withOpacity(0.35)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 9,
+          color: Colors.deepOrange,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
   }
 }

@@ -8,6 +8,8 @@
 // the local terminal status. Instead, we apply the returned
 // entity directly via PromotionStatusOverridden so the UI
 // reflects the correct state without a network round-trip.
+//
+// UPDATED: Shows discount percentage section when applicable.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
@@ -35,14 +37,6 @@ class PromotionDetailPage extends StatelessWidget {
               backgroundColor: Colors.green,
             ),
           );
-          // FIX: Apply the updated entity directly to state.
-          // Do NOT call LoadOne — it re-fetches from Nexora which maps
-          // 'sent' → 'active', discarding the local 'ended' status.
-          if (state.updatedItem != null) {
-            context.read<PromotionBloc>().add(
-              PromotionStatusOverridden(state.updatedItem!),
-            );
-          }
         }
         if (state is PromotionFailure) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -90,6 +84,7 @@ class _DetailView extends StatelessWidget {
     final status = PromotionStatusX.fromString(item.status);
     final isWide = MediaQuery.of(context).size.width > 768;
     final model = item is PromotionModel ? item as PromotionModel : null;
+    final hasDiscount = item.discountPercentage != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -123,6 +118,12 @@ class _DetailView extends StatelessWidget {
                 if (model != null && model.targetCount > 0)
                   const SizedBox(height: 12),
 
+                // ── Discount Banner ───────────────────────────
+                if (hasDiscount) ...[
+                  _DiscountBanner(percentage: item.discountPercentage!),
+                  const SizedBox(height: 12),
+                ],
+
                 // ── Overview ─────────────────────────────────
                 _SectionCard(
                   title: 'Overview',
@@ -151,6 +152,13 @@ class _DetailView extends StatelessWidget {
                             label: 'Created',
                             value: _fmtDate(item.createdAt),
                           ),
+                          if (hasDiscount)
+                            _InfoBlock(
+                              label: 'Discount',
+                              value:
+                                  '${item.discountPercentage!.toStringAsFixed(item.discountPercentage! % 1 == 0 ? 0 : 1)}% OFF',
+                              valueColor: Colors.deepOrange,
+                            ),
                         ],
                       ),
                       if (item.description != null) ...[
@@ -265,6 +273,69 @@ class _DetailView extends StatelessWidget {
   }
 }
 
+// ─── Discount Banner ───────────────────────────────────────────────────────
+
+class _DiscountBanner extends StatelessWidget {
+  final double percentage;
+  const _DiscountBanner({required this.percentage});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final label = percentage % 1 == 0
+        ? '${percentage.toInt()}%'
+        : '${percentage.toStringAsFixed(1)}%';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.deepOrange.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.deepOrange.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.deepOrange.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.local_offer_outlined,
+              color: Colors.deepOrange,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Discount Campaign — $label OFF',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: Colors.deepOrange.shade700,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Applied to all selected products. '
+                  'Per-variant overrides can be configured via the Override API.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.deepOrange.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Broadcast Banner ──────────────────────────────────────────────────────
 
 class _BroadcastBanner extends StatelessWidget {
@@ -300,11 +371,7 @@ class _BroadcastBanner extends StatelessWidget {
                 ),
                 if (sentAt != null)
                   Text(
-                    'Dispatched via ${model.channels.map((c) => c == 'sms'
-                        ? 'SMS'
-                        : c == 'whatsapp'
-                        ? 'WhatsApp'
-                        : 'In-App').join(' & ')} on ${_fmtDateTime(sentAt)}',
+                    'Sent on ${_fmtDate(sentAt)}',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: Colors.green.shade600,
                     ),
@@ -317,9 +384,7 @@ class _BroadcastBanner extends StatelessWidget {
     );
   }
 
-  String _fmtDateTime(DateTime d) {
-    final h = d.hour.toString().padLeft(2, '0');
-    final min = d.minute.toString().padLeft(2, '0');
+  String _fmtDate(DateTime d) {
     const m = [
       'Jan',
       'Feb',
@@ -334,218 +399,40 @@ class _BroadcastBanner extends StatelessWidget {
       'Nov',
       'Dec',
     ];
-    return '${m[d.month - 1]} ${d.day}, ${d.year} at $h:$min';
+    return '${m[d.month - 1]} ${d.day}, ${d.year}';
   }
 }
 
-// ─── Action Buttons ────────────────────────────────────────────────────────
+// ─── Info Block ────────────────────────────────────────────────────────────
 
-class _ActionButtons extends StatelessWidget {
-  final PromotionEntity item;
-  final PromotionStatus status;
-  const _ActionButtons({required this.item, required this.status});
+class _InfoBlock extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  const _InfoBlock({required this.label, required this.value, this.valueColor});
 
   @override
   Widget build(BuildContext context) {
-    final canActivate = status == PromotionStatus.draft;
-    final canEnd = status == PromotionStatus.active;
-    final canCancel =
-        status == PromotionStatus.draft || status == PromotionStatus.active;
-
-    if (!canActivate && !canEnd && !canCancel) {
-      return const SizedBox.shrink();
-    }
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Admin Actions',
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                if (canActivate)
-                  FilledButton.icon(
-                    onPressed: () => _confirmActivate(context),
-                    icon: const Icon(Icons.rocket_launch_outlined),
-                    label: const Text('Activate & Broadcast'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Colors.green,
-                    ),
-                  ),
-                if (canEnd)
-                  FilledButton.icon(
-                    onPressed: () => _confirmEnd(context),
-                    icon: const Icon(Icons.stop_circle_outlined),
-                    label: const Text('End Promotion'),
-                    style: FilledButton.styleFrom(backgroundColor: Colors.blue),
-                  ),
-                if (canCancel)
-                  OutlinedButton.icon(
-                    onPressed: () => _confirmCancel(context),
-                    icon: const Icon(Icons.cancel_outlined),
-                    label: const Text('Cancel'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
-                      side: const BorderSide(color: Colors.red),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _confirmActivate(BuildContext context) {
-    final bloc = context.read<PromotionBloc>();
-    showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.rocket_launch_outlined, color: Colors.green),
-            SizedBox(width: 8),
-            Text('Activate & Broadcast'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Activating this promotion will immediately:'),
-            const SizedBox(height: 12),
-            _bulletPoint(
-              'Send SMS to all registered customers via Vodacom/Airtel gateway',
-              Icons.sms_outlined,
-              Colors.orange,
-            ),
-            const SizedBox(height: 6),
-            _bulletPoint(
-              'Send WhatsApp messages via WhatsApp Business API',
-              Icons.chat_outlined,
-              const Color(0xFF25D366),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'This action cannot be undone. The broadcast will go out immediately.',
-              style: TextStyle(
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
-                color: Colors.grey,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.green),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Activate & Broadcast'),
-          ),
-        ],
-      ),
-    ).then((confirmed) {
-      if (confirmed == true) {
-        bloc.add(PromotionActivateRequested(item.id));
-      }
-    });
-  }
-
-  void _confirmEnd(BuildContext context) {
-    final bloc = context.read<PromotionBloc>();
-    showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.stop_circle_outlined, color: Colors.blue),
-            SizedBox(width: 8),
-            Text('End Promotion'),
-          ],
-        ),
-        content: const Text(
-          'This will mark the promotion as ended. No further broadcasts will be sent.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.blue),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('End Promotion'),
-          ),
-        ],
-      ),
-    ).then((confirmed) {
-      if (confirmed == true) {
-        bloc.add(PromotionEndRequested(item.id));
-      }
-    });
-  }
-
-  void _confirmCancel(BuildContext context) {
-    final bloc = context.read<PromotionBloc>();
-    showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.cancel_outlined, color: Colors.red),
-            SizedBox(width: 8),
-            Text('Cancel Promotion'),
-          ],
-        ),
-        content: const Text(
-          'This will cancel the promotion. This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Back'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Cancel Promotion'),
-          ),
-        ],
-      ),
-    ).then((confirmed) {
-      if (confirmed == true) {
-        bloc.add(PromotionCancelRequested(item.id));
-      }
-    });
-  }
-
-  Widget _bulletPoint(String text, IconData icon, Color color) {
-    return Row(
+    final theme = Theme.of(context);
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 16, color: color),
-        const SizedBox(width: 8),
-        Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            letterSpacing: 0.4,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: valueColor,
+          ),
+        ),
       ],
     );
   }
@@ -565,20 +452,23 @@ class _ProductRow extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: 6,
+            height: 6,
             decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Icon(
-              Icons.medication_outlined,
-              size: 16,
               color: theme.colorScheme.primary,
+              shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(child: Text(productId, style: theme.textTheme.bodyMedium)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              productId,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontFamily: 'monospace',
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -604,6 +494,7 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = accentColor ?? theme.colorScheme.primary;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -617,11 +508,13 @@ class _SectionCard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.06),
+              color: color.withValues(alpha: 0.06),
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(12),
               ),
-              border: Border(bottom: BorderSide(color: color.withOpacity(0.2))),
+              border: Border(
+                bottom: BorderSide(color: color.withValues(alpha: 0.2)),
+              ),
             ),
             child: Row(
               children: [
@@ -644,33 +537,97 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
-class _InfoBlock extends StatelessWidget {
-  final String label;
-  final String? value;
+// ─── Action Buttons ────────────────────────────────────────────────────────
 
-  const _InfoBlock({required this.label, this.value});
+class _ActionButtons extends StatelessWidget {
+  final PromotionEntity item;
+  final PromotionStatus status;
+
+  const _ActionButtons({required this.item, required this.status});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SizedBox(
-      width: 160,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label.toUpperCase(),
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.5,
-              fontSize: 10,
+    final bloc = context.read<PromotionBloc>();
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        if (status == PromotionStatus.draft)
+          FilledButton.icon(
+            onPressed: () => _confirmAction(
+              context,
+              title: 'Publish Promotion?',
+              body:
+                  'This will broadcast to all eligible customers via selected channels. This cannot be undone.',
+              confirmLabel: 'Publish',
+              onConfirm: () => bloc.add(PromotionActivateRequested(item.id)),
             ),
+            icon: const Icon(Icons.send_outlined, size: 18),
+            label: const Text('Publish'),
           ),
-          const SizedBox(height: 3),
-          Text(value ?? '—', style: theme.textTheme.bodyMedium),
+        if (status == PromotionStatus.active)
+          OutlinedButton.icon(
+            onPressed: () => _confirmAction(
+              context,
+              title: 'End Campaign?',
+              body:
+                  'The campaign will be marked as ended. No further broadcasts will be sent.',
+              confirmLabel: 'End Campaign',
+              onConfirm: () => bloc.add(PromotionEndRequested(item.id)),
+            ),
+            icon: const Icon(Icons.stop_circle_outlined, size: 18),
+            label: const Text('End Campaign'),
+          ),
+        if (status == PromotionStatus.draft || status == PromotionStatus.active)
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+              side: BorderSide(
+                color: Theme.of(context).colorScheme.error.withOpacity(0.5),
+              ),
+            ),
+            onPressed: () => _confirmAction(
+              context,
+              title: 'Cancel Promotion?',
+              body: 'The campaign will be cancelled. This cannot be undone.',
+              confirmLabel: 'Cancel Campaign',
+              onConfirm: () => bloc.add(PromotionCancelRequested(item.id)),
+            ),
+            icon: const Icon(Icons.cancel_outlined, size: 18),
+            label: const Text('Cancel'),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _confirmAction(
+    BuildContext context, {
+    required String title,
+    required String body,
+    required String confirmLabel,
+    required VoidCallback onConfirm,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(confirmLabel),
+          ),
         ],
       ),
     );
+
+    if (confirmed == true) {
+      onConfirm();
+    }
   }
 }
