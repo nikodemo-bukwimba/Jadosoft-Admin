@@ -1,60 +1,25 @@
 ﻿// ================================================================
 // features_product_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-05-05 23:35:41
-// Files        : 32
+// Generated    : 2026-05-07 15:10:49
+// Files        : 35
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
 
 // === FILE: lib/features/product/data/datasources/product_api_datasource.dart ===
-// Admin app product api datasource
+// lib/features/product/data/datasources/product_api_datasource.dart
 //
-// product_api_datasource.dart
-// ─────────────────────────────────────────────────────────────
-// Nexora Commerce Products API implementation.
-// Implements the original ProductRemoteDataSource interface unchanged.
-// All existing Maishell files are untouched — this is a NEW file only.
+// MODIFICATION vs original:
+//   _fromNexora() now reads the four promotion virtual attributes that
+//   PromotionPricingService sets on each variant when the Nexora API
+//   returns products via /commerce/orgs/{orgId}/products:
 //
-// Endpoints used:
-//   GET    /api/v1/commerce/orgs/{orgId}/products
-//   POST   /api/v1/commerce/orgs/{orgId}/products
-//   GET    /api/v1/commerce/products/{id}
-//   PATCH  /api/v1/commerce/products/{id}
-//   POST   /api/v1/commerce/products/{id}/archive  (no hard DELETE in Nexora)
+//     effective_price     → ProductEntity.effectivePrice
+//     discount_percentage → ProductEntity.discountPercentage
+//     has_promotion       → ProductEntity.hasPromotion
+//     promotion_id        → ProductEntity.promotionId
 //
-// OrgContext usage:
-//   Products catalog is org-level (root org owns all products).
-//   → Always uses requireRootOrgId() — never effectiveOrgId.
-//
-// Field mapping:
-//   price        → variants[default].base_price
-//   categoryId   → attributes.category_id + metadata.category_id
-//   isAvailable  → metadata.is_available
-//   isFeatured   → metadata.is_featured  (local concept — no Nexora equivalent)
-//   isNew        → metadata.is_new
-//   imageUrl     → media[0].url  OR  metadata.image_url (fallback)
-//   status       → draft·active·archived (suspended → archived)
-//
-// NOTE on seller_actor_id:
-//   Required by Nexora on create. Must be passed in the data map by the
-//   caller. Pass it from the active auth session actor id at the form layer.
-//   The form page should inject AuthBloc and read:
-//     (context.read<AuthBloc>().state as AuthAuthenticated)
-//       .activeSession.user.actorId
-//   then include it in CreateProductParams / data map.
-//
-// To activate — in injection_container.dart:
-//   ADD import:
-//     import 'package:admin_panel/features/product/data/datasources/product_api_datasource.dart';
-//
-//   REPLACE (in Products section):
-//     sl.registerLazySingleton<ProductRemoteDataSource>(
-//       () => ProductMockDataSource(),
-//     );
-//   WITH:
-//     sl.registerLazySingleton<ProductRemoteDataSource>(
-//       () => ProductApiDataSource(dio: sl(), orgContext: sl()),
-//     );
+// All other logic is unchanged.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:dio/dio.dart';
@@ -97,6 +62,14 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   }
 
   // ── Nexora JSON → ProductModel ─────────────────────────────
+  //
+  // CHANGE (promotion fields):
+  //   After resolving basePrice from the default variant, we also read
+  //   the four promotion virtual attributes that the backend
+  //   PromotionPricingService sets on the variant object.
+  //
+  //   Reading at variant level (not product root) because that is where
+  //   the backend sets them — they are per-variant values.
 
   ProductModel _fromNexora(Map<String, dynamic> j) {
     final variants =
@@ -108,14 +81,31 @@ class ProductApiDataSource implements ProductRemoteDataSource {
             orElse: () => variants.first,
           );
 
-    // ── Capture variant ID — this is what the basket endpoint needs ──
+    // ── Variant ID — needed by basket endpoint ─────────────────
     final variantId = defaultVariant?['id']?.toString();
 
+    // ── Base price ─────────────────────────────────────────────
     final rawPrice = defaultVariant?['base_price'];
     final price = rawPrice == null
         ? 0.0
         : double.tryParse(rawPrice.toString()) ?? 0.0;
 
+    // ── Promotion pricing (NEW) ────────────────────────────────
+    // These four fields are set by PromotionPricingService on the server.
+    // Fall back gracefully: effectivePrice = price when not present.
+    final rawEffective = defaultVariant?['effective_price'];
+    final effectivePrice = rawEffective == null
+        ? price
+        : double.tryParse(rawEffective.toString()) ?? price;
+
+    final discountPercentage = (defaultVariant?['discount_percentage'] as num?)
+        ?.toDouble();
+
+    final hasPromotion = defaultVariant?['has_promotion'] as bool? ?? false;
+
+    final promotionId = defaultVariant?['promotion_id'] as String?;
+
+    // ── Metadata / attributes ───────────────────────────────────
     final meta = (j['metadata'] as Map<String, dynamic>?) ?? {};
     final attrs = (j['attributes'] as Map<String, dynamic>?) ?? {};
     final categoryId =
@@ -131,10 +121,16 @@ class ProductApiDataSource implements ProductRemoteDataSource {
 
     return ProductModel(
       id: j['id']?.toString() ?? '',
-      variantId: variantId, // ← stored now
+      variantId: variantId,
       name: j['name']?.toString() ?? '',
       description: j['description']?.toString(),
       price: price,
+      // ── Promotion fields (NEW) ────────────────────────────────
+      effectivePrice: effectivePrice,
+      discountPercentage: discountPercentage,
+      hasPromotion: hasPromotion,
+      promotionId: promotionId,
+      // ─────────────────────────────────────────────────────────
       categoryId: categoryId,
       isAvailable: parseBool(meta['is_available'], j['status'] == 'active'),
       isFeatured: parseBool(meta['is_featured'], false),
@@ -222,7 +218,6 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   @override
   Future<List<ProductModel>> getAll() async {
     try {
-      // Products catalog is org-level — always root org id
       final orgId = _orgContext.requireRootOrgId();
       final res = await _dio.get(
         '/commerce/orgs/$orgId/products',
@@ -255,7 +250,6 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   @override
   Future<ProductModel> create(Map<String, dynamic> data) async {
     try {
-      // Products catalog is org-level — always root org id
       final orgId = _orgContext.requireRootOrgId();
       final res = await _dio.post(
         '/commerce/orgs/$orgId/products',
@@ -275,17 +269,13 @@ class ProductApiDataSource implements ProductRemoteDataSource {
       final newStatus = data['status']?.toString();
 
       if (newStatus == 'active') {
-        // Publish: draft/featured → active requires the dedicated endpoint
         await _dio.post('/commerce/products/$id/publish');
       } else if (newStatus == 'archived') {
-        // Archive via its own endpoint (already used in delete())
         await _dio.post('/commerce/products/$id/archive');
       } else {
-        // Plain metadata/name update — no status change
         await _dio.patch('/commerce/products/$id', data: _updateBody(data));
       }
 
-      // Always re-fetch to return accurate, server-confirmed state
       return await getById(id);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -294,39 +284,11 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     }
   }
 
-  /// Patches the default variant base_price. Non-fatal if it fails —
-  /// the product metadata update already succeeded.
-  // Future<void> _updateVariantPrice(String productId, double price) async {
-  //   try {
-  //     final res = await _dio.get('/commerce/products/$productId');
-  //     final productData = _unwrapProduct(res.data);
-  //     final variants =
-  //         (productData['variants'] as List?)?.cast<Map<String, dynamic>>() ??
-  //         [];
-  //     if (variants.isEmpty) return;
-  //     final defaultVariant = variants.firstWhere(
-  //       (v) => v['is_default'] == true,
-  //       orElse: () => variants.first,
-  //     );
-  //     final variantId = defaultVariant['id']?.toString();
-  //     if (variantId == null || variantId.isEmpty) return;
-  //     await _dio.patch(
-  //       '/commerce/products/$productId/variants/$variantId',
-  //       data: {'base_price': price},
-  //     );
-  //   } catch (_) {
-  //     // Non-fatal
-  //   }
-  // }
-
   @override
   Future<void> delete(String id) async {
-    // Nexora Commerce has no hard DELETE for products.
-    // Archive is the equivalent operation (active → archived).
     try {
       await _dio.post('/commerce/products/$id/archive');
     } on DioException catch (e) {
-      // 404 = already gone, 422 = already archived → treat as success
       if (e.response?.statusCode == 404 || e.response?.statusCode == 422) {
         return;
       }
@@ -622,6 +584,8 @@ class ProductRemoteDataSourceImpl implements ProductRemoteDataSource {
 
 
 // === FILE: lib/features/product/data/models/product_model.dart ===
+// lib/features/product/data/models/product_model.dart
+
 import '../../domain/entities/product_entity.dart';
 
 class ProductModel extends ProductEntity {
@@ -630,6 +594,10 @@ class ProductModel extends ProductEntity {
     required super.name,
     super.description,
     required super.price,
+    super.effectivePrice,
+    super.discountPercentage,
+    super.promotionId,
+    super.hasPromotion,
     required super.categoryId,
     super.variantId,
     required super.isAvailable,
@@ -645,11 +613,20 @@ class ProductModel extends ProductEntity {
   });
 
   factory ProductModel.fromJson(Map<String, dynamic> json) {
+    final basePrice = (json['base_price'] as num? ?? json['price'] as num? ?? 0)
+        .toDouble();
+    final effectivePrice =
+        (json['effective_price'] as num?)?.toDouble() ?? basePrice;
+
     return ProductModel(
       id: json['id']?.toString() ?? '',
       name: json['name'] as String? ?? '',
       description: json['description'] as String?,
-      price: (json['price'] as num? ?? 0).toDouble(),
+      price: basePrice,
+      effectivePrice: effectivePrice,
+      discountPercentage: (json['discount_percentage'] as num?)?.toDouble(),
+      promotionId: json['promotion_id'] as String?,
+      hasPromotion: json['has_promotion'] as bool? ?? false,
       categoryId: json['category_id']?.toString() ?? '',
       variantId: json['variant_id'] as String?,
       isAvailable: json['is_available'] as bool? ?? false,
@@ -674,6 +651,10 @@ class ProductModel extends ProductEntity {
     'name': name,
     'description': description,
     'price': price,
+    'effective_price': effectivePrice,
+    'discount_percentage': discountPercentage,
+    'promotion_id': promotionId,
+    'has_promotion': hasPromotion,
     'category_id': categoryId,
     if (variantId != null) 'variant_id': variantId,
     'is_available': isAvailable,
@@ -688,24 +669,76 @@ class ProductModel extends ProductEntity {
     'quantity_available': quantityAvailable,
   };
 
-  factory ProductModel.fromEntity(ProductEntity entity) {
+  factory ProductModel.fromEntity(ProductEntity e) {
+    if (e is ProductModel) return e;
     return ProductModel(
-      id: entity.id,
-      name: entity.name,
-      description: entity.description,
-      price: entity.price,
-      categoryId: entity.categoryId,
-      variantId: entity.variantId,
-      isAvailable: entity.isAvailable,
-      isFeatured: entity.isFeatured,
-      isNew: entity.isNew,
-      status: entity.status,
-      imageUrl: entity.imageUrl,
-      createdAt: entity.createdAt,
-      batchNumber: entity.batchNumber,
-      expiryDate: entity.expiryDate,
-      packSize: entity.packSize,
-      quantityAvailable: entity.quantityAvailable,
+      id: e.id,
+      name: e.name,
+      description: e.description,
+      price: e.price,
+      effectivePrice: e.effectivePrice,
+      discountPercentage: e.discountPercentage,
+      promotionId: e.promotionId,
+      hasPromotion: e.hasPromotion,
+      categoryId: e.categoryId,
+      variantId: e.variantId,
+      isAvailable: e.isAvailable,
+      isFeatured: e.isFeatured,
+      isNew: e.isNew,
+      status: e.status,
+      imageUrl: e.imageUrl,
+      createdAt: e.createdAt,
+      batchNumber: e.batchNumber,
+      expiryDate: e.expiryDate,
+      packSize: e.packSize,
+      quantityAvailable: e.quantityAvailable,
+    );
+  }
+
+  @override
+  ProductModel copyWith({
+    String? id,
+    String? name,
+    String? description,
+    double? price,
+    double? effectivePrice,
+    double? discountPercentage,
+    String? promotionId,
+    bool? hasPromotion,
+    String? categoryId,
+    String? variantId,
+    bool? isAvailable,
+    bool? isFeatured,
+    bool? isNew,
+    String? status,
+    String? imageUrl,
+    DateTime? createdAt,
+    String? batchNumber,
+    DateTime? expiryDate,
+    String? packSize,
+    int? quantityAvailable,
+  }) {
+    return ProductModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      price: price ?? this.price,
+      effectivePrice: effectivePrice ?? this.effectivePrice,
+      discountPercentage: discountPercentage ?? this.discountPercentage,
+      promotionId: promotionId ?? this.promotionId,
+      hasPromotion: hasPromotion ?? this.hasPromotion,
+      categoryId: categoryId ?? this.categoryId,
+      variantId: variantId ?? this.variantId,
+      isAvailable: isAvailable ?? this.isAvailable,
+      isFeatured: isFeatured ?? this.isFeatured,
+      isNew: isNew ?? this.isNew,
+      status: status ?? this.status,
+      imageUrl: imageUrl ?? this.imageUrl,
+      createdAt: createdAt ?? this.createdAt,
+      batchNumber: batchNumber ?? this.batchNumber,
+      expiryDate: expiryDate ?? this.expiryDate,
+      packSize: packSize ?? this.packSize,
+      quantityAvailable: quantityAvailable ?? this.quantityAvailable,
     );
   }
 }
@@ -794,13 +827,19 @@ class ProductRepositoryImpl implements ProductRepository {
 
 
 // === FILE: lib/features/product/domain/entities/product_entity.dart ===
+// lib/features/product/domain/entities/product_entity.dart
+
 import 'package:equatable/equatable.dart';
 
 class ProductEntity extends Equatable {
   final String id;
   final String name;
   final String? description;
-  final double price;
+  final double price; // base price — never changes
+  final double effectivePrice; // promotion price if active, else == price
+  final double? discountPercentage; // null if no active promotion
+  final String? promotionId; // null if no active promotion
+  final bool hasPromotion;
   final String categoryId;
   final String? variantId;
   final bool isAvailable;
@@ -809,7 +848,6 @@ class ProductEntity extends Equatable {
   final String status;
   final String? imageUrl;
   final DateTime createdAt;
-  // ── Inventory fields ──────────────────────────────────────────────────────
   final String? batchNumber;
   final DateTime? expiryDate;
   final String? packSize;
@@ -820,6 +858,10 @@ class ProductEntity extends Equatable {
     required this.name,
     this.description,
     required this.price,
+    double? effectivePrice,
+    this.discountPercentage,
+    this.promotionId,
+    this.hasPromotion = false,
     required this.categoryId,
     this.variantId,
     required this.isAvailable,
@@ -832,13 +874,23 @@ class ProductEntity extends Equatable {
     this.expiryDate,
     this.packSize,
     this.quantityAvailable,
-  });
+  }) : effectivePrice = effectivePrice ?? price;
+
+  /// The price to display prominently in the UI.
+  double get displayPrice => effectivePrice;
+
+  /// True when there is a live discount reducing the price.
+  bool get isOnPromotion => hasPromotion && effectivePrice < price;
 
   ProductEntity copyWith({
     String? id,
     String? name,
     String? description,
     double? price,
+    double? effectivePrice,
+    double? discountPercentage,
+    String? promotionId,
+    bool? hasPromotion,
     String? categoryId,
     String? variantId,
     bool? isAvailable,
@@ -854,11 +906,15 @@ class ProductEntity extends Equatable {
   }) {
     return ProductEntity(
       id: id ?? this.id,
-      variantId: variantId ?? this.variantId,
       name: name ?? this.name,
       description: description ?? this.description,
       price: price ?? this.price,
+      effectivePrice: effectivePrice ?? this.effectivePrice,
+      discountPercentage: discountPercentage ?? this.discountPercentage,
+      promotionId: promotionId ?? this.promotionId,
+      hasPromotion: hasPromotion ?? this.hasPromotion,
       categoryId: categoryId ?? this.categoryId,
+      variantId: variantId ?? this.variantId,
       isAvailable: isAvailable ?? this.isAvailable,
       isFeatured: isFeatured ?? this.isFeatured,
       isNew: isNew ?? this.isNew,
@@ -875,11 +931,15 @@ class ProductEntity extends Equatable {
   @override
   List<Object?> get props => [
     id,
-    variantId,
     name,
     description,
     price,
+    effectivePrice,
+    discountPercentage,
+    promotionId,
+    hasPromotion,
     categoryId,
+    variantId,
     isAvailable,
     isFeatured,
     isNew,
@@ -935,6 +995,171 @@ abstract class ProductRepository {
   Future<Either<Failure, ProductEntity>>       create(ProductEntity entity);
   Future<Either<Failure, ProductEntity>>       update(ProductEntity entity);
   Future<Either<Failure, void>>                 delete(String id);
+}
+
+
+// === FILE: lib/features/product/domain/services/client_promotion_pricing_service.dart ===
+// lib/features/product/domain/services/client_promotion_pricing_service.dart
+//
+// Pure-Dart mirror of the backend PromotionPricingService.
+//
+// PURPOSE
+// ─────────────────────────────────────────────────────────────
+// Primary path: the Nexora API already returns effective_price,
+// discount_percentage, has_promotion, and promotion_id on each
+// product variant when PromotionPricingService is active server-side.
+// ProductApiDataSource._fromNexora() now reads these fields, so no
+// client computation is needed for real API responses.
+//
+// This service handles TWO scenarios only:
+//   1. Mock / offline mode — ProductMockDataSource returns products
+//      with no promotion data; this service applies promotions locally.
+//   2. Partial API responses — a product returned without effective_price
+//      (e.g. an older endpoint version) gets a client-computed price.
+//
+// RULES (mirrors backend exactly)
+// ─────────────────────────────────────────────────────────────
+//   • A promotion is "active" when:
+//       status == 'active'  (local, maps to Nexora sending|sent)
+//       AND today >= startDate
+//       AND today <= endDate
+//       AND discountPercentage != null  (null = new-product campaign, no price change)
+//   • Highest discount wins when multiple promotions cover the same product.
+//   • base_price (ProductEntity.price) is NEVER mutated.
+//   • effectivePrice = price × (1 – discountPercentage / 100), rounded to 2dp.
+// ─────────────────────────────────────────────────────────────
+
+import '../../domain/entities/product_entity.dart';
+import '../../../promotion/domain/entities/promotion_entity.dart';
+
+class ClientPromotionPricingService {
+  const ClientPromotionPricingService();
+
+  // ── Public API ─────────────────────────────────────────────
+
+  /// Decorate a list of products with promotion pricing.
+  ///
+  /// Products that already carry server-supplied promotion data
+  /// (`hasPromotion == true` OR `effectivePrice != price`) are skipped —
+  /// server data is always trusted over client computation.
+  ///
+  /// Returns a new list; originals are never mutated.
+  List<ProductEntity> decorateProducts(
+    List<ProductEntity> products,
+    List<PromotionEntity> allPromotions,
+  ) {
+    if (products.isEmpty) return products;
+
+    final active = _activeDiscountPromotions(allPromotions);
+    if (active.isEmpty) return products;
+
+    // Build product-id → best discount index for O(n) lookup
+    final bestDiscounts = _buildBestDiscountIndex(active);
+
+    return products.map((product) {
+      // Skip if server already decorated this product
+      if (_isServerDecorated(product)) return product;
+
+      final best = bestDiscounts[product.id];
+      if (best == null) return product;
+
+      final effectivePrice = _applyDiscount(
+        product.price,
+        best.discountPercentage!,
+      );
+
+      return product.copyWith(
+        effectivePrice: effectivePrice,
+        discountPercentage: best.discountPercentage,
+        promotionId: best.id,
+        hasPromotion: true,
+      );
+    }).toList();
+  }
+
+  /// Decorate a single product with the best active promotion.
+  ///
+  /// Returns the same object if server data is present or no promotion applies.
+  ProductEntity decorateProduct(
+    ProductEntity product,
+    List<PromotionEntity> allPromotions,
+  ) {
+    if (_isServerDecorated(product)) return product;
+
+    final active = _activeDiscountPromotions(allPromotions);
+    if (active.isEmpty) return product;
+
+    PromotionEntity? best;
+
+    for (final promo in active) {
+      if (!promo.productIds.contains(product.id)) continue;
+
+      if (best == null ||
+          (promo.discountPercentage! > best.discountPercentage!)) {
+        best = promo;
+      }
+    }
+
+    if (best == null) return product;
+
+    return product.copyWith(
+      effectivePrice: _applyDiscount(product.price, best.discountPercentage!),
+      discountPercentage: best.discountPercentage,
+      promotionId: best.id,
+      hasPromotion: true,
+    );
+  }
+
+  // ── Private helpers ────────────────────────────────────────
+
+  /// Returns promotions that are within their active window and have a discount.
+  List<PromotionEntity> _activeDiscountPromotions(List<PromotionEntity> all) {
+    final today = DateTime.now();
+    return all.where((p) {
+      if (p.status != 'active') return false;
+      if (p.discountPercentage == null) return false;
+      if (today.isBefore(_dayStart(p.startDate))) return false;
+      if (today.isAfter(_dayEnd(p.endDate))) return false;
+      return true;
+    }).toList();
+  }
+
+  /// Builds { productId → best promotion } map for batch decoration.
+  Map<String, PromotionEntity> _buildBestDiscountIndex(
+    List<PromotionEntity> active,
+  ) {
+    final index = <String, PromotionEntity>{};
+
+    for (final promo in active) {
+      for (final productId in promo.productIds) {
+        final existing = index[productId];
+        if (existing == null ||
+            promo.discountPercentage! > existing.discountPercentage!) {
+          index[productId] = promo;
+        }
+      }
+    }
+
+    return index;
+  }
+
+  /// True when the server has already computed promotion pricing.
+  /// We trust the server: skip client computation entirely.
+  bool _isServerDecorated(ProductEntity product) {
+    return product.hasPromotion || product.effectivePrice < product.price;
+  }
+
+  double _applyDiscount(double basePrice, double percentage) {
+    final discounted = basePrice * (1 - percentage / 100);
+    return double.parse(discounted.toStringAsFixed(2));
+  }
+
+  /// Start of a calendar day for inclusive date comparison.
+  DateTime _dayStart(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  /// End of a calendar day (23:59:59.999) for inclusive date comparison.
+  DateTime _dayEnd(DateTime d) =>
+      DateTime(d.year, d.month, d.day, 23, 59, 59, 999);
 }
 
 
@@ -1169,6 +1394,90 @@ class GetProductUseCase implements UseCase<ProductEntity, GetProductParams> {
 }
 
 
+// === FILE: lib/features/product/domain/usecases/get_products_with_promotions_usecase.dart ===
+// lib/features/product/domain/usecases/get_products_with_promotions_usecase.dart
+//
+// Fetches products and active promotions in parallel, then applies
+// client-side promotion pricing as a fallback layer.
+//
+// WHEN THIS IS USED
+// ─────────────────────────────────────────────────────────────
+// Dispatch ProductLoadWithPromotionsRequested from ProductBloc when you
+// want guaranteed promotion-aware pricing regardless of whether the API
+// decorates product responses server-side.
+//
+// WHEN NOT TO USE
+// ─────────────────────────────────────────────────────────────
+// If the API already returns effective_price on every product (production
+// Nexora with PromotionPricingService active), the existing
+// ProductLoadAllRequested path is sufficient — this use case becomes a
+// no-op decorator (all products are skipped as server-decorated).
+//
+// DEPENDENCY FLOW
+// ─────────────────────────────────────────────────────────────
+//   ProductRepository   (existing)
+//   PromotionRepository (existing, already registered)
+//   ClientPromotionPricingService (new, pure-Dart, no side-effects)
+// ─────────────────────────────────────────────────────────────
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../../domain/entities/product_entity.dart';
+import '../../domain/repositories/product_repository.dart';
+import '../../domain/services/client_promotion_pricing_service.dart';
+import '../../../promotion/domain/repositories/promotion_repository.dart';
+
+class GetProductsWithPromotionsUseCase
+    implements UseCase<List<ProductEntity>, NoParams> {
+  final ProductRepository _products;
+  final PromotionRepository _promotions;
+  final ClientPromotionPricingService _pricingService;
+
+  const GetProductsWithPromotionsUseCase({
+    required ProductRepository products,
+    required PromotionRepository promotions,
+    required ClientPromotionPricingService pricingService,
+  })  : _products = products,
+        _promotions = promotions,
+        _pricingService = pricingService;
+
+  @override
+  Future<Either<Failure, List<ProductEntity>>> call(NoParams _) async {
+    // Parallel fetch — promotion failure is non-fatal
+    final results = await Future.wait([
+      _products.getAll(),
+      _promotions.getAll(),
+    ]);
+
+    final productResult = results[0] as Either<Failure, List<ProductEntity>>;
+    final promotionResult = results[1] as Either<Failure, dynamic>;
+
+    // Products are required; surface the failure if they failed
+    if (productResult.isLeft()) return productResult;
+
+    final products = productResult.getOrElse(() => const []);
+
+    // Promotions are optional — if they fail, return plain products
+    final promotions = promotionResult.fold(
+      (_) => const [],
+      (items) => items as List,
+    );
+
+    if (promotions.isEmpty) {
+      return Right(products);
+    }
+
+    // Apply client-side pricing (no-op if server already decorated)
+    final decorated = _pricingService.decorateProducts(
+      products,
+      List.from(promotions),
+    );
+
+    return Right(decorated);
+  }
+}
+
 // === FILE: lib/features/product/domain/usecases/update_product_usecase.dart ===
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
@@ -1237,6 +1546,18 @@ extension ProductStatusX on ProductStatus {
 }
 
 // === FILE: lib/features/product/presentation/bloc/product_bloc.dart ===
+// lib/features/product/presentation/bloc/product_bloc.dart
+//
+// MODIFICATION: Added:
+//   1. Optional constructor parameter: GetProductsWithPromotionsUseCase
+//   2. Handler for ProductLoadWithPromotionsRequested
+//
+// All existing handlers, states, and constructor parameters are UNCHANGED.
+// The bloc is backward-compatible — callers that do not inject
+// getProductsWithPromotionsUseCase continue to work; they just cannot
+// dispatch ProductLoadWithPromotionsRequested.
+// ─────────────────────────────────────────────────────────────
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../../domain/services/product_domain_service.dart';
@@ -1244,18 +1565,22 @@ import '../../domain/usecases/create_product_usecase.dart';
 import '../../domain/usecases/delete_product_usecase.dart';
 import '../../domain/usecases/get_product_usecase.dart';
 import '../../domain/usecases/get_all_product_usecase.dart';
+import '../../domain/usecases/get_products_with_promotions_usecase.dart';
 import '../../domain/usecases/update_product_usecase.dart';
 import '../../domain/value_objects/product_status.dart';
 import 'product_event.dart';
 import 'product_state.dart';
 
 class ProductBloc extends Bloc<ProductEvent, ProductState> {
-  final GetAllProductUseCase  getAllUseCase;
-  final GetProductUseCase     getUseCase;
-  final CreateProductUseCase  createUseCase;
-  final UpdateProductUseCase  updateUseCase;
-  final DeleteProductUseCase  deleteUseCase;
-  final ProductDomainService  domainService;
+  final GetAllProductUseCase getAllUseCase;
+  final GetProductUseCase getUseCase;
+  final CreateProductUseCase createUseCase;
+  final UpdateProductUseCase updateUseCase;
+  final DeleteProductUseCase deleteUseCase;
+  final ProductDomainService domainService;
+
+  // NEW — optional; null means promotion-aware loading is not available
+  final GetProductsWithPromotionsUseCase? getWithPromotionsUseCase;
 
   ProductBloc({
     required this.getAllUseCase,
@@ -1264,8 +1589,11 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
     required this.updateUseCase,
     required this.deleteUseCase,
     required this.domainService,
+    // NEW — inject when promotion-aware loading is desired
+    this.getWithPromotionsUseCase,
   }) : super(ProductInitial()) {
     on<ProductLoadAllRequested>(_onLoadAll);
+    on<ProductLoadWithPromotionsRequested>(_onLoadWithPromotions); // NEW
     on<ProductLoadOneRequested>(_onLoadOne);
     on<ProductCreateRequested>(_onCreate);
     on<ProductUpdateRequested>(_onUpdate);
@@ -1277,20 +1605,25 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
     on<ProductArchiveRequested>(_onArchive);
   }
 
+  // ── Existing handlers (unchanged) ─────────────────────────
+
   Future<void> _onLoadAll(
-      ProductLoadAllRequested event, Emitter<ProductState> emit) async {
+    ProductLoadAllRequested event,
+    Emitter<ProductState> emit,
+  ) async {
     emit(ProductLoading());
     final result = await getAllUseCase(NoParams());
     result.fold(
       (f) => emit(ProductFailure(f.message)),
-      (items) => items.isEmpty
-          ? emit(ProductEmpty())
-          : emit(ProductListLoaded(items)),
+      (items) =>
+          items.isEmpty ? emit(ProductEmpty()) : emit(ProductListLoaded(items)),
     );
   }
 
   Future<void> _onLoadOne(
-      ProductLoadOneRequested event, Emitter<ProductState> emit) async {
+    ProductLoadOneRequested event,
+    Emitter<ProductState> emit,
+  ) async {
     emit(ProductLoading());
     final result = await getUseCase(GetProductParams(id: event.id));
     result.fold(
@@ -1300,7 +1633,9 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
   }
 
   Future<void> _onCreate(
-      ProductCreateRequested event, Emitter<ProductState> emit) async {
+    ProductCreateRequested event,
+    Emitter<ProductState> emit,
+  ) async {
     emit(ProductLoading());
     final result = await createUseCase(event.params);
     result.fold(
@@ -1310,9 +1645,13 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
   }
 
   Future<void> _onUpdate(
-      ProductUpdateRequested event, Emitter<ProductState> emit) async {
+    ProductUpdateRequested event,
+    Emitter<ProductState> emit,
+  ) async {
     emit(ProductLoading());
-    final result = await updateUseCase(UpdateProductParams(entity: event.entity));
+    final result = await updateUseCase(
+      UpdateProductParams(entity: event.entity),
+    );
     result.fold(
       (f) => emit(ProductFailure(f.message)),
       (_) => emit(ProductOperationSuccess('Product updated successfully')),
@@ -1320,7 +1659,9 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
   }
 
   Future<void> _onDelete(
-      ProductDeleteRequested event, Emitter<ProductState> emit) async {
+    ProductDeleteRequested event,
+    Emitter<ProductState> emit,
+  ) async {
     emit(ProductLoading());
     final result = await deleteUseCase(DeleteProductParams(id: event.id));
     result.fold(
@@ -1330,7 +1671,9 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
   }
 
   Future<void> _onPublish(
-      ProductPublishRequested event, Emitter<ProductState> emit) async {
+    ProductPublishRequested event,
+    Emitter<ProductState> emit,
+  ) async {
     emit(ProductLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -1338,14 +1681,16 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
     );
     result.fold(
       (f) => emit(ProductFailure(f.message)),
-      (entity) => emit(ProductOperationSuccess(
-        'Publish successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        ProductOperationSuccess('Publish successful', updatedItem: entity),
+      ),
     );
   }
+
   Future<void> _onFeature(
-      ProductFeatureRequested event, Emitter<ProductState> emit) async {
+    ProductFeatureRequested event,
+    Emitter<ProductState> emit,
+  ) async {
     emit(ProductLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -1353,14 +1698,19 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
     );
     result.fold(
       (f) => emit(ProductFailure(f.message)),
-      (entity) => emit(ProductOperationSuccess(
-        'Mark Featured successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        ProductOperationSuccess(
+          'Mark Featured successful',
+          updatedItem: entity,
+        ),
+      ),
     );
   }
+
   Future<void> _onUnfeature(
-      ProductUnfeatureRequested event, Emitter<ProductState> emit) async {
+    ProductUnfeatureRequested event,
+    Emitter<ProductState> emit,
+  ) async {
     emit(ProductLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -1368,14 +1718,19 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
     );
     result.fold(
       (f) => emit(ProductFailure(f.message)),
-      (entity) => emit(ProductOperationSuccess(
-        'Remove Featured successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        ProductOperationSuccess(
+          'Remove Featured successful',
+          updatedItem: entity,
+        ),
+      ),
     );
   }
+
   Future<void> _onArchive(
-      ProductArchiveRequested event, Emitter<ProductState> emit) async {
+    ProductArchiveRequested event,
+    Emitter<ProductState> emit,
+  ) async {
     emit(ProductLoading());
     final result = await domainService.transition(
       id: event.id,
@@ -1383,20 +1738,58 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
     );
     result.fold(
       (f) => emit(ProductFailure(f.message)),
-      (entity) => emit(ProductOperationSuccess(
-        'Archive successful',
-        updatedItem: entity,
-      )),
+      (entity) => emit(
+        ProductOperationSuccess('Archive successful', updatedItem: entity),
+      ),
+    );
+  }
+
+  // ── NEW: Promotion-aware list load ─────────────────────────
+  //
+  // Falls back to plain GetAllProductUseCase when
+  // getWithPromotionsUseCase is not injected.
+
+  Future<void> _onLoadWithPromotions(
+    ProductLoadWithPromotionsRequested event,
+    Emitter<ProductState> emit,
+  ) async {
+    emit(ProductLoading());
+
+    if (getWithPromotionsUseCase == null) {
+      // Graceful fallback — behaves exactly like ProductLoadAllRequested
+      final result = await getAllUseCase(NoParams());
+      result.fold(
+        (f) => emit(ProductFailure(f.message)),
+        (items) => items.isEmpty
+            ? emit(ProductEmpty())
+            : emit(ProductListLoaded(items)),
+      );
+      return;
+    }
+
+    final result = await getWithPromotionsUseCase!(NoParams());
+    result.fold(
+      (f) => emit(ProductFailure(f.message)),
+      (items) =>
+          items.isEmpty ? emit(ProductEmpty()) : emit(ProductListLoaded(items)),
     );
   }
 }
 
 
 // === FILE: lib/features/product/presentation/bloc/product_event.dart ===
+// lib/features/product/presentation/bloc/product_event.dart
+//
+// MODIFICATION: Added ProductLoadWithPromotionsRequested.
+// All existing events are untouched.
+// ─────────────────────────────────────────────────────────────
+
 import '../../domain/entities/product_entity.dart';
 import '../../domain/usecases/create_product_usecase.dart';
 
 abstract class ProductEvent {}
+
+// ── Existing events (unchanged) ────────────────────────────────────────────
 
 class ProductLoadAllRequested extends ProductEvent {}
 
@@ -1426,18 +1819,35 @@ class ProductPublishRequested extends ProductEvent {
   final String id;
   ProductPublishRequested(this.id);
 }
+
 class ProductFeatureRequested extends ProductEvent {
   final String id;
   ProductFeatureRequested(this.id);
 }
+
 class ProductUnfeatureRequested extends ProductEvent {
   final String id;
   ProductUnfeatureRequested(this.id);
 }
+
 class ProductArchiveRequested extends ProductEvent {
   final String id;
   ProductArchiveRequested(this.id);
 }
+
+// ── NEW: Promotion-aware list load ─────────────────────────────────────────
+//
+// Dispatches GetProductsWithPromotionsUseCase instead of
+// GetAllProductUseCase.  Emits the same ProductListLoaded / ProductEmpty /
+// ProductFailure states so all existing BlocBuilders work without any change.
+//
+// When to dispatch this vs ProductLoadAllRequested:
+//   • Use ProductLoadWithPromotionsRequested from ProductListPage (or anywhere
+//     you want guaranteed promotion-aware pricing).
+//   • ProductLoadAllRequested remains safe and unchanged for callers that do
+//     not need promotion awareness (e.g. the promotion form product-picker).
+
+class ProductLoadWithPromotionsRequested extends ProductEvent {}
 
 
 // === FILE: lib/features/product/presentation/bloc/product_state.dart ===
@@ -1480,6 +1890,17 @@ enum ProductFormNode { create, edit }
 
 
 // === FILE: lib/features/product/presentation/pages/product_detail_page.dart ===
+// lib/features/product/presentation/pages/product_detail_page.dart
+//
+// MERGED: Retains all original implementations (collapsing AppBar, full
+// inventory card, expiry badge, delete action, featured/unfeatured/archive/
+// publish state-machine, confirm-name dialog) while adding:
+//   • _PromotionPricingSection  – shown between price and info when on promo
+//   • _ImageSection             – now also renders a PromotionCornerTag
+//   • Refactored sub-widgets    – _DetailView, _InfoCard, _ActionsSection
+//   • Cleaner _formatPrice      – regex-based thousands separator
+// ─────────────────────────────────────────────────────────────────────────
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -1492,6 +1913,7 @@ import '../../domain/value_objects/product_status.dart';
 import '../widgets/product_image.dart';
 import '../widgets/product_status_badge.dart';
 import '../widgets/product_confirm_name_dialog.dart';
+import '../widgets/promotion_price_display.dart';
 import 'package:get_it/get_it.dart';
 import '../../../category/domain/usecases/get_category_usecase.dart';
 
@@ -1508,88 +1930,124 @@ class ProductDetailPage extends StatelessWidget {
     }
   }
 
-  String _formatPrice(double price) {
-    final formatted = price.toStringAsFixed(0);
-    final buffer = StringBuffer();
-    for (int i = 0; i < formatted.length; i++) {
-      if (i > 0 && (formatted.length - i) % 3 == 0) buffer.write(',');
-      buffer.write(formatted[i]);
-    }
-    return 'TZS $buffer';
-  }
+  // Cleaner regex-based formatter (from new file)
+  String _formatPrice(double v) =>
+      'TZS ${v.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',')}';
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      body: BlocConsumer<ProductBloc, ProductState>(
-        listener: (context, state) {
-          if (state is ProductOperationSuccess) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(state.message)));
-            if (state.updatedItem != null) {
-              context.read<ProductBloc>().add(
-                ProductLoadOneRequested(state.updatedItem!.id),
-              );
-            } else {
-              context.pop();
-            }
+    return BlocConsumer<ProductBloc, ProductState>(
+      listener: (context, state) {
+        if (state is ProductOperationSuccess) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Colors.green,
+            ),
+          );
+          if (state.updatedItem != null) {
+            context.read<ProductBloc>().add(
+              ProductLoadOneRequested(state.updatedItem!.id),
+            );
+          } else {
+            // Keep original behaviour: pop when no updated item is returned
+            context.pop();
           }
-          if (state is ProductFailure) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: scheme.error,
+        }
+        if (state is ProductFailure) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: scheme.error,
+            ),
+          );
+        }
+      },
+      builder: (context, state) {
+        if (state is ProductLoading || state is ProductInitial) {
+          return Scaffold(
+            appBar: AppBar(),
+            body: const Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (state is ProductFailure) {
+          return Scaffold(
+            appBar: AppBar(),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: scheme.error),
+                  const SizedBox(height: 16),
+                  Text(state.message),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => context.pop(),
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('Go Back'),
+                  ),
+                ],
               ),
-            );
-          }
-        },
-        builder: (context, state) {
-          if (state is ProductLoading || state is ProductInitial) {
-            return Scaffold(
-              appBar: AppBar(),
-              body: const Center(child: CircularProgressIndicator()),
-            );
-          }
-          if (state is ProductFailure) {
-            return Scaffold(
-              appBar: AppBar(),
-              body: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.error_outline, size: 48, color: scheme.error),
-                    const SizedBox(height: 16),
-                    Text(state.message),
-                    const SizedBox(height: 16),
-                    FilledButton.icon(
-                      onPressed: () => context.pop(),
-                      icon: const Icon(Icons.arrow_back),
-                      label: const Text('Go Back'),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
-          if (state is ProductDetailLoaded) {
-            return _buildDetail(context, state.item);
-          }
-          return Scaffold(appBar: AppBar());
-        },
-      ),
+            ),
+          );
+        }
+        if (state is ProductDetailLoaded) {
+          return _DetailView(
+            item: state.item,
+            getCategoryName: _getCategoryName,
+            formatPrice: _formatPrice,
+          );
+        }
+        return Scaffold(appBar: AppBar());
+      },
     );
   }
+}
 
-  Widget _buildDetail(BuildContext context, ProductEntity item) {
-    final scheme = Theme.of(context).colorScheme;
+// ─── Detail View ────────────────────────────────────────────────────────────
+// Stateful so category can be loaded once and cached (from new file).
+
+class _DetailView extends StatefulWidget {
+  final ProductEntity item;
+  final Future<String> Function(String) getCategoryName;
+  final String Function(double) formatPrice;
+
+  const _DetailView({
+    required this.item,
+    required this.getCategoryName,
+    required this.formatPrice,
+  });
+
+  @override
+  State<_DetailView> createState() => _DetailViewState();
+}
+
+class _DetailViewState extends State<_DetailView> {
+  String? _categoryName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCategory();
+  }
+
+  Future<void> _loadCategory() async {
+    final name = await widget.getCategoryName(widget.item.categoryId);
+    if (mounted) setState(() => _categoryName = name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
     final statusEnum = ProductStatusX.fromString(item.status);
+    final scheme = Theme.of(context).colorScheme;
 
+    // Retain original collapsing-image AppBar layout
     return CustomScrollView(
       slivers: [
-        // ── Collapsing Image AppBar ──
+        // ── Collapsing Image AppBar ──────────────────────────────────────
         SliverAppBar(
           expandedHeight: 280,
           pinned: true,
@@ -1606,58 +2064,18 @@ class ProductDetailPage extends StatelessWidget {
             ),
           ],
           flexibleSpace: FlexibleSpaceBar(
-            background: Stack(
-              fit: StackFit.expand,
-              children: [
-                ProductImage(
-                  imageUrl: item.imageUrl,
-                  borderRadius: 0,
-                  fit: BoxFit.cover,
-                ),
-                // Gradient scrim for readability
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.transparent, Colors.black54],
-                    ),
-                  ),
-                ),
-                // Tags on image
-                Positioned(
-                  bottom: 16,
-                  left: 16,
-                  right: 16,
-                  child: Row(
-                    children: [
-                      ProductStatusBadge(status: statusEnum),
-                      const SizedBox(width: 8),
-                      if (item.isNew) _overlayTag('NEW', Colors.blue),
-                      if (item.isFeatured) ...[
-                        const SizedBox(width: 6),
-                        _overlayTag('FEATURED', Colors.amber.shade800),
-                      ],
-                      if (!item.isAvailable) ...[
-                        const SizedBox(width: 6),
-                        _overlayTag('UNAVAILABLE', Colors.red),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
+            background: _ImageSection(item: item),
           ),
         ),
 
-        // ── Body ──
+        // ── Body ────────────────────────────────────────────────────────
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Name + Price ──
+                // ── Name ──
                 Text(
                   item.name,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -1665,11 +2083,18 @@ class ProductDetailPage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
+
+                // ── Base price (always shown) ──
                 Text(
-                  _formatPrice(item.price),
+                  widget.formatPrice(item.price),
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: scheme.primary,
+                    color: item.isOnPromotion
+                        ? scheme.onSurfaceVariant
+                        : scheme.primary,
                     fontWeight: FontWeight.w700,
+                    decoration: item.isOnPromotion
+                        ? TextDecoration.lineThrough
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -1687,143 +2112,32 @@ class ProductDetailPage extends StatelessWidget {
                   const SizedBox(height: 20),
                 ],
 
-                // ── State Machine Actions ──
-                _buildActions(context, item, statusEnum),
+                // ── Promotion Pricing (NEW) ──────────────────────────
+                if (item.isOnPromotion) ...[
+                  _PromotionPricingSection(
+                    item: item,
+                    formatPrice: widget.formatPrice,
+                  ),
+                  const SizedBox(height: 16),
+                ],
 
-                // ── Details Card ──
+                // ── State Machine Actions ────────────────────────────
+                _ActionsSection(item: item, statusEnum: statusEnum),
+
+                // ── Details Card ─────────────────────────────────────
                 const SizedBox(height: 16),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Product Information',
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(
-                                color: scheme.primary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                        ),
-                        const Divider(height: 24),
-                        FutureBuilder<String>(
-                          future: _getCategoryName(item.categoryId),
-                          builder: (_, snap) =>
-                              _field(context, 'Category', snap.data ?? '...'),
-                        ),
-                        _field(
-                          context,
-                          'Available',
-                          item.isAvailable ? 'Yes' : 'No',
-                        ),
-                        _field(
-                          context,
-                          'Featured',
-                          item.isFeatured ? 'Yes' : 'No',
-                        ),
-                        _field(
-                          context,
-                          'New Product',
-                          item.isNew ? 'Yes' : 'No',
-                        ),
-                        _field(context, 'Status', statusEnum.displayName),
-                        _field(
-                          context,
-                          'Created',
-                          item.createdAt.toIso8601String().split('T').first,
-                        ),
-                        _field(context, 'ID', item.id),
-                      ],
-                    ),
-                  ),
+                _InfoCard(
+                  item: item,
+                  categoryName: _categoryName,
+                  formatPrice: widget.formatPrice,
+                  scheme: scheme,
+                  theme: Theme.of(context),
                 ),
 
-                // ── Inventory Card ──
+                // ── Inventory Card ───────────────────────────────────
                 const SizedBox(height: 12),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Inventory',
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(
-                                color: scheme.primary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                        ),
-                        const Divider(height: 24),
-                        _field(
-                          context,
-                          'Batch Number',
-                          item.batchNumber ?? '—',
-                        ),
-                        _field(context, 'Pack Size', item.packSize ?? '—'),
-                        _field(
-                          context,
-                          'Available Qty',
-                          item.quantityAvailable != null
-                              ? item.quantityAvailable.toString()
-                              : '—',
-                        ),
-                        _field(
-                          context,
-                          'Expiry Date',
-                          item.expiryDate != null
-                              ? '${item.expiryDate!.year}-'
-                                    '${item.expiryDate!.month.toString().padLeft(2, '0')}-'
-                                    '${item.expiryDate!.day.toString().padLeft(2, '0')}'
-                              : '—',
-                        ),
-                        if (item.expiryDate != null) ...[
-                          const SizedBox(height: 4),
-                          Builder(
-                            builder: (context) {
-                              final daysLeft = item.expiryDate!
-                                  .difference(DateTime.now())
-                                  .inDays;
-                              final isExpiringSoon = daysLeft <= 180;
-                              final isExpired = daysLeft < 0;
-                              return Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isExpired
-                                      ? scheme.errorContainer
-                                      : isExpiringSoon
-                                      ? Colors.orange.withValues(alpha: 0.15)
-                                      : Colors.green.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  isExpired
-                                      ? 'Expired ${daysLeft.abs()} days ago'
-                                      : isExpiringSoon
-                                      ? 'Expires in $daysLeft days — check stock'
-                                      : 'Expires in $daysLeft days',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: isExpired
-                                        ? scheme.onErrorContainer
-                                        : isExpiringSoon
-                                        ? Colors.orange.shade800
-                                        : Colors.green.shade800,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
+                _InventoryCard(item: item, scheme: scheme),
+
                 const SizedBox(height: 80), // FAB clearance
               ],
             ),
@@ -1833,11 +2147,388 @@ class ProductDetailPage extends StatelessWidget {
     );
   }
 
-  Widget _buildActions(
+  Future<void> _confirmDelete(
     BuildContext context,
-    ProductEntity item,
-    ProductStatus statusEnum,
-  ) {
+    String id,
+    String name,
+  ) async {
+    final confirmed = await ProductConfirmNameDialog.show(
+      context,
+      title: 'Delete Product?',
+      productName: name,
+      actionLabel: 'Delete',
+      actionColor: Theme.of(context).colorScheme.error,
+      warningMessage:
+          'This action is irreversible. The product will be permanently removed from the system.',
+    );
+    if (confirmed && context.mounted) {
+      context.read<ProductBloc>().add(ProductDeleteRequested(id));
+    }
+  }
+}
+
+// ─── Image Section ────────────────────────────────────────────────────────
+// Retains original gradient scrim + overlay tags; adds PromotionCornerTag.
+
+class _ImageSection extends StatelessWidget {
+  final ProductEntity item;
+  const _ImageSection({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final statusEnum = ProductStatusX.fromString(item.status);
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ProductImage(
+          imageUrl: item.imageUrl,
+          borderRadius: 0,
+          fit: BoxFit.cover,
+        ),
+        // Gradient scrim for readability
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.transparent, Colors.black54],
+            ),
+          ),
+        ),
+        // Status / feature tags at bottom-left (original)
+        Positioned(
+          bottom: 16,
+          left: 16,
+          right: 16,
+          child: Row(
+            children: [
+              ProductStatusBadge(status: statusEnum),
+              const SizedBox(width: 8),
+              if (item.isNew) _overlayTag('NEW', Colors.blue),
+              if (item.isFeatured) ...[
+                const SizedBox(width: 6),
+                _overlayTag('FEATURED', Colors.amber.shade800),
+              ],
+              if (!item.isAvailable) ...[
+                const SizedBox(width: 6),
+                _overlayTag('UNAVAILABLE', Colors.red),
+              ],
+            ],
+          ),
+        ),
+        // Promotion corner tag (NEW)
+        if (item.isOnPromotion)
+          Positioned(
+            top: 10,
+            left: 10,
+            child: PromotionCornerTag(percentage: item.discountPercentage!),
+          ),
+      ],
+    );
+  }
+
+  Widget _overlayTag(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: Colors.white,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Promotion Pricing Section (NEW) ──────────────────────────────────────
+
+class _PromotionPricingSection extends StatelessWidget {
+  final ProductEntity item;
+  final String Function(double) formatPrice;
+
+  const _PromotionPricingSection({
+    required this.item,
+    required this.formatPrice,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final discount = item.discountPercentage!;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.deepOrange.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.deepOrange.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.local_offer_outlined,
+            size: 20,
+            color: Colors.deepOrange,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Active Promotion',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Colors.deepOrange,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                PromotionPriceDisplay(product: item, formatPrice: formatPrice),
+              ],
+            ),
+          ),
+          PromotionDiscountBadge(percentage: discount, large: true),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Info Card ────────────────────────────────────────────────────────────
+// Original "Product Information" card, extended with sale price row.
+
+class _InfoCard extends StatelessWidget {
+  final ProductEntity item;
+  final String? categoryName;
+  final String Function(double) formatPrice;
+  final ColorScheme scheme;
+  final ThemeData theme;
+
+  const _InfoCard({
+    required this.item,
+    required this.categoryName,
+    required this.formatPrice,
+    required this.scheme,
+    required this.theme,
+  });
+
+  String _discountLabel(double v) =>
+      v % 1 == 0 ? '${v.toInt()}%' : '${v.toStringAsFixed(1)}%';
+
+  @override
+  Widget build(BuildContext context) {
+    final statusEnum = ProductStatusX.fromString(item.status);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Product Information',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: scheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const Divider(height: 24),
+            _field(context, 'Category', categoryName ?? '...'),
+            _field(context, 'Base Price', formatPrice(item.price)),
+            // Sale price row — only when on promotion (NEW)
+            if (item.isOnPromotion)
+              _field(
+                context,
+                'Sale Price',
+                '${formatPrice(item.displayPrice)} '
+                    '(${_discountLabel(item.discountPercentage!)} OFF)',
+                valueColor: Colors.deepOrange,
+              ),
+            _field(context, 'Available', item.isAvailable ? 'Yes' : 'No'),
+            _field(context, 'Featured', item.isFeatured ? 'Yes' : 'No'),
+            _field(context, 'New Product', item.isNew ? 'Yes' : 'No'),
+            _field(context, 'Status', statusEnum.displayName),
+            _field(
+              context,
+              'Created',
+              item.createdAt.toIso8601String().split('T').first,
+            ),
+            _field(context, 'ID', item.id),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _field(
+    BuildContext context,
+    String label,
+    String value, {
+    Color? valueColor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: valueColor,
+                fontWeight: valueColor != null ? FontWeight.w600 : null,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Inventory Card ───────────────────────────────────────────────────────
+// Unchanged from the original; extracted into its own widget for clarity.
+
+class _InventoryCard extends StatelessWidget {
+  final ProductEntity item;
+  final ColorScheme scheme;
+
+  const _InventoryCard({required this.item, required this.scheme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Inventory',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: scheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const Divider(height: 24),
+            _field(context, 'Batch Number', item.batchNumber ?? '—'),
+            _field(context, 'Pack Size', item.packSize ?? '—'),
+            _field(
+              context,
+              'Available Qty',
+              item.quantityAvailable != null
+                  ? item.quantityAvailable.toString()
+                  : '—',
+            ),
+            _field(
+              context,
+              'Expiry Date',
+              item.expiryDate != null
+                  ? '${item.expiryDate!.year}-'
+                        '${item.expiryDate!.month.toString().padLeft(2, '0')}-'
+                        '${item.expiryDate!.day.toString().padLeft(2, '0')}'
+                  : '—',
+            ),
+            if (item.expiryDate != null) ...[
+              const SizedBox(height: 4),
+              Builder(
+                builder: (context) {
+                  final daysLeft = item.expiryDate!
+                      .difference(DateTime.now())
+                      .inDays;
+                  final isExpiringSoon = daysLeft <= 180;
+                  final isExpired = daysLeft < 0;
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isExpired
+                          ? scheme.errorContainer
+                          : isExpiringSoon
+                          ? Colors.orange.withValues(alpha: 0.15)
+                          : Colors.green.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      isExpired
+                          ? 'Expired ${daysLeft.abs()} days ago'
+                          : isExpiringSoon
+                          ? 'Expires in $daysLeft days — check stock'
+                          : 'Expires in $daysLeft days',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isExpired
+                            ? scheme.onErrorContainer
+                            : isExpiringSoon
+                            ? Colors.orange.shade800
+                            : Colors.green.shade800,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _field(BuildContext context, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+          Expanded(
+            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Actions Section ──────────────────────────────────────────────────────
+// Identical logic to original; extracted into its own widget.
+
+class _ActionsSection extends StatelessWidget {
+  final ProductEntity item;
+  final ProductStatus statusEnum;
+
+  const _ActionsSection({required this.item, required this.statusEnum});
+
+  @override
+  Widget build(BuildContext context) {
     final actions = <Widget>[];
 
     if (statusEnum == ProductStatus.draft) {
@@ -1938,67 +2629,6 @@ class ProductDetailPage extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       ),
     );
-  }
-
-  Widget _overlayTag(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          color: Colors.white,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-
-  Widget _field(BuildContext context, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _confirmDelete(
-    BuildContext context,
-    String id,
-    String name,
-  ) async {
-    final confirmed = await ProductConfirmNameDialog.show(
-      context,
-      title: 'Delete Product?',
-      productName: name,
-      actionLabel: 'Delete',
-      actionColor: Theme.of(context).colorScheme.error,
-      warningMessage:
-          'This action is irreversible. The product will be permanently removed from the system.',
-    );
-    if (confirmed && context.mounted) {
-      context.read<ProductBloc>().add(ProductDeleteRequested(id));
-    }
   }
 }
 
@@ -2625,11 +3255,22 @@ class _ProductFormPageState extends State<ProductFormPage> {
 
 
 // === FILE: lib/features/product/presentation/pages/product_list_page.dart ===
+// lib/features/product/presentation/pages/product_list_page.dart
+//
+// CHANGES:
+//   1. Search bar — filters by name or description in real-time.
+//   2. Filter panel — filter by status, promotion, availability.
+//   3. Category grouping — products are grouped under their category headers.
+//   4. All view modes (cards, grid, list, details) support grouping.
+//   5. Active filter chip row shows applied filters with clear buttons.
+// ─────────────────────────────────────────────────────────────────────────
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../app/routes/app_router.dart';
 import '../../domain/entities/product_entity.dart';
+import '../../domain/value_objects/product_status.dart';
 import '../bloc/product_bloc.dart';
 import '../bloc/product_event.dart';
 import '../bloc/product_state.dart';
@@ -2639,6 +3280,68 @@ import '../widgets/product_grid_tile.dart';
 import '../widgets/product_list_row.dart';
 import '../widgets/product_table_row.dart';
 import '../widgets/product_confirm_name_dialog.dart';
+import 'package:get_it/get_it.dart';
+import '../../../category/domain/usecases/get_category_usecase.dart';
+
+// ─── Filter model ────────────────────────────────────────────────────────
+
+class _ProductFilter {
+  final String query;
+  final Set<ProductStatus> statuses;
+  final bool? onPromotion; // null = any, true = promo only, false = no promo
+  final bool? available; // null = any
+
+  const _ProductFilter({
+    this.query = '',
+    this.statuses = const {},
+    this.onPromotion,
+    this.available,
+  });
+
+  bool get hasActiveFilters =>
+      query.isNotEmpty ||
+      statuses.isNotEmpty ||
+      onPromotion != null ||
+      available != null;
+
+  _ProductFilter copyWith({
+    String? query,
+    Set<ProductStatus>? statuses,
+    Object? onPromotion = _sentinel,
+    Object? available = _sentinel,
+  }) => _ProductFilter(
+    query: query ?? this.query,
+    statuses: statuses ?? this.statuses,
+    onPromotion: onPromotion == _sentinel
+        ? this.onPromotion
+        : onPromotion as bool?,
+    available: available == _sentinel ? this.available : available as bool?,
+  );
+
+  _ProductFilter clearAll() => const _ProductFilter();
+
+  bool matches(ProductEntity p) {
+    if (query.isNotEmpty) {
+      final q = query.toLowerCase();
+      final inName = p.name.toLowerCase().contains(q);
+      final inDesc =
+          p.description != null && p.description!.toLowerCase().contains(q);
+      if (!inName && !inDesc) return false;
+    }
+    if (statuses.isNotEmpty) {
+      final s = ProductStatusX.fromString(p.status);
+      if (!statuses.contains(s)) return false;
+    }
+    if (onPromotion != null && p.isOnPromotion != onPromotion) return false;
+    if (available != null && p.isAvailable != available) return false;
+    return true;
+  }
+}
+
+// Sentinel so copyWith can pass null explicitly
+const _sentinel = Object();
+
+// ─── Page ────────────────────────────────────────────────────────────────
 
 class ProductListPage extends StatefulWidget {
   const ProductListPage({super.key});
@@ -2649,6 +3352,14 @@ class ProductListPage extends StatefulWidget {
 
 class _ProductListPageState extends State<ProductListPage> {
   ProductViewMode _viewMode = ProductViewMode.cards;
+  _ProductFilter _filter = const _ProductFilter();
+  bool _showFilterPanel = false;
+
+  // Category name cache: categoryId → display name
+  final Map<String, String> _categoryNames = {};
+
+  final TextEditingController _searchCtrl = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
 
   @override
   void initState() {
@@ -2656,9 +3367,44 @@ class _ProductListPageState extends State<ProductListPage> {
     context.read<ProductBloc>().add(ProductLoadAllRequested());
   }
 
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  // ── Category names ──────────────────────────────────────────────────────
+
+  Future<String> _resolveCategoryName(String id) async {
+    if (_categoryNames.containsKey(id)) return _categoryNames[id]!;
+    try {
+      final uc = GetIt.instance<GetCategoryUseCase>();
+      final res = await uc(GetCategoryParams(id: id));
+      final name = res.fold((_) => id, (c) => c.name);
+      if (mounted) setState(() => _categoryNames[id] = name);
+      return name;
+    } catch (_) {
+      return id;
+    }
+  }
+
+  void _prefetchCategories(List<ProductEntity> items) {
+    final unseen = items
+        .map((e) => e.categoryId)
+        .toSet()
+        .difference(_categoryNames.keys.toSet());
+    for (final id in unseen) {
+      _resolveCategoryName(id);
+    }
+  }
+
+  // ── Navigation / delete ─────────────────────────────────────────────────
+
   void _navigateToDetail(String id) =>
       context.push(AppRouter.productDetailPath(id));
-  void _deleteProduct(String id, String name) async {
+
+  Future<void> _deleteProduct(String id, String name) async {
     final confirmed = await ProductConfirmNameDialog.show(
       context,
       title: 'Delete Product?',
@@ -2673,223 +3419,372 @@ class _ProductListPageState extends State<ProductListPage> {
     }
   }
 
-  String _formatPrice(double price) {
-    final formatted = price.toStringAsFixed(0);
-    final buffer = StringBuffer();
-    for (int i = 0; i < formatted.length; i++) {
-      if (i > 0 && (formatted.length - i) % 3 == 0) buffer.write(',');
-      buffer.write(formatted[i]);
+  // ── Price formatter ─────────────────────────────────────────────────────
+
+  String _formatPrice(double v) =>
+      'TZS ${v.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',')}';
+
+  // ── Filtering + grouping ────────────────────────────────────────────────
+
+  List<ProductEntity> _applyFilter(List<ProductEntity> items) =>
+      items.where(_filter.matches).toList();
+
+  /// Groups filtered items by categoryId, returns ordered list of
+  /// (categoryId, items) pairs — largest group first.
+  List<MapEntry<String, List<ProductEntity>>> _groupByCategory(
+    List<ProductEntity> items,
+  ) {
+    final map = <String, List<ProductEntity>>{};
+    for (final p in items) {
+      map.putIfAbsent(p.categoryId, () => []).add(p);
     }
-    return 'TZS $buffer';
+    final entries = map.entries.toList()
+      ..sort((a, b) => b.value.length.compareTo(a.value.length));
+    return entries;
   }
 
-  /// Responsive grid column count based on screen width.
-  int _gridColumns(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    if (width >= 1200) return 5;
-    if (width >= 1024) return 4;
-    if (width >= 600) return 3;
-    return 2;
-  }
+  // ── Build ───────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Products'),
-        actions: [
-          ViewModeToggle(
-            current: _viewMode,
-            onChanged: (mode) => setState(() => _viewMode = mode),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
+      appBar: _buildAppBar(scheme),
       floatingActionButton: FloatingActionButton(
         onPressed: () => context.push(AppRouter.productCreate),
         child: const Icon(Icons.add),
       ),
-      body: BlocConsumer<ProductBloc, ProductState>(
-        listener: (context, state) {
-          if (state is ProductOperationSuccess) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(state.message)));
-            context.read<ProductBloc>().add(ProductLoadAllRequested());
-          }
-          if (state is ProductFailure) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: scheme.error,
-              ),
-            );
-          }
-        },
-        builder: (context, state) {
-          if (state is ProductLoading || state is ProductInitial) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (state is ProductEmpty) {
-            return _buildEmpty(context, scheme);
-          }
-          if (state is ProductFailure) {
-            return _buildError(context, scheme, state.message);
-          }
-          if (state is ProductListLoaded) {
-            return RefreshIndicator(
-              onRefresh: () async =>
-                  context.read<ProductBloc>().add(ProductLoadAllRequested()),
-              child: _buildView(state.items),
-            );
-          }
-          return const SizedBox.shrink();
-        },
-      ),
-    );
-  }
-
-  // ─── View Router ───────────────────────────────────────────
-
-  Widget _buildView(List<ProductEntity> items) {
-    return switch (_viewMode) {
-      ProductViewMode.cards => _buildCardsView(items),
-      ProductViewMode.grid => _buildGridView(items),
-      ProductViewMode.list => _buildListView(items),
-      ProductViewMode.details => _buildDetailsView(items),
-    };
-  }
-
-  // ── 1. Cards ───────────────────────────────────────────────
-
-  Widget _buildCardsView(List<ProductEntity> items) {
-    final width = MediaQuery.of(context).size.width;
-
-    // On wide screens, show cards in a grid instead of single column
-    if (width >= 1024) {
-      final columns = width >= 1200 ? 3 : 2;
-      return GridView.builder(
-        padding: const EdgeInsets.all(16),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: columns,
-          mainAxisExtent: 280,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-        ),
-        itemCount: items.length,
-        itemBuilder: (_, i) => ProductCardTile(
-          item: items[i],
-          formatPrice: _formatPrice,
-          onTap: () => _navigateToDetail(items[i].id),
-          onDelete: () => _deleteProduct(items[i].id, items[i].name),
-        ),
-      );
-    }
-
-    // Mobile/tablet: single column list
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: items.length,
-      itemBuilder: (_, i) => ProductCardTile(
-        item: items[i],
-        formatPrice: _formatPrice,
-        onTap: () => _navigateToDetail(items[i].id),
-        onDelete: () => _deleteProduct(items[i].id, items[i].name),
-      ),
-    );
-  }
-
-  // ── 2. Grid ────────────────────────────────────────────────
-
-  Widget _buildGridView(List<ProductEntity> items) {
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 420,
-        mainAxisExtent: 280,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-      ),
-      itemCount: items.length,
-      itemBuilder: (_, i) => ProductGridTile(
-        item: items[i],
-        formatPrice: _formatPrice,
-        onTap: () => _navigateToDetail(items[i].id),
-      ),
-    );
-  }
-
-  // ── 3. List ────────────────────────────────────────────────
-
-  Widget _buildListView(List<ProductEntity> items) {
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: items.length,
-      itemBuilder: (_, i) => ProductListRow(
-        item: items[i],
-        formatPrice: _formatPrice,
-        onTap: () => _navigateToDetail(items[i].id),
-        onDelete: () => _deleteProduct(items[i].id, items[i].name),
-      ),
-    );
-  }
-
-  // ── 4. Details ─────────────────────────────────────────────
-
-  Widget _buildDetailsView(List<ProductEntity> items) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
+      body: Column(
         children: [
-          // Table header
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(12),
-              ),
+          // ── Search bar ─────────────────────────────────────
+          _SearchBar(
+            controller: _searchCtrl,
+            focusNode: _searchFocus,
+            onChanged: (q) =>
+                setState(() => _filter = _filter.copyWith(query: q)),
+            onClear: () {
+              _searchCtrl.clear();
+              setState(() => _filter = _filter.copyWith(query: ''));
+            },
+          ),
+
+          // ── Filter panel ───────────────────────────────────
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeInOut,
+            child: _showFilterPanel
+                ? _FilterPanel(
+                    filter: _filter,
+                    onChanged: (f) => setState(() => _filter = f),
+                  )
+                : const SizedBox.shrink(),
+          ),
+
+          // ── Active filter chips ────────────────────────────
+          if (_filter.hasActiveFilters)
+            _ActiveFilterChips(
+              filter: _filter,
+              onRemove: (f) => setState(() => _filter = f),
+              onClearAll: () =>
+                  setState(() => _filter = const _ProductFilter()),
             ),
-            child: Row(
-              children: [
-                const SizedBox(width: 44),
-                const SizedBox(width: 12),
-                Expanded(flex: 3, child: Text('Name', style: _headerStyle)),
-                Expanded(flex: 2, child: Text('Price', style: _headerStyle)),
-                Expanded(flex: 2, child: Text('Status', style: _headerStyle)),
-                const SizedBox(width: 48),
-              ],
+
+          // ── Content ────────────────────────────────────────
+          Expanded(
+            child: BlocConsumer<ProductBloc, ProductState>(
+              listener: (context, state) {
+                if (state is ProductOperationSuccess) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(state.message)));
+                  context.read<ProductBloc>().add(ProductLoadAllRequested());
+                }
+                if (state is ProductFailure) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(state.message),
+                      backgroundColor: scheme.error,
+                    ),
+                  );
+                }
+              },
+              builder: (context, state) {
+                if (state is ProductLoading || state is ProductInitial) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (state is ProductEmpty) {
+                  return _buildEmpty(context, scheme);
+                }
+                if (state is ProductFailure) {
+                  return _buildError(context, scheme, state.message);
+                }
+                if (state is ProductListLoaded) {
+                  _prefetchCategories(state.items);
+                  final filtered = _applyFilter(state.items);
+                  if (filtered.isEmpty) {
+                    return _buildNoResults(context, scheme);
+                  }
+                  return RefreshIndicator(
+                    onRefresh: () async => context.read<ProductBloc>().add(
+                      ProductLoadAllRequested(),
+                    ),
+                    child: _buildView(filtered),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
             ),
           ),
-          // Table rows
-          ...items.asMap().entries.map((entry) {
-            final i = entry.key;
-            final item = entry.value;
-            return ProductTableRow(
-              item: item,
-              formatPrice: _formatPrice,
-              isLast: i == items.length - 1,
-              onTap: () => _navigateToDetail(item.id),
-              onDelete: () => _deleteProduct(item.id, item.name),
-            );
-          }),
         ],
       ),
     );
   }
 
-  TextStyle get _headerStyle => TextStyle(
-    fontSize: 11,
-    fontWeight: FontWeight.w700,
-    letterSpacing: 0.5,
-    color: Theme.of(context).colorScheme.onSurfaceVariant,
-  );
+  AppBar _buildAppBar(ColorScheme scheme) {
+    return AppBar(
+      title: const Text('Products'),
+      actions: [
+        IconButton(
+          tooltip: 'Refresh',
+          icon: const Icon(Icons.refresh),
+          onPressed: () {
+            final s = context.read<ProductBloc>().state;
+            if (s is! ProductLoading) {
+              context.read<ProductBloc>().add(ProductLoadAllRequested());
+            }
+          },
+        ),
+        IconButton(
+          tooltip: 'Filter',
+          icon: Badge(
+            isLabelVisible:
+                _filter.hasActiveFilters &&
+                (_filter.statuses.isNotEmpty ||
+                    _filter.onPromotion != null ||
+                    _filter.available != null),
+            child: Icon(
+              _showFilterPanel ? Icons.filter_list : Icons.filter_list_outlined,
+            ),
+          ),
+          onPressed: () => setState(() => _showFilterPanel = !_showFilterPanel),
+        ),
+        ViewModeToggle(
+          current: _viewMode,
+          onChanged: (m) => setState(() => _viewMode = m),
+        ),
+        const SizedBox(width: 8),
+      ],
+    );
+  }
 
-  // ─── Empty / Error ─────────────────────────────────────────
+  // ── View router ─────────────────────────────────────────────────────────
+
+  Widget _buildView(List<ProductEntity> items) {
+    final groups = _groupByCategory(items);
+    return switch (_viewMode) {
+      ProductViewMode.cards => _buildCardsView(groups),
+      ProductViewMode.grid => _buildGridView(groups),
+      ProductViewMode.list => _buildListView(groups),
+      ProductViewMode.details => _buildDetailsView(groups),
+    };
+  }
+
+  // ── 1. Cards ─────────────────────────────────────────────────────────────
+
+  Widget _buildCardsView(List<MapEntry<String, List<ProductEntity>>> groups) {
+    final width = MediaQuery.of(context).size.width;
+    final isWide = width >= 1024;
+    final columns = width >= 1200 ? 3 : 2;
+
+    return CustomScrollView(
+      slivers: [
+        for (final entry in groups) ...[
+          _categorySliverHeader(entry.key),
+          if (isWide)
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              sliver: SliverGrid(
+                delegate: SliverChildBuilderDelegate(
+                  (_, i) => ProductCardTile(
+                    item: entry.value[i],
+                    formatPrice: _formatPrice,
+                    onTap: () => _navigateToDetail(entry.value[i].id),
+                    onDelete: () =>
+                        _deleteProduct(entry.value[i].id, entry.value[i].name),
+                  ),
+                  childCount: entry.value.length,
+                ),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  mainAxisExtent: 280,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (_, i) => ProductCardTile(
+                    item: entry.value[i],
+                    formatPrice: _formatPrice,
+                    onTap: () => _navigateToDetail(entry.value[i].id),
+                    onDelete: () =>
+                        _deleteProduct(entry.value[i].id, entry.value[i].name),
+                  ),
+                  childCount: entry.value.length,
+                ),
+              ),
+            ),
+        ],
+        const SliverToBoxAdapter(child: SizedBox(height: 80)),
+      ],
+    );
+  }
+
+  // ── 2. Grid ──────────────────────────────────────────────────────────────
+
+  Widget _buildGridView(List<MapEntry<String, List<ProductEntity>>> groups) {
+    return CustomScrollView(
+      slivers: [
+        for (final entry in groups) ...[
+          _categorySliverHeader(entry.key),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            sliver: SliverGrid(
+              delegate: SliverChildBuilderDelegate(
+                (_, i) => ProductGridTile(
+                  item: entry.value[i],
+                  formatPrice: _formatPrice,
+                  onTap: () => _navigateToDetail(entry.value[i].id),
+                ),
+                childCount: entry.value.length,
+              ),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 420,
+                mainAxisExtent: 280,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+              ),
+            ),
+          ),
+        ],
+        const SliverToBoxAdapter(child: SizedBox(height: 80)),
+      ],
+    );
+  }
+
+  // ── 3. List ──────────────────────────────────────────────────────────────
+
+  Widget _buildListView(List<MapEntry<String, List<ProductEntity>>> groups) {
+    return CustomScrollView(
+      slivers: [
+        for (final entry in groups) ...[
+          _categorySliverHeader(entry.key),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (_, i) => ProductListRow(
+                  item: entry.value[i],
+                  formatPrice: _formatPrice,
+                  onTap: () => _navigateToDetail(entry.value[i].id),
+                  onDelete: () =>
+                      _deleteProduct(entry.value[i].id, entry.value[i].name),
+                ),
+                childCount: entry.value.length,
+              ),
+            ),
+          ),
+        ],
+        const SliverToBoxAdapter(child: SizedBox(height: 80)),
+      ],
+    );
+  }
+
+  // ── 4. Details ───────────────────────────────────────────────────────────
+
+  Widget _buildDetailsView(List<MapEntry<String, List<ProductEntity>>> groups) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return CustomScrollView(
+      slivers: [
+        // Sticky table header
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _TableHeaderDelegate(scheme: scheme),
+        ),
+        for (final entry in groups) ...[
+          _categorySliverHeader(entry.key, dense: true),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (_, i) => ProductTableRow(
+                  item: entry.value[i],
+                  formatPrice: _formatPrice,
+                  isLast: i == entry.value.length - 1,
+                  onTap: () => _navigateToDetail(entry.value[i].id),
+                  onDelete: () =>
+                      _deleteProduct(entry.value[i].id, entry.value[i].name),
+                ),
+                childCount: entry.value.length,
+              ),
+            ),
+          ),
+        ],
+        const SliverToBoxAdapter(child: SizedBox(height: 80)),
+      ],
+    );
+  }
+
+  // ── Category sliver header ───────────────────────────────────────────────
+
+  SliverToBoxAdapter _categorySliverHeader(
+    String categoryId, {
+    bool dense = false,
+  }) {
+    final name = _categoryNames[categoryId] ?? categoryId;
+    return SliverToBoxAdapter(
+      child: _CategoryHeader(name: name, dense: dense),
+    );
+  }
+
+  // ── Empty / Error / No results ───────────────────────────────────────────
+
+  Widget _buildNoResults(BuildContext context, ColorScheme scheme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.search_off_rounded,
+            size: 56,
+            color: scheme.outlineVariant,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'No products match your search.',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: () {
+              _searchCtrl.clear();
+              setState(() => _filter = const _ProductFilter());
+            },
+            icon: const Icon(Icons.clear),
+            label: const Text('Clear filters'),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildEmpty(BuildContext context, ColorScheme scheme) {
     return Center(
@@ -2939,6 +3834,489 @@ class _ProductListPageState extends State<ProductListPage> {
       ),
     );
   }
+}
+
+// ─── Search Bar ───────────────────────────────────────────────────────────
+
+class _SearchBar extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  const _SearchBar({
+    required this.controller,
+    required this.focusNode,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        onChanged: onChanged,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: 'Search products…',
+          prefixIcon: const Icon(Icons.search, size: 20),
+          suffixIcon: controller.text.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear, size: 18),
+                  onPressed: onClear,
+                )
+              : null,
+          filled: true,
+          fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 10,
+            horizontal: 14,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(
+              color: scheme.primary.withValues(alpha: 0.6),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Filter Panel ─────────────────────────────────────────────────────────
+
+class _FilterPanel extends StatelessWidget {
+  final _ProductFilter filter;
+  final ValueChanged<_ProductFilter> onChanged;
+
+  const _FilterPanel({required this.filter, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Status filter ──────────────────────────────────
+          Text(
+            'Status',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: ProductStatus.values.map((s) {
+              final selected = filter.statuses.contains(s);
+              return FilterChip(
+                label: Text(s.displayName),
+                selected: selected,
+                selectedColor: s.color.withValues(alpha: 0.15),
+                checkmarkColor: s.color,
+                side: BorderSide(
+                  color: selected
+                      ? s.color.withValues(alpha: 0.6)
+                      : scheme.outlineVariant,
+                ),
+                labelStyle: TextStyle(
+                  color: selected ? s.color : scheme.onSurfaceVariant,
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
+                ),
+                onSelected: (on) {
+                  final next = Set<ProductStatus>.from(filter.statuses);
+                  on ? next.add(s) : next.remove(s);
+                  onChanged(filter.copyWith(statuses: next));
+                },
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 12),
+
+          // ── Promotion filter ───────────────────────────────
+          Text(
+            'Promotion',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              _boolChip(
+                context,
+                label: 'On Promotion',
+                icon: Icons.local_offer_outlined,
+                active: filter.onPromotion == true,
+                activeColor: Colors.deepOrange,
+                onTap: () => onChanged(
+                  filter.copyWith(
+                    onPromotion: filter.onPromotion == true ? _sentinel : true,
+                  ),
+                ),
+              ),
+              _boolChip(
+                context,
+                label: 'No Promotion',
+                icon: Icons.sell_outlined,
+                active: filter.onPromotion == false,
+                activeColor: scheme.primary,
+                onTap: () => onChanged(
+                  filter.copyWith(
+                    onPromotion: filter.onPromotion == false
+                        ? _sentinel
+                        : false,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // ── Availability filter ────────────────────────────
+          Text(
+            'Availability',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              _boolChip(
+                context,
+                label: 'Available',
+                icon: Icons.check_circle_outline,
+                active: filter.available == true,
+                activeColor: Colors.green,
+                onTap: () => onChanged(
+                  filter.copyWith(
+                    available: filter.available == true ? _sentinel : true,
+                  ),
+                ),
+              ),
+              _boolChip(
+                context,
+                label: 'Unavailable',
+                icon: Icons.cancel_outlined,
+                active: filter.available == false,
+                activeColor: scheme.error,
+                onTap: () => onChanged(
+                  filter.copyWith(
+                    available: filter.available == false ? _sentinel : false,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _boolChip(
+    BuildContext context, {
+    required String label,
+    required IconData icon,
+    required bool active,
+    required Color activeColor,
+    required VoidCallback onTap,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: active
+              ? activeColor.withValues(alpha: 0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: active
+                ? activeColor.withValues(alpha: 0.5)
+                : scheme.outlineVariant,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: active ? activeColor : scheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: active ? activeColor : scheme.onSurfaceVariant,
+                fontWeight: active ? FontWeight.w700 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Active Filter Chips Row ──────────────────────────────────────────────
+
+class _ActiveFilterChips extends StatelessWidget {
+  final _ProductFilter filter;
+  final ValueChanged<_ProductFilter> onRemove;
+  final VoidCallback onClearAll;
+
+  const _ActiveFilterChips({
+    required this.filter,
+    required this.onRemove,
+    required this.onClearAll,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final chips = <Widget>[];
+
+    for (final s in filter.statuses) {
+      chips.add(
+        _chip(
+          context,
+          label: s.displayName,
+          color: s.color,
+          onRemove: () {
+            final next = Set<ProductStatus>.from(filter.statuses)..remove(s);
+            onRemove(filter.copyWith(statuses: next));
+          },
+        ),
+      );
+    }
+    if (filter.onPromotion == true) {
+      chips.add(
+        _chip(
+          context,
+          label: 'On Promotion',
+          color: Colors.deepOrange,
+          onRemove: () => onRemove(filter.copyWith(onPromotion: _sentinel)),
+        ),
+      );
+    }
+    if (filter.onPromotion == false) {
+      chips.add(
+        _chip(
+          context,
+          label: 'No Promotion',
+          color: Theme.of(context).colorScheme.primary,
+          onRemove: () => onRemove(filter.copyWith(onPromotion: _sentinel)),
+        ),
+      );
+    }
+    if (filter.available == true) {
+      chips.add(
+        _chip(
+          context,
+          label: 'Available',
+          color: Colors.green,
+          onRemove: () => onRemove(filter.copyWith(available: _sentinel)),
+        ),
+      );
+    }
+    if (filter.available == false) {
+      chips.add(
+        _chip(
+          context,
+          label: 'Unavailable',
+          color: Theme.of(context).colorScheme.error,
+          onRemove: () => onRemove(filter.copyWith(available: _sentinel)),
+        ),
+      );
+    }
+    if (filter.query.isNotEmpty) {
+      chips.add(
+        _chip(
+          context,
+          label: '"${filter.query}"',
+          color: Theme.of(context).colorScheme.secondary,
+          onRemove: () => onRemove(filter.copyWith(query: '')),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: chips),
+            ),
+          ),
+          TextButton(
+            onPressed: onClearAll,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('Clear all', style: TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(
+    BuildContext context, {
+    required String label,
+    required Color color,
+    required VoidCallback onRemove,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onRemove,
+            child: Icon(Icons.close, size: 12, color: color),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Category Header ──────────────────────────────────────────────────────
+
+class _CategoryHeader extends StatelessWidget {
+  final String name;
+  final bool dense;
+
+  const _CategoryHeader({required this.name, this.dense = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, dense ? 10 : 16, 16, 6),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: dense ? 14 : 18,
+            decoration: BoxDecoration(
+              color: scheme.primary,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            name,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: scheme.onSurface,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.2,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Divider(
+              color: scheme.outlineVariant.withValues(alpha: 0.5),
+              height: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Sticky Table Header Delegate ────────────────────────────────────────
+
+class _TableHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final ColorScheme scheme;
+  const _TableHeaderDelegate({required this.scheme});
+
+  @override
+  double get minExtent => 40;
+  @override
+  double get maxExtent => 40;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return Container(
+      color: scheme.surface,
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 10),
+      child: Row(
+        children: [
+          const SizedBox(width: 44 + 12), // image + gap
+          Expanded(flex: 3, child: Text('Name', style: _style)),
+          Expanded(flex: 2, child: Text('Price', style: _style)),
+          Expanded(flex: 2, child: Text('Status', style: _style)),
+          const SizedBox(width: 48),
+        ],
+      ),
+    );
+  }
+
+  TextStyle get _style => TextStyle(
+    fontSize: 11,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 0.5,
+    color: scheme.onSurfaceVariant,
+  );
+
+  @override
+  bool shouldRebuild(_TableHeaderDelegate old) => old.scheme != scheme;
 }
 
 
@@ -3070,11 +4448,13 @@ class ProductCard extends StatelessWidget {
 
 
 // === FILE: lib/features/product/presentation/widgets/product_card_tile.dart ===
+// lib/features/product/presentation/widgets/product_card_tile.dart
 import 'package:flutter/material.dart';
 import '../../domain/entities/product_entity.dart';
 import '../../domain/value_objects/product_status.dart';
 import 'product_image.dart';
 import 'product_status_badge.dart';
+import 'promotion_price_display.dart';
 
 /// Cards view tile — full-width image banner with overlays.
 class ProductCardTile extends StatelessWidget {
@@ -3114,11 +4494,13 @@ class ProductCardTile extends StatelessWidget {
                   height: 160,
                   borderRadius: 0,
                 ),
+                // Status badge — top left
                 Positioned(
                   top: 10,
                   left: 10,
                   child: ProductStatusBadge(status: statusEnum),
                 ),
+                // NEW / FEATURED tags — top right
                 Positioned(
                   top: 10,
                   right: 10,
@@ -3132,6 +4514,16 @@ class ProductCardTile extends StatelessWidget {
                     ],
                   ),
                 ),
+                // Promotion corner tag — bottom left (NEW)
+                if (item.isOnPromotion)
+                  Positioned(
+                    bottom: 8,
+                    left: 8,
+                    child: PromotionCornerTag(
+                      percentage: item.discountPercentage!,
+                    ),
+                  ),
+                // Unavailable overlay
                 if (!item.isAvailable)
                   Positioned.fill(
                     child: Container(
@@ -3187,13 +4579,10 @@ class ProductCardTile extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         const SizedBox(height: 6),
-                        Text(
-                          formatPrice(item.price),
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(
-                                color: scheme.primary,
-                                fontWeight: FontWeight.w700,
-                              ),
+                        // Promotion-aware price (NEW — replaces plain Text)
+                        PromotionPriceDisplay(
+                          product: item,
+                          formatPrice: formatPrice,
                         ),
                       ],
                     ),
@@ -3375,11 +4764,13 @@ class _ProductConfirmNameDialogState extends State<ProductConfirmNameDialog> {
 }
 
 // === FILE: lib/features/product/presentation/widgets/product_grid_tile.dart ===
+// lib/features/product/presentation/widgets/product_grid_tile.dart
 import 'package:flutter/material.dart';
 import '../../domain/entities/product_entity.dart';
 import '../../domain/value_objects/product_status.dart';
 import 'product_image.dart';
 import 'product_status_badge.dart';
+import 'promotion_price_display.dart';
 
 /// Grid view tile — compact thumbnail with name, price, status.
 class ProductGridTile extends StatelessWidget {
@@ -3396,7 +4787,6 @@ class ProductGridTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final statusEnum = ProductStatusX.fromString(item.status);
 
     return Card(
@@ -3419,6 +4809,7 @@ class ProductGridTile extends StatelessWidget {
                   ),
                   if (!item.isAvailable)
                     Container(color: Colors.black.withValues(alpha: 0.4)),
+                  // N / F mini badges — top right
                   Positioned(
                     top: 6,
                     right: 6,
@@ -3431,6 +4822,15 @@ class ProductGridTile extends StatelessWidget {
                       ],
                     ),
                   ),
+                  // Promotion corner tag — top left (NEW)
+                  if (item.isOnPromotion)
+                    Positioned(
+                      top: 6,
+                      left: 6,
+                      child: PromotionCornerTag(
+                        percentage: item.discountPercentage!,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -3444,26 +4844,21 @@ class ProductGridTile extends StatelessWidget {
                   children: [
                     Text(
                       item.name,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(fontWeight: FontWeight.w700),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const Spacer(),
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Expanded(
-                          child: Text(
-                            formatPrice(item.price),
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(
-                                  color: scheme.primary,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                          // Promotion-aware price (NEW — replaces plain Text)
+                          child: PromotionPriceDisplay(
+                            product: item,
+                            formatPrice: formatPrice,
                           ),
                         ),
                         ProductStatusBadge(status: statusEnum, compact: true),
@@ -3500,6 +4895,7 @@ class ProductGridTile extends StatelessWidget {
     );
   }
 }
+
 
 // === FILE: lib/features/product/presentation/widgets/product_image.dart ===
 import 'dart:io';
@@ -3610,11 +5006,13 @@ class ProductImage extends StatelessWidget {
 }
 
 // === FILE: lib/features/product/presentation/widgets/product_list_row.dart ===
+// lib/features/product/presentation/widgets/product_list_row.dart
 import 'package:flutter/material.dart';
 import '../../domain/entities/product_entity.dart';
 import '../../domain/value_objects/product_status.dart';
 import 'product_image.dart';
 import 'product_status_badge.dart';
+import 'promotion_price_display.dart';
 
 /// List view row — dense, small thumbnail on the left.
 class ProductListRow extends StatelessWidget {
@@ -3665,9 +5063,7 @@ class ProductListRow extends StatelessWidget {
                           Flexible(
                             child: Text(
                               item.name,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
+                              style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(fontWeight: FontWeight.w600),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -3677,7 +5073,9 @@ class ProductListRow extends StatelessWidget {
                             const SizedBox(width: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 5, vertical: 1),
+                                horizontal: 5,
+                                vertical: 1,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.blue.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(4),
@@ -3692,15 +5090,22 @@ class ProductListRow extends StatelessWidget {
                               ),
                             ),
                           ],
+                          // Promotion discount badge inline with name (NEW)
+                          if (item.isOnPromotion &&
+                              item.discountPercentage != null) ...[
+                            const SizedBox(width: 6),
+                            PromotionDiscountBadge(
+                              percentage: item.discountPercentage!,
+                            ),
+                          ],
                         ],
                       ),
-                      const SizedBox(height: 1),
-                      Text(
-                        formatPrice(item.price),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: scheme.primary,
-                              fontWeight: FontWeight.w600,
-                            ),
+                      const SizedBox(height: 3),
+                      // Compact promotion-aware price (NEW)
+                      PromotionPriceDisplay(
+                        product: item,
+                        formatPrice: formatPrice,
+                        compact: true,
                       ),
                     ],
                   ),
@@ -3712,8 +5117,11 @@ class ProductListRow extends StatelessWidget {
                 SizedBox(
                   width: 36,
                   child: IconButton(
-                    icon: Icon(Icons.delete_outline,
-                        color: scheme.error, size: 18),
+                    icon: Icon(
+                      Icons.delete_outline,
+                      color: scheme.error,
+                      size: 18,
+                    ),
                     onPressed: onDelete,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
@@ -3727,6 +5135,7 @@ class ProductListRow extends StatelessWidget {
     );
   }
 }
+
 
 // === FILE: lib/features/product/presentation/widgets/product_status_badge.dart ===
 import 'package:flutter/material.dart';
@@ -3769,12 +5178,14 @@ class ProductStatusBadge extends StatelessWidget {
 
 
 // === FILE: lib/features/product/presentation/widgets/product_table_row.dart ===
+// lib/features/product/presentation/widgets/product_table_row.dart
 import 'package:flutter/material.dart';
 import '../../domain/entities/product_entity.dart';
 import '../../domain/value_objects/product_status.dart';
 import 'product_image.dart';
 import 'product_status_badge.dart';
 import 'product_confirm_name_dialog.dart';
+import 'promotion_price_display.dart';
 
 /// Details view row — table-style with aligned columns.
 class ProductTableRow extends StatelessWidget {
@@ -3821,7 +5232,7 @@ class ProductTableRow extends StatelessWidget {
               borderRadius: 6,
             ),
             const SizedBox(width: 12),
-            // Name
+            // Name + NEW badge
             Expanded(
               flex: 3,
               child: Row(
@@ -3857,18 +5268,24 @@ class ProductTableRow extends StatelessWidget {
                       ),
                     ),
                   ],
+                  // Promotion discount badge in name column (NEW)
+                  if (item.isOnPromotion &&
+                      item.discountPercentage != null) ...[
+                    const SizedBox(width: 6),
+                    PromotionDiscountBadge(
+                      percentage: item.discountPercentage!,
+                    ),
+                  ],
                 ],
               ),
             ),
-            // Price
+            // Price — compact promotion-aware (NEW)
             Expanded(
               flex: 2,
-              child: Text(
-                formatPrice(item.price),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: scheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
+              child: PromotionPriceDisplay(
+                product: item,
+                formatPrice: formatPrice,
+                compact: true,
               ),
             ),
             // Status
@@ -3887,7 +5304,7 @@ class ProductTableRow extends StatelessWidget {
                     title: 'Delete Product?',
                     productName: item.name,
                     actionLabel: 'Delete',
-                    actionColor: Theme.of(context).colorScheme.error,
+                    actionColor: scheme.error,
                     warningMessage:
                         'This action is irreversible. The product will be permanently removed from the system.',
                   );
@@ -3897,6 +5314,254 @@ class ProductTableRow extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/product/presentation/widgets/promotion_price_display.dart ===
+// lib/features/product/presentation/widgets/promotion_price_display.dart
+//
+// Promotion-aware price widget used in product cards, list rows, and
+// the detail page.
+//
+// USAGE
+// ─────────────────────────────────────────────────────────────
+//   PromotionPriceDisplay(
+//     product: item,
+//     formatPrice: (v) => 'TZS ${v.toStringAsFixed(0)}',
+//   )
+//
+// BEHAVIOR
+// ─────────────────────────────────────────────────────────────
+//   • No promotion  → shows price normally (same as before).
+//   • Active promo  → shows effectivePrice prominently, original
+//                     price struck through, discount badge.
+//   • base_price is NEVER mutated — always reads from entity.price.
+// ─────────────────────────────────────────────────────────────
+
+import 'package:flutter/material.dart';
+import '../../domain/entities/product_entity.dart';
+
+class PromotionPriceDisplay extends StatelessWidget {
+  final ProductEntity product;
+  final String Function(double) formatPrice;
+
+  /// Compact: single-line layout — price + struck-through original.
+  /// Non-compact: stacked layout for cards/detail.
+  final bool compact;
+
+  const PromotionPriceDisplay({
+    super.key,
+    required this.product,
+    required this.formatPrice,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!product.isOnPromotion) {
+      // ── No promotion — render exactly as before ──────────────
+      return Text(
+        formatPrice(product.price),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.w600,
+        ),
+      );
+    }
+
+    return compact
+        ? _CompactPriceDisplay(product: product, formatPrice: formatPrice)
+        : _FullPriceDisplay(product: product, formatPrice: formatPrice);
+  }
+}
+
+// ─── Compact: used in list rows and table rows ─────────────────────────────
+
+class _CompactPriceDisplay extends StatelessWidget {
+  final ProductEntity product;
+  final String Function(double) formatPrice;
+
+  const _CompactPriceDisplay({
+    required this.product,
+    required this.formatPrice,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          formatPrice(product.displayPrice),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Colors.deepOrange,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          formatPrice(product.price),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+            decoration: TextDecoration.lineThrough,
+            fontSize: 10,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Full: used in cards and detail page ──────────────────────────────────
+
+class _FullPriceDisplay extends StatelessWidget {
+  final ProductEntity product;
+  final String Function(double) formatPrice;
+
+  const _FullPriceDisplay({required this.product, required this.formatPrice});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Effective price — prominently displayed
+        Text(
+          formatPrice(product.displayPrice),
+          style: textTheme.titleSmall?.copyWith(
+            color: Colors.deepOrange,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Original price struck-through
+            Text(
+              formatPrice(product.price),
+              style: textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                decoration: TextDecoration.lineThrough,
+                fontSize: 11,
+              ),
+            ),
+            const SizedBox(width: 6),
+            // Discount badge
+            if (product.discountPercentage != null)
+              PromotionDiscountBadge(percentage: product.discountPercentage!),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Standalone Discount Badge ─────────────────────────────────────────────
+
+/// Orange discount badge: "20% OFF".
+/// Can be used independently in any product widget.
+class PromotionDiscountBadge extends StatelessWidget {
+  final double percentage;
+  final bool large;
+
+  const PromotionDiscountBadge({
+    super.key,
+    required this.percentage,
+    this.large = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _formatLabel(percentage);
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: large ? 8 : 5,
+        vertical: large ? 3 : 1,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.deepOrange.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(large ? 6 : 4),
+        border: Border.all(color: Colors.deepOrange.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        '$label OFF',
+        style: TextStyle(
+          fontSize: large ? 12 : 9,
+          color: Colors.deepOrange,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+
+  String _formatLabel(double v) {
+    // Show "20%" for whole numbers, "20.5%" for decimals
+    return v % 1 == 0 ? '${v.toInt()}%' : '${v.toStringAsFixed(1)}%';
+  }
+}
+
+// ─── Promotion Corner Tag ──────────────────────────────────────────────────
+//
+// Overlay tag for product image corners in cards/grid views.
+// Usage:
+//   Stack(
+//     children: [
+//       ProductImage(...),
+//       if (item.isOnPromotion)
+//         Positioned(
+//           top: 6, left: 6,
+//           child: PromotionCornerTag(
+//             percentage: item.discountPercentage!,
+//           ),
+//         ),
+//     ],
+//   )
+
+class PromotionCornerTag extends StatelessWidget {
+  final double percentage;
+
+  const PromotionCornerTag({super.key, required this.percentage});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = percentage % 1 == 0
+        ? '${percentage.toInt()}%'
+        : '${percentage.toStringAsFixed(1)}%';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.deepOrange,
+        borderRadius: BorderRadius.circular(6),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.deepOrange.withValues(alpha: 0.35),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Text(
+        '-$label',
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+          color: Colors.white,
+          letterSpacing: 0.3,
         ),
       ),
     );

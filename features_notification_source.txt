@@ -1,9 +1,13 @@
 ﻿// ================================================================
 // features_notification_source.txt
-// Generated : 2026-03-25 10:13:49
-// Files     : 26
-// Usage     : Upload to Claude Project documents as reference.
+// Project Type : Flutter/Dart
+// Generated    : 2026-05-07 15:31:37
+// Files        : 27
+// Usage        : Upload to Claude Project documents as reference.
 // ================================================================
+
+// === FILE: lib/features/notification/data/datasources/notification_api_datasource.dart ===
+
 
 // === FILE: lib/features/notification/data/datasources/notification_mock_datasource.dart ===
 import '../../domain/entities/notification_entity.dart';
@@ -51,7 +55,8 @@ class NotificationMockDataSource implements NotificationRemoteDataSource {
       'status': 'failed',
       'sent_at': null,
       'delivered_at': null,
-      'failure_reason': 'Carrier error: number temporarily unreachable (Airtel TZ)',
+      'failure_reason':
+          'Carrier error: number temporarily unreachable (Airtel TZ)',
       'created_at': '2025-10-13T17:10:00.000Z',
     },
     {
@@ -149,7 +154,8 @@ class NotificationMockDataSource implements NotificationRemoteDataSource {
       'status': 'failed',
       'sent_at': null,
       'delivered_at': null,
-      'failure_reason': 'WhatsApp Business API: Template not approved for this recipient region',
+      'failure_reason':
+          'WhatsApp Business API: Template not approved for this recipient region',
       'created_at': '2025-10-09T15:45:00.000Z',
     },
   ];
@@ -162,8 +168,10 @@ class NotificationMockDataSource implements NotificationRemoteDataSource {
   Future<List<NotificationModel>> getAll() async {
     await _delay();
     final sorted = List<Map<String, dynamic>>.from(_store)
-      ..sort((a, b) => (b['created_at'] as String)
-          .compareTo(a['created_at'] as String));
+      ..sort(
+        (a, b) =>
+            (b['created_at'] as String).compareTo(a['created_at'] as String),
+      );
     return sorted.map(NotificationModel.fromJson).toList();
   }
 
@@ -200,8 +208,7 @@ class NotificationMockDataSource implements NotificationRemoteDataSource {
   }
 
   @override
-  Future<NotificationModel> update(
-      String id, Map<String, dynamic> data) async {
+  Future<NotificationModel> update(String id, Map<String, dynamic> data) async {
     await _delay();
     final index = _store.indexWhere((e) => e['id'] == id);
     if (index == -1) throw Exception('Notification not found');
@@ -214,11 +221,28 @@ class NotificationMockDataSource implements NotificationRemoteDataSource {
     await _delay();
     _store.removeWhere((e) => e['id'] == id);
   }
+
+  @override
+  Future<NotificationModel> retry(String id) async {
+    await _delay();
+    final index = _store.indexWhere((e) => e['id'] == id);
+    if (index == -1) throw Exception('Notification not found');
+    _store[index] = {
+      ..._store[index],
+      'status': 'queued',
+      'sent_at': null,
+      'delivered_at': null,
+      'failure_reason': null,
+    };
+    return NotificationModel.fromJson(_store[index]);
+  }
 }
+
 
 // === FILE: lib/features/notification/data/datasources/notification_remote_datasource.dart ===
 import 'package:dio/dio.dart';
 import '../../../../core/error/exceptions.dart';
+import '../../../../core/context/org_context.dart';
 import '../models/notification_model.dart';
 
 abstract class NotificationRemoteDataSource {
@@ -226,18 +250,27 @@ abstract class NotificationRemoteDataSource {
   Future<NotificationModel>       getById(String id);
   Future<NotificationModel>       create(Map<String, dynamic> data);
   Future<NotificationModel>       update(String id, Map<String, dynamic> data);
-  Future<void>                delete(String id);
+  Future<void>                    delete(String id);
+  Future<NotificationModel>       retry(String id);
 }
 
 class NotificationRemoteDataSourceImpl implements NotificationRemoteDataSource {
   final Dio _dio;
-  NotificationRemoteDataSourceImpl({required Dio dio}) : _dio = dio;
+  final OrgContext _orgContext;
+
+  NotificationRemoteDataSourceImpl({
+    required Dio dio,
+    required OrgContext orgContext,
+  })  : _dio = dio,
+        _orgContext = orgContext;
+
+  String get _base => '/pharma/${_orgContext.effectiveOrgId}/notifications';
 
   @override
   Future<List<NotificationModel>> getAll() async {
     try {
-      final response = await _dio.get('/notifications');
-      final data = response.data as List;
+      final response = await _dio.get(_base);
+      final data = (response.data['data'] ?? response.data) as List;
       return data
           .map((e) => NotificationModel.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -249,8 +282,9 @@ class NotificationRemoteDataSourceImpl implements NotificationRemoteDataSource {
   @override
   Future<NotificationModel> getById(String id) async {
     try {
-      final response = await _dio.get('/notifications/$id');
-      return NotificationModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.get('$_base/$id');
+      final data = response.data['data'] ?? response.data;
+      return NotificationModel.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -259,8 +293,9 @@ class NotificationRemoteDataSourceImpl implements NotificationRemoteDataSource {
   @override
   Future<NotificationModel> create(Map<String, dynamic> data) async {
     try {
-      final response = await _dio.post('/notifications', data: data);
-      return NotificationModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.post(_base, data: data);
+      final body = response.data['data'] ?? response.data;
+      return NotificationModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -269,8 +304,9 @@ class NotificationRemoteDataSourceImpl implements NotificationRemoteDataSource {
   @override
   Future<NotificationModel> update(String id, Map<String, dynamic> data) async {
     try {
-      final response = await _dio.put('/notifications/$id', data: data);
-      return NotificationModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.put('$_base/$id', data: data);
+      final body = response.data['data'] ?? response.data;
+      return NotificationModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -279,7 +315,18 @@ class NotificationRemoteDataSourceImpl implements NotificationRemoteDataSource {
   @override
   Future<void> delete(String id) async {
     try {
-      await _dio.delete('/notifications/$id');
+      await _dio.delete('$_base/$id');
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<NotificationModel> retry(String id) async {
+    try {
+      final response = await _dio.post('$_base/$id/retry');
+      final body = response.data['data'] ?? response.data;
+      return NotificationModel.fromJson(body as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -293,7 +340,6 @@ class NotificationRemoteDataSourceImpl implements NotificationRemoteDataSource {
     return 'An error occurred. Please try again.';
   }
 }
-
 
 // === FILE: lib/features/notification/data/models/notification_model.dart ===
 import '../../domain/entities/notification_entity.dart';
@@ -445,6 +491,17 @@ class NotificationRepositoryImpl implements NotificationRepository {
       return Left(GenericFailure(e.toString()));
     }
   }
+
+  @override
+  Future<Either<Failure, NotificationEntity>> retry(String id) async {
+    try {
+      return Right(await _remoteDataSource.retry(id));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
 }
 
 
@@ -552,9 +609,9 @@ abstract class NotificationRepository {
   Future<Either<Failure, NotificationEntity>>       getById(String id);
   Future<Either<Failure, NotificationEntity>>       create(NotificationEntity entity);
   Future<Either<Failure, NotificationEntity>>       update(NotificationEntity entity);
-  Future<Either<Failure, void>>                 delete(String id);
+  Future<Either<Failure, void>>                     delete(String id);
+  Future<Either<Failure, NotificationEntity>>       retry(String id);
 }
-
 
 // === FILE: lib/features/notification/domain/services/notification_domain_service.dart ===
 import 'package:dartz/dartz.dart';
@@ -570,37 +627,19 @@ class NotificationDomainService {
 
   NotificationDomainService({required this.repository, required this.guard});
 
-  /// Performs a status transition: load, guard, apply, persist.
   Future<Either<Failure, NotificationEntity>> transition({
     required String id,
     required NotificationStatus targetStatus,
   }) async {
-    // 1. Load
-    final loadResult = await repository.getById(id);
-    if (loadResult.isLeft()) return loadResult;
-    final entity = loadResult.getOrElse(() => throw StateError('unreachable'));
-
-    // 2. Guard
-    final guardResult = guard.validate(
-      current: NotificationStatusX.fromString(entity.status),
-      target: targetStatus,
-    );
-    if (guardResult.isLeft()) {
-      return guardResult.fold(
-        (f) => Left(f),
-        (_) => throw StateError('unreachable'),
-      );
+    switch (targetStatus) {
+      case NotificationStatus.queued:
+        // Retry: re-queue a failed notification via dedicated API endpoint
+        return repository.retry(id);
+      default:
+        return const Left(ValidationFailure('Transition not supported'));
     }
-    final validTarget = guardResult.getOrElse(
-      () => throw StateError('unreachable'),
-    );
-
-    // 3. Apply + Persist
-    final updated = entity.copyWith(status: validTarget.name);
-    return repository.update(updated);
   }
 }
-
 
 // === FILE: lib/features/notification/domain/usecases/create_notification_usecase.dart ===
 import 'package:dartz/dartz.dart';

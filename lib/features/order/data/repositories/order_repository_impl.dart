@@ -44,15 +44,15 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Either<Failure, OrderEntity>> create(OrderEntity entity) async {
     try {
-      final model = OrderModel.fromEntity(entity);
+      // final model = OrderModel.fromEntity(entity);
       final data = <String, dynamic>{
         'customer_id': entity.customerId,
         'items': entity.items,
         if (entity.paymentRef != null) 'payment_ref': entity.paymentRef,
-        // Pass officer / admin identity through to datasource
         if (entity.createdByName != null)
           'created_by_name': entity.createdByName,
         if (entity.createdById != null) 'created_by_id': entity.createdById,
+        'client_total': entity.total, // promotion-adjusted total
       };
       final result = await _remoteDataSource.create(data);
       return Right(result);

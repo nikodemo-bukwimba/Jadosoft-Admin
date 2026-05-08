@@ -1,4 +1,4 @@
-﻿//Origin
+//Your implimentation
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -12,10 +12,9 @@ import '../../../../config/di/injection_container.dart';
 import '../../../../core/context/org_context.dart';
 import '../../../customer/domain/repositories/customer_repository.dart';
 import '../../../customer/data/models/customer_model.dart';
-import '../../../product/domain/repositories/product_repository.dart';
 import '../../../product/data/models/product_model.dart';
-import '../../../promotion/domain/repositories/promotion_repository.dart';
-import '../../../product/domain/services/client_promotion_pricing_service.dart';
+import '../../../product/domain/usecases/get_products_with_promotions_usecase.dart';
+import '../../../../core/usecase/usecase.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OrderFormPage — Manual order creation / edit
@@ -56,51 +55,25 @@ class _OrderFormPageState extends State<OrderFormPage> {
   Future<void> _loadLookupData() async {
     try {
       final customerRepo = sl<CustomerRepository>();
-      final productRepo = sl<ProductRepository>();
+      final productsWithPromos = sl<GetProductsWithPromotionsUseCase>();
 
       final customerResult = await customerRepo.getAll();
-      final productResult = await productRepo.getAll();
+      final productResult = await productsWithPromos(NoParams());
 
       if (!mounted) return;
 
-      // ── Customers ──────────────────────────────────────────
-      final customers = customerResult.fold(
-        (_) => <CustomerModel>[],
-        (page) => page.items.whereType<CustomerModel>().toList(),
-      );
-
-      // ── Products (base list — never fails the form) ────────
-      List<ProductModel> products = productResult.fold(
-        (_) => <ProductModel>[],
-        (list) => list
-            .whereType<ProductModel>()
-            .where((p) => p.isAvailable && p.status != 'archived')
-            .toList(),
-      );
-
-      // ── Promotion decoration (best-effort, non-fatal) ──────
-      try {
-        final promoRepo = sl<PromotionRepository>();
-        final pricingService = const ClientPromotionPricingService();
-        final promoResult = await promoRepo.getAll();
-
-        promoResult.fold(
-          (_) => null, // promotions unavailable — keep plain products
-          (promos) {
-            products = pricingService
-                .decorateProducts(products, promos)
-                .whereType<ProductModel>()
-                .toList();
-          },
-        );
-      } catch (_) {
-        // PromotionRepository not registered or network error —
-        // products already loaded above, just skip decoration.
-      }
-
       setState(() {
-        _customers = customers;
-        _products = products;
+        _customers = customerResult.fold(
+          (_) => [],
+          (page) => page.items.whereType<CustomerModel>().toList(),
+        );
+        _products = productResult.fold(
+          (_) => [],
+          (list) => list
+              .whereType<ProductModel>()
+              .where((p) => p.isAvailable && p.status != 'archived')
+              .toList(),
+        );
         _loadingLookups = false;
       });
 
@@ -111,7 +84,7 @@ class _OrderFormPageState extends State<OrderFormPage> {
       if (mounted) setState(() => _loadingLookups = false);
     }
   }
-  
+
   // double get _calculatedTotal =>
   //     _lineItems.fold(0.0, (sum, e) => sum + e.product.price * e.quantity);
 

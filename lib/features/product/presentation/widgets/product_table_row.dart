@@ -1,9 +1,11 @@
+// lib/features/product/presentation/widgets/product_table_row.dart
 import 'package:flutter/material.dart';
 import '../../domain/entities/product_entity.dart';
 import '../../domain/value_objects/product_status.dart';
 import 'product_image.dart';
 import 'product_status_badge.dart';
 import 'product_confirm_name_dialog.dart';
+import 'promotion_price_display.dart';
 
 /// Details view row — table-style with aligned columns.
 class ProductTableRow extends StatelessWidget {
@@ -50,7 +52,7 @@ class ProductTableRow extends StatelessWidget {
               borderRadius: 6,
             ),
             const SizedBox(width: 12),
-            // Name
+            // Name + NEW badge
             Expanded(
               flex: 3,
               child: Row(
@@ -86,18 +88,24 @@ class ProductTableRow extends StatelessWidget {
                       ),
                     ),
                   ],
+                  // Promotion discount badge in name column (NEW)
+                  if (item.isOnPromotion &&
+                      item.discountPercentage != null) ...[
+                    const SizedBox(width: 6),
+                    PromotionDiscountBadge(
+                      percentage: item.discountPercentage!,
+                    ),
+                  ],
                 ],
               ),
             ),
-            // Price
+            // Price — compact promotion-aware (NEW)
             Expanded(
               flex: 2,
-              child: Text(
-                formatPrice(item.price),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: scheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
+              child: PromotionPriceDisplay(
+                product: item,
+                formatPrice: formatPrice,
+                compact: true,
               ),
             ),
             // Status
@@ -116,7 +124,7 @@ class ProductTableRow extends StatelessWidget {
                     title: 'Delete Product?',
                     productName: item.name,
                     actionLabel: 'Delete',
-                    actionColor: Theme.of(context).colorScheme.error,
+                    actionColor: scheme.error,
                     warningMessage:
                         'This action is irreversible. The product will be permanently removed from the system.',
                   );

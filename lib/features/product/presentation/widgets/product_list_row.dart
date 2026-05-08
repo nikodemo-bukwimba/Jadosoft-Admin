@@ -1,8 +1,10 @@
+// lib/features/product/presentation/widgets/product_list_row.dart
 import 'package:flutter/material.dart';
 import '../../domain/entities/product_entity.dart';
 import '../../domain/value_objects/product_status.dart';
 import 'product_image.dart';
 import 'product_status_badge.dart';
+import 'promotion_price_display.dart';
 
 /// List view row — dense, small thumbnail on the left.
 class ProductListRow extends StatelessWidget {
@@ -80,33 +82,22 @@ class ProductListRow extends StatelessWidget {
                               ),
                             ),
                           ],
+                          // Promotion discount badge inline with name (NEW)
+                          if (item.isOnPromotion &&
+                              item.discountPercentage != null) ...[
+                            const SizedBox(width: 6),
+                            PromotionDiscountBadge(
+                              percentage: item.discountPercentage!,
+                            ),
+                          ],
                         ],
                       ),
-                      const SizedBox(height: 1),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            formatPrice(item.displayPrice),
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: item.isOnPromotion
-                                      ? Colors.green
-                                      : scheme.primary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
-                          if (item.isOnPromotion)
-                            Text(
-                              formatPrice(item.price),
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                    decoration: TextDecoration.lineThrough,
-                                    fontSize: 10,
-                                  ),
-                            ),
-                        ],
+                      const SizedBox(height: 3),
+                      // Compact promotion-aware price (NEW)
+                      PromotionPriceDisplay(
+                        product: item,
+                        formatPrice: formatPrice,
+                        compact: true,
                       ),
                     ],
                   ),

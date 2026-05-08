@@ -11,6 +11,7 @@ import '../../data/models/promotion_model.dart';
 import '../../domain/entities/promotion_entity.dart';
 import '../../domain/value_objects/promotion_status.dart';
 import '../widgets/promotion_status_badge.dart';
+import 'promotion_product_names.dart';
 
 class PromotionCardTile extends StatelessWidget {
   final PromotionEntity item;
@@ -109,21 +110,7 @@ class PromotionCardTile extends StatelessWidget {
               const SizedBox(height: 10),
 
               // ── Products ─────────────────────────────────
-              if (item.productIds.isNotEmpty)
-                Wrap(
-                  spacing: 5,
-                  runSpacing: 4,
-                  children: [
-                    ...item.productIds
-                        .take(2)
-                        .map((id) => _productChip(id, theme)),
-                    if (item.productIds.length > 2)
-                      _productChip(
-                        '+${item.productIds.length - 2} more',
-                        theme,
-                      ),
-                  ],
-                ),
+              if (item.productIds.isNotEmpty) _productNamesChip(theme),
               const SizedBox(height: 10),
 
               // ── Footer ───────────────────────────────────
@@ -141,15 +128,15 @@ class PromotionCardTile extends StatelessWidget {
     );
   }
 
-  Widget _productChip(String label, ThemeData theme) {
+  Widget _productNamesChip(ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(
-        label,
+      child: PromotionProductNames(
+        productIds: item.productIds,
         style: theme.textTheme.labelSmall?.copyWith(fontSize: 10),
       ),
     );

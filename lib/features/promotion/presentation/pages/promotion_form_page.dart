@@ -7,13 +7,12 @@
 //   null  → normal product campaign
 //   0-100 → discount campaign (percentage)
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/context/org_context.dart';
+import '../../../product/data/datasources/product_remote_datasource.dart';
 import '../../domain/entities/promotion_entity.dart';
 import '../../domain/usecases/create_promotion_usecase.dart';
 import '../../../../core/widgets/searchable_picker_sheet.dart';
@@ -70,27 +69,15 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
       _productsLoading = true;
       _productsError = null;
     });
+
     try {
-      final dio = GetIt.instance<Dio>();
-      final orgContext = GetIt.instance<OrgContext>();
+      final productDs = GetIt.instance<ProductRemoteDataSource>();
+      final products = await productDs.getAll();
 
-      final res = await dio.get(
-        '/commerce/orgs/${orgContext.effectiveOrgId}/products',
-        queryParameters: {'per_page': 200, 'status': 'active'},
-      );
-
-      final raw = res.data;
-      final List<dynamic> items = raw is Map
-          ? (raw['data'] ?? raw['products'] ?? []) as List
-          : raw as List;
-
-      final map = <String, String>{};
-      for (final item in items.cast<Map<String, dynamic>>()) {
-        final id = item['id']?.toString() ?? '';
-        final name =
-            item['name'] as String? ?? item['product_name'] as String? ?? id;
-        if (id.isNotEmpty) map[id] = name;
-      }
+      final map = <String, String>{
+        for (final p in products)
+          if (p.id.isNotEmpty) p.id: p.name,
+      };
 
       if (mounted) {
         setState(() {
@@ -148,10 +135,7 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
     return BlocConsumer<PromotionBloc, PromotionState>(
       listenWhen: (_, state) =>
           state is PromotionOperationSuccess || state is PromotionFailure,
-      buildWhen: (previous, state) =>
-          state is PromotionOperationSuccess ||
-          state is PromotionFailure ||
-          (isEdit && state is PromotionDetailLoaded),
+
       listener: (context, state) {
         if (state is PromotionOperationSuccess) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -160,8 +144,10 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
               backgroundColor: Colors.green,
             ),
           );
+
           context.go('/promotions');
         }
+
         if (state is PromotionFailure) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -171,6 +157,7 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
           );
         }
       },
+
       builder: (context, state) {
         if (isEdit && state is PromotionDetailLoaded) {
           _populate(state.item);
@@ -483,7 +470,7 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
                             state is PromotionFailure ||
                             state is PromotionOperationSuccess,
                         builder: (context, state) {
-                          final isSubmitting = state is PromotionLoading;
+                          final isSubmitting = state is PromotionSubmitting;
                           return SizedBox(
                             height: 48,
                             child: FilledButton(

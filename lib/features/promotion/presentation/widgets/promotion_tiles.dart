@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import '../../domain/entities/promotion_entity.dart';
 import '../../domain/value_objects/promotion_status.dart';
 import '../widgets/promotion_status_badge.dart';
+import 'promotion_product_names.dart';
 
 // ─── List Row ──────────────────────────────────────────────────────────────
 
@@ -58,17 +59,28 @@ class PromotionListRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
-                  Row(
+
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${item.productIds.length} products · '
                         '${_fmtDate(item.startDate)} – ${_fmtDate(item.endDate)}',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
+
+                      const SizedBox(height: 2),
+
+                      PromotionProductNames(
+                        productIds: item.productIds,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+
                       if (hasDiscount) ...[
-                        const SizedBox(width: 6),
+                        const SizedBox(height: 4),
                         _InlineDiscountBadge(
                           percentage: item.discountPercentage!,
                         ),
@@ -140,11 +152,6 @@ class PromotionTableRow extends StatelessWidget {
     final e = item!;
     final status = PromotionStatusX.fromString(e.status);
 
-    final productDisplay = e.productIds.isEmpty
-        ? '—'
-        : e.productIds.take(2).join(', ') +
-              (e.productIds.length > 2 ? ' +${e.productIds.length - 2}' : '');
-
     final discountDisplay = e.discountPercentage != null
         ? '${e.discountPercentage!.toStringAsFixed(e.discountPercentage! % 1 == 0 ? 0 : 1)}%'
         : '—';
@@ -172,12 +179,11 @@ class PromotionTableRow extends StatelessWidget {
             ),
             Expanded(
               flex: 2,
-              child: Text(
-                productDisplay,
+              child: PromotionProductNames(
+                productIds: e.productIds,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
-                overflow: TextOverflow.ellipsis,
               ),
             ),
             Expanded(

@@ -69,20 +69,37 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
   }
 
   // ── Create ───────────────────────────────────────────────
-
   @override
   Future<OrderModel> create(Map<String, dynamic> data) async {
     try {
       final orgId = _orgContext.effectiveOrgId;
 
-      final items = (data['items'] as List<dynamic>)
-          .map(
-            (item) => {
-              'variant_id': item['variantId']?.toString(),
-              'quantity': item['qty'],
-            },
-          )
-          .toList();
+      final items = (data['items'] as List<dynamic>).map((item) {
+        final map = item as Map<String, dynamic>;
+        return {
+          'variant_id': map['variantId']?.toString(),
+          'quantity': map['qty'],
+          if (map['unitPrice'] != null)
+            'unit_price': (map['unitPrice'] as num).toDouble(),
+        };
+      }).toList();
+
+      // Build per-variant promotion snapshot
+      final promotionPricing = <String, dynamic>{};
+      for (final item in (data['items'] as List<dynamic>)) {
+        final map = item as Map<String, dynamic>;
+        if (map['promotionId'] != null) {
+          promotionPricing[map['variantId'].toString()] = {
+            'promotion_id': map['promotionId'],
+            'discount_percentage': map['discountPercentage'],
+            'base_price': map['basePrice'],
+            'effective_price': map['unitPrice'],
+            'subtotal': map['subtotal'],
+          };
+        }
+      }
+
+      final clientTotal = (data['client_total'] as num?)?.toDouble();
 
       final response = await _dio.post(
         '/commerce/orgs/$orgId/orders/admin',
@@ -91,15 +108,19 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
           'items': items,
           if (data['payment_ref'] != null) 'payment_ref': data['payment_ref'],
           'currency': 'TZS',
-          // Officer / admin identity — stored in order metadata by the API
           'metadata': {
             'created_by_name': data['created_by_name'],
             'created_by_id': data['created_by_id'],
+            if (promotionPricing.isNotEmpty)
+              'promotion_pricing': promotionPricing,
+            if (clientTotal != null) 'client_total': clientTotal,
           },
         },
       );
-      final body = response.data['order'] ?? response.data;
-      return OrderModel.fromJson(body as Map<String, dynamic>);
+
+      final body =
+          (response.data['order'] ?? response.data) as Map<String, dynamic>;
+      return OrderModel.fromJson(body);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }

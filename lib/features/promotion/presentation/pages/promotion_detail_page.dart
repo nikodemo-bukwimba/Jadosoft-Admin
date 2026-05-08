@@ -22,6 +22,8 @@ import '../bloc/promotion_bloc.dart';
 import '../bloc/promotion_event.dart';
 import '../bloc/promotion_state.dart';
 import '../widgets/promotion_status_badge.dart';
+import 'package:get_it/get_it.dart';
+import '../../../product/data/datasources/product_remote_datasource.dart';
 
 class PromotionDetailPage extends StatelessWidget {
   const PromotionDetailPage({super.key});
@@ -440,33 +442,59 @@ class _InfoBlock extends StatelessWidget {
 
 // ─── Product Row ───────────────────────────────────────────────────────────
 
-class _ProductRow extends StatelessWidget {
+class _ProductRow extends StatefulWidget {
   final String productId;
   const _ProductRow({required this.productId});
 
   @override
+  State<_ProductRow> createState() => _ProductRowState();
+}
+
+class _ProductRowState extends State<_ProductRow> {
+  String? name;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final ds = GetIt.instance<ProductRemoteDataSource>();
+      final product = await ds.getById(widget.productId);
+
+      if (mounted) {
+        setState(() {
+          name = product.name;
+          loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          name = widget.productId;
+          loading = false;
+        });
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary,
-              shape: BoxShape.circle,
-            ),
-          ),
+          const Icon(Icons.circle, size: 6),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              productId,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontFamily: 'monospace',
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              loading ? 'Loading...' : (name ?? widget.productId),
+              style: theme.textTheme.bodySmall,
             ),
           ),
         ],
