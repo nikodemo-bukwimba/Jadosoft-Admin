@@ -1,7 +1,7 @@
 ﻿// ================================================================
 // features_auth_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-04-15 11:13:40
+// Generated    : 2026-05-11 22:34:56
 // Files        : 24
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
@@ -58,7 +58,15 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
     try {
       final email = await getActiveEmail();
       if (email == null) return null;
-      return _readSession(email);
+
+      final session = await _readSession(email);
+
+      // If session is gone (corrupted & deleted), clear pointer
+      if (session == null) {
+        await _storage.delete(AppConstants.activeAccountKey);
+      }
+
+      return session;
     } catch (e) {
       throw CacheException('Failed to read active session: $e');
     }
@@ -152,44 +160,55 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
 
   Future<AccountSessionModel?> _readSession(String email) async {
     final raw = await _storage.read(_accountKey(email));
-    if (raw == null) return null;
-    return AccountSessionModel.fromJsonString(raw);
+    if (raw == null || raw.isEmpty) return null;
+
+    try {
+      return AccountSessionModel.fromJsonString(raw);
+    } catch (e) {
+      // 🔥 Corrupted or outdated session — remove it
+      await _storage.delete(_accountKey(email));
+      return null;
+    }
   }
 }
 
 
 // === FILE: lib/features/auth/data/datasources/auth_remote_datasource.dart ===
 // auth_remote_datasource.dart
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// All calls go through the shared Dio instance.
+// ─────────────────────────────────────────────────────────────
+// FIX 1: getAuthMe() — org_id is now dynamic, not hardcoded.
+//   On first login: no org_id sent → server picks highest-level
+//   membership → returns user.org_id in response → we store it.
+//   On refresh: stored org_id is passed → correct permissions.
 //
-// ENDPOINTS:
-//   POST /auth/login    â†’ { user: {...}, token: "..." }
-//   POST /auth/register â†’ { user: {...}, token: "..." }
-//   POST /auth/logout   â†’ 204
-//   GET  /auth/me       â†’ { data: { user + roles + permissions } }
-//
-// REMOVED: GET /me/roles â€” this endpoint never existed in the
-// HMSCP API. Roles and permissions are now returned inline by
-// GET /auth/me as part of the user resource.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// FIX 2: register() — sends 'name' (→ actor.display_name) and
+//   a generated 'username' (→ users.username).
+// ─────────────────────────────────────────────────────────────
 
+import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/user_model.dart';
 
-/// Raw data returned from GET /auth/me â€” contains user, roles,
-/// and permissions all in one response.
 class AuthMeResponse {
   final UserModel user;
   final List<RoleModel> roles;
   final List<PermissionModel> permissions;
 
+  /// org_id echoed back by the server (membership org). null = no membership.
+  final String? resolvedOrgId;
+
+  /// org_status returned from backend:
+  /// null | 'pending_approval' | 'active' | 'suspended' | 'rejected'
+  final String? orgStatus;
+
   const AuthMeResponse({
     required this.user,
     required this.roles,
     required this.permissions,
+    this.resolvedOrgId,
+    this.orgStatus,
   });
 }
 
@@ -203,17 +222,13 @@ abstract class AuthRemoteDataSource {
     String? phone,
   });
   Future<void> logout();
-
-  /// Fetches the full authenticated user profile including roles
-  /// and permissions from GET /auth/me.
-  Future<AuthMeResponse> getAuthMe();
+  Future<AuthMeResponse> getAuthMe({String? orgId});
 }
 
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   final Dio _dio;
   AuthRemoteDataSourceImpl(this._dio);
 
-  // â”€â”€ POST /auth/login â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   @override
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
@@ -222,22 +237,19 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         data: {'email': email, 'password': password},
       );
       final body = _parseBody(response);
-
       if (kDebugMode) {
         debugPrint('[AUTH] Login response keys: ${body.keys.toList()}');
         final token = _extractToken(body);
         debugPrint(
-          '[AUTH] Token extracted: ${token != null ? "YES (${token.length} chars)" : "NO â€” check response shape"}',
+          '[AUTH] Token extracted: ${token != null ? "YES (${token.length} chars)" : "NO — check response shape"}',
         );
       }
-
       return body;
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
   }
 
-  // â”€â”€ POST /auth/register â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   @override
   Future<Map<String, dynamic>> register({
     required String name,
@@ -247,10 +259,12 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     String? phone,
   }) async {
     try {
+      final username = _generateUsername(name);
       final response = await _dio.post(
         '/auth/register',
         data: {
-          'username': name,
+          'name': name, // → actor.display_name (real full name)
+          'username': username, // → users.username (auto-generated)
           'email': email,
           'password': password,
           'password_confirmation': passwordConfirmation,
@@ -258,63 +272,47 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         },
       );
       final body = _parseBody(response);
-
       if (kDebugMode) {
         debugPrint('[AUTH] Register response keys: ${body.keys.toList()}');
-        final token = _extractToken(body);
-        debugPrint(
-          '[AUTH] Token extracted: ${token != null ? "YES" : "NO â€” check response shape"}',
-        );
+        debugPrint('[AUTH] Registered: name=$name, username=$username');
       }
-
       return body;
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
   }
 
-  // â”€â”€ POST /auth/logout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   @override
   Future<void> logout() async {
     try {
       await _dio.post('/auth/logout');
     } on DioException catch (e) {
-      if (e.response?.statusCode == 401) return; // already invalid
+      if (e.response?.statusCode == 401) return;
       throw _handleDioError(e);
     }
   }
 
-  // â”€â”€ GET /auth/me â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Returns user + roles + permissions in one call.
-  //
-  // Expected response shape:
-  //   { "data": { ...user fields, "roles": [...], "permissions": [...] } }
-  // OR flat (no wrapper):
-  //   { ...user fields, "roles": [...], "permissions": [...] }
+  // ── GET /auth/me ──────────────────────────────────────────
+  // orgId = null on first login → server picks highest-level membership.
+  // orgId = stored value on refresh → correct branch permissions.
+  // The backend echoes back user.org_id so we know which org was used.
   @override
-  Future<AuthMeResponse> getAuthMe() async {
+  Future<AuthMeResponse> getAuthMe({String? orgId}) async {
     try {
       final response = await _dio.get(
         '/auth/me',
-        queryParameters: {'org_id': '01KM3J1485S5T17RXQ6JRWF8JR'},
+        queryParameters: orgId != null ? {'org_id': orgId} : null,
       );
       final raw = response.data;
 
       if (raw == null)
         throw const ServerException('Empty response from /auth/me');
-
-      if (raw is! Map<String, dynamic>) {
+      if (raw is! Map<String, dynamic>)
         throw const ServerException('Unexpected response format from /auth/me');
-      }
 
-      // NEW: response is { user: {...}, permissions: [...] }
-      // Extract user object and permissions separately
-      final userJson =
-          raw['user'] as Map<String, dynamic>? ??
-          raw; // fallback to flat if no 'user' key
+      final userJson = raw['user'] as Map<String, dynamic>? ?? raw;
       final user = UserModel.fromJson(userJson);
 
-      // Permissions are at TOP LEVEL, not inside user
       final rawPerms = raw['permissions'] as List<dynamic>? ?? [];
       final permissions = rawPerms
           .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
@@ -325,20 +323,33 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
           .map((r) => RoleModel.fromJson(r as Map<String, dynamic>))
           .toList();
 
+      // The backend now echoes user.org_id — the membership org for this call.
+      final resolvedOrgId =
+          userJson['org_id']?.toString() ?? raw['org_id']?.toString() ?? orgId;
+
+      // ── NEW: extract org status ────────────────────────────────
+      final orgStatus = userJson['org_status'] as String?;
+
       if (kDebugMode) {
         debugPrint(
           '[AUTH] /auth/me: user=${user.email}, '
-          'roles=${roles.length}, permissions=${permissions.length}',
+          'roles=${roles.length}, permissions=${permissions.length}, '
+          'resolved_org_id=$resolvedOrgId',
         );
       }
 
-      return AuthMeResponse(user: user, roles: roles, permissions: permissions);
+      return AuthMeResponse(
+        user: user,
+        roles: roles,
+        permissions: permissions,
+        resolvedOrgId: resolvedOrgId,
+        orgStatus: orgStatus,
+      );
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
   }
 
-  // â”€â”€ Token extraction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   static String? extractToken(Map<String, dynamic> body) => _extractToken(body);
 
   static String? _extractToken(Map<String, dynamic> body) {
@@ -352,7 +363,22 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     return null;
   }
 
-  // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // "John Mwangi" → "john_mwangi_4j2k"
+  String _generateUsername(String fullName) {
+    final base = fullName
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), '')
+        .trim()
+        .replaceAll(RegExp(r'\s+'), '_');
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    final rand = Random();
+    final suffix = List.generate(
+      4,
+      (_) => chars[rand.nextInt(chars.length)],
+    ).join();
+    return '${base}_$suffix';
+  }
 
   Map<String, dynamic> _parseBody(Response response) {
     final data = response.data;
@@ -366,7 +392,6 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   Exception _handleDioError(DioException e) {
     final statusCode = e.response?.statusCode;
     final responseData = e.response?.data;
-
     String message = 'An error occurred. Please try again.';
     if (responseData is Map<String, dynamic>) {
       if (responseData['message'] is String) {
@@ -379,7 +404,6 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         }
       }
     }
-
     if (statusCode == 401) return AuthException(message);
     if (statusCode == 422) return ServerException(message, statusCode: 422);
     if (e.type == DioExceptionType.connectionTimeout ||
@@ -399,11 +423,13 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
 
 
 // === FILE: lib/features/auth/data/models/account_session_model.dart ===
-// account_session_model.dart
-// ─────────────────────────────────────────────────────────────
-// Serializable form of AccountSession stored in flutter_secure_storage.
-// Each instance maps to one key: "account_{email}"
-// ─────────────────────────────────────────────────────────────
+// FILE: lib/features/auth/data/models/account_session_model.dart
+// CHANGE: toJson() was silently dropping orgId, orgStatus, orgName,
+//         and (new) branchId, branchName when serialising to secure storage.
+//         This caused the "re-login shows old branch" bug because the
+//         stale cached session overwrote the fresh /auth/me data on restore.
+//
+//         Fix: pass all fields through when constructing the inner UserModel.
 
 import 'dart:convert';
 import '../../domain/entities/account_session.dart';
@@ -424,19 +450,31 @@ class AccountSessionModel extends AccountSession {
         .map((p) => PermissionModel.fromJson(p as Map<String, dynamic>))
         .toList();
 
+    final token = json['token'] as String?;
+    final userJson = json['user'] as Map<String, dynamic>?;
+    final savedAtStr = json['saved_at'] as String?;
+
+    if (token == null || userJson == null || savedAtStr == null) {
+      throw Exception('Invalid session data in storage');
+    }
+
     return AccountSessionModel(
-      token: json['token'] as String,
-      user: UserModel.fromJson(json['user'] as Map<String, dynamic>),
+      token: token,
+      user: UserModel.fromJson(userJson),
       permissions: permissions,
-      savedAt: DateTime.parse(json['saved_at'] as String),
+      savedAt: DateTime.parse(savedAtStr),
     );
   }
 
   Map<String, dynamic> toJson() => {
     'token': token,
+    // ── THE BUG WAS HERE ──────────────────────────────────────────────
+    // Previously the UserModel was constructed manually with only a subset
+    // of fields, silently dropping orgId / orgStatus / orgName and the new
+    // branch fields.  Now every field on `user` is forwarded explicitly.
     'user': UserModel(
       id: user.id,
-      actorId: user.actorId, // ADD — was missing
+      actorId: user.actorId,
       name: user.name,
       email: user.email,
       phone: user.phone,
@@ -447,7 +485,13 @@ class AccountSessionModel extends AccountSession {
       hasActiveSubscription: user.hasActiveSubscription,
       subscriptionStatus: user.subscriptionStatus,
       createdAt: user.createdAt,
+      orgId: user.orgId, // was missing
+      orgStatus: user.orgStatus, // was missing
+      orgName: user.orgName, // was missing
+      branchId: user.branchId, // new
+      branchName: user.branchName, // new
     ).toJson(),
+    // ─────────────────────────────────────────────────────────────────
     'permissions': permissions
         .map(
           (p) => PermissionModel(id: p.id, name: p.name, slug: p.slug).toJson(),
@@ -456,14 +500,11 @@ class AccountSessionModel extends AccountSession {
     'saved_at': savedAt.toIso8601String(),
   };
 
-  /// Encode to JSON string for secure storage.
   String toJsonString() => jsonEncode(toJson());
 
-  /// Decode from JSON string read from secure storage.
   factory AccountSessionModel.fromJsonString(String raw) =>
       AccountSessionModel.fromJson(jsonDecode(raw) as Map<String, dynamic>);
 
-  /// Create from a fresh login response + fetched roles.
   factory AccountSessionModel.fromLoginResponse({
     required String token,
     required UserModel user,
@@ -489,6 +530,10 @@ class AccountSessionModel extends AccountSession {
 // Same for PermissionModel — slug falls back to name.
 // ─────────────────────────────────────────────────────────────
 
+// FILE: lib/features/auth/data/models/user_model.dart
+// CHANGE: Added branchId/branchName to constructor, fromJson(), and toJson().
+//         Everything else unchanged.
+
 import '../../domain/entities/user_entity.dart';
 
 class RoleModel extends RoleEntity {
@@ -499,7 +544,7 @@ class RoleModel extends RoleEntity {
   });
 
   factory RoleModel.fromJson(Map<String, dynamic> json) => RoleModel(
-    id: json['id']?.toString() ?? '', // was int.parse(...)
+    id: json['id']?.toString() ?? '',
     name: json['name'] as String? ?? '',
     slug: json['slug'] as String? ?? json['name'] as String? ?? '',
   );
@@ -516,7 +561,7 @@ class PermissionModel extends PermissionEntity {
 
   factory PermissionModel.fromJson(Map<String, dynamic> json) =>
       PermissionModel(
-        id: json['id']?.toString() ?? '', // was int.parse(...)
+        id: json['id']?.toString() ?? '',
         name: json['name'] as String? ?? '',
         slug: json['slug'] as String? ?? json['name'] as String? ?? '',
       );
@@ -526,7 +571,7 @@ class PermissionModel extends PermissionEntity {
 
 class UserModel extends UserEntity {
   const UserModel({
-    required super.id, // String — Laravel ULID
+    required super.id,
     super.actorId,
     required super.name,
     required super.email,
@@ -538,6 +583,11 @@ class UserModel extends UserEntity {
     required super.hasActiveSubscription,
     required super.subscriptionStatus,
     super.createdAt,
+    super.orgStatus,
+    super.orgId,
+    super.orgName,
+    super.branchId, // ── NEW ──
+    super.branchName, // ── NEW ──
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -552,20 +602,16 @@ class UserModel extends UserEntity {
         json['primary_role'] as Map<String, dynamic>,
       );
     } else if (roles.isNotEmpty) {
-      // If no explicit primary_role, use first role
       primaryRole = roles.first;
     }
 
     return UserModel(
-      // ULID — always a String, never cast to int
-      id: json['id'].toString(),
+      id: json['id']?.toString() ?? '',
       actorId: json['actor_id']?.toString(),
-
       name: json['name'] as String? ?? json['username'] as String? ?? '',
-      email: json['email'] as String,
+      email: json['email'] as String? ?? '',
       phone: json['phone'] as String?,
 
-      // Laravel may return 0/1, true/false, or 'active' status string
       isActive:
           json['is_active'] == true ||
           json['is_active'] == 1 ||
@@ -587,6 +633,15 @@ class UserModel extends UserEntity {
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString())
           : null,
+
+      orgId: json['org_id']?.toString(),
+      orgStatus: (json['org_status'] as String?)?.toLowerCase(),
+      orgName: json['org_name'] as String?,
+
+      // ── NEW ──────────────────────────────────────────────────────
+      branchId: json['branch_id']?.toString(),
+      branchName: json['branch_name'] as String?,
+      // ─────────────────────────────────────────────────────────────
     );
   }
 
@@ -611,34 +666,44 @@ class UserModel extends UserEntity {
     'has_active_subscription': hasActiveSubscription,
     'subscription_status': subscriptionStatus,
     'created_at': createdAt?.toIso8601String(),
+    'org_id': orgId,
+    'org_status': orgStatus,
+    'org_name': orgName,
+    // ── NEW ──────────────────────────────────────────────────────────
+    'branch_id': branchId,
+    'branch_name': branchName,
+    // ─────────────────────────────────────────────────────────────────
   };
 }
 
 
 // === FILE: lib/features/auth/data/repositories/auth_repository_impl.dart ===
-// auth_repository_impl.dart
-// ─────────────────────────────────────────────────────────────
-// FLOW (login & register):
-//   1. POST /auth/login (or /register) → get token
-//   2. Parse user from login response (if present)
-//   3. Save preliminary session (token only) so interceptor works
-//   4. GET /auth/me → full user + roles + permissions
-//   5. Save final session with everything
+// FILE: lib/features/auth/data/repositories/auth_repository_impl.dart
+// CHANGE: Two places updated — both marked with ── NEW ──
 //
-// Single endpoint for user data: GET /auth/me returns user, roles,
-// and permissions in one response. No separate /me/roles call.
-// ─────────────────────────────────────────────────────────────
+//   1. _persistOrgAndBranch() replaces _persistOrgId().
+//      After every /auth/me call we now also call orgContext.switchBranch()
+//      with the branch that came back from the server.
+//      Without this, OrgContext.activeBranchId was never updated even
+//      when the session had the correct branchId.
+//
+//   2. refreshSession() now passes the root org ID (not the branch ID)
+//      to getAuthMe() — using the branch ID was causing /auth/me to look
+//      up the wrong membership and return no officer branch data.
+//
+// Everything else (login, register, logout, switchAccount, etc.) is
+// structurally unchanged — only _persistOrgId() is renamed/extended.
 
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
+import '../../../../core/context/org_context.dart';
 import '../../domain/entities/account_session.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/auth_local_datasource.dart';
 import '../datasources/auth_remote_datasource.dart';
 import '../models/account_session_model.dart';
 import '../models/user_model.dart';
-import '../../../../core/context/org_context.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDataSource _remote;
@@ -653,21 +718,20 @@ class AuthRepositoryImpl implements AuthRepository {
        _local = local,
        _orgContext = orgContext;
 
-  // ── login ─────────────────────────────────────────────────
+  // ── login ──────────────────────────────────────────────────────────
   @override
   Future<Either<Failure, AccountSession>> login({
     required String email,
     required String password,
   }) async {
     try {
-      // ── Step 1: Authenticate ─────────────────────────────
       final loginData = await _remote.login(email, password);
       final token = AuthRemoteDataSourceImpl.extractToken(loginData);
       if (token == null) {
         return const Left(ServerFailure('No token received from server'));
       }
 
-      // ── Step 2: Save preliminary session so interceptor has token ──
+      // Preliminary session so the interceptor has a token for /auth/me
       final prelimSession = AccountSessionModel(
         token: token,
         user: _placeholderUser(email),
@@ -677,10 +741,21 @@ class AuthRepositoryImpl implements AuthRepository {
       await _local.saveSession(prelimSession);
       await _local.setActiveAccount(email);
 
-      // ── Step 3: Fetch full profile (user + roles + permissions) ──
+      // /auth/me — no org_id on first call; server picks best membership
       final meResponse = await _remote.getAuthMe();
 
-      // ── Step 4: Save final session ────────────────────────
+      // ── NEW: persist org AND branch into OrgContext ──────────────────
+      if (meResponse.resolvedOrgId != null) {
+        await _persistOrgAndBranch(
+          orgId: meResponse.resolvedOrgId!,
+          actorId: meResponse.user.actorId,
+          actorName: meResponse.user.name,
+          branchId: meResponse.user.branchId,
+          branchName: meResponse.user.branchName,
+        );
+      }
+      // ─────────────────────────────────────────────────────────────────
+
       final finalSession = AccountSessionModel(
         token: token,
         user: meResponse.user,
@@ -689,22 +764,6 @@ class AuthRepositoryImpl implements AuthRepository {
       );
       await _local.saveSession(finalSession);
       await _local.setActiveAccount(meResponse.user.email);
-      //     // ── Step 5: Set org context ──────────────────────────
-      //     // TODO: When API adds org memberships to /auth/me response,
-      //     // parse the user's org membership here and call:
-      //     //   _orgContext.setRootOrg(id: orgId, name: orgName, role: OrgRole.orgAdmin);
-      //     // For now, restore from last saved context:
-      await _orgContext.restore();
-      final actorId = meResponse.user.actorId;
-      if (_orgContext.hasOrg && actorId != null) {
-        await _orgContext.setRootOrg(
-          id: _orgContext.rootOrgId!,
-          name: _orgContext.rootOrgName ?? '',
-          role: _orgContext.orgRole,
-          actorId: actorId,
-          actorName: meResponse.user.name,
-        );
-      }
 
       return Right(finalSession);
     } on AuthException catch (e) {
@@ -720,7 +779,7 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
-  // ── register ──────────────────────────────────────────────
+  // ── register ───────────────────────────────────────────────────────
   @override
   Future<Either<Failure, AccountSession>> register({
     required String name,
@@ -730,7 +789,6 @@ class AuthRepositoryImpl implements AuthRepository {
     String? phone,
   }) async {
     try {
-      // ── Step 1: Register ──────────────────────────────────
       final registerData = await _remote.register(
         name: name,
         email: email,
@@ -746,7 +804,6 @@ class AuthRepositoryImpl implements AuthRepository {
         );
       }
 
-      // ── Step 2: Save preliminary session ──────────────────
       final prelimSession = AccountSessionModel(
         token: token,
         user: _placeholderUser(email),
@@ -756,10 +813,20 @@ class AuthRepositoryImpl implements AuthRepository {
       await _local.saveSession(prelimSession);
       await _local.setActiveAccount(email);
 
-      // ── Step 3: Fetch full profile ────────────────────────
       final meResponse = await _remote.getAuthMe();
 
-      // ── Step 4: Save final session ────────────────────────
+      // ── NEW ──────────────────────────────────────────────────────────
+      if (meResponse.resolvedOrgId != null) {
+        await _persistOrgAndBranch(
+          orgId: meResponse.resolvedOrgId!,
+          actorId: meResponse.user.actorId,
+          actorName: meResponse.user.name,
+          branchId: meResponse.user.branchId,
+          branchName: meResponse.user.branchName,
+        );
+      }
+      // ─────────────────────────────────────────────────────────────────
+
       final finalSession = AccountSessionModel(
         token: token,
         user: meResponse.user,
@@ -783,7 +850,7 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
-  // ── logout (active account) ───────────────────────────────
+  // ── logout ─────────────────────────────────────────────────────────
   @override
   Future<Either<Failure, void>> logout() async {
     try {
@@ -791,11 +858,8 @@ class AuthRepositoryImpl implements AuthRepository {
       try {
         await _remote.logout();
       } catch (_) {}
-      if (activeEmail != null) {
-        await _local.removeSession(activeEmail);
-      }
+      if (activeEmail != null) await _local.removeSession(activeEmail);
       await _orgContext.clear();
-
       return const Right(null);
     } on CacheException catch (e) {
       return Left(CacheFailure(e.message));
@@ -804,7 +868,7 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
-  // ── logout specific account ───────────────────────────────
+  // ── logoutAccount ──────────────────────────────────────────────────
   @override
   Future<Either<Failure, void>> logoutAccount(String email) async {
     try {
@@ -823,12 +887,11 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
-  // ── getSavedAccounts ──────────────────────────────────────
+  // ── getSavedAccounts ───────────────────────────────────────────────
   @override
   Future<Either<Failure, List<AccountSession>>> getSavedAccounts() async {
     try {
-      final sessions = await _local.getAllSessions();
-      return Right(sessions);
+      return Right(await _local.getAllSessions());
     } on CacheException catch (e) {
       return Left(CacheFailure(e.message));
     } catch (e) {
@@ -836,12 +899,11 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
-  // ── getActiveSession ──────────────────────────────────────
+  // ── getActiveSession ───────────────────────────────────────────────
   @override
   Future<Either<Failure, AccountSession?>> getActiveSession() async {
     try {
-      final session = await _local.getActiveSession();
-      return Right(session);
+      return Right(await _local.getActiveSession());
     } on CacheException catch (e) {
       return Left(CacheFailure(e.message));
     } catch (e) {
@@ -849,15 +911,14 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
-  // ── switchAccount ─────────────────────────────────────────
+  // ── switchAccount ──────────────────────────────────────────────────
   @override
   Future<Either<Failure, AccountSession>> switchAccount(String email) async {
     try {
       final sessions = await _local.getAllSessions();
       final target = sessions.where((s) => s.user.email == email).firstOrNull;
-      if (target == null) {
+      if (target == null)
         return Left(AuthFailure('No saved session found for $email'));
-      }
       await _local.setActiveAccount(email);
       return Right(target);
     } on CacheException catch (e) {
@@ -867,8 +928,7 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
-  // ── refreshSession ────────────────────────────────────────
-  // Re-fetches user + roles + permissions from GET /auth/me.
+  // ── refreshSession ─────────────────────────────────────────────────
   @override
   Future<Either<Failure, AccountSession>> refreshSession() async {
     try {
@@ -877,7 +937,30 @@ class AuthRepositoryImpl implements AuthRepository {
         return const Left(AuthFailure('No active session to refresh'));
       }
 
-      final meResponse = await _remote.getAuthMe();
+      await _orgContext.restore();
+
+      // ── CHANGE: pass rootOrgId, not activeBranchId ──────────────────
+      // Previously storedOrgId = _orgContext.rootOrgId, but if OrgContext
+      // had a branch set as effectiveOrgId the wrong membership was resolved
+      // and branch data never came back.
+      // /auth/me must always receive the ROOT org id so it finds the
+      // highest-level membership and then looks up pm_officers separately.
+      final rootOrgId = _orgContext.rootOrgId;
+      // ─────────────────────────────────────────────────────────────────
+
+      final meResponse = await _remote.getAuthMe(orgId: rootOrgId);
+
+      // ── NEW: update branch in OrgContext on every refresh ────────────
+      if (meResponse.resolvedOrgId != null) {
+        await _persistOrgAndBranch(
+          orgId: meResponse.resolvedOrgId!,
+          actorId: meResponse.user.actorId,
+          actorName: meResponse.user.name,
+          branchId: meResponse.user.branchId,
+          branchName: meResponse.user.branchName,
+        );
+      }
+      // ─────────────────────────────────────────────────────────────────
 
       final updated = AccountSessionModel(
         token: current.token,
@@ -886,16 +969,7 @@ class AuthRepositoryImpl implements AuthRepository {
         savedAt: DateTime.now(),
       );
       await _local.saveSession(updated);
-      final actorId = meResponse.user.actorId;
-      if (_orgContext.hasOrg && actorId != null) {
-        await _orgContext.setRootOrg(
-          id: _orgContext.rootOrgId!,
-          name: _orgContext.rootOrgName ?? '',
-          role: _orgContext.orgRole,
-          actorId: actorId,
-          actorName: meResponse.user.name,
-        );
-      }
+
       return Right(updated);
     } on AuthException catch (e) {
       return Left(AuthFailure(e.message));
@@ -910,7 +984,37 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
-  // ── Placeholder user ──────────────────────────────────────
+  // ── Private helpers ────────────────────────────────────────────────
+
+  /// Persists org context AND branch context into OrgContext + secure storage.
+  ///
+  /// Replaces the old _persistOrgId() which never called switchBranch(),
+  /// meaning OrgContext.activeBranchId was always stale after a transfer.
+  Future<void> _persistOrgAndBranch({
+    required String orgId,
+    required String actorName,
+    String? actorId,
+    String? branchId,
+    String? branchName,
+  }) async {
+    await _orgContext.restore();
+
+    // Derive role from the resolved role slug, never default to orgAdmin
+    final existingRole = _orgContext.orgRole != OrgRole.unknown
+        ? _orgContext.orgRole
+        : OrgRole.unknown; // ← never assume orgAdmin
+
+    await _orgContext.setRootOrg(
+      id: orgId,
+      name: _orgContext.rootOrgName ?? actorName,
+      role: existingRole,
+      actorId: actorId,
+      actorName: actorName,
+    );
+
+    await _orgContext.switchBranch(branchId: branchId, branchName: branchName);
+  }
+
   UserModel _placeholderUser(String email) => UserModel(
     id: '',
     name: '',
@@ -956,28 +1060,32 @@ class AccountSession {
 
 
 // === FILE: lib/features/auth/domain/entities/user_entity.dart ===
-//admin app user_entity.dart
+// user_entity.dart
 // ─────────────────────────────────────────────────────────────
 // Pure Dart — zero Flutter or Drift imports.
 // Shape mirrors the Laravel API /user and toApiArray() response.
 //
-// CHANGE: UserEntity.id is String — Laravel uses ULIDs.
-// RoleEntity / PermissionEntity keep int ids (standard auto-increment).
-//
-// DESIGN: Roles on the entity are for DISPLAY only (badge, label).
-// UI gating uses permission checks via RbacExtensions.can().
-// No hardcoded role names anywhere in this file.
+// CHANGE: Added orgStatus and orgName from /auth/me response so the
+// app can distinguish:
+//   null              → no membership yet (pending activation)
+//   'pending_approval'→ org exists but not yet admin-approved
+//   'active'          → fully operational
+//   'suspended'/'rejected' → org not usable
 // ─────────────────────────────────────────────────────────────
 
+// FILE: lib/features/auth/domain/entities/user_entity.dart
+// CHANGE: Added branchId and branchName fields.
+//         Everything else unchanged.
+
 class RoleEntity {
-  final String id; // was int
+  final String id;
   final String name;
   final String slug;
   const RoleEntity({required this.id, required this.name, required this.slug});
 }
 
 class PermissionEntity {
-  final String id; // was int
+  final String id;
   final String name;
   final String slug;
   const PermissionEntity({
@@ -989,7 +1097,7 @@ class PermissionEntity {
 
 class UserEntity {
   final String id;
-  final String? actorId; // ← ADD — platform actor ULID
+  final String? actorId;
   final String name;
   final String email;
   final String? phone;
@@ -1001,9 +1109,21 @@ class UserEntity {
   final String subscriptionStatus;
   final DateTime? createdAt;
 
+  // Org context fields from /auth/me
+  final String? orgStatus;
+  final String? orgName;
+  final String? orgId;
+
+  // ── NEW: Branch context fields ────────────────────────────────────
+  // Populated from pm_officers.branch_id via /auth/me response.
+  // Always reflects the officer's CURRENT branch after a transfer.
+  final String? branchId;
+  final String? branchName;
+  // ─────────────────────────────────────────────────────────────────
+
   const UserEntity({
     required this.id,
-    this.actorId, // ← ADD
+    this.actorId,
     required this.name,
     required this.email,
     this.phone,
@@ -1014,11 +1134,20 @@ class UserEntity {
     required this.hasActiveSubscription,
     required this.subscriptionStatus,
     this.createdAt,
+    this.orgStatus,
+    this.orgId,
+    this.orgName,
+    this.branchId, // ── NEW ──
+    this.branchName, // ── NEW ──
   });
 
   String get displayName => name.isNotEmpty ? name : email;
 
   bool hasRole(String roleName) => roles.any((r) => r.name == roleName);
+
+  bool get isOrgPendingApproval => orgStatus == 'pending_approval';
+
+  bool get isOrgActive => orgStatus == 'active';
 }
 
 
@@ -1339,26 +1468,18 @@ class SwitchAccountUseCase implements UseCase<AccountSession, SwitchAccountParam
 // === FILE: lib/features/auth/presentation/bloc/auth_bloc.dart ===
 // auth_bloc.dart
 // ─────────────────────────────────────────────────────────────
-// FIX: OrgContext was never populated after login/session restore,
-// causing every feature that calls orgContext.requireRootOrgId()
-// to throw "Bad state: no org is set" and stay stuck on loading.
+// FIX: _applyOrgContext() no longer uses AppConstants.orgId.
+// Instead it reads the org_id already stored in OrgContext by
+// AuthRepositoryImpl after the /auth/me call. This means branch
+// members and officers get the correct org scope automatically.
 //
-// Changes:
-//   1. OrgContext injected as a dependency.
-//   2. _applyOrgContext() called after every successful auth
-//      (login, register, check, switch, refresh).
-//   3. orgContext.restore() called in _onCheckRequested so a
-//      returning user's org context is recovered from secure
-//      storage without re-login.
-//   4. orgContext.clear() called on logout.
-//
-// Org strategy: Barick Pharmacy is a single-org admin app.
-// AppConstants.orgId is the root org ULID — used directly.
-// Role is derived from the session's primaryRole slug.
+// The role derivation from slug covers all org roles in use:
+//   owner, org_admin, manager, staff, viewer → orgAdmin
+//   branch_manager                           → branchAdmin
+//   officer, field_*, pharma_rep, sales_rep  → fieldOfficer
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../../core/constants/app_constants.dart';
 import '../../../../core/context/org_context.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../../domain/entities/account_session.dart';
@@ -1379,7 +1500,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final GetActiveSessionUseCase _getActiveSession;
   final GetSavedAccountsUseCase _getSavedAccounts;
   final RefreshSessionUseCase _refreshSession;
-  final OrgContext _orgContext; // FIX: added
+  final OrgContext _orgContext;
 
   AuthBloc({
     required LoginUseCase login,
@@ -1390,7 +1511,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     required GetActiveSessionUseCase getActiveSession,
     required GetSavedAccountsUseCase getSavedAccounts,
     required RefreshSessionUseCase refreshSession,
-    required OrgContext orgContext, // FIX: added
+    required OrgContext orgContext,
   }) : _login = login,
        _register = register,
        _logout = logout,
@@ -1399,7 +1520,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
        _getActiveSession = getActiveSession,
        _getSavedAccounts = getSavedAccounts,
        _refreshSession = refreshSession,
-       _orgContext = orgContext, // FIX: added
+       _orgContext = orgContext,
        super(AuthInitial()) {
     on<AuthCheckRequested>(_onCheckRequested);
     on<AuthLoginRequested>(_onLoginRequested);
@@ -1411,39 +1532,47 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthSessionRefreshRequested>(_onSessionRefreshRequested);
   }
 
-  // ── FIX: populate OrgContext after every successful auth ──
-  //
-  // Barick Pharmacy is single-org: AppConstants.orgId is the root.
-  // Role is derived from the session's primaryRole slug:
-  //   'org_admin' / 'admin' → OrgRole.orgAdmin
-  //   'branch_admin'        → OrgRole.branchAdmin
-  //   anything else         → OrgRole.orgAdmin (admin app default)
-  Future<void> _applyOrgContext(AccountSession session) async {
+  // ── OrgContext helper ─────────────────────────────────────
+  // The repository already called setRootOrg() with the resolved
+  // org_id after /auth/me. Here we only update the role + actor
+  // fields that come from the session, leaving org_id untouched.
+  Future<bool> _applyOrgContext(AccountSession session) async {
     final slug = session.user.primaryRole?.slug.toLowerCase() ?? '';
 
     final role = slug == 'branch_manager'
         ? OrgRole.branchAdmin
-        : slug.contains('officer') || slug == 'junior_officer'
+        : (slug.contains('officer') ||
+              slug.contains('field') ||
+              slug.contains('pharma_rep') ||
+              slug.contains('sales_rep') ||
+              slug == 'junior_officer')
         ? OrgRole.fieldOfficer
-        : OrgRole.orgAdmin; // owner, admin, super → orgAdmin
+        : OrgRole.orgAdmin;
 
-    await _orgContext.setRootOrg(
-      id: AppConstants.orgId,
-      name: 'Barick Pharmacy',
-      role: role,
-      actorId: session.user.actorId,
-      actorName: session.user.name,
-    );
+    await _orgContext.restore();
+
+    if (_orgContext.hasOrg) {
+      await _orgContext.setRootOrg(
+        id: _orgContext.rootOrgId!,
+        name: _orgContext.rootOrgName ?? 'Barick Pharmacy',
+        role: role,
+        actorId: session.user.actorId,
+        actorName: session.user.name.isNotEmpty
+            ? session.user.name
+            : session.user.email,
+      );
+      await _orgContext.setOrgStatus(session.user.orgStatus);
+      return true;
+    }
+
+    return false; // no org membership
   }
 
-  // ── Helper ────────────────────────────────────────────────
   List<AccountSession> _ensureActiveIncluded(
     AccountSession active,
     List<AccountSession> accounts,
   ) {
-    if (accounts.any((a) => a.user.email == active.user.email)) {
-      return accounts;
-    }
+    if (accounts.any((a) => a.user.email == active.user.email)) return accounts;
     return [active, ...accounts];
   }
 
@@ -1453,9 +1582,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     emit(AuthLoading());
-
-    // FIX: restore persisted org context so returning users don't
-    // need to re-login for OrgContext to be populated.
     await _orgContext.restore();
 
     final sessionResult = await _getActiveSession(NoParams());
@@ -1467,7 +1593,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         final accountsResult = await _getSavedAccounts(NoParams());
         final saved = accountsResult.fold<List<AccountSession>>(
           (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
+          (a) => a,
         );
         if (saved.isNotEmpty) {
           emit(AuthNeedsAccountPicker(savedAccounts: saved));
@@ -1477,16 +1603,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         return;
       }
 
-      // FIX: session exists but org context may not have been
-      // restored yet (first cold start after login on a new device).
-      if (!_orgContext.hasOrg) {
-        await _applyOrgContext(session);
-      }
+      if (!_orgContext.hasOrg) await _applyOrgContext(session);
 
       final accountsResult = await _getSavedAccounts(NoParams());
       final raw = accountsResult.fold<List<AccountSession>>(
-        (_) => <AccountSession>[],
-        (List<AccountSession> a) => a,
+        (_) => [],
+        (a) => a,
       );
       emit(
         AuthAuthenticated(
@@ -1503,20 +1625,21 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     emit(AuthLoading());
-
     final result = await _login(
       LoginParams(email: event.email, password: event.password),
     );
-
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session); // FIX
-
+        final hasOrg = await _applyOrgContext(session);
+        if (!hasOrg) {
+          emit(AuthNeedsInvitationToken(session: session));
+          return;
+        }
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
+          (_) => [],
+          (a) => a,
         );
         emit(
           AuthAuthenticated(
@@ -1534,7 +1657,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     emit(AuthLoading());
-
     final result = await _register(
       RegisterParams(
         name: event.name,
@@ -1544,16 +1666,18 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         phone: event.phone,
       ),
     );
-
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session); // FIX
-
+        final hasOrg = await _applyOrgContext(session);
+        if (!hasOrg) {
+          emit(AuthNeedsInvitationToken(session: session));
+          return;
+        }
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
+          (_) => [],
+          (a) => a,
         );
         emit(
           AuthAuthenticated(
@@ -1571,20 +1695,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     emit(AuthLoading());
-
     final result = await _logout(NoParams());
-
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (_) async {
-        await _orgContext.clear(); // FIX
-
+        await _orgContext.clear();
         final accountsResult = await _getSavedAccounts(NoParams());
         final remaining = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
+          (_) => [],
+          (a) => a,
         );
-
         if (remaining.isEmpty) {
           emit(AuthUnauthenticated());
         } else {
@@ -1600,22 +1720,19 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     final result = await _logoutAccount(LogoutAccountParams(event.email));
-
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (_) async {
         final accountsResult = await _getSavedAccounts(NoParams());
         final remaining = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
+          (_) => [],
+          (a) => a,
         );
-
         if (remaining.isEmpty) {
-          await _orgContext.clear(); // FIX
+          await _orgContext.clear();
           emit(AuthUnauthenticated());
           return;
         }
-
         final sessionResult = await _getActiveSession(NoParams());
         sessionResult.fold(
           (_) => emit(AuthNeedsAccountPicker(savedAccounts: remaining)),
@@ -1642,9 +1759,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     emit(AuthSwitching());
-
     final result = await _switchAccount(SwitchAccountParams(event.email));
-
     await result.fold(
       (failure) async {
         final sessionResult = await _getActiveSession(NoParams());
@@ -1659,12 +1774,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         });
       },
       (newSession) async {
-        await _applyOrgContext(newSession); // FIX
-
+        await _applyOrgContext(newSession);
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
+          (_) => [],
+          (a) => a,
         );
         emit(
           AuthAuthenticated(
@@ -1683,12 +1797,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     final sessionResult = await _getActiveSession(NoParams());
     final accountsResult = await _getSavedAccounts(NoParams());
-
     sessionResult.fold((_) => emit(AuthUnauthenticated()), (session) {
       if (session == null) {
         final saved = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
+          (_) => [],
+          (a) => a,
         );
         if (saved.isNotEmpty) {
           emit(AuthNeedsAccountPicker(savedAccounts: saved));
@@ -1697,10 +1810,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         }
         return;
       }
-
       final raw = accountsResult.fold<List<AccountSession>>(
-        (_) => <AccountSession>[],
-        (List<AccountSession> a) => a,
+        (_) => [],
+        (a) => a,
       );
       emit(
         AuthAccountsUpdated(
@@ -1711,22 +1823,24 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     });
   }
 
-  // ── Refresh active session from API ───────────────────────
+  // ── Session refresh ───────────────────────────────────────
   Future<void> _onSessionRefreshRequested(
     AuthSessionRefreshRequested event,
     Emitter<AuthState> emit,
   ) async {
     final result = await _refreshSession(NoParams());
-
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session); // FIX
-
+        final hasOrg = await _applyOrgContext(session);
+        if (!hasOrg) {
+          emit(AuthNeedsInvitationToken(session: session));
+          return;
+        }
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
-          (_) => <AccountSession>[],
-          (List<AccountSession> a) => a,
+          (_) => [],
+          (a) => a,
         );
         emit(
           AuthAuthenticated(
@@ -1873,6 +1987,17 @@ class AuthFailureState extends AuthState {
 
   @override
   List<Object?> get props => [message];
+}
+
+/// User is authenticated but has no org membership yet.
+/// UI should navigate to PendingActivationPage to enter invitation token.
+class AuthNeedsInvitationToken extends AuthState {
+  final AccountSession session;
+
+  const AuthNeedsInvitationToken({required this.session});
+
+  @override
+  List<Object?> get props => [session.user.email];
 }
 
 
@@ -2938,88 +3063,730 @@ class _RegisterLink extends StatelessWidget {
 
 
 // === FILE: lib/features/auth/presentation/pages/pending_activation_page.dart ===
+// pending_activation_page.dart
+//
+// State-aware page covering two distinct situations:
+//
+//   State A — NO ORG
+//     User registered but has no org membership yet.
+//     Options: Enter invitation token  |  Create a new organization
+//
+//   State B — ORG PENDING APPROVAL
+//     User already created an org but it hasn't been approved yet.
+//     Shows progress info and a "Check Again" refresh.
+//
+// Both states are determined from OrgContext at build time.
+// The page is self-contained: all async calls go through sl<> directly,
+// with no dependency on OrganizationBloc.
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../config/di/injection_container.dart';
+import '../../../../core/context/org_context.dart';
+import '../../../organization/domain/repositories/organization_repository.dart';
 import '../bloc/auth_bloc.dart';
 import '../bloc/auth_event.dart';
 
-class PendingActivationPage extends StatelessWidget {
+class PendingActivationPage extends StatefulWidget {
   const PendingActivationPage({super.key});
 
   @override
+  State<PendingActivationPage> createState() => _PendingActivationPageState();
+}
+
+class _PendingActivationPageState extends State<PendingActivationPage> {
+  // After a successful org creation in this session we flip this flag
+  // so the UI shows the "awaiting approval" state immediately —
+  // without needing a full session refresh.
+  bool _justCreatedOrg = false;
+
+  @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final orgContext = sl<OrgContext>();
+
+    // Determine which state we are in.
+    // isOrgPendingApproval = orgContext already has an org but it's not active.
+    final isPending = _justCreatedOrg || orgContext.isOrgPendingApproval;
+
     return Scaffold(
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
+            constraints: const BoxConstraints(maxWidth: 420),
             child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: scheme.secondaryContainer,
-                      borderRadius: BorderRadius.circular(20),
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+              child: isPending
+                  ? _OrgPendingApprovalBody(
+                      orgName: orgContext.rootOrgName,
+                      onCheckAgain: _checkAgain,
+                      onLogout: _logout,
+                    )
+                  : _NoOrgBody(
+                      onEnterToken: () => _showAcceptDialog(context),
+                      onCreateOrg: () => _showCreateOrgDialog(context),
+                      onCheckAgain: _checkAgain,
+                      onLogout: _logout,
                     ),
-                    child: Icon(
-                      Icons.hourglass_top_rounded,
-                      size: 40,
-                      color: scheme.onSecondaryContainer,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  Text(
-                    'Account Pending Activation',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Your account has been created but has not been '
-                    'assigned a role yet.\n\n'
-                    'Please contact your administrator to activate '
-                    'your account.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Refresh — in case admin just assigned the role
-                  OutlinedButton.icon(
-                    onPressed: () => context
-                        .read<AuthBloc>()
-                        .add(AuthSessionRefreshRequested()),
-                    icon: const Icon(Icons.refresh, size: 18),
-                    label: const Text('Check Again'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextButton.icon(
-                    onPressed: () =>
-                        context.read<AuthBloc>().add(AuthLogoutRequested()),
-                    icon: const Icon(Icons.logout, size: 18),
-                    label: const Text('Sign Out'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: scheme.error,
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
         ),
       ),
     );
   }
+
+  // ── Actions ───────────────────────────────────────────────
+
+  void _checkAgain(BuildContext context) {
+    context.read<AuthBloc>().add(AuthSessionRefreshRequested());
+  }
+
+  void _logout(BuildContext context) {
+    context.read<AuthBloc>().add(AuthLogoutRequested());
+  }
+
+  void _showAcceptDialog(BuildContext context) {
+    final authBloc = context.read<AuthBloc>();
+    showDialog<void>(
+      context: context,
+      builder: (_) => _AcceptInvitationDialog(authBloc: authBloc),
+    );
+  }
+
+  void _showCreateOrgDialog(BuildContext context) {
+    final authBloc = context.read<AuthBloc>();
+    showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _CreateOrgDialog(authBloc: authBloc),
+    ).then((created) {
+      if (created == true && mounted) {
+        setState(() => _justCreatedOrg = true);
+      }
+    });
+  }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// State A — User has no org membership
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _NoOrgBody extends StatelessWidget {
+  final VoidCallback onEnterToken;
+  final VoidCallback onCreateOrg;
+  final void Function(BuildContext) onCheckAgain;
+  final void Function(BuildContext) onLogout;
+
+  const _NoOrgBody({
+    required this.onEnterToken,
+    required this.onCreateOrg,
+    required this.onCheckAgain,
+    required this.onLogout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // ── Icon ───────────────────────────────────────────
+        _StatusIcon(
+          icon: Icons.hourglass_top_rounded,
+          color: scheme.secondaryContainer,
+          iconColor: scheme.onSecondaryContainer,
+        ),
+        const SizedBox(height: 32),
+
+        // ── Headline ───────────────────────────────────────
+        Text(
+          'Account Pending Activation',
+          textAlign: TextAlign.center,
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Your account has been created but is not connected to an '
+          'organization yet.',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: scheme.onSurfaceVariant,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 32),
+
+        // ── Divider with label ─────────────────────────────
+        _SectionDivider(label: 'Join an existing organization'),
+        const SizedBox(height: 16),
+
+        FilledButton.icon(
+          onPressed: onEnterToken,
+          icon: const Icon(Icons.vpn_key_outlined, size: 18),
+          label: const Text('Enter Invitation Token'),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(double.infinity, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // ── Divider with label ─────────────────────────────
+        _SectionDivider(label: 'Or create your own'),
+        const SizedBox(height: 16),
+
+        OutlinedButton.icon(
+          onPressed: onCreateOrg,
+          icon: const Icon(Icons.add_business_outlined, size: 18),
+          label: const Text('Create Organization'),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(double.infinity, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            side: BorderSide(color: scheme.primary, width: 1.5),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // ── Check / Logout ─────────────────────────────────
+        Builder(
+          builder: (ctx) => OutlinedButton.icon(
+            onPressed: () => onCheckAgain(ctx),
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('Check Again'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Builder(
+          builder: (ctx) => TextButton.icon(
+            onPressed: () => onLogout(ctx),
+            icon: const Icon(Icons.logout, size: 18),
+            label: const Text('Sign Out'),
+            style: TextButton.styleFrom(foregroundColor: scheme.error),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// State B — Org exists but is pending admin approval
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _OrgPendingApprovalBody extends StatelessWidget {
+  final String? orgName;
+  final void Function(BuildContext) onCheckAgain;
+  final void Function(BuildContext) onLogout;
+
+  const _OrgPendingApprovalBody({
+    this.orgName,
+    required this.onCheckAgain,
+    required this.onLogout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // ── Icon ───────────────────────────────────────────
+        _StatusIcon(
+          icon: Icons.domain_verification_outlined,
+          color: scheme.tertiaryContainer,
+          iconColor: scheme.onTertiaryContainer,
+        ),
+        const SizedBox(height: 32),
+
+        // ── Headline ───────────────────────────────────────
+        Text(
+          'Organization Awaiting Approval',
+          textAlign: TextAlign.center,
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 12),
+
+        if (orgName != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.business, size: 16, color: scheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  orgName!,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        Text(
+          'Your organization has been submitted and is waiting for platform '
+          'admin review.\n\n'
+          'You will gain full access once it is approved. '
+          'This usually takes less than 24 hours.',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: scheme.onSurfaceVariant,
+            height: 1.6,
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // ── What happens next info card ────────────────────
+        _InfoCard(
+          items: const [
+            _InfoItem(
+              icon: Icons.admin_panel_settings_outlined,
+              text: 'A platform admin reviews your organization details',
+            ),
+            _InfoItem(
+              icon: Icons.mark_email_read_outlined,
+              text: 'You\'ll receive a notification when approved',
+            ),
+            _InfoItem(
+              icon: Icons.rocket_launch_outlined,
+              text: 'Your full dashboard unlocks upon approval',
+            ),
+          ],
+        ),
+        const SizedBox(height: 28),
+
+        // ── Check Again ────────────────────────────────────
+        Builder(
+          builder: (ctx) => FilledButton.icon(
+            onPressed: () => onCheckAgain(ctx),
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('Check Approval Status'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Builder(
+          builder: (ctx) => TextButton.icon(
+            onPressed: () => onLogout(ctx),
+            icon: const Icon(Icons.logout, size: 18),
+            label: const Text('Sign Out'),
+            style: TextButton.styleFrom(foregroundColor: scheme.error),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dialog: Accept Invitation Token (unchanged from original)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AcceptInvitationDialog extends StatefulWidget {
+  final AuthBloc authBloc;
+  const _AcceptInvitationDialog({required this.authBloc});
+
+  @override
+  State<_AcceptInvitationDialog> createState() =>
+      _AcceptInvitationDialogState();
+}
+
+class _AcceptInvitationDialogState extends State<_AcceptInvitationDialog> {
+  final _tokenCtrl = TextEditingController();
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _tokenCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final token = _tokenCtrl.text.trim();
+    if (token.isEmpty) {
+      setState(() => _error = 'Please enter an invitation token.');
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final result = await sl<OrganizationRepository>().acceptInvitation(token);
+      if (!mounted) return;
+      result.fold(
+        (failure) => setState(() {
+          _loading = false;
+          _error = failure.message;
+        }),
+        (membership) {
+          final orgName =
+              membership['organization']?['name'] as String? ?? 'Organization';
+          Navigator.of(context).pop();
+          widget.authBloc.add(AuthSessionRefreshRequested());
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('You have joined $orgName successfully!'),
+              backgroundColor: Colors.green.shade700,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+        },
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Unexpected error. Please try again.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Row(
+        children: [
+          Icon(Icons.group_add_outlined),
+          SizedBox(width: 10),
+          Text('Accept Invitation'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _BlueInfoBanner(
+            text:
+                'Enter the invitation token from your email to join '
+                'an organization.',
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _tokenCtrl,
+            enabled: !_loading,
+            decoration: InputDecoration(
+              labelText: 'Invitation Token *',
+              hintText: 'Paste your token here',
+              prefixIcon: const Icon(Icons.vpn_key_outlined),
+              border: const OutlineInputBorder(),
+              errorText: _error,
+            ),
+            maxLines: 2,
+            minLines: 1,
+            onSubmitted: (_) => _submit(),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _loading ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          onPressed: _loading ? null : _submit,
+          icon: _loading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.check),
+          label: const Text('Accept'),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dialog: Create Organization  ← NEW
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _CreateOrgDialog extends StatefulWidget {
+  final AuthBloc authBloc;
+  const _CreateOrgDialog({required this.authBloc});
+
+  @override
+  State<_CreateOrgDialog> createState() => _CreateOrgDialogState();
+}
+
+class _CreateOrgDialogState extends State<_CreateOrgDialog> {
+  final _nameCtrl = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  bool _loading = false;
+  String? _serverError;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    _serverError = null;
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    setState(() => _loading = true);
+
+    try {
+      final repo = sl<OrganizationRepository>();
+      final result = await repo.createOrg({'name': _nameCtrl.text.trim()});
+
+      if (!mounted) return;
+
+      result.fold(
+        (failure) {
+          setState(() {
+            _loading = false;
+            _serverError = failure.message;
+          });
+          // Re-validate to show server error under the field
+          _formKey.currentState?.validate();
+        },
+        (org) {
+          Navigator.of(context).pop(true); // true = org was created
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _serverError = 'Unexpected error. Please try again.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Row(
+        children: [
+          Icon(Icons.add_business_outlined),
+          SizedBox(width: 10),
+          Expanded(child: Text('Create Organization')),
+        ],
+      ),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _BlueInfoBanner(
+              text:
+                  'After creation your organization will be reviewed by '
+                  'a platform admin before becoming active.',
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _nameCtrl,
+              enabled: !_loading,
+              decoration: const InputDecoration(
+                labelText: 'Organization Name *',
+                hintText: 'e.g. Barick Pharma Ltd',
+                prefixIcon: Icon(Icons.business_outlined),
+                border: OutlineInputBorder(),
+              ),
+              textCapitalization: TextCapitalization.words,
+              validator: (v) {
+                if (v == null || v.trim().length < 2) {
+                  return 'Name must be at least 2 characters.';
+                }
+                if (_serverError != null) return _serverError;
+                return null;
+              },
+              onFieldSubmitted: (_) => _submit(),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _loading ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          onPressed: _loading ? null : _submit,
+          icon: _loading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.add_business_outlined),
+          label: const Text('Create'),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared small widgets
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _StatusIcon extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final Color iconColor;
+
+  const _StatusIcon({
+    required this.icon,
+    required this.color,
+    required this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 80,
+      height: 80,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Icon(icon, size: 40, color: iconColor),
+    );
+  }
+}
+
+class _SectionDivider extends StatelessWidget {
+  final String label;
+  const _SectionDivider({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Expanded(child: Divider()),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        const Expanded(child: Divider()),
+      ],
+    );
+  }
+}
+
+class _BlueInfoBanner extends StatelessWidget {
+  final String text;
+  const _BlueInfoBanner({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 16, color: Colors.blue.shade700),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoCard extends StatelessWidget {
+  final List<_InfoItem> items;
+  const _InfoCard({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: items
+            .map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(item.icon, size: 18, color: scheme.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        item.text,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          height: 1.4,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+}
+
+class _InfoItem {
+  final IconData icon;
+  final String text;
+  const _InfoItem({required this.icon, required this.text});
+}
+
 
 // === FILE: lib/features/auth/presentation/pages/register_page.dart ===
 // register_page.dart

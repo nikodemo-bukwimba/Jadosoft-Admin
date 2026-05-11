@@ -1091,7 +1091,13 @@ class AppRouter {
 
   // -- Redirect logic ---------------------------------------
   static String? _redirect(AuthState authState, String location) {
-    const authRoutes = {login, register, accountPicker, wrongApp};
+    const authRoutes = {
+      login,
+      register,
+      accountPicker,
+      wrongApp,
+      pendingActivation,
+    };
     final isAuthRoute = authRoutes.contains(location);
     final isShellRoute = !isAuthRoute && location != splash;
 
@@ -1125,6 +1131,8 @@ class AppRouter {
       AuthLoading() => isShellRoute ? splash : null,
       AuthAccountsUpdated() => location == splash ? home : null,
       AuthNeedsAccountPicker() => isAuthRoute2 ? null : accountPicker,
+      AuthNeedsInvitationToken() => // ← ADD THIS
+      location == pendingActivation ? null : pendingActivation,
       AuthUnauthenticated() =>
         isShellRoute || location == splash ? login : null,
       AuthSwitching() => null,

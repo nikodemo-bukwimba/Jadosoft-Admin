@@ -68,7 +68,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   // The repository already called setRootOrg() with the resolved
   // org_id after /auth/me. Here we only update the role + actor
   // fields that come from the session, leaving org_id untouched.
-  Future<void> _applyOrgContext(AccountSession session) async {
+  Future<bool> _applyOrgContext(AccountSession session) async {
     final slug = session.user.primaryRole?.slug.toLowerCase() ?? '';
 
     final role = slug == 'branch_manager'
@@ -81,12 +81,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         ? OrgRole.fieldOfficer
         : OrgRole.orgAdmin;
 
-    // Ensure in-memory state matches persisted storage
     await _orgContext.restore();
 
-    // Only proceed if repository already set org_id
     if (_orgContext.hasOrg) {
-      // Re-apply latest role + actor info (DO NOT change org_id)
       await _orgContext.setRootOrg(
         id: _orgContext.rootOrgId!,
         name: _orgContext.rootOrgName ?? 'Barick Pharmacy',
@@ -96,11 +93,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
             ? session.user.name
             : session.user.email,
       );
-
-      // ── NEW: sync org status ────────────────────────────────
-      // This is the key addition for pending approval routing
       await _orgContext.setOrgStatus(session.user.orgStatus);
+      return true;
     }
+
+    return false; // no org membership
   }
 
   List<AccountSession> _ensureActiveIncluded(
@@ -166,7 +163,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session);
+        final hasOrg = await _applyOrgContext(session);
+        if (!hasOrg) {
+          emit(AuthNeedsInvitationToken(session: session));
+          return;
+        }
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
           (_) => [],
@@ -200,7 +201,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session);
+        final hasOrg = await _applyOrgContext(session);
+        if (!hasOrg) {
+          emit(AuthNeedsInvitationToken(session: session));
+          return;
+        }
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
           (_) => [],
@@ -359,7 +364,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session);
+        final hasOrg = await _applyOrgContext(session);
+        if (!hasOrg) {
+          emit(AuthNeedsInvitationToken(session: session));
+          return;
+        }
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
           (_) => [],

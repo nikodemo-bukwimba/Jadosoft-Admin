@@ -9,6 +9,10 @@
 // Same for PermissionModel — slug falls back to name.
 // ─────────────────────────────────────────────────────────────
 
+// FILE: lib/features/auth/data/models/user_model.dart
+// CHANGE: Added branchId/branchName to constructor, fromJson(), and toJson().
+//         Everything else unchanged.
+
 import '../../domain/entities/user_entity.dart';
 
 class RoleModel extends RoleEntity {
@@ -19,7 +23,7 @@ class RoleModel extends RoleEntity {
   });
 
   factory RoleModel.fromJson(Map<String, dynamic> json) => RoleModel(
-    id: json['id']?.toString() ?? '', // was int.parse(...)
+    id: json['id']?.toString() ?? '',
     name: json['name'] as String? ?? '',
     slug: json['slug'] as String? ?? json['name'] as String? ?? '',
   );
@@ -36,7 +40,7 @@ class PermissionModel extends PermissionEntity {
 
   factory PermissionModel.fromJson(Map<String, dynamic> json) =>
       PermissionModel(
-        id: json['id']?.toString() ?? '', // was int.parse(...)
+        id: json['id']?.toString() ?? '',
         name: json['name'] as String? ?? '',
         slug: json['slug'] as String? ?? json['name'] as String? ?? '',
       );
@@ -58,9 +62,11 @@ class UserModel extends UserEntity {
     required super.hasActiveSubscription,
     required super.subscriptionStatus,
     super.createdAt,
-    super.orgStatus, // ← NEW
-    super.orgId, // 👈 ADD THIS
-    super.orgName, // ← NEW
+    super.orgStatus,
+    super.orgId,
+    super.orgName,
+    super.branchId, // ── NEW ──
+    super.branchName, // ── NEW ──
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -81,7 +87,6 @@ class UserModel extends UserEntity {
     return UserModel(
       id: json['id']?.toString() ?? '',
       actorId: json['actor_id']?.toString(),
-
       name: json['name'] as String? ?? json['username'] as String? ?? '',
       email: json['email'] as String? ?? '',
       phone: json['phone'] as String?,
@@ -108,10 +113,14 @@ class UserModel extends UserEntity {
           ? DateTime.tryParse(json['created_at'].toString())
           : null,
 
-      // ✅ FULL org context
-      orgId: json['org_id']?.toString(), // 👈 ADD THIS
+      orgId: json['org_id']?.toString(),
       orgStatus: (json['org_status'] as String?)?.toLowerCase(),
       orgName: json['org_name'] as String?,
+
+      // ── NEW ──────────────────────────────────────────────────────
+      branchId: json['branch_id']?.toString(),
+      branchName: json['branch_name'] as String?,
+      // ─────────────────────────────────────────────────────────────
     );
   }
 
@@ -136,9 +145,12 @@ class UserModel extends UserEntity {
     'has_active_subscription': hasActiveSubscription,
     'subscription_status': subscriptionStatus,
     'created_at': createdAt?.toIso8601String(),
-    // ── NEW ──
     'org_id': orgId,
     'org_status': orgStatus,
     'org_name': orgName,
+    // ── NEW ──────────────────────────────────────────────────────────
+    'branch_id': branchId,
+    'branch_name': branchName,
+    // ─────────────────────────────────────────────────────────────────
   };
 }
