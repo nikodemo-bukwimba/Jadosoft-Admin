@@ -43,8 +43,10 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
   }) : _dio = dio,
        _orgContext = orgContext;
 
+  // String get _base =>
+  //     '/pharma/orgs/${_orgContext.effectiveOrgId}/product-updates';
   String get _base =>
-      '/pharma/orgs/${_orgContext.effectiveOrgId}/product-updates';
+      '/pharma/orgs/${_orgContext.requireRootOrgId()}/product-updates';
 
   // ── Nexora response → PromotionModel ──────────────────────
 

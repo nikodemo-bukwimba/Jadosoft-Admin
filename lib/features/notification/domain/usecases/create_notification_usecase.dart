@@ -1,59 +1,22 @@
-﻿import 'package:dartz/dartz.dart';
-import '../../../../core/error/failures.dart';
-import '../../../../core/usecase/usecase.dart';
-import '../entities/notification_entity.dart';
-import '../repositories/notification_repository.dart';
+﻿// create_notification_usecase.dart
+// ─────────────────────────────────────────────────────────────
+// REMOVED — no backend endpoint exists for creating notifications.
+//
+// Notifications are created automatically by the Laravel queue job
+// SendProductUpdateToCustomer when a promotion is published.
+// The admin has no create/update/delete endpoint on
+// NotificationController.
+//
+// This file is intentionally left as a stub so that any lingering
+// import references produce a clear compile error pointing here
+// rather than a confusing "method not found on repository" error.
+//
+// ACTION REQUIRED:
+//   1. Delete this file.
+//   2. Delete create_notification_usecase.dart import from any file.
+//   3. Delete NotificationFormPage — it has no backend to talk to.
+//   4. Remove NotificationCreateRequested from notification_event.dart
+//      (already done in the updated event file).
+// ─────────────────────────────────────────────────────────────
 
-class CreateNotificationParams {
-  final String recipientId;
-  final String recipientType;
-  final String channel;
-  final String content;
-  final String? templateId;
-
-  const CreateNotificationParams({
-    required this.recipientId,
-    required this.recipientType,
-    required this.channel,
-    required this.content,
-    this.templateId,
-  });
-}
-
-class CreateNotificationUseCase implements UseCase<NotificationEntity, CreateNotificationParams> {
-  final NotificationRepository repository;
-  CreateNotificationUseCase(this.repository);
-
-  @override
-  Future<Either<Failure, NotificationEntity>> call(CreateNotificationParams p) async {
-    // -- Validation gate --
-    if (p.recipientId.trim().isEmpty) {
-      return const Left(ValidationFailure('Recipient is required'));
-    }
-    if (p.recipientType.trim().isEmpty) {
-      return const Left(ValidationFailure('Recipient type is required'));
-    }
-    if (p.channel.trim().isEmpty) {
-      return const Left(ValidationFailure('Channel is required'));
-    }
-    if (p.content.trim().isEmpty) {
-      return const Left(ValidationFailure('Content is required'));
-    }
-
-    return repository.create(
-      NotificationEntity(
-        id: '',
-        recipientId: p.recipientId.trim(),
-        recipientType: p.recipientType.trim(),
-        channel: p.channel.trim(),
-        content: p.content.trim(),
-        templateId: p.templateId?.trim(),
-        status: '',
-        sentAt: DateTime.now(),
-        deliveredAt: DateTime.now(),
-        failureReason: '',
-        createdAt: DateTime.now(),
-      ),
-    );
-  }
-}
+// File intentionally empty after removal of dead use case.

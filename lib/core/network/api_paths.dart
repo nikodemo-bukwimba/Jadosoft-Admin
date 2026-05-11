@@ -89,18 +89,34 @@ class _OrgPaths {
   String org(String id) => 'orgs/$id';
   String tree(String id) => 'orgs/$id/tree';
   String branches(String orgId) => 'orgs/$orgId/branches';
+
+  // Members
   String members(String orgId) => 'orgs/$orgId/members';
   String inviteMembers(String orgId) => 'orgs/$orgId/members/invite';
   String member(String orgId, String userId) => 'orgs/$orgId/members/$userId';
+
+  // Officers ← ADD THESE
+  String officers(String rootOrgId) => 'orgs/$rootOrgId/officers';
+
+  String officerTransfer(String rootOrgId, String userId) =>
+      'orgs/$rootOrgId/officers/$userId/transfer';
+
+  // Roles & Permissions
   String roles(String orgId) => 'orgs/$orgId/roles';
   String rolePermissions(String orgId, String roleId) =>
       'orgs/$orgId/roles/$roleId/permissions';
   String permissions(String orgId) => 'orgs/$orgId/permissions';
+
+  // Delegations
   String delegations(String orgId) => 'orgs/$orgId/delegations';
   String delegation(String orgId, String id) => 'orgs/$orgId/delegations/$id';
+
+  // Permission Requests
   String permissionRequests(String orgId) => 'orgs/$orgId/permission-requests';
+
   String approveRequest(String orgId, String id) =>
       'orgs/$orgId/permission-requests/$id/approve';
+
   String denyRequest(String orgId, String id) =>
       'orgs/$orgId/permission-requests/$id/deny';
 }

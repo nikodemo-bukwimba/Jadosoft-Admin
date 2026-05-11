@@ -16,17 +16,23 @@ abstract class OfficerRemoteDataSource {
   });
 
   /// [branchId] — the org the officer actually belongs to.
-  /// Branch-only officers 404 on root org; pass their branchId here.
   Future<OfficerModel> getById(String userId, {String? branchId});
 
-  Future<OfficerModel> invite({
+  /// Problem #2 fix: creates a fully active User account immediately.
+  /// No invitation email — the officer can log in with [password].
+  ///
+  /// Always creates:
+  ///   1. A root org membership (required anchor for future transfers)
+  ///   2. A branch membership if [branchId] != rootOrgId
+  Future<OfficerModel> create({
+    required String fullName,
     required String email,
-    required String orgRoleId,
-    required String branchId,
-    String? username,
+    required String password,
+    required String passwordConfirmation,
     String? phone,
-    String? appPassword,
-    String? appPasswordConfirmation,
+    required String branchId,
+    required String orgRoleId,
+    int? level,
   });
 
   Future<OfficerModel> updateMembership(
@@ -37,6 +43,7 @@ abstract class OfficerRemoteDataSource {
     String? branchId,
   });
 
+  /// Problem #3 fix: safe branch transfer that never deletes root membership.
   Future<void> reassignBranch({
     required String userId,
     required String fromBranchId,
@@ -85,10 +92,6 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
   }
 
   // ── GET BY ID ─────────────────────────────────────────────
-  // FIX 1: Use officer's actual branchId, not always the root org.
-  // Officers who are branch-only members have no root membership row,
-  // so GET /orgs/{rootOrgId}/members/{userId} returns 404 for them.
-  // The list response includes branchId — callers pass it here.
 
   @override
   Future<OfficerModel> getById(String userId, {String? branchId}) async {
@@ -103,32 +106,50 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     );
   }
 
-  // ── INVITE ────────────────────────────────────────────────
+  // ── CREATE WITH ACCOUNT ───────────────────────────────────
+  //
+  // Problem #2 fix: calls POST /orgs/{rootOrgId}/officers
+  //
+  // The backend:
+  //   1. Creates User + Actor (actor.display_name = fullName)
+  //   2. Creates root org membership (so login + transfer both work)
+  //   3. Creates branch membership (if branchId != rootOrgId)
+  //   4. Returns the officer JSON with 'name' = actor.display_name
+  //
+  // The officer receives their credentials out-of-band (e.g. SMS/WhatsApp)
+  // and can log in immediately — no invitation acceptance step.
 
   @override
-  Future<OfficerModel> invite({
+  Future<OfficerModel> create({
+    required String fullName,
     required String email,
-    required String orgRoleId,
-    required String branchId,
-    String? username,
+    required String password,
+    required String passwordConfirmation,
     String? phone,
-    String? appPassword,
-    String? appPasswordConfirmation,
+    required String branchId,
+    required String orgRoleId,
+    int? level,
   }) async {
+    final rootOrgId = _orgContext.rootOrgId ?? _orgContext.effectiveOrgId;
+
     final response = await dio.post(
-      '${ApiPaths.orgs.members(branchId)}/invite',
+      ApiPaths.orgs.officers(rootOrgId),
       data: {
+        'full_name': fullName,
         'email': email,
-        if (username != null) 'username': username,
-        if (phone != null) 'phone': phone,
+        'password': password,
+        'password_confirmation': passwordConfirmation,
+        if (phone != null && phone.isNotEmpty) 'phone': phone,
         'org_role_id': orgRoleId,
-        if (appPassword != null) 'app_password': appPassword,
-        if (appPasswordConfirmation != null)
-          'app_password_confirmation': appPasswordConfirmation,
+        if (level != null) 'level': level,
+        // Only send branch_id when it differs from root org;
+        // otherwise the backend only creates the root membership.
+        if (branchId != rootOrgId) 'branch_id': branchId,
       },
     );
+
     final body = response.data as Map<String, dynamic>? ?? {};
-    final raw = body['membership'] ?? body['member'] ?? body['data'] ?? body;
+    final raw = body['officer'] ?? body['member'] ?? body['data'] ?? body;
     return OfficerModel.fromJson(raw as Map<String, dynamic>);
   }
 
@@ -159,19 +180,13 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
   }
 
   // ── REASSIGN BRANCH ───────────────────────────────────────
-  // FIX 2: Never delete the root-org membership.
   //
-  // The backend /assign endpoint guard:
-  //   "User must be an active member of the root organization first."
+  // Problem #3 fix: calls POST /orgs/{rootOrgId}/officers/{userId}/transfer
   //
-  // The root membership is the anchor — it must stay alive so /assign
-  // can validate it. Only the branch membership should be moved.
-  //
-  // Logic:
-  //   • fromBranchId == rootOrgId → officer is at root level only,
-  //     no branch row to delete; just /assign to new branch.
-  //   • fromBranchId != rootOrgId → delete old branch row, /assign
-  //     to new branch (root row is untouched → /assign passes guard).
+  // The backend handles all the edge cases:
+  //   - Self-heals missing root membership if it somehow doesn't exist
+  //   - Only removes the branch membership (never root)
+  //   - Creates new branch membership inheriting level from root
 
   @override
   Future<void> reassignBranch({
@@ -182,16 +197,13 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
   }) async {
     final rootOrgId = _orgContext.rootOrgId ?? _orgContext.effectiveOrgId;
 
-    // Step 1: Remove old branch membership — never touch root org.
-    if (fromBranchId != rootOrgId) {
-      await deleteResource(ApiPaths.orgs.member(fromBranchId, userId));
-    }
-
-    // Step 2: Assign to new branch.
-    // /assign verifies root membership still active → succeeds.
     await dio.post(
-      '${ApiPaths.orgs.members(toBranchId)}/assign',
-      data: {'user_id': userId, 'org_role_id': orgRoleId},
+      ApiPaths.orgs.officerTransfer(rootOrgId, userId),
+      data: {
+        'from_branch_id': fromBranchId,
+        'to_branch_id': toBranchId,
+        'org_role_id': orgRoleId,
+      },
     );
   }
 

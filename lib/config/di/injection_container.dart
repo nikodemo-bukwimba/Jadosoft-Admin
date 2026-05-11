@@ -174,9 +174,6 @@ import 'package:jadosoft_admin/features/notification/data/repositories/notificat
 import 'package:jadosoft_admin/features/notification/domain/repositories/notification_repository.dart';
 import 'package:jadosoft_admin/features/notification/domain/usecases/get_all_notification_usecase.dart';
 import 'package:jadosoft_admin/features/notification/domain/usecases/get_notification_usecase.dart';
-import 'package:jadosoft_admin/features/notification/domain/usecases/create_notification_usecase.dart';
-import 'package:jadosoft_admin/features/notification/domain/usecases/update_notification_usecase.dart';
-import 'package:jadosoft_admin/features/notification/domain/usecases/delete_notification_usecase.dart';
 import 'package:jadosoft_admin/features/notification/domain/services/notification_domain_service.dart';
 import 'package:jadosoft_admin/features/notification/presentation/bloc/notification_bloc.dart';
 
@@ -266,7 +263,6 @@ import 'package:jadosoft_admin/features/sales_dashboard/data/providers/product_d
 import 'package:jadosoft_admin/features/sales_dashboard/domain/providers/order_data_provider.dart';
 import 'package:jadosoft_admin/features/sales_dashboard/domain/providers/payment_data_provider.dart';
 import 'package:jadosoft_admin/features/sales_dashboard/domain/providers/product_data_provider.dart';
-import 'package:jadosoft_admin/features/notification/data/datasources/notification_mock_datasource.dart';
 import 'package:jadosoft_admin/features/payment/data/datasources/payment_mock_datasource.dart';
 
 // SMS Gateway
@@ -891,14 +887,10 @@ Future<void> initDependencies() async {
   );
 
   // Seq 17 — Notifications (L2)
-  // DEVELOPMENT (mock — active now):
+  // Phase N — Notifications (Delivery Center)
   sl.registerLazySingleton<NotificationRemoteDataSource>(
-    () => NotificationMockDataSource(),
+    () => NotificationRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
   );
-  // PRODUCTION (real — swap when Laravel API is ready):
-  // sl.registerLazySingleton<NotificationRemoteDataSource>(
-  //   () => NotificationRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
-  // );
   sl.registerLazySingleton<NotificationRepository>(
     () => NotificationRepositoryImpl(remoteDataSource: sl()),
   );
@@ -908,16 +900,10 @@ Future<void> initDependencies() async {
   );
   sl.registerLazySingleton(() => GetAllNotificationUseCase(sl()));
   sl.registerLazySingleton(() => GetNotificationUseCase(sl()));
-  sl.registerLazySingleton(() => CreateNotificationUseCase(sl()));
-  sl.registerLazySingleton(() => UpdateNotificationUseCase(sl()));
-  sl.registerLazySingleton(() => DeleteNotificationUseCase(sl()));
   sl.registerFactory<NotificationBloc>(
     () => NotificationBloc(
       getAllUseCase: sl(),
       getUseCase: sl(),
-      createUseCase: sl(),
-      updateUseCase: sl(),
-      deleteUseCase: sl(),
       domainService: sl(),
     ),
   );

@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿// notification_status_badge.dart
+import 'package:flutter/material.dart';
 import '../../domain/value_objects/notification_status.dart';
 
 class NotificationStatusBadge extends StatelessWidget {
@@ -20,9 +21,9 @@ class NotificationStatusBadge extends StatelessWidget {
         vertical: compact ? 3 : 5,
       ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.4)),
+        border: Border.all(color: color.withValues(alpha: 0.40)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

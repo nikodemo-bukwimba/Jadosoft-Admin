@@ -227,9 +227,14 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   }
 
   @override
-  Future<ProductModel> getById(String id) async {
+  Future<ProductModel> getById(String id, {String? orgId}) async {
     try {
-      final res = await _dio.get('/commerce/products/$id');
+      // Pass requesting org so backend includes branch-specific promotions.
+      final effectiveOrgId = orgId ?? _orgContext.effectiveOrgId;
+      final res = await _dio.get(
+        '/commerce/products/$id',
+        queryParameters: {'org_id': effectiveOrgId},
+      );
       return _fromNexora(_unwrapProduct(res.data));
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);

@@ -54,7 +54,6 @@ class OfficerBloc extends Bloc<OfficerEvent, OfficerState> {
     );
   }
 
-  // FIX 1: forward branchId so getById uses the correct org URL.
   Future<void> _onLoadOne(
     OfficerLoadOneRequested event,
     Emitter<OfficerState> emit,
@@ -69,6 +68,9 @@ class OfficerBloc extends Bloc<OfficerEvent, OfficerState> {
     );
   }
 
+  // Problem #2 fix: CreateOfficerParams now carries fullName + password.
+  // The usecase calls repository.create() → POST /orgs/{rootOrgId}/officers
+  // which creates a fully active User account the officer can log in with.
   Future<void> _onCreate(
     OfficerCreateRequested event,
     Emitter<OfficerState> emit,
@@ -77,7 +79,12 @@ class OfficerBloc extends Bloc<OfficerEvent, OfficerState> {
     final result = await createUseCase(event.params);
     result.fold(
       (f) => emit(OfficerFailure(f.message)),
-      (_) => emit(OfficerOperationSuccess('Officer created successfully')),
+      (officer) => emit(
+        OfficerOperationSuccess(
+          'Officer "${officer.displayName}" created. They can log in immediately.',
+          updatedItem: officer,
+        ),
+      ),
     );
   }
 
@@ -109,14 +116,11 @@ class OfficerBloc extends Bloc<OfficerEvent, OfficerState> {
     );
   }
 
-  // FIX 1: Load the officer first (with branchId) so domainService.transition
-  // can use the correct org URL for activate/suspend PATCH calls.
   Future<void> _onActivate(
     OfficerActivateRequested event,
     Emitter<OfficerState> emit,
   ) async {
     emit(OfficerLoading());
-    // Load first to get branchId, then transition
     final loaded = await getUseCase(GetOfficerParams(userId: event.userId));
     if (loaded.isLeft()) {
       loaded.fold((f) => emit(OfficerFailure(f.message)), (_) {});
@@ -178,6 +182,8 @@ class OfficerBloc extends Bloc<OfficerEvent, OfficerState> {
     );
   }
 
+  // Problem #3 fix: calls the dedicated transfer endpoint via domainService
+  // which never deletes the root org membership anchor.
   Future<void> _onReassignBranch(
     OfficerReassignBranchRequested event,
     Emitter<OfficerState> emit,

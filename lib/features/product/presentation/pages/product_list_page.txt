@@ -1,4 +1,4 @@
-﻿// lib/features/product/presentation/pages/product_list_page.dart
+// lib/features/product/presentation/pages/product_list_page.dart
 //
 // FIXES vs previous version:
 //   1. _TableHeaderDelegate removed — SliverPersistentHeader with a delegate
@@ -113,15 +113,10 @@ class _ProductListPageState extends State<ProductListPage> {
   final TextEditingController _searchCtrl = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
 
-  // @override
-  // void initState() {
-  //   super.initState();
-  //   context.read<ProductBloc>().add(ProductLoadAllRequested());
-  // }
   @override
   void initState() {
     super.initState();
-    context.read<ProductBloc>().add(ProductLoadWithPromotionsRequested());
+    context.read<ProductBloc>().add(ProductLoadAllRequested());
   }
 
   @override
@@ -254,9 +249,7 @@ class _ProductListPageState extends State<ProductListPage> {
                   ScaffoldMessenger.of(
                     context,
                   ).showSnackBar(SnackBar(content: Text(state.message)));
-                  context.read<ProductBloc>().add(
-                    ProductLoadWithPromotionsRequested(),
-                  ); // ← changed
+                  context.read<ProductBloc>().add(ProductLoadAllRequested());
                 }
                 if (state is ProductFailure) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -283,7 +276,7 @@ class _ProductListPageState extends State<ProductListPage> {
                   }
                   return RefreshIndicator(
                     onRefresh: () async => context.read<ProductBloc>().add(
-                      ProductLoadWithPromotionsRequested(),
+                      ProductLoadAllRequested(),
                     ),
                     child: _buildView(filtered),
                   );
@@ -305,9 +298,7 @@ class _ProductListPageState extends State<ProductListPage> {
         icon: const Icon(Icons.refresh),
         onPressed: () {
           if (context.read<ProductBloc>().state is! ProductLoading) {
-            context.read<ProductBloc>().add(
-              ProductLoadWithPromotionsRequested(),
-            );
+            context.read<ProductBloc>().add(ProductLoadAllRequested());
           }
         },
       ),
@@ -583,9 +574,8 @@ class _ProductListPageState extends State<ProductListPage> {
           Text(msg, textAlign: TextAlign.center),
           const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: () => context.read<ProductBloc>().add(
-              ProductLoadWithPromotionsRequested(),
-            ),
+            onPressed: () =>
+                context.read<ProductBloc>().add(ProductLoadAllRequested()),
             icon: const Icon(Icons.refresh),
             label: const Text('Retry'),
           ),
