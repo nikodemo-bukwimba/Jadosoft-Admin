@@ -319,20 +319,22 @@ class AuthRepositoryImpl implements AuthRepository {
   }) async {
     await _orgContext.restore();
 
-    // Derive role from the resolved role slug, never default to orgAdmin
-    final existingRole = _orgContext.orgRole != OrgRole.unknown
-        ? _orgContext.orgRole
-        : OrgRole.unknown; // ← never assume orgAdmin
-
     await _orgContext.setRootOrg(
       id: orgId,
       name: _orgContext.rootOrgName ?? actorName,
-      role: existingRole,
+      role: _orgContext.orgRole != OrgRole.unknown
+          ? _orgContext.orgRole
+          : OrgRole.orgAdmin,
       actorId: actorId,
       actorName: actorName,
     );
 
+    // ── NEW: always sync the branch into OrgContext ───────────────────
+    // For field officers branchId is always set.
+    // For org admins it will be null — switchBranch(null) clears the filter,
+    // which is the correct "all branches" view for admins.
     await _orgContext.switchBranch(branchId: branchId, branchName: branchName);
+    // ─────────────────────────────────────────────────────────────────
   }
 
   UserModel _placeholderUser(String email) => UserModel(

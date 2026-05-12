@@ -67,8 +67,9 @@ class OfficerModel extends OfficerEntity {
       phone: (user['phone'] as String?) ?? (json['phone'] as String?),
       userStatus:
           (user['status'] as String?) ?? (json['user_status'] as String?),
-      branchId: (json['org_id'] ?? '').toString(),
+      branchId: (json['branch_id'] ?? json['org_id'] ?? '').toString(),
       branchName:
+          json['branch_name'] as String? ??
           json['org_name'] as String? ??
           (json['org'] is Map ? (json['org'] as Map)['name'] as String? : null),
       orgRoleId: (json['org_role_id'] ?? role['id'] ?? '').toString(),
