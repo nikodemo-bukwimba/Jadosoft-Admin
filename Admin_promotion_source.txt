@@ -1,13 +1,10 @@
 ﻿// ================================================================
 // features_promotion_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-05-07 10:01:17
+// Generated    : 2026-05-12 15:33:44
 // Files        : 27
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
-
-// === FILE: lib/features/promotion/data/datasources/promotion_api_datasource.dart ===
-
 
 // === FILE: lib/features/promotion/data/datasources/promotion_remote_datasource.dart ===
 // admin app promotion_remote_datasource.dart
@@ -55,8 +52,10 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
   }) : _dio = dio,
        _orgContext = orgContext;
 
+  // String get _base =>
+  //     '/pharma/orgs/${_orgContext.effectiveOrgId}/product-updates';
   String get _base =>
-      '/pharma/orgs/${_orgContext.effectiveOrgId}/product-updates';
+      '/pharma/orgs/${_orgContext.requireRootOrgId()}/product-updates';
 
   // ── Nexora response → PromotionModel ──────────────────────
 
@@ -100,7 +99,9 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
           : DateTime.now(),
       targetCount: j['total_recipients'] as int? ?? 0,
       broadcastSentAt: sentAt,
-      discountPercentage: (j['discount_percentage'] as num?)?.toDouble(),
+      discountPercentage: j['discount_percentage'] == null
+          ? null
+          : double.tryParse(j['discount_percentage'].toString()),
     );
   }
 
@@ -330,7 +331,9 @@ class PromotionModel extends PromotionEntity {
       channels: List<String>.from((json['channels'] as List?) ?? []),
       status: json['status'] as String? ?? 'draft',
       createdAt: createdAt,
-      discountPercentage: (json['discount_percentage'] as num?)?.toDouble(),
+      discountPercentage: json['discount_percentage'] == null
+          ? null
+          : double.tryParse(json['discount_percentage'].toString()),
       targetCount: json['target_count'] as int? ?? 0,
       broadcastSentAt: sentAt,
     );
@@ -805,6 +808,7 @@ class CreatePromotionParams {
   final DateTime startDate;
   final DateTime endDate;
   final List<String> channels;
+  final double? discountPercentage;
 
   const CreatePromotionParams({
     required this.title,
@@ -813,21 +817,30 @@ class CreatePromotionParams {
     required this.startDate,
     required this.endDate,
     required this.channels,
+    this.discountPercentage,
   });
 }
 
-class CreatePromotionUseCase implements UseCase<PromotionEntity, CreatePromotionParams> {
+class CreatePromotionUseCase
+    implements UseCase<PromotionEntity, CreatePromotionParams> {
   final PromotionRepository repository;
   CreatePromotionUseCase(this.repository);
 
   @override
   Future<Either<Failure, PromotionEntity>> call(CreatePromotionParams p) async {
-    // -- Validation gate --
     if (p.title.trim().isEmpty) {
       return const Left(ValidationFailure('Promotion title is required'));
     }
     if (p.title.trim().length < 3) {
-      return const Left(ValidationFailure('Title must be at least 3 characters'));
+      return const Left(
+        ValidationFailure('Title must be at least 3 characters'),
+      );
+    }
+    if (p.discountPercentage != null &&
+        (p.discountPercentage! < 0 || p.discountPercentage! > 100)) {
+      return const Left(
+        ValidationFailure('Discount percentage must be between 0 and 100'),
+      );
     }
 
     return repository.create(
@@ -841,6 +854,7 @@ class CreatePromotionUseCase implements UseCase<PromotionEntity, CreatePromotion
         channels: p.channels,
         status: '',
         createdAt: DateTime.now(),
+        discountPercentage: p.discountPercentage,
       ),
     );
   }
@@ -1083,9 +1097,6 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
     on<PromotionActivateRequested>(_onActivate);
     on<PromotionEndRequested>(_onEnd);
     on<PromotionCancelRequested>(_onCancel);
-    on<PromotionStatusOverridden>(
-      (event, emit) => emit(PromotionDetailLoaded(event.entity)),
-    );
   }
 
   Future<void> _onLoadAll(
@@ -1136,10 +1147,16 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
       UpdatePromotionParams(entity: event.entity),
     );
     if (emit.isDone) return;
-    result.fold(
-      (f) => emit(PromotionFailure(f.message)),
-      (_) => emit(PromotionOperationSuccess('Promotion updated successfully')),
-    );
+    result.fold((f) => emit(PromotionFailure(f.message)), (updated) {
+      emit(
+        PromotionOperationSuccess(
+          'Promotion updated successfully',
+          updatedItem: updated,
+        ),
+      );
+
+      emit(PromotionDetailLoaded(updated));
+    });
   }
 
   Future<void> _onDelete(
@@ -1165,15 +1182,16 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
       targetStatus: PromotionStatus.ended,
     );
     if (emit.isDone) return;
-    result.fold(
-      (f) => emit(PromotionFailure(f.message)),
-      (entity) => emit(
+    result.fold((f) => emit(PromotionFailure(f.message)), (entity) {
+      emit(
         PromotionOperationSuccess(
           'End Promotion successful',
           updatedItem: entity,
         ),
-      ),
-    );
+      );
+
+      emit(PromotionDetailLoaded(entity));
+    });
   }
 
   Future<void> _onCancel(
@@ -1186,15 +1204,16 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
       targetStatus: PromotionStatus.cancelled,
     );
     if (emit.isDone) return;
-    result.fold(
-      (f) => emit(PromotionFailure(f.message)),
-      (entity) => emit(
+    result.fold((f) => emit(PromotionFailure(f.message)), (entity) {
+      emit(
         PromotionOperationSuccess(
           'Cancel Promotion successful',
           updatedItem: entity,
         ),
-      ),
-    );
+      );
+
+      emit(PromotionDetailLoaded(entity));
+    });
   }
 
   Future<void> _onActivate(
@@ -1207,15 +1226,16 @@ class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
       targetStatus: PromotionStatus.active,
     );
     if (emit.isDone) return;
-    result.fold(
-      (f) => emit(PromotionFailure(f.message)),
-      (entity) => emit(
+    result.fold((f) => emit(PromotionFailure(f.message)), (entity) {
+      emit(
         PromotionOperationSuccess(
           'Activate Promotion successful',
           updatedItem: entity,
         ),
-      ),
-    );
+      );
+
+      emit(PromotionDetailLoaded(entity));
+    });
   }
 }
 
@@ -1301,7 +1321,7 @@ class PromotionFailure extends PromotionState {
   final String message;
   PromotionFailure(this.message);
 }
-
+class PromotionSubmitting extends PromotionState {}
 
 // === FILE: lib/features/promotion/presentation/enums/promotion_form_node.dart ===
 /// Form navigation node for Promotion.
@@ -1321,6 +1341,8 @@ enum PromotionFormNode { create, edit }
 // the local terminal status. Instead, we apply the returned
 // entity directly via PromotionStatusOverridden so the UI
 // reflects the correct state without a network round-trip.
+//
+// UPDATED: Shows discount percentage section when applicable.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
@@ -1333,6 +1355,8 @@ import '../bloc/promotion_bloc.dart';
 import '../bloc/promotion_event.dart';
 import '../bloc/promotion_state.dart';
 import '../widgets/promotion_status_badge.dart';
+import 'package:get_it/get_it.dart';
+import '../../../product/data/datasources/product_remote_datasource.dart';
 
 class PromotionDetailPage extends StatelessWidget {
   const PromotionDetailPage({super.key});
@@ -1348,14 +1372,6 @@ class PromotionDetailPage extends StatelessWidget {
               backgroundColor: Colors.green,
             ),
           );
-          // FIX: Apply the updated entity directly to state.
-          // Do NOT call LoadOne — it re-fetches from Nexora which maps
-          // 'sent' → 'active', discarding the local 'ended' status.
-          if (state.updatedItem != null) {
-            context.read<PromotionBloc>().add(
-              PromotionStatusOverridden(state.updatedItem!),
-            );
-          }
         }
         if (state is PromotionFailure) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1403,6 +1419,7 @@ class _DetailView extends StatelessWidget {
     final status = PromotionStatusX.fromString(item.status);
     final isWide = MediaQuery.of(context).size.width > 768;
     final model = item is PromotionModel ? item as PromotionModel : null;
+    final hasDiscount = item.discountPercentage != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -1436,6 +1453,12 @@ class _DetailView extends StatelessWidget {
                 if (model != null && model.targetCount > 0)
                   const SizedBox(height: 12),
 
+                // ── Discount Banner ───────────────────────────
+                if (hasDiscount) ...[
+                  _DiscountBanner(percentage: item.discountPercentage!),
+                  const SizedBox(height: 12),
+                ],
+
                 // ── Overview ─────────────────────────────────
                 _SectionCard(
                   title: 'Overview',
@@ -1464,6 +1487,13 @@ class _DetailView extends StatelessWidget {
                             label: 'Created',
                             value: _fmtDate(item.createdAt),
                           ),
+                          if (hasDiscount)
+                            _InfoBlock(
+                              label: 'Discount',
+                              value:
+                                  '${item.discountPercentage!.toStringAsFixed(item.discountPercentage! % 1 == 0 ? 0 : 1)}% OFF',
+                              valueColor: Colors.deepOrange,
+                            ),
                         ],
                       ),
                       if (item.description != null) ...[
@@ -1578,6 +1608,69 @@ class _DetailView extends StatelessWidget {
   }
 }
 
+// ─── Discount Banner ───────────────────────────────────────────────────────
+
+class _DiscountBanner extends StatelessWidget {
+  final double percentage;
+  const _DiscountBanner({required this.percentage});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final label = percentage % 1 == 0
+        ? '${percentage.toInt()}%'
+        : '${percentage.toStringAsFixed(1)}%';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.deepOrange.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.deepOrange.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.deepOrange.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.local_offer_outlined,
+              color: Colors.deepOrange,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Discount Campaign — $label OFF',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: Colors.deepOrange.shade700,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Applied to all selected products. '
+                  'Per-variant overrides can be configured via the Override API.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.deepOrange.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Broadcast Banner ──────────────────────────────────────────────────────
 
 class _BroadcastBanner extends StatelessWidget {
@@ -1613,11 +1706,7 @@ class _BroadcastBanner extends StatelessWidget {
                 ),
                 if (sentAt != null)
                   Text(
-                    'Dispatched via ${model.channels.map((c) => c == 'sms'
-                        ? 'SMS'
-                        : c == 'whatsapp'
-                        ? 'WhatsApp'
-                        : 'In-App').join(' & ')} on ${_fmtDateTime(sentAt)}',
+                    'Sent on ${_fmtDate(sentAt)}',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: Colors.green.shade600,
                     ),
@@ -1630,9 +1719,7 @@ class _BroadcastBanner extends StatelessWidget {
     );
   }
 
-  String _fmtDateTime(DateTime d) {
-    final h = d.hour.toString().padLeft(2, '0');
-    final min = d.minute.toString().padLeft(2, '0');
+  String _fmtDate(DateTime d) {
     const m = [
       'Jan',
       'Feb',
@@ -1647,218 +1734,40 @@ class _BroadcastBanner extends StatelessWidget {
       'Nov',
       'Dec',
     ];
-    return '${m[d.month - 1]} ${d.day}, ${d.year} at $h:$min';
+    return '${m[d.month - 1]} ${d.day}, ${d.year}';
   }
 }
 
-// ─── Action Buttons ────────────────────────────────────────────────────────
+// ─── Info Block ────────────────────────────────────────────────────────────
 
-class _ActionButtons extends StatelessWidget {
-  final PromotionEntity item;
-  final PromotionStatus status;
-  const _ActionButtons({required this.item, required this.status});
+class _InfoBlock extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  const _InfoBlock({required this.label, required this.value, this.valueColor});
 
   @override
   Widget build(BuildContext context) {
-    final canActivate = status == PromotionStatus.draft;
-    final canEnd = status == PromotionStatus.active;
-    final canCancel =
-        status == PromotionStatus.draft || status == PromotionStatus.active;
-
-    if (!canActivate && !canEnd && !canCancel) {
-      return const SizedBox.shrink();
-    }
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Admin Actions',
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                if (canActivate)
-                  FilledButton.icon(
-                    onPressed: () => _confirmActivate(context),
-                    icon: const Icon(Icons.rocket_launch_outlined),
-                    label: const Text('Activate & Broadcast'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Colors.green,
-                    ),
-                  ),
-                if (canEnd)
-                  FilledButton.icon(
-                    onPressed: () => _confirmEnd(context),
-                    icon: const Icon(Icons.stop_circle_outlined),
-                    label: const Text('End Promotion'),
-                    style: FilledButton.styleFrom(backgroundColor: Colors.blue),
-                  ),
-                if (canCancel)
-                  OutlinedButton.icon(
-                    onPressed: () => _confirmCancel(context),
-                    icon: const Icon(Icons.cancel_outlined),
-                    label: const Text('Cancel'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
-                      side: const BorderSide(color: Colors.red),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _confirmActivate(BuildContext context) {
-    final bloc = context.read<PromotionBloc>();
-    showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.rocket_launch_outlined, color: Colors.green),
-            SizedBox(width: 8),
-            Text('Activate & Broadcast'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Activating this promotion will immediately:'),
-            const SizedBox(height: 12),
-            _bulletPoint(
-              'Send SMS to all registered customers via Vodacom/Airtel gateway',
-              Icons.sms_outlined,
-              Colors.orange,
-            ),
-            const SizedBox(height: 6),
-            _bulletPoint(
-              'Send WhatsApp messages via WhatsApp Business API',
-              Icons.chat_outlined,
-              const Color(0xFF25D366),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'This action cannot be undone. The broadcast will go out immediately.',
-              style: TextStyle(
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
-                color: Colors.grey,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.green),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Activate & Broadcast'),
-          ),
-        ],
-      ),
-    ).then((confirmed) {
-      if (confirmed == true) {
-        bloc.add(PromotionActivateRequested(item.id));
-      }
-    });
-  }
-
-  void _confirmEnd(BuildContext context) {
-    final bloc = context.read<PromotionBloc>();
-    showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.stop_circle_outlined, color: Colors.blue),
-            SizedBox(width: 8),
-            Text('End Promotion'),
-          ],
-        ),
-        content: const Text(
-          'This will mark the promotion as ended. No further broadcasts will be sent.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.blue),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('End Promotion'),
-          ),
-        ],
-      ),
-    ).then((confirmed) {
-      if (confirmed == true) {
-        bloc.add(PromotionEndRequested(item.id));
-      }
-    });
-  }
-
-  void _confirmCancel(BuildContext context) {
-    final bloc = context.read<PromotionBloc>();
-    showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.cancel_outlined, color: Colors.red),
-            SizedBox(width: 8),
-            Text('Cancel Promotion'),
-          ],
-        ),
-        content: const Text(
-          'This will cancel the promotion. This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Back'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Cancel Promotion'),
-          ),
-        ],
-      ),
-    ).then((confirmed) {
-      if (confirmed == true) {
-        bloc.add(PromotionCancelRequested(item.id));
-      }
-    });
-  }
-
-  Widget _bulletPoint(String text, IconData icon, Color color) {
-    return Row(
+    final theme = Theme.of(context);
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 16, color: color),
-        const SizedBox(width: 8),
-        Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            letterSpacing: 0.4,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: valueColor,
+          ),
+        ),
       ],
     );
   }
@@ -1866,32 +1775,61 @@ class _ActionButtons extends StatelessWidget {
 
 // ─── Product Row ───────────────────────────────────────────────────────────
 
-class _ProductRow extends StatelessWidget {
+class _ProductRow extends StatefulWidget {
   final String productId;
   const _ProductRow({required this.productId});
 
   @override
+  State<_ProductRow> createState() => _ProductRowState();
+}
+
+class _ProductRowState extends State<_ProductRow> {
+  String? name;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final ds = GetIt.instance<ProductRemoteDataSource>();
+      final product = await ds.getById(widget.productId);
+
+      if (mounted) {
+        setState(() {
+          name = product.name;
+          loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          name = widget.productId;
+          loading = false;
+        });
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Icon(
-              Icons.medication_outlined,
-              size: 16,
-              color: theme.colorScheme.primary,
+          const Icon(Icons.circle, size: 6),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              loading ? 'Loading...' : (name ?? widget.productId),
+              style: theme.textTheme.bodySmall,
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(child: Text(productId, style: theme.textTheme.bodyMedium)),
         ],
       ),
     );
@@ -1917,6 +1855,7 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = accentColor ?? theme.colorScheme.primary;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -1930,11 +1869,13 @@ class _SectionCard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.06),
+              color: color.withValues(alpha: 0.06),
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(12),
               ),
-              border: Border(bottom: BorderSide(color: color.withOpacity(0.2))),
+              border: Border(
+                bottom: BorderSide(color: color.withValues(alpha: 0.2)),
+              ),
             ),
             child: Row(
               children: [
@@ -1957,34 +1898,98 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
-class _InfoBlock extends StatelessWidget {
-  final String label;
-  final String? value;
+// ─── Action Buttons ────────────────────────────────────────────────────────
 
-  const _InfoBlock({required this.label, this.value});
+class _ActionButtons extends StatelessWidget {
+  final PromotionEntity item;
+  final PromotionStatus status;
+
+  const _ActionButtons({required this.item, required this.status});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SizedBox(
-      width: 160,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label.toUpperCase(),
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.5,
-              fontSize: 10,
+    final bloc = context.read<PromotionBloc>();
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        if (status == PromotionStatus.draft)
+          FilledButton.icon(
+            onPressed: () => _confirmAction(
+              context,
+              title: 'Publish Promotion?',
+              body:
+                  'This will broadcast to all eligible customers via selected channels. This cannot be undone.',
+              confirmLabel: 'Publish',
+              onConfirm: () => bloc.add(PromotionActivateRequested(item.id)),
             ),
+            icon: const Icon(Icons.send_outlined, size: 18),
+            label: const Text('Publish'),
           ),
-          const SizedBox(height: 3),
-          Text(value ?? '—', style: theme.textTheme.bodyMedium),
+        if (status == PromotionStatus.active)
+          OutlinedButton.icon(
+            onPressed: () => _confirmAction(
+              context,
+              title: 'End Campaign?',
+              body:
+                  'The campaign will be marked as ended. No further broadcasts will be sent.',
+              confirmLabel: 'End Campaign',
+              onConfirm: () => bloc.add(PromotionEndRequested(item.id)),
+            ),
+            icon: const Icon(Icons.stop_circle_outlined, size: 18),
+            label: const Text('End Campaign'),
+          ),
+        if (status == PromotionStatus.draft || status == PromotionStatus.active)
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+              side: BorderSide(
+                color: Theme.of(context).colorScheme.error.withOpacity(0.5),
+              ),
+            ),
+            onPressed: () => _confirmAction(
+              context,
+              title: 'Cancel Promotion?',
+              body: 'The campaign will be cancelled. This cannot be undone.',
+              confirmLabel: 'Cancel Campaign',
+              onConfirm: () => bloc.add(PromotionCancelRequested(item.id)),
+            ),
+            icon: const Icon(Icons.cancel_outlined, size: 18),
+            label: const Text('Cancel'),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _confirmAction(
+    BuildContext context, {
+    required String title,
+    required String body,
+    required String confirmLabel,
+    required VoidCallback onConfirm,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(confirmLabel),
+          ),
         ],
       ),
     );
+
+    if (confirmed == true) {
+      onConfirm();
+    }
   }
 }
 
@@ -1992,15 +1997,19 @@ class _InfoBlock extends StatelessWidget {
 // === FILE: lib/features/promotion/presentation/pages/promotion_form_page.dart ===
 // promotion_form_page.dart
 // Products are fetched from the real Nexora Commerce Products endpoint:
-//   GET /api/v1/products?org_id={orgId}&per_page=200
+//   GET /api/v1/commerce/orgs/{orgId}/products?per_page=200&status=active
 // No hardcoded product map. Products load on page init via _loadProducts().
+//
+// UPDATED: Added discount_percentage field (optional).
+//   null  → normal product campaign
+//   0-100 → discount campaign (percentage)
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/context/org_context.dart';
+import '../../../product/data/datasources/product_remote_datasource.dart';
 import '../../domain/entities/promotion_entity.dart';
 import '../../domain/usecases/create_promotion_usecase.dart';
 import '../../../../core/widgets/searchable_picker_sheet.dart';
@@ -2023,14 +2032,16 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
   final _formKey = GlobalKey<FormState>();
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
+  final _discountCtrl = TextEditingController();
 
   DateTime _startDate = DateTime.now();
   DateTime _endDate = DateTime.now().add(const Duration(days: 7));
   final List<String> _selectedProducts = [];
   final List<String> _selectedChannels = ['sms', 'whatsapp'];
+  bool _hasDiscount = false;
 
   bool _populated = false;
-  PromotionEntity? _originalEntity; // ← ADD
+  PromotionEntity? _originalEntity;
 
   // ── Product catalogue (loaded from API) ───────────────────
   Map<String, String> _productMap = {};
@@ -2040,13 +2051,8 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
   @override
   void initState() {
     super.initState();
-    _startDate = DateTime.now();
-    _endDate = DateTime.now().add(const Duration(days: 7));
     _loadProducts();
 
-    // Populate immediately from current bloc state if already loaded
-    // This handles the case where bloc state is PromotionDetailLoaded
-    // before the page is built (navigating from detail → edit).
     if (widget.mode == PromotionFormNode.edit) {
       final currentState = context.read<PromotionBloc>().state;
       if (currentState is PromotionDetailLoaded) {
@@ -2055,34 +2061,20 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
     }
   }
 
-  /// Fetches products from Nexora Commerce Products endpoint.
-  /// Maps id → name for the picker.
   Future<void> _loadProducts() async {
     setState(() {
       _productsLoading = true;
       _productsError = null;
     });
+
     try {
-      final dio = GetIt.instance<Dio>();
-      final orgContext = GetIt.instance<OrgContext>();
+      final productDs = GetIt.instance<ProductRemoteDataSource>();
+      final products = await productDs.getAll();
 
-      final res = await dio.get(
-        '/commerce/orgs/${orgContext.effectiveOrgId}/products',
-        queryParameters: {'per_page': 200, 'status': 'active'},
-      );
-
-      final raw = res.data;
-      final List<dynamic> items = raw is Map
-          ? (raw['data'] ?? raw['products'] ?? []) as List
-          : raw as List;
-
-      final map = <String, String>{};
-      for (final item in items.cast<Map<String, dynamic>>()) {
-        final id = item['id']?.toString() ?? '';
-        final name =
-            item['name'] as String? ?? item['product_name'] as String? ?? id;
-        if (id.isNotEmpty) map[id] = name;
-      }
+      final map = <String, String>{
+        for (final p in products)
+          if (p.id.isNotEmpty) p.id: p.name,
+      };
 
       if (mounted) {
         setState(() {
@@ -2104,6 +2096,7 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
   void dispose() {
     _titleCtrl.dispose();
     _descCtrl.dispose();
+    _discountCtrl.dispose();
     super.dispose();
   }
 
@@ -2121,6 +2114,13 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
     _selectedChannels
       ..clear()
       ..addAll(item.channels);
+
+    if (item.discountPercentage != null) {
+      _hasDiscount = true;
+      _discountCtrl.text = item.discountPercentage!.toStringAsFixed(
+        item.discountPercentage! % 1 == 0 ? 0 : 2,
+      );
+    }
   }
 
   @override
@@ -2132,10 +2132,7 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
     return BlocConsumer<PromotionBloc, PromotionState>(
       listenWhen: (_, state) =>
           state is PromotionOperationSuccess || state is PromotionFailure,
-      buildWhen: (previous, state) =>
-          state is PromotionOperationSuccess ||
-          state is PromotionFailure ||
-          (isEdit && state is PromotionDetailLoaded),
+
       listener: (context, state) {
         if (state is PromotionOperationSuccess) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -2144,8 +2141,10 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
               backgroundColor: Colors.green,
             ),
           );
+
           context.go('/promotions');
         }
+
         if (state is PromotionFailure) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -2155,6 +2154,7 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
           );
         }
       },
+
       builder: (context, state) {
         if (isEdit && state is PromotionDetailLoaded) {
           _populate(state.item);
@@ -2166,7 +2166,6 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
             centerTitle: false,
           ),
           body: SingleChildScrollView(
-            // ← removed PromotionLoading check here
             padding: EdgeInsets.symmetric(
               horizontal: isWide ? 48 : 16,
               vertical: 16,
@@ -2179,6 +2178,7 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      // ── Promotion Details ─────────────────────
                       _SectionCard(
                         title: 'Promotion Details',
                         icon: Icons.campaign_outlined,
@@ -2218,6 +2218,91 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
                       ),
                       const SizedBox(height: 12),
 
+                      // ── Discount / Campaign Type ──────────────
+                      _SectionCard(
+                        title: 'Campaign Type',
+                        icon: Icons.local_offer_outlined,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Toggle between product campaign and discount campaign
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _CampaignTypeButton(
+                                    label: 'Product Campaign',
+                                    subtitle:
+                                        'Announce new or featured products',
+                                    icon: Icons.medication_outlined,
+                                    selected: !_hasDiscount,
+                                    onTap: () => setState(() {
+                                      _hasDiscount = false;
+                                      _discountCtrl.clear();
+                                    }),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _CampaignTypeButton(
+                                    label: 'Discount Campaign',
+                                    subtitle: 'Offer a percentage discount',
+                                    icon: Icons.percent_outlined,
+                                    selected: _hasDiscount,
+                                    onTap: () =>
+                                        setState(() => _hasDiscount = true),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (_hasDiscount) ...[
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: _discountCtrl,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                    RegExp(r'^\d{0,3}(\.\d{0,2})?'),
+                                  ),
+                                ],
+                                decoration: InputDecoration(
+                                  labelText: 'Discount Percentage *',
+                                  hintText: 'e.g. 15',
+                                  border: const OutlineInputBorder(),
+                                  suffixText: '%',
+                                  suffixStyle: TextStyle(
+                                    color: theme.colorScheme.primary,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 16,
+                                  ),
+                                  helperText:
+                                      'Applied to all selected products. '
+                                      'Variant-level overrides can be set after publishing.',
+                                ),
+                                validator: (v) {
+                                  if (!_hasDiscount) return null;
+                                  if (v == null || v.trim().isEmpty) {
+                                    return 'Discount percentage is required';
+                                  }
+                                  final parsed = double.tryParse(v.trim());
+                                  if (parsed == null) {
+                                    return 'Enter a valid number';
+                                  }
+                                  if (parsed < 0 || parsed > 100) {
+                                    return 'Must be between 0 and 100';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // ── Date Range ────────────────────────────
                       _SectionCard(
                         title: 'Date Range',
                         icon: Icons.date_range_outlined,
@@ -2265,6 +2350,7 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
                       ),
                       const SizedBox(height: 12),
 
+                      // ── Broadcast Channels ────────────────────
                       _SectionCard(
                         title: 'Broadcast Channels',
                         icon: Icons.cell_tower_outlined,
@@ -2317,6 +2403,7 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
                       ),
                       const SizedBox(height: 12),
 
+                      // ── Products ──────────────────────────────
                       _SectionCard(
                         title:
                             'Products to Promote (${_selectedProducts.length} selected)',
@@ -2373,14 +2460,14 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
                         ),
                       const SizedBox(height: 24),
 
-                      // ── Submit button with its own loading state ──
+                      // ── Submit ────────────────────────────────
                       BlocBuilder<PromotionBloc, PromotionState>(
                         buildWhen: (_, state) =>
                             state is PromotionLoading ||
                             state is PromotionFailure ||
                             state is PromotionOperationSuccess,
                         builder: (context, state) {
-                          final isSubmitting = state is PromotionLoading;
+                          final isSubmitting = state is PromotionSubmitting;
                           return SizedBox(
                             height: 48,
                             child: FilledButton(
@@ -2425,6 +2512,12 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
     final bloc = context.read<PromotionBloc>();
     final isEdit = widget.mode == PromotionFormNode.edit;
 
+    // Resolve discount percentage
+    double? discountPercentage;
+    if (_hasDiscount && _discountCtrl.text.trim().isNotEmpty) {
+      discountPercentage = double.tryParse(_discountCtrl.text.trim());
+    }
+
     if (isEdit) {
       if (_originalEntity == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2444,6 +2537,8 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
         startDate: _startDate,
         endDate: _endDate,
         channels: List<String>.from(_selectedChannels),
+        discountPercentage: discountPercentage,
+        clearDiscount: !_hasDiscount,
       );
       bloc.add(PromotionUpdateRequested(updated));
     } else {
@@ -2458,10 +2553,81 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
             startDate: _startDate,
             endDate: _endDate,
             channels: List<String>.from(_selectedChannels),
+            discountPercentage: discountPercentage,
           ),
         ),
       );
     }
+  }
+}
+
+// ─── Campaign Type Button ──────────────────────────────────────────────────
+
+class _CampaignTypeButton extends StatelessWidget {
+  final String label;
+  final String subtitle;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CampaignTypeButton({
+    required this.label,
+    required this.subtitle,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = selected ? theme.colorScheme.primary : Colors.grey;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: selected ? color.withOpacity(0.08) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected
+                ? color.withOpacity(0.5)
+                : Colors.grey.withOpacity(0.3),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 20, color: color),
+                const Spacer(),
+                if (selected) Icon(Icons.check_circle, size: 18, color: color),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: selected ? color : null,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -2535,7 +2701,7 @@ class _ProductPickerField extends StatelessWidget {
   }
 }
 
-// ─── Products error/retry state ────────────────────────────────────────────
+// ─── Products Error/Retry State ────────────────────────────────────────────
 
 class _ProductsErrorState extends StatelessWidget {
   final String message;
@@ -2824,6 +2990,13 @@ class _PromotionListPageState extends State<PromotionListPage> {
           title: const Text('Promotions'),
           centerTitle: false,
           actions: [
+            IconButton(
+              tooltip: 'Refresh',
+              icon: const Icon(Icons.refresh),
+              onPressed: () {
+                context.read<PromotionBloc>().add(PromotionLoadAllRequested());
+              },
+            ),
             PopupMenuButton<PromotionStatus?>(
               icon: Badge(
                 isLabelVisible: _filterStatus != null,
@@ -3133,6 +3306,8 @@ class PromotionCard extends StatelessWidget {
 // Removed all references to PromotionMockDataSource.productName().
 // Product IDs are displayed as-is on the card chips until the Product
 // feature (Seq 7) provides a name cache.
+//
+// UPDATED: Shows discount percentage badge when discountPercentage is set.
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -3140,6 +3315,7 @@ import '../../data/models/promotion_model.dart';
 import '../../domain/entities/promotion_entity.dart';
 import '../../domain/value_objects/promotion_status.dart';
 import '../widgets/promotion_status_badge.dart';
+import 'promotion_product_names.dart';
 
 class PromotionCardTile extends StatelessWidget {
   final PromotionEntity item;
@@ -3152,6 +3328,7 @@ class PromotionCardTile extends StatelessWidget {
     final isActive = status == PromotionStatus.active;
     final isDraft = status == PromotionStatus.draft;
     final model = item is PromotionModel ? item as PromotionModel : null;
+    final hasDiscount = item.discountPercentage != null;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -3173,7 +3350,7 @@ class PromotionCardTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
+              // ── Header ──────────────────────────────────────
               Row(
                 children: [
                   Container(
@@ -3183,7 +3360,9 @@ class PromotionCardTile extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
-                      Icons.campaign_outlined,
+                      hasDiscount
+                          ? Icons.local_offer_outlined
+                          : Icons.campaign_outlined,
                       size: 20,
                       color: status.color,
                     ),
@@ -3210,10 +3389,16 @@ class PromotionCardTile extends StatelessWidget {
                       ],
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  // ── Discount badge ─────────────────────────
+                  if (hasDiscount)
+                    _DiscountBadge(percentage: item.discountPercentage!),
+                  if (hasDiscount) const SizedBox(width: 6),
                   PromotionStatusBadge(status: status, compact: true),
                 ],
               ),
-              // Description
+
+              // ── Description ──────────────────────────────
               if (item.description != null) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -3227,26 +3412,17 @@ class PromotionCardTile extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 10),
-              // Products — show count chip + first 2 IDs
-              // Names will be enriched when Product feature (Seq 7) is live
-              if (item.productIds.isNotEmpty)
-                Wrap(
-                  spacing: 5,
-                  runSpacing: 4,
-                  children: [
-                    ...item.productIds.take(2).map((id) => _productChip(id, theme)),
-                    if (item.productIds.length > 2)
-                      _productChip('+${item.productIds.length - 2} more', theme),
-                  ],
-                ),
+
+              // ── Products ─────────────────────────────────
+              if (item.productIds.isNotEmpty) _productNamesChip(theme),
               const SizedBox(height: 10),
-              // Footer
+
+              // ── Footer ───────────────────────────────────
               Row(
                 children: [
                   ..._channelIcons(item.channels, theme),
                   const Spacer(),
-                  if (!isDraft && model != null)
-                    _broadcastCount(model, theme),
+                  if (!isDraft && model != null) _broadcastCount(model, theme),
                 ],
               ),
             ],
@@ -3256,16 +3432,15 @@ class PromotionCardTile extends StatelessWidget {
     );
   }
 
-  Widget _productChip(String label, ThemeData theme) {
+  Widget _productNamesChip(ThemeData theme) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(
-        label,
+      child: PromotionProductNames(
+        productIds: item.productIds,
         style: theme.textTheme.labelSmall?.copyWith(fontSize: 10),
       ),
     );
@@ -3276,18 +3451,17 @@ class PromotionCardTile extends StatelessWidget {
       final icon = c == 'sms'
           ? Icons.sms_outlined
           : c == 'whatsapp'
-              ? Icons.chat_outlined
-              : Icons.notifications_outlined;
+          ? Icons.chat_outlined
+          : Icons.notifications_outlined;
       final color = c == 'sms'
           ? Colors.orange
           : c == 'whatsapp'
-              ? const Color(0xFF25D366)
-              : Colors.indigo;
+          ? const Color(0xFF25D366)
+          : Colors.indigo;
       return Padding(
         padding: const EdgeInsets.only(right: 6),
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
           decoration: BoxDecoration(
             color: color.withOpacity(0.10),
             borderRadius: BorderRadius.circular(12),
@@ -3302,12 +3476,13 @@ class PromotionCardTile extends StatelessWidget {
                 c == 'sms'
                     ? 'SMS'
                     : c == 'whatsapp'
-                        ? 'WhatsApp'
-                        : 'In-App',
+                    ? 'WhatsApp'
+                    : 'In-App',
                 style: TextStyle(
-                    fontSize: 10,
-                    color: color,
-                    fontWeight: FontWeight.w600),
+                  fontSize: 10,
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -3322,9 +3497,11 @@ class PromotionCardTile extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.people_outline,
-            size: 13,
-            color: theme.colorScheme.onSurfaceVariant),
+        Icon(
+          Icons.people_outline,
+          size: 13,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
         const SizedBox(width: 4),
         Text(
           '$count customers reached',
@@ -3338,12 +3515,135 @@ class PromotionCardTile extends StatelessWidget {
 
   String _fmtDate(DateTime d) {
     const m = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${m[d.month - 1]} ${d.day}';
   }
 }
+
+// ─── Discount Badge ────────────────────────────────────────────────────────
+
+class _DiscountBadge extends StatelessWidget {
+  final double percentage;
+  const _DiscountBadge({required this.percentage});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = percentage % 1 == 0
+        ? '${percentage.toInt()}% OFF'
+        : '${percentage.toStringAsFixed(1)}% OFF';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.deepOrange.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.deepOrange.withOpacity(0.4)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 10,
+          color: Colors.deepOrange,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/promotion/presentation/widgets/promotion_product_names.dart ===
+import 'package:flutter/material.dart';
+import 'package:get_it/get_it.dart';
+
+import '../../../product/data/datasources/product_remote_datasource.dart';
+
+class PromotionProductNames extends StatefulWidget {
+  final List<String> productIds;
+  final int maxItems;
+  final TextStyle? style;
+
+  const PromotionProductNames({
+    super.key,
+    required this.productIds,
+    this.maxItems = 2,
+    this.style,
+  });
+
+  @override
+  State<PromotionProductNames> createState() => _PromotionProductNamesState();
+}
+
+class _PromotionProductNamesState extends State<PromotionProductNames> {
+  bool loading = true;
+  List<String> names = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final ds = GetIt.instance<ProductRemoteDataSource>();
+
+      final products = await Future.wait(
+        widget.productIds.map((id) => ds.getById(id)),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        names = products.map((e) => e.name).toList();
+        loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        names = widget.productIds;
+        loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return Text('Loading...', style: widget.style);
+    }
+
+    final visible = names.take(widget.maxItems).toList();
+
+    var text = visible.join('  •  ');
+
+    if (names.length > widget.maxItems) {
+      text += ' +${names.length - widget.maxItems}';
+    }
+
+    return Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: widget.style,
+    );
+  }
+}
+
 
 // === FILE: lib/features/promotion/presentation/widgets/promotion_status_badge.dart ===
 import 'package:flutter/material.dart';
@@ -3401,12 +3701,15 @@ class PromotionStatusBadge extends StatelessWidget {
 // Removed all references to PromotionMockDataSource.productName().
 // Product IDs are displayed as-is until the Product feature (Seq 7)
 // provides a name cache/repository.
+//
+// UPDATED: List row and table row now show discount percentage when set.
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../domain/entities/promotion_entity.dart';
 import '../../domain/value_objects/promotion_status.dart';
 import '../widgets/promotion_status_badge.dart';
+import 'promotion_product_names.dart';
 
 // ─── List Row ──────────────────────────────────────────────────────────────
 
@@ -3418,6 +3721,7 @@ class PromotionListRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final status = PromotionStatusX.fromString(item.status);
+    final hasDiscount = item.discountPercentage != null;
 
     return InkWell(
       onTap: () => context.go('/promotions/${item.id}'),
@@ -3433,7 +3737,9 @@ class PromotionListRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
-                Icons.campaign_outlined,
+                hasDiscount
+                    ? Icons.local_offer_outlined
+                    : Icons.campaign_outlined,
                 size: 18,
                 color: status.color,
               ),
@@ -3452,12 +3758,33 @@ class PromotionListRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    '${item.productIds.length} products · '
-                    '${_fmtDate(item.startDate)} – ${_fmtDate(item.endDate)}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${_fmtDate(item.startDate)} – ${_fmtDate(item.endDate)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+
+                      const SizedBox(height: 2),
+
+                      PromotionProductNames(
+                        productIds: item.productIds,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+
+                      if (hasDiscount) ...[
+                        const SizedBox(height: 4),
+                        _InlineDiscountBadge(
+                          percentage: item.discountPercentage!,
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -3511,6 +3838,7 @@ class PromotionTableRow extends StatelessWidget {
         children: [
           _hcell('Title', flex: 3, theme: theme),
           _hcell('Products', flex: 2, theme: theme),
+          _hcell('Discount', flex: 1, theme: theme),
           _hcell('Channels', flex: 2, theme: theme),
           _hcell('Date Range', flex: 2, theme: theme),
           _hcell('Status', flex: 1, theme: theme),
@@ -3523,12 +3851,9 @@ class PromotionTableRow extends StatelessWidget {
     final e = item!;
     final status = PromotionStatusX.fromString(e.status);
 
-    // Product IDs truncated to 2 visible + overflow count.
-    // Full names will be shown when Product feature cache is available.
-    final productDisplay = e.productIds.isEmpty
-        ? '—'
-        : e.productIds.take(2).join(', ') +
-              (e.productIds.length > 2 ? ' +${e.productIds.length - 2}' : '');
+    final discountDisplay = e.discountPercentage != null
+        ? '${e.discountPercentage!.toStringAsFixed(e.discountPercentage! % 1 == 0 ? 0 : 1)}%'
+        : '—';
 
     return InkWell(
       onTap: () => context.go('/promotions/${e.id}'),
@@ -3553,13 +3878,30 @@ class PromotionTableRow extends StatelessWidget {
             ),
             Expanded(
               flex: 2,
-              child: Text(
-                productDisplay,
+              child: PromotionProductNames(
+                productIds: e.productIds,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
-                overflow: TextOverflow.ellipsis,
               ),
+            ),
+            Expanded(
+              flex: 1,
+              child: e.discountPercentage != null
+                  ? Text(
+                      discountDisplay,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.deepOrange,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    )
+                  : Text(
+                      '—',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
             ),
             Expanded(
               flex: 2,
@@ -3628,6 +3970,37 @@ class PromotionTableRow extends StatelessWidget {
       'Dec',
     ];
     return '${m[d.month - 1]} ${d.day}';
+  }
+}
+
+// ─── Inline Discount Badge ─────────────────────────────────────────────────
+
+class _InlineDiscountBadge extends StatelessWidget {
+  final double percentage;
+  const _InlineDiscountBadge({required this.percentage});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = percentage % 1 == 0
+        ? '${percentage.toInt()}%'
+        : '${percentage.toStringAsFixed(1)}%';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: Colors.deepOrange.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.deepOrange.withOpacity(0.35)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 9,
+          color: Colors.deepOrange,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
   }
 }
 

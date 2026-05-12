@@ -6,10 +6,10 @@ import '../models/product_model.dart';
 
 abstract class ProductRemoteDataSource {
   Future<List<ProductModel>> getAll();
-  Future<ProductModel>       getById(String id);
-  Future<ProductModel>       create(Map<String, dynamic> data);
-  Future<ProductModel>       update(String id, Map<String, dynamic> data);
-  Future<void>                delete(String id);
+  Future<ProductModel> getById(String id);
+  Future<ProductModel> create(Map<String, dynamic> data);
+  Future<ProductModel> update(String id, Map<String, dynamic> data);
+  Future<void> delete(String id);
 }
 
 class ProductRemoteDataSourceImpl implements ProductRemoteDataSource {
