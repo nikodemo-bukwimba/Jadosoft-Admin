@@ -1,7 +1,7 @@
 ﻿// ================================================================
 // features_product_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-05-14 07:36:12
+// Generated    : 2026-05-13 12:19:57
 // Files        : 34
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================

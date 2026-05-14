@@ -35,6 +35,10 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     required this.currentUserRole,
   }) : _ds = dataSource,
        super(ConversationInitial()) {
+    // Register current user — only if actorId is non-empty
+    if (currentUserId.isNotEmpty && currentUserName.isNotEmpty) {
+      _ds.registerName(currentUserId, currentUserName);
+    }
     // FIX #2: Register current user's name in the datasource name cache
     // so that messages sent by this user show their name, not their ULID.
     _ds.registerName(currentUserId, currentUserName);

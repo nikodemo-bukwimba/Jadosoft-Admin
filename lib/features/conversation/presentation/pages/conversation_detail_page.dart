@@ -210,7 +210,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
           final isAdmin = _isParticipant(conv, currentUserId);
           final isClosed = conv.status == ConversationStatus.closed;
           final isGroup = conv.type == ConversationType.group;
-          final showNames = isGroup || !isAdmin;
+          final showNames = true;
 
           return LayoutBuilder(
             builder: (context, constraints) {

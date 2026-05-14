@@ -33,17 +33,22 @@ class _ConversationListPageState extends State<ConversationListPage>
     super.dispose();
   }
 
+  // FIX: case-insensitive participant check so DMs always land in "My
+  // Conversations" regardless of ULID casing returned by the API.
+  bool _isParticipant(ConversationEntity conv, String currentUserId) {
+    final lower = currentUserId.toLowerCase();
+    return conv.participants.any((p) => p.id.toLowerCase() == lower);
+  }
+
   List<ConversationEntity> _my(
     List<ConversationEntity> all,
     String currentUserId,
-  ) =>
-      all.where((c) => c.hasParticipant(currentUserId)).toList();
+  ) => all.where((c) => _isParticipant(c, currentUserId)).toList();
 
   List<ConversationEntity> _monitored(
     List<ConversationEntity> all,
     String currentUserId,
-  ) =>
-      all.where((c) => !c.hasParticipant(currentUserId)).toList();
+  ) => all.where((c) => !_isParticipant(c, currentUserId)).toList();
 
   List<ConversationEntity> _filtered(
     List<ConversationEntity> list,
@@ -53,16 +58,14 @@ class _ConversationListPageState extends State<ConversationListPage>
     final q = _searchQuery.toLowerCase();
     return list.where((c) {
       final name = c.displayName(currentUserId).toLowerCase();
-      final id = c.id.toLowerCase();
       final pNames = c.participants.map((p) => p.name.toLowerCase()).join(' ');
-      return name.contains(q) || id.contains(q) || pNames.contains(q);
+      return name.contains(q) || pNames.contains(q);
     }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // currentUserId is owned by the BLoC — read it once here.
     final currentUserId = context.read<ConversationBloc>().currentUserId;
 
     return Scaffold(
@@ -80,7 +83,7 @@ class _ConversationListPageState extends State<ConversationListPage>
                 child: TextField(
                   controller: _searchController,
                   decoration: InputDecoration(
-                    hintText: 'Search by name or ID...',
+                    hintText: 'Search by name...',
                     prefixIcon: const Icon(Icons.search, size: 20),
                     suffixIcon: _searchQuery.isNotEmpty
                         ? IconButton(
@@ -119,9 +122,9 @@ class _ConversationListPageState extends State<ConversationListPage>
       body: BlocConsumer<ConversationBloc, ConversationState>(
         listener: (context, state) {
           if (state is ConversationOperationSuccess) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(state.message)),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
             context.read<ConversationBloc>().add(
               ConversationLoadAllRequested(),
             );
@@ -200,9 +203,7 @@ class _ConversationListPageState extends State<ConversationListPage>
             ),
             const SizedBox(height: 12),
             Text(
-              isMine
-                  ? 'No conversations yet'
-                  : 'No conversations to monitor',
+              isMine ? 'No conversations yet' : 'No conversations to monitor',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: Theme.of(context).colorScheme.outline,
               ),
@@ -254,16 +255,16 @@ class _ConversationListPageState extends State<ConversationListPage>
           const SizedBox(height: 16),
           Text(
             'No conversations yet',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: cs.outline,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(color: cs.outline),
           ),
           const SizedBox(height: 8),
           Text(
             'Start a new conversation',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: cs.outline,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: cs.outline),
           ),
         ],
       ),

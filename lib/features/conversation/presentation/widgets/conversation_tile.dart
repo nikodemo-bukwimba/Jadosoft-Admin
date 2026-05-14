@@ -1,3 +1,4 @@
+// === FILE: lib/features/conversation/presentation/widgets/conversation_tile.dart ===
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../domain/entities/conversation_entity.dart';
@@ -67,7 +68,7 @@ class ConversationTile extends StatelessWidget {
           Clipboard.setData(ClipboardData(text: conversation.id));
           ScaffoldMessenger.of(ctx).showSnackBar(
             SnackBar(
-              content: Text('Copied ${conversation.id}'),
+              content: Text('ID copied'),
               duration: const Duration(seconds: 1),
             ),
           );
@@ -105,19 +106,19 @@ class ConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final displayName = conversation.displayName(currentUserId);
-    final isClosed = conversation.status == ConversationStatus.closed;
-    final isGroup = conversation.type == ConversationType.group;
-    final hasUnread = conversation.unreadCount > 0;
+    final conv = conversation;
+    final displayName = conv.displayName(currentUserId);
+    final subtitle = conv.subtitle(currentUserId);
+    final isClosed = conv.status == ConversationStatus.closed;
+    final isGroup = conv.type == ConversationType.group;
+    final hasUnread = conv.unreadCount > 0;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: cs.outlineVariant.withValues(alpha: 0.3),
-        ),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3)),
       ),
       child: GestureDetector(
         onSecondaryTapUp: (d) => _showMenu(context, d.globalPosition),
@@ -130,7 +131,7 @@ class ConversationTile extends StatelessWidget {
             child: Row(
               children: [
                 ParticipantAvatarStack(
-                  participants: conversation.participants,
+                  participants: conv.participants,
                   isGroup: isGroup,
                   size: 48,
                 ),
@@ -139,6 +140,7 @@ class ConversationTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // ── Row 1: name + lock/group icons ──────────────
                       Row(
                         children: [
                           if (isClosed) ...[
@@ -163,24 +165,30 @@ class ConversationTile extends StatelessWidget {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        conversation.id.toUpperCase(),
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: cs.outline,
-                          fontSize: 10,
-                          letterSpacing: 0.5,
+                      // ── Row 2: subtitle (online status / member count)
+                      if (subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 1),
+                        Text(
+                          subtitle,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: subtitle.contains('online')
+                                ? Colors.green
+                                : cs.outline,
+                            fontSize: 11,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      if (conversation.lastMessage != null)
+                      ],
+                      // ── Row 3: last message preview ─────────────────
+                      if (conv.lastMessage != null) ...[
+                        const SizedBox(height: 3),
                         Text.rich(
                           TextSpan(
                             children: [
-                              if (conversation.lastMessageSenderName != null)
+                              if (conv.lastMessageSenderName != null)
                                 TextSpan(
-                                  text:
-                                      '${conversation.lastMessageSenderName}: ',
+                                  text: '${conv.lastMessageSenderName}: ',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     color: hasUnread
@@ -190,7 +198,7 @@ class ConversationTile extends StatelessWidget {
                                   ),
                                 ),
                               TextSpan(
-                                text: conversation.lastMessage,
+                                text: conv.lastMessage,
                                 style: TextStyle(
                                   color: hasUnread
                                       ? cs.onSurface
@@ -206,16 +214,18 @@ class ConversationTile extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
+                      ],
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
+                // ── Right column: time + unread badge ─────────────────
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    if (conversation.lastMessageAt != null)
+                    if (conv.lastMessageAt != null)
                       Text(
-                        _fmtTime(conversation.lastMessageAt!),
+                        _fmtTime(conv.lastMessageAt!),
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: hasUnread ? cs.primary : cs.outline,
                           fontWeight: hasUnread
@@ -235,9 +245,9 @@ class ConversationTile extends StatelessWidget {
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
-                          conversation.unreadCount > 99
+                          conv.unreadCount > 99
                               ? '99+'
-                              : conversation.unreadCount.toString(),
+                              : conv.unreadCount.toString(),
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: cs.onPrimary,
                             fontSize: 11,
@@ -247,7 +257,7 @@ class ConversationTile extends StatelessWidget {
                       ),
                     if (isGroup && !hasUnread)
                       Text(
-                        '${conversation.participants.length} members',
+                        '${conv.participants.length} members',
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: cs.outline,
                           fontSize: 10,

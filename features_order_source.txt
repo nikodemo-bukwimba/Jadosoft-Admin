@@ -1,7 +1,7 @@
 ﻿// ================================================================
 // features_order_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-05-05 23:31:06
+// Generated    : 2026-05-13 13:07:02
 // Files        : 32
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
@@ -339,20 +339,37 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
   }
 
   // ── Create ───────────────────────────────────────────────
-
   @override
   Future<OrderModel> create(Map<String, dynamic> data) async {
     try {
       final orgId = _orgContext.effectiveOrgId;
 
-      final items = (data['items'] as List<dynamic>)
-          .map(
-            (item) => {
-              'variant_id': item['variantId']?.toString(),
-              'quantity': item['qty'],
-            },
-          )
-          .toList();
+      final items = (data['items'] as List<dynamic>).map((item) {
+        final map = item as Map<String, dynamic>;
+        return {
+          'variant_id': map['variantId']?.toString(),
+          'quantity': map['qty'],
+          if (map['unitPrice'] != null)
+            'unit_price': (map['unitPrice'] as num).toDouble(),
+        };
+      }).toList();
+
+      // Build per-variant promotion snapshot
+      final promotionPricing = <String, dynamic>{};
+      for (final item in (data['items'] as List<dynamic>)) {
+        final map = item as Map<String, dynamic>;
+        if (map['promotionId'] != null) {
+          promotionPricing[map['variantId'].toString()] = {
+            'promotion_id': map['promotionId'],
+            'discount_percentage': map['discountPercentage'],
+            'base_price': map['basePrice'],
+            'effective_price': map['unitPrice'],
+            'subtotal': map['subtotal'],
+          };
+        }
+      }
+
+      final clientTotal = (data['client_total'] as num?)?.toDouble();
 
       final response = await _dio.post(
         '/commerce/orgs/$orgId/orders/admin',
@@ -361,15 +378,19 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
           'items': items,
           if (data['payment_ref'] != null) 'payment_ref': data['payment_ref'],
           'currency': 'TZS',
-          // Officer / admin identity — stored in order metadata by the API
           'metadata': {
             'created_by_name': data['created_by_name'],
             'created_by_id': data['created_by_id'],
+            if (promotionPricing.isNotEmpty)
+              'promotion_pricing': promotionPricing,
+            if (clientTotal != null) 'client_total': clientTotal,
           },
         },
       );
-      final body = response.data['order'] ?? response.data;
-      return OrderModel.fromJson(body as Map<String, dynamic>);
+
+      final body =
+          (response.data['order'] ?? response.data) as Map<String, dynamic>;
+      return OrderModel.fromJson(body);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -680,15 +701,15 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Either<Failure, OrderEntity>> create(OrderEntity entity) async {
     try {
-      final model = OrderModel.fromEntity(entity);
+      // final model = OrderModel.fromEntity(entity);
       final data = <String, dynamic>{
         'customer_id': entity.customerId,
         'items': entity.items,
         if (entity.paymentRef != null) 'payment_ref': entity.paymentRef,
-        // Pass officer / admin identity through to datasource
         if (entity.createdByName != null)
           'created_by_name': entity.createdByName,
         if (entity.createdById != null) 'created_by_id': entity.createdById,
+        'client_total': entity.total, // promotion-adjusted total
       };
       final result = await _remoteDataSource.create(data);
       return Right(result);
@@ -2490,6 +2511,8 @@ class _Field extends StatelessWidget {
 
 
 // === FILE: lib/features/order/presentation/pages/order_form_page.dart ===
+//Origin
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -2504,6 +2527,8 @@ import '../../../customer/domain/repositories/customer_repository.dart';
 import '../../../customer/data/models/customer_model.dart';
 import '../../../product/domain/repositories/product_repository.dart';
 import '../../../product/data/models/product_model.dart';
+import '../../../promotion/domain/repositories/promotion_repository.dart';
+import '../../../product/domain/services/client_promotion_pricing_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OrderFormPage — Manual order creation / edit
@@ -2551,18 +2576,44 @@ class _OrderFormPageState extends State<OrderFormPage> {
 
       if (!mounted) return;
 
+      // ── Customers ──────────────────────────────────────────
+      final customers = customerResult.fold(
+        (_) => <CustomerModel>[],
+        (page) => page.items.whereType<CustomerModel>().toList(),
+      );
+
+      // ── Products (base list — never fails the form) ────────
+      List<ProductModel> products = productResult.fold(
+        (_) => <ProductModel>[],
+        (list) => list
+            .whereType<ProductModel>()
+            .where((p) => p.isAvailable && p.status != 'archived')
+            .toList(),
+      );
+
+      // ── Promotion decoration (best-effort, non-fatal) ──────
+      try {
+        final promoRepo = sl<PromotionRepository>();
+        final pricingService = const ClientPromotionPricingService();
+        final promoResult = await promoRepo.getAll();
+
+        promoResult.fold(
+          (_) => null, // promotions unavailable — keep plain products
+          (promos) {
+            products = pricingService
+                .decorateProducts(products, promos)
+                .whereType<ProductModel>()
+                .toList();
+          },
+        );
+      } catch (_) {
+        // PromotionRepository not registered or network error —
+        // products already loaded above, just skip decoration.
+      }
+
       setState(() {
-        _customers = customerResult.fold(
-          (_) => [],
-          (page) => page.items.whereType<CustomerModel>().toList(),
-        );
-        _products = productResult.fold(
-          (_) => [],
-          (list) => list
-              .whereType<ProductModel>()
-              .where((p) => p.isAvailable && p.status != 'archived')
-              .toList(),
-        );
+        _customers = customers;
+        _products = products;
         _loadingLookups = false;
       });
 
@@ -2573,9 +2624,14 @@ class _OrderFormPageState extends State<OrderFormPage> {
       if (mounted) setState(() => _loadingLookups = false);
     }
   }
+  
+  // double get _calculatedTotal =>
+  //     _lineItems.fold(0.0, (sum, e) => sum + e.product.price * e.quantity);
 
-  double get _calculatedTotal =>
-      _lineItems.fold(0.0, (sum, e) => sum + e.product.price * e.quantity);
+  double get _calculatedTotal => _lineItems.fold(
+    0.0,
+    (sum, e) => sum + e.product.effectivePrice * e.quantity,
+  );
 
   @override
   void dispose() {
@@ -3004,12 +3060,34 @@ class _OrderFormPageState extends State<OrderFormPage> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                'TZS ${product.price.toStringAsFixed(0)} per unit',
-                style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+              // Text(
+              //   'TZS ${product.price.toStringAsFixed(0)} per unit',
+              //   style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+              //     color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+              //   ),
+              // ),
+              if (product.isOnPromotion) ...[
+                Text(
+                  'TZS ${product.effectivePrice.toStringAsFixed(0)} per unit',
+                  style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(ctx).colorScheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
+                Text(
+                  'Was TZS ${product.price.toStringAsFixed(0)} · ${product.discountPercentage!.toStringAsFixed(0)}% off',
+                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                    decoration: TextDecoration.lineThrough,
+                  ),
+                ),
+              ] else
+                Text(
+                  'TZS ${product.price.toStringAsFixed(0)} per unit',
+                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                  ),
+                ),
               const SizedBox(height: 4),
               if (available != null)
                 Container(
@@ -3101,7 +3179,7 @@ class _OrderFormPageState extends State<OrderFormPage> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Total: TZS ${(product.price * qty).toStringAsFixed(0)}',
+                'Total: TZS ${(product.effectivePrice * qty).toStringAsFixed(0)}',
                 style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(ctx).colorScheme.primary,
                   fontWeight: FontWeight.w600,
@@ -3161,15 +3239,33 @@ class _OrderFormPageState extends State<OrderFormPage> {
 
     setState(() => _isSubmitting = true);
 
+    // final items = _lineItems
+    //     .map(
+    //       (e) => {
+    //         'productId': e.product.id,
+    //         'variantId': e.product.variantId ?? e.product.id,
+    //         'name': e.product.name,
+    //         'unitPrice': e.product.price,
+    //         'qty': e.quantity,
+    //         'subtotal': e.product.price * e.quantity,
+    //       },
+    //     )
+    //     .toList();
+
     final items = _lineItems
         .map(
           (e) => {
             'productId': e.product.id,
             'variantId': e.product.variantId ?? e.product.id,
             'name': e.product.name,
-            'unitPrice': e.product.price,
+            'basePrice': e.product.price,
+            'unitPrice': e.product.effectivePrice,
             'qty': e.quantity,
-            'subtotal': e.product.price * e.quantity,
+            'subtotal': e.product.effectivePrice * e.quantity,
+            if (e.product.hasPromotion) ...{
+              'promotionId': e.product.promotionId,
+              'discountPercentage': e.product.discountPercentage,
+            },
           },
         )
         .toList();
@@ -3343,7 +3439,7 @@ class _LineItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final subtotal = item.product.price * item.quantity;
+    final subtotal = item.product.effectivePrice * item.quantity;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -3358,13 +3454,35 @@ class _LineItemRow extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                Text(
-                  'TZS ${item.product.price.toStringAsFixed(0)} × '
-                  '${item.quantity} = TZS ${subtotal.toStringAsFixed(0)}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                if (item.product.isOnPromotion)
+                  Row(
+                    children: [
+                      Text(
+                        'TZS ${item.product.price.toStringAsFixed(0)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          decoration: TextDecoration.lineThrough,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'TZS ${item.product.effectivePrice.toStringAsFixed(0)} × '
+                        '${item.quantity} = TZS ${subtotal.toStringAsFixed(0)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Text(
+                    'TZS ${item.product.price.toStringAsFixed(0)} × '
+                    '${item.quantity} = TZS ${subtotal.toStringAsFixed(0)}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -3731,7 +3849,28 @@ class _ProductListSheetState extends State<_ProductListSheet> {
                           ),
                         ),
                         title: Text(p.name),
-                        subtitle: Text('TZS ${p.price.toStringAsFixed(0)}'),
+                        subtitle: p.isOnPromotion
+                            ? Row(
+                                children: [
+                                  Text(
+                                    'TZS ${p.effectivePrice.toStringAsFixed(0)}',
+                                    style: const TextStyle(
+                                      color: Colors.green,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'TZS ${p.price.toStringAsFixed(0)}',
+                                    style: TextStyle(
+                                      decoration: TextDecoration.lineThrough,
+                                      color: Colors.grey.shade500,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Text('TZS ${p.price.toStringAsFixed(0)}'),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => Navigator.of(ctx).pop(p),
                       );

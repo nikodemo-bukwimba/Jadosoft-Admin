@@ -154,6 +154,7 @@ import '../../features/daily_report/presentation/enums/daily_report_form_node.da
 import '../../features/order/presentation/enums/order_form_node.dart';
 import '../../features/conversation/presentation/pages/conversation_form_page.dart'
     show ConversationFormMode;
+import '../../../../features/conversation/data/datasources/conversation_remote_datasource.dart';
 import '../../features/payment/presentation/pages/payment_form_page.dart'
     show PaymentFormMode;
 import '../../features/notification/presentation/enums/notification_form_node.dart';
@@ -822,20 +823,21 @@ class AppRouter {
               },
             ),
 
-            // --- Phase 8 — Conversations (L1) --------------
+            // --- Phase 8 — Conversations (L1) -------------------------
             GoRoute(
               path: conversationList,
-              builder: (_, _) => BlocProvider(
+              builder: (context, _) => BlocProvider(
                 create: (_) =>
-                    sl<ConversationBloc>()..add(ConversationLoadAllRequested()),
+                    _conversationBloc(context)
+                      ..add(ConversationLoadAllRequested()),
                 child: const ConversationListPage(),
               ),
             ),
             GoRoute(
               path: conversationCreate,
-              builder: (_, _) => MultiBlocProvider(
+              builder: (context, _) => MultiBlocProvider(
                 providers: [
-                  BlocProvider(create: (_) => sl<ConversationBloc>()),
+                  BlocProvider(create: (_) => _conversationBloc(context)),
                   BlocProvider(
                     create: (_) =>
                         sl<ActorBloc>()..add(ActorLoadAllRequested()),
@@ -856,17 +858,15 @@ class AppRouter {
             ),
             GoRoute(
               path: conversationDetail,
-              builder: (_, s) {
+              builder: (context, s) {
                 final id = s.pathParameters['id'] ?? '';
                 return MultiBlocProvider(
                   providers: [
                     BlocProvider(
                       create: (_) =>
-                          sl<ConversationBloc>()
+                          _conversationBloc(context)
                             ..add(ConversationLoadOneRequested(id)),
                     ),
-                    // FIX #7: Provide ActorBloc so the detail page can
-                    // populate availableContacts for the "Add Member" sheet.
                     BlocProvider(
                       create: (_) =>
                           sl<ActorBloc>()..add(ActorLoadAllRequested()),
@@ -878,13 +878,13 @@ class AppRouter {
             ),
             GoRoute(
               path: conversationEdit,
-              builder: (_, s) {
+              builder: (context, s) {
                 final id = s.pathParameters['id'] ?? '';
                 return MultiBlocProvider(
                   providers: [
                     BlocProvider(
                       create: (_) =>
-                          sl<ConversationBloc>()
+                          _conversationBloc(context)
                             ..add(ConversationLoadOneRequested(id)),
                     ),
                     BlocProvider(
@@ -1139,6 +1139,30 @@ class AppRouter {
       AuthFailureState() => isShellRoute ? login : null,
       _ => isShellRoute ? login : null,
     };
+  }
+
+  // Resolves ConversationBloc with the authenticated user's actor_id.
+  // Must be called inside a route builder where AuthBloc is accessible.
+  static ConversationBloc _conversationBloc(BuildContext context) {
+    final authState = context.read<AuthBloc>().state;
+    String actorId = '';
+    String actorName = '';
+
+    if (authState is AuthAuthenticated) {
+      final user = authState.activeSession.user;
+      // actor_id is the ULID used by the Communications API for participants.
+      // Fall back to user.id only as absolute last resort.
+      actorId = user.actorId?.isNotEmpty == true ? user.actorId! : user.id;
+      actorName = user.name.isNotEmpty ? user.name : user.email;
+    }
+
+    // Pre-populate the datasource name cache so the current user's
+    // messages resolve immediately without a round-trip.
+    if (actorId.isNotEmpty && actorName.isNotEmpty) {
+      sl<ConversationRemoteDataSource>().registerName(actorId, actorName);
+    }
+
+    return sl<ConversationBloc>(param1: actorId, param2: actorName);
   }
 }
 

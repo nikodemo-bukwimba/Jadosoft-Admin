@@ -205,7 +205,6 @@ import 'package:jadosoft_admin/features/activity_log/presentation/bloc/activity_
 // -- END GENERATOR FEATURE IMPORTS ----------------------------
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get_it/get_it.dart';
 
@@ -720,106 +719,23 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton(() => UpdateConversationUseCase(sl()));
   sl.registerLazySingleton(() => DeleteConversationUseCase(sl()));
 
-  final activeSession = await sl<AuthLocalDataSource>().getActiveSession();
-
-  // ── Resolve the actor ULID for the current user ───────────
-  // The Communications API uses actor IDs (not user IDs) for participants.
-  // /auth/me does NOT return actor_id, so we must look it up from the
-  // org members API which returns "user, actor, and role loaded".
-  String resolvedActorId =
-      sl<OrgContext>().actorId ?? activeSession?.user.actorId ?? '';
-
-  if (resolvedActorId.isEmpty && activeSession != null) {
-    try {
-      final dio = sl<Dio>();
-      final orgContext = sl<OrgContext>();
-      final orgId = orgContext.hasOrg ? orgContext.requireRootOrgId() : null;
-
-      if (orgId != null) {
-        final r = await dio.get(
-          'orgs/$orgId/members',
-          queryParameters: {'per_page': 100},
-        );
-        final rawData = r.data;
-        final membersList = rawData is Map
-            ? (rawData['data'] as List? ?? [])
-            : (rawData is List ? rawData : []);
-
-        final userId = activeSession.user.id;
-        for (final m in membersList) {
-          final member = m as Map<String, dynamic>;
-          final user = member['user'] as Map<String, dynamic>? ?? {};
-          final actor = member['actor'] as Map<String, dynamic>? ?? {};
-          final memberUserId =
-              member['user_id']?.toString() ?? user['id']?.toString() ?? '';
-
-          if (memberUserId == userId) {
-            resolvedActorId =
-                (member['actor_id'] ?? user['actor_id'] ?? actor['id'] ?? '')
-                    .toString();
-
-            // Also store it in OrgContext so it persists across sessions
-            if (resolvedActorId.isNotEmpty) {
-              await orgContext.setRootOrg(
-                id: orgContext.rootOrgId!,
-                name: orgContext.rootOrgName ?? '',
-                role: orgContext.orgRole,
-                actorId: resolvedActorId,
-                actorName: activeSession.user.name,
-              );
-            }
-            break;
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('[DI] Failed to resolve actor_id from members API: $e');
-    }
-  }
-
-  // Fall back to user.id only as absolute last resort
-  final convUserId = resolvedActorId.isNotEmpty
-      ? resolvedActorId
-      : activeSession?.user.id ?? '';
-
-  debugPrint('DI: resolvedActorId=$resolvedActorId');
-  debugPrint('DI: convUserId=$convUserId');
-
-  sl.registerFactory<ConversationBloc>(
-    () => ConversationBloc(
+  // ── ConversationBloc factory: identity resolved at call time ──
+  // Do NOT resolve actorId at startup — OrgContext is not yet
+  // populated. Instead, read it fresh from OrgContext each time
+  // the factory is called (which is once per route).
+  sl.registerFactoryParam<ConversationBloc, String, String>(
+    (actorId, actorName) => ConversationBloc(
       getAllUseCase: sl(),
       getUseCase: sl(),
       createUseCase: sl(),
       updateUseCase: sl(),
       deleteUseCase: sl(),
       dataSource: sl(),
-      currentUserId: convUserId,
-      currentUserName: activeSession?.user.name ?? '',
-      currentUserRole: activeSession?.user.primaryRole?.slug ?? 'admin',
+      currentUserId: actorId,
+      currentUserName: actorName,
+      currentUserRole: sl<OrgContext>().orgRole.name,
     ),
   );
-
-  // Pre-populate the datasource name cache with the current user's identity.
-  final convDs = sl<ConversationRemoteDataSource>();
-  if (convUserId.isNotEmpty) {
-    convDs.registerName(convUserId, activeSession?.user.name ?? '');
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // NOTE: Ensure this import is at the top of the file:
-  //   import 'package:flutter/foundation.dart';
-  // (for debugPrint)
-  // ─────────────────────────────────────────────────────────────
-
-  final convActorId =
-      sl<OrgContext>().actorId ??
-      activeSession?.user.actorId ??
-      activeSession?.user.id ??
-      '';
-  final convUserName = activeSession?.user.name ?? '';
-  if (convActorId.isNotEmpty && convUserName.isNotEmpty) {
-    convDs.registerName(convActorId, convUserName);
-  }
 
   // Seq 15 — Orders (L3)
   // DEVELOPMENT (mock — active now):
