@@ -1,11 +1,13 @@
-﻿import 'package:flutter/foundation.dart';
+﻿// === FILE: lib/features/conversation/presentation/bloc/conversation_bloc.dart ===
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../../data/datasources/conversation_remote_datasource.dart';
 import '../../domain/usecases/create_conversation_usecase.dart';
 import '../../domain/usecases/delete_conversation_usecase.dart';
-import '../../domain/usecases/get_conversation_usecase.dart';
 import '../../domain/usecases/get_all_conversation_usecase.dart';
+import '../../domain/usecases/get_conversation_usecase.dart';
 import '../../domain/usecases/update_conversation_usecase.dart';
 import 'conversation_event.dart';
 import 'conversation_state.dart';
@@ -23,6 +25,15 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   final String currentUserName;
   final String currentUserRole;
 
+  // ── Polling ───────────────────────────────────────────────
+  // Polls the active conversation every [_pollInterval] seconds.
+  // Only active when a chat is open (ConversationChatLoaded state).
+  // Pauses automatically when the bloc is not in chat state.
+  // Cancelled on bloc close.
+  static const _pollInterval = Duration(seconds: 8);
+  Timer? _pollTimer;
+  String? _activeConvId; // conversation currently open in the detail page
+
   ConversationBloc({
     required this.getAllUseCase,
     required this.getUseCase,
@@ -35,15 +46,8 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     required this.currentUserRole,
   }) : _ds = dataSource,
        super(ConversationInitial()) {
-    // Register current user — only if actorId is non-empty
-    if (currentUserId.isNotEmpty && currentUserName.isNotEmpty) {
-      _ds.registerName(currentUserId, currentUserName);
-    }
-    // FIX #2: Register current user's name in the datasource name cache
-    // so that messages sent by this user show their name, not their ULID.
     _ds.registerName(currentUserId, currentUserName);
 
-    // ── Debug: log identity so we can verify participant matching ──
     debugPrint('╔══════════════════════════════════════════════════╗');
     debugPrint('║ ConversationBloc — Current User Identity         ║');
     debugPrint('║ currentUserId:   $currentUserId');
@@ -79,6 +83,9 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     on<ConversationPrivateReplyRequested>(_onPrivateReply);
     on<ConversationStartNewRequested>(_onStartNew);
 
+    // Internal polling tick — silently refreshes messages when chat is open
+    on<_ConversationPollTick>(_onPollTick);
+
     _ds.onAutoReply = (convId, _) {
       if (!isClosed) add(ConversationAutoReplyReceived(convId));
     };
@@ -90,7 +97,56 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     };
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────
+  // ── Polling management ────────────────────────────────────
+
+  void _startPolling(String convId) {
+    if (_activeConvId == convId && _pollTimer?.isActive == true) return;
+    _stopPolling();
+    _activeConvId = convId;
+    _pollTimer = Timer.periodic(_pollInterval, (_) {
+      if (!isClosed && _activeConvId != null) {
+        add(_ConversationPollTick(_activeConvId!));
+      }
+    });
+    debugPrint(
+      '[ConvBloc] Polling started for $convId every ${_pollInterval.inSeconds}s',
+    );
+  }
+
+  void _stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _activeConvId = null;
+  }
+
+  /// Silent refresh — does NOT emit loading state so the UI doesn't flicker.
+  /// Only appends truly new messages (by checking last message ID).
+  Future<void> _onPollTick(
+    _ConversationPollTick event,
+    Emitter<ConversationState> emit,
+  ) async {
+    if (state is! ConversationChatLoaded) return;
+    final current = state as ConversationChatLoaded;
+    if (current.conversation.id != event.convId) return;
+
+    try {
+      final newMsgs = await _ds.getMessages(event.convId);
+
+      // Only emit if we actually have new messages
+      final currentIds = current.messages.map((m) => m.id).toSet();
+      final hasNew = newMsgs.any((m) => !currentIds.contains(m.id));
+      if (!hasNew) return;
+
+      // Mark as read silently
+      _ds.markAsRead(event.convId).ignore();
+
+      emit(current.copyWith(messages: newMsgs));
+    } catch (_) {
+      // Poll failures are silent — user still sees existing messages
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────
 
   Future<void> _reloadChat(
     String convId,
@@ -100,7 +156,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     final msgs = await _ds.getMessages(convId);
     final pinned = _ds.getPinnedMessages(convId);
 
-    // ── Debug: log participant matching ──
     debugPrint('┌─ _reloadChat($convId) ─────────────────────');
     debugPrint(
       '│ type: ${conv.type.name}, participants: ${conv.participants.length}',
@@ -108,13 +163,11 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     for (final p in conv.participants) {
       final match = p.id.toLowerCase() == currentUserId.toLowerCase();
       debugPrint(
-        '│  ${match ? "✓" : "✗"} id=${p.id} name=${p.name} role=${p.role}',
+        '│  ${match ? '✓' : '✗'} id=${p.id} name=${p.name} role=${p.role}',
       );
     }
-    debugPrint(
-      '│ hasParticipant($currentUserId) = ${conv.hasParticipant(currentUserId)}',
-    );
     debugPrint('└────────────────────────────────────────────');
+
     final currentTyping = state is ConversationChatLoaded
         ? (state as ConversationChatLoaded).typingUser
         : null;
@@ -124,6 +177,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     final currentQuery = state is ConversationChatLoaded
         ? (state as ConversationChatLoaded).searchQuery
         : null;
+
     emit(
       ConversationChatLoaded(
         conversation: conv,
@@ -136,25 +190,23 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     );
   }
 
-  // ── LIST ──────────────────────────────────────────────────────────────
+  // ── LIST ──────────────────────────────────────────────────
 
   Future<void> _onLoadAll(
     ConversationLoadAllRequested event,
     Emitter<ConversationState> emit,
   ) async {
+    // Stop polling when returning to list
+    _stopPolling();
+
     emit(ConversationLoading());
     final result = await getAllUseCase(NoParams());
     result.fold((f) => emit(ConversationFailure(f.message)), (items) {
-      // ── Debug: log conversation list matching ──
-      final mine = items.where((c) => c.hasParticipant(currentUserId)).length;
-      final monitored = items.length - mine;
       debugPrint('┌─ ConversationLoadAll ─────────────────────');
-      debugPrint('│ total=${items.length} mine=$mine monitored=$monitored');
-      debugPrint('│ currentUserId=$currentUserId');
+      debugPrint('│ total=${items.length} currentUserId=$currentUserId');
       if (items.isNotEmpty) {
-        final first = items.first;
         debugPrint('│ first conv participants:');
-        for (final p in first.participants) {
+        for (final p in items.first.participants) {
           debugPrint('│   id=${p.id} name=${p.name}');
         }
       }
@@ -166,6 +218,8 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     });
   }
 
+  // ── CHAT ──────────────────────────────────────────────────
+
   Future<void> _onLoadOne(
     ConversationLoadOneRequested event,
     Emitter<ConversationState> emit,
@@ -174,10 +228,50 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     try {
       await _reloadChat(event.id, emit);
       await _ds.markAsRead(event.id);
+      // Start polling now that chat is open
+      _startPolling(event.id);
     } catch (e) {
       emit(ConversationFailure(e.toString()));
     }
   }
+
+  Future<void> _onLoadMessages(
+    ConversationLoadMessagesRequested event,
+    Emitter<ConversationState> emit,
+  ) async {
+    emit(ConversationLoading());
+    try {
+      await _reloadChat(event.conversationId, emit);
+      _startPolling(event.conversationId);
+    } catch (e) {
+      emit(ConversationFailure(e.toString()));
+    }
+  }
+
+  Future<void> _onSendMessage(
+    ConversationSendMessageRequested event,
+    Emitter<ConversationState> emit,
+  ) async {
+    try {
+      await _ds.sendMessage(
+        convId: event.conversationId,
+        content: event.content,
+        imageUrl: event.imageUrl,
+        replyToId: event.replyToId,
+        replyToSenderName: event.replyToSenderName,
+        replyToContent: event.replyToContent,
+        mentionedUserIds: event.mentionedUserIds,
+        forwardedFromConvId: event.forwardedFromConvId,
+        forwardedFromSenderName: event.forwardedFromSenderName,
+        voiceDurationSeconds: event.voiceDurationSeconds,
+      );
+      await _reloadChat(event.conversationId, emit);
+    } catch (e) {
+      emit(ConversationFailure(e.toString()));
+    }
+  }
+
+  // ── CRUD ──────────────────────────────────────────────────
 
   Future<void> _onCreate(
     ConversationCreateRequested event,
@@ -217,42 +311,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     );
   }
 
-  // ── CHAT ──────────────────────────────────────────────────────────────
-
-  Future<void> _onLoadMessages(
-    ConversationLoadMessagesRequested event,
-    Emitter<ConversationState> emit,
-  ) async {
-    emit(ConversationLoading());
-    try {
-      await _reloadChat(event.conversationId, emit);
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
-    }
-  }
-
-  Future<void> _onSendMessage(
-    ConversationSendMessageRequested event,
-    Emitter<ConversationState> emit,
-  ) async {
-    try {
-      await _ds.sendMessage(
-        convId: event.conversationId,
-        content: event.content,
-        imageUrl: event.imageUrl,
-        replyToId: event.replyToId,
-        replyToSenderName: event.replyToSenderName,
-        replyToContent: event.replyToContent,
-        mentionedUserIds: event.mentionedUserIds,
-        forwardedFromConvId: event.forwardedFromConvId,
-        forwardedFromSenderName: event.forwardedFromSenderName,
-        voiceDurationSeconds: event.voiceDurationSeconds,
-      );
-      await _reloadChat(event.conversationId, emit);
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
-    }
-  }
+  // ── Auto reply / typing ───────────────────────────────────
 
   Future<void> _onAutoReply(
     ConversationAutoReplyReceived event,
@@ -287,7 +346,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     emit(s.copyWith(clearTyping: true));
   }
 
-  // ── MESSAGE OPS ───────────────────────────────────────────────────────
+  // ── Message ops ───────────────────────────────────────────
 
   Future<void> _onDeleteMessage(
     ConversationDeleteMessageRequested event,
@@ -403,7 +462,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     emit((state as ConversationChatLoaded).copyWith(clearSearch: true));
   }
 
-  // ── FORWARD ──────────────────────────────────────────────────────────
+  // ── Forward / Broadcast ───────────────────────────────────
 
   Future<void> _onForwardMessage(
     ConversationForwardMessageRequested event,
@@ -427,8 +486,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     }
   }
 
-  // ── BROADCAST ─────────────────────────────────────────────────────────
-
   Future<void> _onBroadcast(
     ConversationBroadcastRequested event,
     Emitter<ConversationState> emit,
@@ -444,7 +501,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     }
   }
 
-  // ── GROUP MANAGEMENT ─────────────────────────────────────────────────
+  // ── Group management ──────────────────────────────────────
 
   Future<void> _onClose(
     ConversationCloseRequested event,
@@ -503,7 +560,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     }
   }
 
-  // ── PRIVATE REPLY ────────────────────────────────────────────────────
+  // ── Private reply ─────────────────────────────────────────
 
   Future<void> _onPrivateReply(
     ConversationPrivateReplyRequested event,
@@ -522,7 +579,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     }
   }
 
-  // ── NEW CONVERSATION ─────────────────────────────────────────────────
+  // ── New conversation ──────────────────────────────────────
 
   Future<void> _onStartNew(
     ConversationStartNewRequested event,
@@ -530,14 +587,10 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   ) async {
     emit(ConversationLoading());
     try {
-      // FIX #5: Register participant names in the datasource cache
-      // so that when the API returns only actor IDs, we can resolve names.
       for (final p in event.participants) {
         final id = p['id'] ?? '';
         final name = p['name'] ?? '';
-        if (id.isNotEmpty && name.isNotEmpty) {
-          _ds.registerName(id, name);
-        }
+        if (id.isNotEmpty && name.isNotEmpty) _ds.registerName(id, name);
       }
 
       final participantMaps = <Map<String, dynamic>>[
@@ -576,11 +629,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
 
       final conv = await _ds.create(body);
 
-      // FIX #6: Send first message AFTER creation and wait for it,
-      // then emit the navigation event. This ensures the backend processes
-      // the system "group_created" message first, then our message.
       if (event.firstMessage != null && event.firstMessage!.isNotEmpty) {
-        // Small delay to let backend process the system message first
         await Future.delayed(const Duration(milliseconds: 300));
         await _ds.sendMessage(convId: conv.id, content: event.firstMessage!);
       }
@@ -590,4 +639,19 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
       emit(ConversationFailure(e.toString()));
     }
   }
+
+  // ── Dispose ───────────────────────────────────────────────
+
+  @override
+  Future<void> close() {
+    _stopPolling();
+    return super.close();
+  }
+}
+
+// ── Internal polling event (not exposed to the UI) ────────
+class _ConversationPollTick extends ConversationEvent {
+  final String convId;
+  _ConversationPollTick(this.convId);
+  List<Object?> get props => [convId];
 }

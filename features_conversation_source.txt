@@ -1,7 +1,7 @@
 ﻿// ================================================================
 // features_conversation_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-04-29 10:42:33
+// Generated    : 2026-05-14 18:10:10
 // Files        : 26
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
@@ -131,9 +131,10 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
 
   /// Actor-ID → display name cache.
   /// Populated from:
-  ///   1. registerName() called at DI time with the current user
-  ///   2. Participant data from getAll / getById responses
-  ///   3. Message sender data from getMessages responses
+  ///   1. registerName() called at route time with the current user's actor_id
+  ///   2. _resolveActorNames() bulk-fetched before normalization
+  ///   3. Participant data from getAll / getById responses
+  ///   4. Message sender data from getMessages responses
   final Map<String, String> _nameCache = {};
 
   @override
@@ -146,38 +147,40 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     }
   }
 
-  /// Returns true if the value looks like a raw ULID (26 uppercase alphanumeric).
+  // ── Helpers ───────────────────────────────────────────────
+
+  /// Returns true if the value looks like a raw ULID (26 alphanumeric chars).
   bool _isUlid(String? v) {
     if (v == null || v.length != 26) return false;
     return RegExp(r'^[0-9A-Z]{26}$', caseSensitive: false).hasMatch(v);
   }
 
-  /// Resolve a name: use cache if the raw value looks like a ULID.
+  /// Resolve a display name for an actor.
+  /// Priority: non-ULID raw value from API → _nameCache → truncated ID.
   String _resolveName(String? raw, String? actorId) {
-    // If we have a non-ULID name from the API, use it
+    // Use the API value if it's a real name (not a ULID)
     if (raw != null && raw.isNotEmpty && !_isUlid(raw)) {
-      // Also cache it
       if (actorId != null && actorId.isNotEmpty) {
         _nameCache[actorId] = raw;
       }
       return raw;
     }
-    // Try the cache
+    // Try cache (exact match)
     final id = actorId ?? raw ?? '';
     if (_nameCache.containsKey(id)) return _nameCache[id]!;
-    // Also try case-insensitive
+    // Try cache (case-insensitive)
     final lower = id.toLowerCase();
     for (final entry in _nameCache.entries) {
       if (entry.key.toLowerCase() == lower) return entry.value;
     }
-    // Last resort: return a truncated ID
+    // Last resort: truncated ID so at least it's short
     if (id.length > 8) {
       return '${id.substring(0, 4)}…${id.substring(id.length - 4)}';
     }
     return id.isNotEmpty ? id : 'Unknown';
   }
 
-  /// Cache name from a participant map.
+  /// Cache the display name from a participant map.
   void _cacheParticipantName(Map<String, dynamic> p) {
     final id = p['actor_id'] as String? ?? p['id'] as String? ?? '';
     final name =
@@ -191,18 +194,13 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   }
 
   /// Unwraps a standard Laravel JSON resource response.
-  /// API responses may be: `{...fields}`, `{"data": {...fields}}`,
-  /// `{"group": {...fields}}`, or `{"data": {"group": {...fields}}}`.
   Map<String, dynamic> _unwrapResponse(dynamic raw, {String? wrapperKey}) {
     if (raw is! Map<String, dynamic>) return <String, dynamic>{};
-    // Check for nested wrapper key first (e.g. 'group')
     if (wrapperKey != null && raw[wrapperKey] is Map) {
       return raw[wrapperKey] as Map<String, dynamic>;
     }
-    // Standard Laravel 'data' wrapper
     if (raw.containsKey('data') && raw['data'] is Map<String, dynamic>) {
       final inner = raw['data'] as Map<String, dynamic>;
-      // Could be {"data": {"group": {...}}}
       if (wrapperKey != null && inner[wrapperKey] is Map) {
         return inner[wrapperKey] as Map<String, dynamic>;
       }
@@ -217,25 +215,97 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   String _msgScope(String convId) =>
       _typeCache[convId] == 'group' ? 'group' : 'dm';
 
+  String _msg(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic> && data['message'] is String) {
+      return data['message'] as String;
+    }
+    return 'An error occurred. Please try again.';
+  }
+
+  // ── Name resolution ───────────────────────────────────────
+
+  /// Bulk-resolves actor IDs → display names and populates _nameCache.
+  ///
+  /// Strategy (in order, stops when all IDs are resolved):
+  ///   1. communications/presence/bulk  — fastest, already in the module
+  ///   2. api/v1/platform/actors        — fallback, returns all org actors
+  ///
+  /// Both calls are best-effort: failures are silently swallowed so a
+  /// presence outage never breaks the conversation list.
+  Future<void> _resolveActorNames(List<String> actorIds) async {
+    if (actorIds.isEmpty) return;
+
+    // Remove IDs already in cache
+    final needed = actorIds.where((id) => !_nameCache.containsKey(id)).toList();
+    if (needed.isEmpty) return;
+
+    // ── 1. Presence bulk endpoint ────────────────────────────
+    try {
+      final r = await _dio.post(
+        '$_base/presence/bulk',
+        data: {'actor_ids': needed},
+      );
+      final list = r.data is List
+          ? r.data as List
+          : (r.data is Map ? (r.data['data'] as List? ?? []) : []);
+      for (final p in list) {
+        final m = p as Map<String, dynamic>;
+        final aid = m['actor_id'] as String? ?? '';
+        final name =
+            m['name'] as String? ??
+            m['display_name'] as String? ??
+            m['full_name'] as String? ??
+            '';
+        if (aid.isNotEmpty && name.isNotEmpty && !_isUlid(name)) {
+          _nameCache[aid] = name;
+        }
+      }
+    } catch (_) {}
+
+    // ── 2. Platform actors endpoint (fallback) ───────────────
+    final stillMissing = needed
+        .where((id) => !_nameCache.containsKey(id))
+        .toList();
+    if (stillMissing.isEmpty) return;
+
+    try {
+      final r = await _dio.get(
+        'api/v1/actors',
+        queryParameters: {'per_page': 200},
+      );
+      final raw = r.data;
+      final list = raw is Map
+          ? (raw['data'] as List? ?? [])
+          : (raw is List ? raw : []);
+      for (final a in list) {
+        final m = a as Map<String, dynamic>;
+        // Actors use 'id' as their PK (the actor ULID)
+        final aid = m['id'] as String? ?? '';
+        final name = m['display_name'] as String? ?? m['name'] as String? ?? '';
+        if (aid.isNotEmpty && name.isNotEmpty && !_isUlid(name)) {
+          _nameCache[aid] = name;
+        }
+      }
+    } catch (_) {}
+  }
+
   // ── Normalizers ───────────────────────────────────────────
 
   /// Normalizes DirectConversation API shape → ConversationModel shape.
+  /// Must be called AFTER _resolveActorNames() so the cache is warm.
   Map<String, dynamic> _normalizeDirect(Map<String, dynamic> j) {
-    // ── Debug: log raw API data for DM normalization ──
     debugPrint(
-      '  [_normalizeDirect] id=${j['id']} '
+      '[_normalizeDirect] id=${j['id']} '
       'initiator=${j['initiator_actor_id']} '
-      'recipient=${j['recipient_actor_id']} '
-      'keys=${j.keys.take(10).join(',')}',
+      'recipient=${j['recipient_actor_id']}',
     );
 
+    // If the API already returned a participants list, cache and return as-is
     final existing = j['participants'] as List?;
     if (existing != null && existing.isNotEmpty) {
-      // Cache names from existing participants
       for (final p in existing) {
-        if (p is Map<String, dynamic>) {
-          _cacheParticipantName(p);
-        }
+        if (p is Map<String, dynamic>) _cacheParticipantName(p);
       }
       return j;
     }
@@ -250,6 +320,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         '';
     final now = DateTime.now().toIso8601String();
 
+    // _resolveName now hits the warm cache populated by _resolveActorNames()
     final initiatorName = _resolveName(
       j['initiator_name'] as String? ??
           j['initiator_display_name'] as String? ??
@@ -298,24 +369,17 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     final participants = rawP.map((p) {
       final m = p as Map<String, dynamic>;
       final id = m['actor_id'] as String? ?? m['id'] as String? ?? '';
-
-      // Cache the name
       _cacheParticipantName(m);
-
       final name = _resolveName(
         m['name'] as String? ??
             m['display_name'] as String? ??
             m['full_name'] as String?,
         id,
       );
-
-      // Map super_admin → admin for display friendliness
-      final rawRole = m['role'] as String? ?? 'member';
-
       return {
         'id': id,
         'name': name,
-        'role': rawRole,
+        'role': m['role'] as String? ?? 'member',
         'joined_at': m['created_at'] as String? ?? now,
         'online_status': m['online_status'] as String? ?? 'offline',
         'last_seen_at': m['last_seen_at'],
@@ -333,7 +397,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     };
   }
 
-  /// Try to fetch presence for a list of actor IDs and update participant maps.
+  /// Best-effort presence enrichment for a participant list.
   Future<void> _enrichPresence(List<Map<String, dynamic>> participants) async {
     final actorIds = participants
         .map((p) => p['id'] as String? ?? '')
@@ -354,9 +418,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       for (final p in presenceList) {
         final m = p as Map<String, dynamic>;
         final aid = m['actor_id'] as String? ?? '';
-        if (aid.isNotEmpty) {
-          presenceMap[aid] = m;
-        }
+        if (aid.isNotEmpty) presenceMap[aid] = m;
       }
 
       for (final participant in participants) {
@@ -369,33 +431,19 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
           participant['last_seen_at'] = presence['last_seen_at'];
         }
       }
-    } catch (_) {
-      // Presence fetch is best-effort — don't fail the conversation load
-    }
+    } catch (_) {}
   }
 
-  // ── Type detection for getById ────────────────────────────
-
-  /// Detects conversation type from the API response data.
-  /// The API returns different shapes for DMs vs groups.
+  /// Detects conversation type from the API response shape.
   String _detectType(Map<String, dynamic> data) {
-    // Explicit type field
     final typeField = data['type'] as String?;
     if (typeField == 'group') return 'group';
     if (typeField == 'direct') return 'direct';
-
-    // Groups have 'name' field (group name), DMs don't
     if (data.containsKey('name') && data['name'] != null) return 'group';
-
-    // Groups typically have 'participant_ids' or multiple participants
     if (data.containsKey('participant_ids')) return 'group';
-
-    // DMs have initiator_actor_id / recipient_actor_id
     if (data.containsKey('initiator_actor_id') ||
         data.containsKey('recipient_actor_id'))
       return 'direct';
-
-    // Default to whatever was cached, or 'direct'
     return 'direct';
   }
 
@@ -408,22 +456,73 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       final groupFuture = _dio.get('$_base/groups');
       final results = await Future.wait([dmFuture, groupFuture]);
 
-      final dms = (results[0].data['data'] as List? ?? []).map((e) {
-        final map = e as Map<String, dynamic>;
-        _typeCache[map['id'] as String? ?? ''] = 'direct';
-        return ConversationModel.fromJson(_normalizeDirect(map));
-      }).toList();
-
+      final dmRawList = (results[0].data['data'] as List? ?? [])
+          .cast<Map<String, dynamic>>();
       final groupRaw = results[1].data;
-      final groupList = groupRaw is List
-          ? groupRaw
-          : (groupRaw is Map ? (groupRaw['data'] as List? ?? []) : <dynamic>[]);
+      final groupRawList =
+          (groupRaw is List
+                  ? groupRaw
+                  : (groupRaw is Map
+                        ? (groupRaw['data'] as List? ?? [])
+                        : <dynamic>[]))
+              .cast<Map<String, dynamic>>();
 
-      final groups = groupList.map((e) {
-        final map = e as Map<String, dynamic>;
-        _typeCache[map['id'] as String? ?? ''] = 'group';
-        return ConversationModel.fromJson(_normalizeGroup(map));
-      }).toList();
+      // ── Pre-warm the name cache BEFORE normalizing ────────
+      // Collect every actor ID that appears in DM initiator/recipient fields
+      // or group participant lists, then bulk-resolve them all at once.
+      // This ensures _normalizeDirect() hits a warm cache on first call.
+      final idsToResolve = <String>{};
+
+      for (final m in dmRawList) {
+        final iid =
+            m['initiator_actor_id'] as String? ??
+            m['initiator_id'] as String? ??
+            '';
+        final rid =
+            m['recipient_actor_id'] as String? ??
+            m['recipient_id'] as String? ??
+            '';
+        if (iid.isNotEmpty) idsToResolve.add(iid);
+        if (rid.isNotEmpty) idsToResolve.add(rid);
+        // Also check if the API already returned names inside participant lists
+        final existing = m['participants'] as List?;
+        if (existing != null) {
+          for (final p in existing) {
+            if (p is Map<String, dynamic>) {
+              final pid = p['actor_id'] as String? ?? p['id'] as String? ?? '';
+              if (pid.isNotEmpty) idsToResolve.add(pid);
+            }
+          }
+        }
+      }
+
+      for (final m in groupRawList) {
+        final rawP = m['participants'] as List<dynamic>? ?? [];
+        for (final p in rawP) {
+          if (p is Map<String, dynamic>) {
+            final pid = p['actor_id'] as String? ?? p['id'] as String? ?? '';
+            if (pid.isNotEmpty) idsToResolve.add(pid);
+          }
+        }
+      }
+
+      // Single bulk call — resolves all unknown IDs before any normalization
+      await _resolveActorNames(idsToResolve.toList());
+
+      // Now normalize with a warm cache — names resolve on first try
+      for (final m in dmRawList) {
+        _typeCache[m['id'] as String? ?? ''] = 'direct';
+      }
+      for (final m in groupRawList) {
+        _typeCache[m['id'] as String? ?? ''] = 'group';
+      }
+
+      final dms = dmRawList
+          .map((m) => ConversationModel.fromJson(_normalizeDirect(m)))
+          .toList();
+      final groups = groupRawList
+          .map((m) => ConversationModel.fromJson(_normalizeGroup(m)))
+          .toList();
 
       final all = [...dms, ...groups];
       all.sort(
@@ -440,8 +539,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   @override
   Future<ConversationModel> getById(String id) async {
     try {
-      // If we don't know the type, try the cached scope first.
-      // If it 404s and we tried 'conversations', retry with 'groups' (and vice versa).
       final cachedType = _typeCache[id];
       final primaryScope = cachedType == 'group' ? 'groups' : 'conversations';
       final fallbackScope = primaryScope == 'groups'
@@ -453,7 +550,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         final r = await _dio.get('$_base/$primaryScope/$id');
         data = _unwrapResponse(r.data);
       } on DioException catch (e) {
-        // If 404 and we didn't have a cached type, try the other scope
         if (e.response?.statusCode == 404 && cachedType == null) {
           final r2 = await _dio.get('$_base/$fallbackScope/$id');
           data = _unwrapResponse(r2.data);
@@ -462,20 +558,41 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         }
       }
 
-      // Detect and cache the type from response
       final detectedType = _detectType(data);
       _typeCache[id] = detectedType;
+
+      // Pre-warm cache for participants before normalizing
+      final idsToResolve = <String>[];
+      if (detectedType == 'direct') {
+        final iid =
+            data['initiator_actor_id'] as String? ??
+            data['initiator_id'] as String? ??
+            '';
+        final rid =
+            data['recipient_actor_id'] as String? ??
+            data['recipient_id'] as String? ??
+            '';
+        if (iid.isNotEmpty) idsToResolve.add(iid);
+        if (rid.isNotEmpty) idsToResolve.add(rid);
+      } else {
+        final rawP = data['participants'] as List<dynamic>? ?? [];
+        for (final p in rawP) {
+          if (p is Map<String, dynamic>) {
+            final pid = p['actor_id'] as String? ?? p['id'] as String? ?? '';
+            if (pid.isNotEmpty) idsToResolve.add(pid);
+          }
+        }
+      }
+      await _resolveActorNames(idsToResolve);
 
       final normalized = detectedType == 'group'
           ? _normalizeGroup(data)
           : _normalizeDirect(data);
 
-      // Enrich with presence data (best-effort)
       final participantMaps = (normalized['participants'] as List)
           .cast<Map<String, dynamic>>();
       await _enrichPresence(participantMaps);
 
-      // Rebuild model with enriched presence
       return ConversationModel.fromJson({
         ...normalized,
         'participants': participantMaps,
@@ -494,14 +611,10 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         final participants = data['participants'] as List<dynamic>? ?? [];
         final selfId = data['_currentUserId'] as String?;
 
-        // Cache names from the participant list we're sending
         for (final p in participants) {
-          if (p is Map<String, dynamic>) {
-            _cacheParticipantName(p);
-          }
+          if (p is Map<String, dynamic>) _cacheParticipantName(p);
         }
 
-        // Backend auto-adds creator — exclude self to avoid duplicate
         final participantIds = participants
             .map((p) => (p as Map<String, dynamic>)['id'] as String?)
             .where((id) => id != null && id.isNotEmpty && id != selfId)
@@ -521,11 +634,8 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       } else {
         final participants = data['participants'] as List<dynamic>? ?? [];
 
-        // Cache names from the participant list
         for (final p in participants) {
-          if (p is Map<String, dynamic>) {
-            _cacheParticipantName(p);
-          }
+          if (p is Map<String, dynamic>) _cacheParticipantName(p);
         }
 
         final recipientId =
@@ -540,6 +650,18 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         final conv = _unwrapResponse(r.data);
         final newId = conv['id'] as String? ?? '';
         _typeCache[newId] = 'direct';
+
+        // Pre-warm cache for the new DM's participants
+        final iid =
+            conv['initiator_actor_id'] as String? ??
+            conv['initiator_id'] as String? ??
+            '';
+        final rid =
+            conv['recipient_actor_id'] as String? ??
+            conv['recipient_id'] as String? ??
+            '';
+        await _resolveActorNames([iid, rid]..removeWhere((s) => s.isEmpty));
+
         return ConversationModel.fromJson(_normalizeDirect(conv));
       }
     } on DioException catch (e) {
@@ -590,21 +712,41 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
           ? (raw['data'] as List? ?? [])
           : (raw as List? ?? []);
 
-      final messages = list.map((e) {
+      // Collect sender IDs not yet in the cache
+      final uncachedIds = <String>{};
+      for (final e in list) {
         final msgMap = e as Map<String, dynamic>;
-        // Resolve sender name from cache if API returns only actor_id
         final senderId =
             msgMap['sender_actor_id'] as String? ??
             msgMap['sender_id'] as String? ??
             '';
-        final rawSenderName = msgMap['sender_name'] as String?;
-        final resolvedName = _resolveName(rawSenderName, senderId);
-        // Inject resolved name back into the map before parsing
-        msgMap['sender_name'] = resolvedName;
+        final rawName = msgMap['sender_name'] as String?;
+        if (senderId.isNotEmpty &&
+            !_nameCache.containsKey(senderId) &&
+            (rawName == null || rawName.isEmpty || _isUlid(rawName))) {
+          uncachedIds.add(senderId);
+        }
+      }
+
+      // Bulk-resolve before parsing so _resolveName() hits the warm cache
+      if (uncachedIds.isNotEmpty) {
+        await _resolveActorNames(uncachedIds.toList());
+      }
+
+      final messages = list.map((e) {
+        final msgMap = e as Map<String, dynamic>;
+        final senderId =
+            msgMap['sender_actor_id'] as String? ??
+            msgMap['sender_id'] as String? ??
+            '';
+        msgMap['sender_name'] = _resolveName(
+          msgMap['sender_name'] as String?,
+          senderId,
+        );
         return MessageModel.fromJson(msgMap);
       }).toList();
 
-      // API returns newest-first (desc) — reverse to chronological for UI
+      // API returns newest-first — reverse to chronological for the UI
       return messages.reversed.toList();
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -641,7 +783,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       final r = await _dio.post('$_base/$scope/$convId/messages', data: body);
       final msgData = _unwrapResponse(r.data);
 
-      // Resolve sender name
       final senderId =
           msgData['sender_actor_id'] as String? ??
           msgData['sender_id'] as String? ??
@@ -803,7 +944,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         '$_base/groups/$convId/participants',
         data: {'actor_id': pId},
       );
-      // Cache the added participant's name
       if (name.isNotEmpty && !_isUlid(name)) {
         _nameCache[pId] = name;
       }
@@ -851,7 +991,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     String? message,
   ) async {
     try {
-      // Cache the participant name
       if (participantName.isNotEmpty && !_isUlid(participantName)) {
         _nameCache[participantId] = participantName;
       }
@@ -874,16 +1013,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
-  }
-
-  // ── Helpers ───────────────────────────────────────────────
-
-  String _msg(DioException e) {
-    final data = e.response?.data;
-    if (data is Map<String, dynamic> && data['message'] is String) {
-      return data['message'] as String;
-    }
-    return 'An error occurred. Please try again.';
   }
 }
 
@@ -1754,14 +1883,16 @@ class UpdateConversationUseCase implements UseCase<ConversationEntity, UpdateCon
 
 
 // === FILE: lib/features/conversation/presentation/bloc/conversation_bloc.dart ===
+// === FILE: lib/features/conversation/presentation/bloc/conversation_bloc.dart ===
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../../data/datasources/conversation_remote_datasource.dart';
 import '../../domain/usecases/create_conversation_usecase.dart';
 import '../../domain/usecases/delete_conversation_usecase.dart';
-import '../../domain/usecases/get_conversation_usecase.dart';
 import '../../domain/usecases/get_all_conversation_usecase.dart';
+import '../../domain/usecases/get_conversation_usecase.dart';
 import '../../domain/usecases/update_conversation_usecase.dart';
 import 'conversation_event.dart';
 import 'conversation_state.dart';
@@ -1779,6 +1910,15 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   final String currentUserName;
   final String currentUserRole;
 
+  // ── Polling ───────────────────────────────────────────────
+  // Polls the active conversation every [_pollInterval] seconds.
+  // Only active when a chat is open (ConversationChatLoaded state).
+  // Pauses automatically when the bloc is not in chat state.
+  // Cancelled on bloc close.
+  static const _pollInterval = Duration(seconds: 8);
+  Timer? _pollTimer;
+  String? _activeConvId; // conversation currently open in the detail page
+
   ConversationBloc({
     required this.getAllUseCase,
     required this.getUseCase,
@@ -1791,11 +1931,8 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     required this.currentUserRole,
   }) : _ds = dataSource,
        super(ConversationInitial()) {
-    // FIX #2: Register current user's name in the datasource name cache
-    // so that messages sent by this user show their name, not their ULID.
     _ds.registerName(currentUserId, currentUserName);
 
-    // ── Debug: log identity so we can verify participant matching ──
     debugPrint('╔══════════════════════════════════════════════════╗');
     debugPrint('║ ConversationBloc — Current User Identity         ║');
     debugPrint('║ currentUserId:   $currentUserId');
@@ -1831,6 +1968,9 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     on<ConversationPrivateReplyRequested>(_onPrivateReply);
     on<ConversationStartNewRequested>(_onStartNew);
 
+    // Internal polling tick — silently refreshes messages when chat is open
+    on<_ConversationPollTick>(_onPollTick);
+
     _ds.onAutoReply = (convId, _) {
       if (!isClosed) add(ConversationAutoReplyReceived(convId));
     };
@@ -1842,7 +1982,56 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     };
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────
+  // ── Polling management ────────────────────────────────────
+
+  void _startPolling(String convId) {
+    if (_activeConvId == convId && _pollTimer?.isActive == true) return;
+    _stopPolling();
+    _activeConvId = convId;
+    _pollTimer = Timer.periodic(_pollInterval, (_) {
+      if (!isClosed && _activeConvId != null) {
+        add(_ConversationPollTick(_activeConvId!));
+      }
+    });
+    debugPrint(
+      '[ConvBloc] Polling started for $convId every ${_pollInterval.inSeconds}s',
+    );
+  }
+
+  void _stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _activeConvId = null;
+  }
+
+  /// Silent refresh — does NOT emit loading state so the UI doesn't flicker.
+  /// Only appends truly new messages (by checking last message ID).
+  Future<void> _onPollTick(
+    _ConversationPollTick event,
+    Emitter<ConversationState> emit,
+  ) async {
+    if (state is! ConversationChatLoaded) return;
+    final current = state as ConversationChatLoaded;
+    if (current.conversation.id != event.convId) return;
+
+    try {
+      final newMsgs = await _ds.getMessages(event.convId);
+
+      // Only emit if we actually have new messages
+      final currentIds = current.messages.map((m) => m.id).toSet();
+      final hasNew = newMsgs.any((m) => !currentIds.contains(m.id));
+      if (!hasNew) return;
+
+      // Mark as read silently
+      _ds.markAsRead(event.convId).ignore();
+
+      emit(current.copyWith(messages: newMsgs));
+    } catch (_) {
+      // Poll failures are silent — user still sees existing messages
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────
 
   Future<void> _reloadChat(
     String convId,
@@ -1852,7 +2041,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     final msgs = await _ds.getMessages(convId);
     final pinned = _ds.getPinnedMessages(convId);
 
-    // ── Debug: log participant matching ──
     debugPrint('┌─ _reloadChat($convId) ─────────────────────');
     debugPrint(
       '│ type: ${conv.type.name}, participants: ${conv.participants.length}',
@@ -1860,13 +2048,11 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     for (final p in conv.participants) {
       final match = p.id.toLowerCase() == currentUserId.toLowerCase();
       debugPrint(
-        '│  ${match ? "✓" : "✗"} id=${p.id} name=${p.name} role=${p.role}',
+        '│  ${match ? '✓' : '✗'} id=${p.id} name=${p.name} role=${p.role}',
       );
     }
-    debugPrint(
-      '│ hasParticipant($currentUserId) = ${conv.hasParticipant(currentUserId)}',
-    );
     debugPrint('└────────────────────────────────────────────');
+
     final currentTyping = state is ConversationChatLoaded
         ? (state as ConversationChatLoaded).typingUser
         : null;
@@ -1876,6 +2062,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     final currentQuery = state is ConversationChatLoaded
         ? (state as ConversationChatLoaded).searchQuery
         : null;
+
     emit(
       ConversationChatLoaded(
         conversation: conv,
@@ -1888,25 +2075,23 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     );
   }
 
-  // ── LIST ──────────────────────────────────────────────────────────────
+  // ── LIST ──────────────────────────────────────────────────
 
   Future<void> _onLoadAll(
     ConversationLoadAllRequested event,
     Emitter<ConversationState> emit,
   ) async {
+    // Stop polling when returning to list
+    _stopPolling();
+
     emit(ConversationLoading());
     final result = await getAllUseCase(NoParams());
     result.fold((f) => emit(ConversationFailure(f.message)), (items) {
-      // ── Debug: log conversation list matching ──
-      final mine = items.where((c) => c.hasParticipant(currentUserId)).length;
-      final monitored = items.length - mine;
       debugPrint('┌─ ConversationLoadAll ─────────────────────');
-      debugPrint('│ total=${items.length} mine=$mine monitored=$monitored');
-      debugPrint('│ currentUserId=$currentUserId');
+      debugPrint('│ total=${items.length} currentUserId=$currentUserId');
       if (items.isNotEmpty) {
-        final first = items.first;
         debugPrint('│ first conv participants:');
-        for (final p in first.participants) {
+        for (final p in items.first.participants) {
           debugPrint('│   id=${p.id} name=${p.name}');
         }
       }
@@ -1918,6 +2103,8 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     });
   }
 
+  // ── CHAT ──────────────────────────────────────────────────
+
   Future<void> _onLoadOne(
     ConversationLoadOneRequested event,
     Emitter<ConversationState> emit,
@@ -1926,10 +2113,50 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     try {
       await _reloadChat(event.id, emit);
       await _ds.markAsRead(event.id);
+      // Start polling now that chat is open
+      _startPolling(event.id);
     } catch (e) {
       emit(ConversationFailure(e.toString()));
     }
   }
+
+  Future<void> _onLoadMessages(
+    ConversationLoadMessagesRequested event,
+    Emitter<ConversationState> emit,
+  ) async {
+    emit(ConversationLoading());
+    try {
+      await _reloadChat(event.conversationId, emit);
+      _startPolling(event.conversationId);
+    } catch (e) {
+      emit(ConversationFailure(e.toString()));
+    }
+  }
+
+  Future<void> _onSendMessage(
+    ConversationSendMessageRequested event,
+    Emitter<ConversationState> emit,
+  ) async {
+    try {
+      await _ds.sendMessage(
+        convId: event.conversationId,
+        content: event.content,
+        imageUrl: event.imageUrl,
+        replyToId: event.replyToId,
+        replyToSenderName: event.replyToSenderName,
+        replyToContent: event.replyToContent,
+        mentionedUserIds: event.mentionedUserIds,
+        forwardedFromConvId: event.forwardedFromConvId,
+        forwardedFromSenderName: event.forwardedFromSenderName,
+        voiceDurationSeconds: event.voiceDurationSeconds,
+      );
+      await _reloadChat(event.conversationId, emit);
+    } catch (e) {
+      emit(ConversationFailure(e.toString()));
+    }
+  }
+
+  // ── CRUD ──────────────────────────────────────────────────
 
   Future<void> _onCreate(
     ConversationCreateRequested event,
@@ -1969,42 +2196,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     );
   }
 
-  // ── CHAT ──────────────────────────────────────────────────────────────
-
-  Future<void> _onLoadMessages(
-    ConversationLoadMessagesRequested event,
-    Emitter<ConversationState> emit,
-  ) async {
-    emit(ConversationLoading());
-    try {
-      await _reloadChat(event.conversationId, emit);
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
-    }
-  }
-
-  Future<void> _onSendMessage(
-    ConversationSendMessageRequested event,
-    Emitter<ConversationState> emit,
-  ) async {
-    try {
-      await _ds.sendMessage(
-        convId: event.conversationId,
-        content: event.content,
-        imageUrl: event.imageUrl,
-        replyToId: event.replyToId,
-        replyToSenderName: event.replyToSenderName,
-        replyToContent: event.replyToContent,
-        mentionedUserIds: event.mentionedUserIds,
-        forwardedFromConvId: event.forwardedFromConvId,
-        forwardedFromSenderName: event.forwardedFromSenderName,
-        voiceDurationSeconds: event.voiceDurationSeconds,
-      );
-      await _reloadChat(event.conversationId, emit);
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
-    }
-  }
+  // ── Auto reply / typing ───────────────────────────────────
 
   Future<void> _onAutoReply(
     ConversationAutoReplyReceived event,
@@ -2039,7 +2231,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     emit(s.copyWith(clearTyping: true));
   }
 
-  // ── MESSAGE OPS ───────────────────────────────────────────────────────
+  // ── Message ops ───────────────────────────────────────────
 
   Future<void> _onDeleteMessage(
     ConversationDeleteMessageRequested event,
@@ -2155,7 +2347,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     emit((state as ConversationChatLoaded).copyWith(clearSearch: true));
   }
 
-  // ── FORWARD ──────────────────────────────────────────────────────────
+  // ── Forward / Broadcast ───────────────────────────────────
 
   Future<void> _onForwardMessage(
     ConversationForwardMessageRequested event,
@@ -2179,8 +2371,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     }
   }
 
-  // ── BROADCAST ─────────────────────────────────────────────────────────
-
   Future<void> _onBroadcast(
     ConversationBroadcastRequested event,
     Emitter<ConversationState> emit,
@@ -2196,7 +2386,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     }
   }
 
-  // ── GROUP MANAGEMENT ─────────────────────────────────────────────────
+  // ── Group management ──────────────────────────────────────
 
   Future<void> _onClose(
     ConversationCloseRequested event,
@@ -2255,7 +2445,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     }
   }
 
-  // ── PRIVATE REPLY ────────────────────────────────────────────────────
+  // ── Private reply ─────────────────────────────────────────
 
   Future<void> _onPrivateReply(
     ConversationPrivateReplyRequested event,
@@ -2274,7 +2464,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     }
   }
 
-  // ── NEW CONVERSATION ─────────────────────────────────────────────────
+  // ── New conversation ──────────────────────────────────────
 
   Future<void> _onStartNew(
     ConversationStartNewRequested event,
@@ -2282,14 +2472,10 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   ) async {
     emit(ConversationLoading());
     try {
-      // FIX #5: Register participant names in the datasource cache
-      // so that when the API returns only actor IDs, we can resolve names.
       for (final p in event.participants) {
         final id = p['id'] ?? '';
         final name = p['name'] ?? '';
-        if (id.isNotEmpty && name.isNotEmpty) {
-          _ds.registerName(id, name);
-        }
+        if (id.isNotEmpty && name.isNotEmpty) _ds.registerName(id, name);
       }
 
       final participantMaps = <Map<String, dynamic>>[
@@ -2328,11 +2514,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
 
       final conv = await _ds.create(body);
 
-      // FIX #6: Send first message AFTER creation and wait for it,
-      // then emit the navigation event. This ensures the backend processes
-      // the system "group_created" message first, then our message.
       if (event.firstMessage != null && event.firstMessage!.isNotEmpty) {
-        // Small delay to let backend process the system message first
         await Future.delayed(const Duration(milliseconds: 300));
         await _ds.sendMessage(convId: conv.id, content: event.firstMessage!);
       }
@@ -2342,6 +2524,21 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
       emit(ConversationFailure(e.toString()));
     }
   }
+
+  // ── Dispose ───────────────────────────────────────────────
+
+  @override
+  Future<void> close() {
+    _stopPolling();
+    return super.close();
+  }
+}
+
+// ── Internal polling event (not exposed to the UI) ────────
+class _ConversationPollTick extends ConversationEvent {
+  final String convId;
+  _ConversationPollTick(this.convId);
+  List<Object?> get props => [convId];
 }
 
 
@@ -2884,7 +3081,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
           final isAdmin = _isParticipant(conv, currentUserId);
           final isClosed = conv.status == ConversationStatus.closed;
           final isGroup = conv.type == ConversationType.group;
-          final showNames = isGroup || !isAdmin;
+          final showNames = true;
 
           return LayoutBuilder(
             builder: (context, constraints) {
@@ -4520,17 +4717,22 @@ class _ConversationListPageState extends State<ConversationListPage>
     super.dispose();
   }
 
+  // FIX: case-insensitive participant check so DMs always land in "My
+  // Conversations" regardless of ULID casing returned by the API.
+  bool _isParticipant(ConversationEntity conv, String currentUserId) {
+    final lower = currentUserId.toLowerCase();
+    return conv.participants.any((p) => p.id.toLowerCase() == lower);
+  }
+
   List<ConversationEntity> _my(
     List<ConversationEntity> all,
     String currentUserId,
-  ) =>
-      all.where((c) => c.hasParticipant(currentUserId)).toList();
+  ) => all.where((c) => _isParticipant(c, currentUserId)).toList();
 
   List<ConversationEntity> _monitored(
     List<ConversationEntity> all,
     String currentUserId,
-  ) =>
-      all.where((c) => !c.hasParticipant(currentUserId)).toList();
+  ) => all.where((c) => !_isParticipant(c, currentUserId)).toList();
 
   List<ConversationEntity> _filtered(
     List<ConversationEntity> list,
@@ -4540,16 +4742,14 @@ class _ConversationListPageState extends State<ConversationListPage>
     final q = _searchQuery.toLowerCase();
     return list.where((c) {
       final name = c.displayName(currentUserId).toLowerCase();
-      final id = c.id.toLowerCase();
       final pNames = c.participants.map((p) => p.name.toLowerCase()).join(' ');
-      return name.contains(q) || id.contains(q) || pNames.contains(q);
+      return name.contains(q) || pNames.contains(q);
     }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // currentUserId is owned by the BLoC — read it once here.
     final currentUserId = context.read<ConversationBloc>().currentUserId;
 
     return Scaffold(
@@ -4567,7 +4767,7 @@ class _ConversationListPageState extends State<ConversationListPage>
                 child: TextField(
                   controller: _searchController,
                   decoration: InputDecoration(
-                    hintText: 'Search by name or ID...',
+                    hintText: 'Search by name...',
                     prefixIcon: const Icon(Icons.search, size: 20),
                     suffixIcon: _searchQuery.isNotEmpty
                         ? IconButton(
@@ -4606,9 +4806,9 @@ class _ConversationListPageState extends State<ConversationListPage>
       body: BlocConsumer<ConversationBloc, ConversationState>(
         listener: (context, state) {
           if (state is ConversationOperationSuccess) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(state.message)),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
             context.read<ConversationBloc>().add(
               ConversationLoadAllRequested(),
             );
@@ -4687,9 +4887,7 @@ class _ConversationListPageState extends State<ConversationListPage>
             ),
             const SizedBox(height: 12),
             Text(
-              isMine
-                  ? 'No conversations yet'
-                  : 'No conversations to monitor',
+              isMine ? 'No conversations yet' : 'No conversations to monitor',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: Theme.of(context).colorScheme.outline,
               ),
@@ -4741,22 +4939,23 @@ class _ConversationListPageState extends State<ConversationListPage>
           const SizedBox(height: 16),
           Text(
             'No conversations yet',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: cs.outline,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(color: cs.outline),
           ),
           const SizedBox(height: 8),
           Text(
             'Start a new conversation',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: cs.outline,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: cs.outline),
           ),
         ],
       ),
     );
   }
 }
+
 
 // === FILE: lib/features/conversation/presentation/widgets/chat_input_bar.dart ===
 import 'package:flutter/material.dart';
@@ -5726,6 +5925,7 @@ class _SearchTab extends StatelessWidget {
 
 
 // === FILE: lib/features/conversation/presentation/widgets/conversation_tile.dart ===
+// === FILE: lib/features/conversation/presentation/widgets/conversation_tile.dart ===
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../domain/entities/conversation_entity.dart';
@@ -5795,7 +5995,7 @@ class ConversationTile extends StatelessWidget {
           Clipboard.setData(ClipboardData(text: conversation.id));
           ScaffoldMessenger.of(ctx).showSnackBar(
             SnackBar(
-              content: Text('Copied ${conversation.id}'),
+              content: Text('ID copied'),
               duration: const Duration(seconds: 1),
             ),
           );
@@ -5833,19 +6033,19 @@ class ConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final displayName = conversation.displayName(currentUserId);
-    final isClosed = conversation.status == ConversationStatus.closed;
-    final isGroup = conversation.type == ConversationType.group;
-    final hasUnread = conversation.unreadCount > 0;
+    final conv = conversation;
+    final displayName = conv.displayName(currentUserId);
+    final subtitle = conv.subtitle(currentUserId);
+    final isClosed = conv.status == ConversationStatus.closed;
+    final isGroup = conv.type == ConversationType.group;
+    final hasUnread = conv.unreadCount > 0;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: cs.outlineVariant.withValues(alpha: 0.3),
-        ),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3)),
       ),
       child: GestureDetector(
         onSecondaryTapUp: (d) => _showMenu(context, d.globalPosition),
@@ -5858,7 +6058,7 @@ class ConversationTile extends StatelessWidget {
             child: Row(
               children: [
                 ParticipantAvatarStack(
-                  participants: conversation.participants,
+                  participants: conv.participants,
                   isGroup: isGroup,
                   size: 48,
                 ),
@@ -5867,6 +6067,7 @@ class ConversationTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // ── Row 1: name + lock/group icons ──────────────
                       Row(
                         children: [
                           if (isClosed) ...[
@@ -5891,24 +6092,30 @@ class ConversationTile extends StatelessWidget {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        conversation.id.toUpperCase(),
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: cs.outline,
-                          fontSize: 10,
-                          letterSpacing: 0.5,
+                      // ── Row 2: subtitle (online status / member count)
+                      if (subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 1),
+                        Text(
+                          subtitle,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: subtitle.contains('online')
+                                ? Colors.green
+                                : cs.outline,
+                            fontSize: 11,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      if (conversation.lastMessage != null)
+                      ],
+                      // ── Row 3: last message preview ─────────────────
+                      if (conv.lastMessage != null) ...[
+                        const SizedBox(height: 3),
                         Text.rich(
                           TextSpan(
                             children: [
-                              if (conversation.lastMessageSenderName != null)
+                              if (conv.lastMessageSenderName != null)
                                 TextSpan(
-                                  text:
-                                      '${conversation.lastMessageSenderName}: ',
+                                  text: '${conv.lastMessageSenderName}: ',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     color: hasUnread
@@ -5918,7 +6125,7 @@ class ConversationTile extends StatelessWidget {
                                   ),
                                 ),
                               TextSpan(
-                                text: conversation.lastMessage,
+                                text: conv.lastMessage,
                                 style: TextStyle(
                                   color: hasUnread
                                       ? cs.onSurface
@@ -5934,16 +6141,18 @@ class ConversationTile extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
+                      ],
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
+                // ── Right column: time + unread badge ─────────────────
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    if (conversation.lastMessageAt != null)
+                    if (conv.lastMessageAt != null)
                       Text(
-                        _fmtTime(conversation.lastMessageAt!),
+                        _fmtTime(conv.lastMessageAt!),
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: hasUnread ? cs.primary : cs.outline,
                           fontWeight: hasUnread
@@ -5963,9 +6172,9 @@ class ConversationTile extends StatelessWidget {
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
-                          conversation.unreadCount > 99
+                          conv.unreadCount > 99
                               ? '99+'
-                              : conversation.unreadCount.toString(),
+                              : conv.unreadCount.toString(),
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: cs.onPrimary,
                             fontSize: 11,
@@ -5975,7 +6184,7 @@ class ConversationTile extends StatelessWidget {
                       ),
                     if (isGroup && !hasUnread)
                       Text(
-                        '${conversation.participants.length} members',
+                        '${conv.participants.length} members',
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: cs.outline,
                           fontSize: 10,
@@ -6001,6 +6210,7 @@ class ConversationTile extends StatelessWidget {
     return '${dt.day}/${dt.month}';
   }
 }
+
 
 // === FILE: lib/features/conversation/presentation/widgets/message_bubble.dart ===
 import 'dart:io';

@@ -852,6 +852,15 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
             appPasswordConfirmation: _enableAppLogin
                 ? _confirmPassCtl.text
                 : null,
+            // ── ADD: contact person fields ────────────────────────
+            contactName: _contactNameCtl.text.trim().isEmpty
+                ? null
+                : _contactNameCtl.text.trim(),
+            contactPhone: _contactPhoneCtl.text.trim().isEmpty
+                ? null
+                : _contactPhoneCtl.text.trim(),
+            contactRole: _contactRole,
+            // ─────────────────────────────────────────────────────
           ),
         );
       }

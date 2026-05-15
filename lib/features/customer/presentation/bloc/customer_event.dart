@@ -19,11 +19,17 @@ class CustomerUpdateRequested extends CustomerEvent {
   final CustomerEntity entity;
   final String? appPassword;
   final String? appPasswordConfirmation;
+  final String? contactName;
+  final String? contactPhone;
+  final String? contactRole;
 
   CustomerUpdateRequested(
     this.entity, {
     this.appPassword,
     this.appPasswordConfirmation,
+    this.contactName,
+    this.contactPhone,
+    this.contactRole,
   });
 }
 
