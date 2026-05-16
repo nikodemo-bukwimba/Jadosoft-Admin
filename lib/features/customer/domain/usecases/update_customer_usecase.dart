@@ -27,6 +27,7 @@ class UpdateCustomerUseCase
   Future<Either<Failure, CustomerEntity>> call(UpdateCustomerParams p) =>
       repository.update(p.entity.id, {
         'name': p.entity.name,
+        'customer_type': p.entity.customerType,
         'category': p.entity.category,
         'tier': p.entity.tier,
         if (p.entity.assignedOfficerId != null &&

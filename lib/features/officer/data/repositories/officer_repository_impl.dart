@@ -73,13 +73,14 @@ class OfficerRepositoryImpl implements OfficerRepository {
     ),
   );
 
-  @override
   Future<Either<Failure, OfficerEntity>> updateMembership(
     String userId, {
     String? orgRoleId,
     int? level,
     String? status,
     String? branchId,
+    String? name, 
+    String? phone, 
   }) => _guard(
     () => _remote.updateMembership(
       userId,
@@ -87,6 +88,8 @@ class OfficerRepositoryImpl implements OfficerRepository {
       level: level,
       status: status,
       branchId: branchId,
+      name: name, 
+      phone: phone, 
     ),
   );
 

@@ -1,3 +1,4 @@
+//Admin app
 // FILE: lib/core/context/org_context.dart
 // CHANGE: One getter added — isBranchScopedUser.
 //         Everything else unchanged (no structural changes).

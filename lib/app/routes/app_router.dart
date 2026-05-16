@@ -141,6 +141,13 @@ import '../../features/activity_log/presentation/bloc/activity_log_event.dart';
 import '../../features/activity_log/presentation/pages/activity_log_list_page.dart';
 import '../../features/activity_log/presentation/pages/activity_log_detail_page.dart';
 
+import '../../features/inventory/presentation/bloc/inventory_bloc.dart';
+import '../../features/inventory/presentation/bloc/inventory_event.dart';
+import '../../features/inventory/presentation/pages/inventory_list_page.dart';
+import '../../features/inventory/presentation/pages/inventory_form_page.dart';
+import '../../features/inventory/presentation/enums/inventory_form_node.dart';
+import '../../core/context/org_context.dart';
+
 // -- FormNode enums -----------------------------------------
 import '../../features/officer/presentation/enums/officer_form_node.dart';
 import '../../features/customer/presentation/pages/customer_form_page.dart'
@@ -298,6 +305,11 @@ class AppRouter {
   static const String activityLogList = '/activity-logs';
   static const String activityLogDetail = '/activity-logs/:id';
   static String activityLogDetailPath(String id) => '/activity-logs/$id';
+
+  // Phase 10 — Inventory
+  static const String inventoryList = '/inventory';
+  static const String inventoryReceiveStock = '/inventory/receive';
+  static const String inventoryWarehouseCreate = '/inventory/warehouses/create';
 
   // -- END GENERATOR ROUTE CONSTANTS --------------------------
 
@@ -651,6 +663,54 @@ class AppRouter {
                   child: ProductFormPage(mode: ProductFormNode.edit, id: id),
                 );
               },
+            ),
+
+            // --- Phase 10 — Inventory (L2) -----------------
+            GoRoute(
+              path: AppRouter.inventoryList,
+              builder: (_, _) => BlocProvider(
+                create: (_) => sl<InventoryBloc>()
+                  ..add(
+                    InventoryBatchesLoadRequested(
+                      sl<OrgContext>().requireRootOrgId(),
+                    ),
+                  )
+                  ..add(
+                    InventoryWarehousesLoadRequested(
+                      sl<OrgContext>().requireRootOrgId(),
+                    ),
+                  ),
+                child: const InventoryListPage(),
+              ),
+            ),
+
+GoRoute(
+  path: AppRouter.inventoryReceiveStock,
+  builder: (_, state) {
+    final extra = state.extra as Map<String, dynamic>?;
+    return BlocProvider(
+      create: (_) => sl<InventoryBloc>()
+        ..add(
+          InventoryWarehousesLoadRequested(
+            sl<OrgContext>().requireRootOrgId(),
+          ),
+        ),
+      child: InventoryFormPage(
+        mode: InventoryFormNode.receiveStock,
+        preselectedProductId: extra?['productId'] as String?,
+      ),
+    );
+  },
+),
+
+            GoRoute(
+              path: AppRouter.inventoryWarehouseCreate,
+              builder: (_, _) => BlocProvider(
+                create: (_) => sl<InventoryBloc>(),
+                child: const InventoryFormPage(
+                  mode: InventoryFormNode.createWarehouse,
+                ),
+              ),
             ),
 
             // --- Phase 6 — Promotions (L3) ------------------

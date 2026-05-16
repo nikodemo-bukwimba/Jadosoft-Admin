@@ -12,6 +12,7 @@ import '../../../../core/usecase/usecase.dart';
 import '../../../category/domain/entities/category_entity.dart';
 import '../../../../core/widgets/searchable_picker_sheet.dart';
 import '../widgets/product_image.dart';
+import '../../data/datasources/product_remote_datasource.dart';
 
 class ProductFormPage extends StatefulWidget {
   final ProductFormNode mode;
@@ -47,6 +48,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
   bool _isNewValue = true;
 
   bool _isSubmitting = false;
+  bool _isUploading = false;
   bool _fieldsPopulated = false;
 
   List<CategoryEntity> _categories = [];
@@ -359,17 +361,35 @@ class _ProductFormPageState extends State<ProductFormPage> {
                     _buildToggles(),
                     const SizedBox(height: 24),
 
+                    // ── Upload progress indicator ──
+                    if (_isUploading) ...[
+                      const LinearProgressIndicator(),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Uploading image…',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
                     // ── Submit ──
                     FilledButton.icon(
-                      onPressed: _isSubmitting ? null : _submit,
-                      icon: _isSubmitting
+                      onPressed: (_isSubmitting || _isUploading)
+                          ? null
+                          : _submit,
+                      icon: (_isSubmitting || _isUploading)
                           ? const SizedBox(
                               height: 18,
                               width: 18,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : Icon(_isEdit ? Icons.save : Icons.add),
-                      label: Text(_isEdit ? 'Save Changes' : 'Create Product'),
+                      label: Text(
+                        _isUploading
+                            ? 'Uploading…'
+                            : (_isEdit ? 'Save Changes' : 'Create Product'),
+                      ),
                     ),
                     const SizedBox(height: 32),
                   ],
@@ -561,10 +581,45 @@ class _ProductFormPageState extends State<ProductFormPage> {
 
   // ─── Submit ────────────────────────────────────────────────
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSubmitting = true);
 
+    // ── Upload local image first if needed ──────────────────
+    String? resolvedImageUrl = _imageSource;
+
+    final isLocalFile =
+        _imageSource != null &&
+        !_imageSource!.startsWith('http://') &&
+        !_imageSource!.startsWith('https://');
+
+    if (isLocalFile) {
+      setState(() => _isUploading = true);
+      try {
+        final datasource = GetIt.instance<ProductRemoteDataSource>();
+        resolvedImageUrl = await datasource.uploadImage(_imageSource!);
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isSubmitting = false;
+            _isUploading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Image upload failed: $e'),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
+        return;
+      } finally {
+        if (mounted) setState(() => _isUploading = false);
+      }
+    }
+
+    if (!mounted) return;
+
+    // ── Dispatch bloc event with resolved URL ───────────────
     if (_isEdit) {
       final currentState = context.read<ProductBloc>().state;
       if (currentState is ProductDetailLoaded) {
@@ -577,7 +632,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
               categoryId: _selectedCategoryId ?? '',
               isAvailable: _isAvailableValue,
               isNew: _isNewValue,
-              imageUrl: _imageSource,
+              imageUrl: resolvedImageUrl, // ← resolved URL, not local path
               batchNumber: _batchNumberController.text.trim().isEmpty
                   ? null
                   : _batchNumberController.text.trim(),
@@ -601,7 +656,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
             isAvailable: _isAvailableValue,
             isFeatured: false,
             isNew: _isNewValue,
-            imageUrl: _imageSource,
+            imageUrl: resolvedImageUrl, // ← resolved URL, not local path
             batchNumber: _batchNumberController.text.trim().isEmpty
                 ? null
                 : _batchNumberController.text.trim(),

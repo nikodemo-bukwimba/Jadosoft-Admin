@@ -19,10 +19,19 @@ class ProductImage extends StatelessWidget {
     this.fit = BoxFit.cover,
   });
 
-  bool get _isLocalFile =>
-      imageUrl != null &&
-      !imageUrl!.startsWith('http') &&
-      File(imageUrl!).existsSync();
+  bool get _isLocalFile {
+    if (imageUrl == null) return false;
+    if (imageUrl!.startsWith('http://') || imageUrl!.startsWith('https://')) {
+      return false;
+    }
+    // On mobile, paths from image_picker are absolute. Avoid existsSync() on
+    // non-absolute strings (e.g. relative paths, Android content:// URIs)
+    // which can return false even for valid files or throw on some platforms.
+    if (imageUrl!.startsWith('/') || imageUrl!.startsWith('file://')) {
+      return true; // treat as local file; Image.file handles errors via errorBuilder
+    }
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {

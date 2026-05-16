@@ -1,18 +1,29 @@
 ﻿// lib/features/product/presentation/pages/product_detail_page.dart
 //
-// MERGED: Retains all original implementations (collapsing AppBar, full
-// inventory card, expiry badge, delete action, featured/unfeatured/archive/
-// publish state-machine, confirm-name dialog) while adding:
-//   • _PromotionPricingSection  – shown between price and info when on promo
-//   • _ImageSection             – now also renders a PromotionCornerTag
-//   • Refactored sub-widgets    – _DetailView, _InfoCard, _ActionsSection
-//   • Cleaner _formatPrice      – regex-based thousands separator
-// ─────────────────────────────────────────────────────────────────────────
+// CHANGE: _InventoryCard is now stateful and loads LIVE inventory data.
+//
+// Previously: showed ProductEntity.quantityAvailable (manually typed metadata
+//   in product form) — completely disconnected from the inventory system.
+//
+// Now:
+//   • On mount, calls GetVariantStockUseCase(orgId, variantId) to fetch real
+//     stock from the inventory module.
+//   • Displays VariantStockEntity.totalStock as the live available quantity.
+//   • Lists every InventoryBatchEntity (active / near-expiry / expired /
+//     depleted) so staff can see exactly which batches are on hand.
+//   • "Receive Stock" button navigates to the inventory receive-stock form
+//     pre-selecting this product (passes productId as query parameter).
+//   • Refreshes automatically when returning from the receive-stock form.
+//   • Falls back to metadata values when variantId is null (product not yet
+//     received into inventory).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:get_it/get_it.dart';
+
 import '../../../../app/routes/app_router.dart';
+import '../../../../core/context/org_context.dart';
 import '../bloc/product_bloc.dart';
 import '../bloc/product_event.dart';
 import '../bloc/product_state.dart';
@@ -22,8 +33,9 @@ import '../widgets/product_image.dart';
 import '../widgets/product_status_badge.dart';
 import '../widgets/product_confirm_name_dialog.dart';
 import '../widgets/promotion_price_display.dart';
-import 'package:get_it/get_it.dart';
 import '../../../category/domain/usecases/get_category_usecase.dart';
+import '../../../inventory/domain/entities/inventory_entity.dart';
+import '../../../inventory/domain/usecases/get_variant_stock_usecase.dart';
 
 class ProductDetailPage extends StatelessWidget {
   const ProductDetailPage({super.key});
@@ -38,7 +50,6 @@ class ProductDetailPage extends StatelessWidget {
     }
   }
 
-  // Cleaner regex-based formatter (from new file)
   String _formatPrice(double v) =>
       'TZS ${v.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',')}';
 
@@ -60,7 +71,6 @@ class ProductDetailPage extends StatelessWidget {
               ProductLoadOneRequested(state.updatedItem!.id),
             );
           } else {
-            // Keep original behaviour: pop when no updated item is returned
             context.pop();
           }
         }
@@ -114,8 +124,7 @@ class ProductDetailPage extends StatelessWidget {
   }
 }
 
-// ─── Detail View ────────────────────────────────────────────────────────────
-// Stateful so category can be loaded once and cached (from new file).
+// ─── Detail View ─────────────────────────────────────────────────────────────
 
 class _DetailView extends StatefulWidget {
   final ProductEntity item;
@@ -152,10 +161,8 @@ class _DetailViewState extends State<_DetailView> {
     final statusEnum = ProductStatusX.fromString(item.status);
     final scheme = Theme.of(context).colorScheme;
 
-    // Retain original collapsing-image AppBar layout
     return CustomScrollView(
       slivers: [
-        // ── Collapsing Image AppBar ──────────────────────────────────────
         SliverAppBar(
           expandedHeight: 280,
           pinned: true,
@@ -175,15 +182,12 @@ class _DetailViewState extends State<_DetailView> {
             background: _ImageSection(item: item),
           ),
         ),
-
-        // ── Body ────────────────────────────────────────────────────────
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Name ──
                 Text(
                   item.name,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -191,8 +195,6 @@ class _DetailViewState extends State<_DetailView> {
                   ),
                 ),
                 const SizedBox(height: 6),
-
-                // ── Base price (always shown) ──
                 Text(
                   widget.formatPrice(item.price),
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -206,8 +208,6 @@ class _DetailViewState extends State<_DetailView> {
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // ── Description ──
                 if (item.description != null &&
                     item.description!.isNotEmpty) ...[
                   Text(
@@ -219,8 +219,6 @@ class _DetailViewState extends State<_DetailView> {
                   ),
                   const SizedBox(height: 20),
                 ],
-
-                // ── Promotion Pricing (NEW) ──────────────────────────
                 if (item.isOnPromotion) ...[
                   _PromotionPricingSection(
                     item: item,
@@ -228,11 +226,7 @@ class _DetailViewState extends State<_DetailView> {
                   ),
                   const SizedBox(height: 16),
                 ],
-
-                // ── State Machine Actions ────────────────────────────
                 _ActionsSection(item: item, statusEnum: statusEnum),
-
-                // ── Details Card ─────────────────────────────────────
                 const SizedBox(height: 16),
                 _InfoCard(
                   item: item,
@@ -242,11 +236,11 @@ class _DetailViewState extends State<_DetailView> {
                   theme: Theme.of(context),
                 ),
 
-                // ── Inventory Card ───────────────────────────────────
+                // ── Live inventory card ──────────────────────────────
                 const SizedBox(height: 12),
-                _InventoryCard(item: item, scheme: scheme),
+                _LiveInventoryCard(item: item, scheme: scheme),
 
-                const SizedBox(height: 80), // FAB clearance
+                const SizedBox(height: 80),
               ],
             ),
           ),
@@ -275,8 +269,7 @@ class _DetailViewState extends State<_DetailView> {
   }
 }
 
-// ─── Image Section ────────────────────────────────────────────────────────
-// Retains original gradient scrim + overlay tags; adds PromotionCornerTag.
+// ─── Image Section ────────────────────────────────────────────────────────────
 
 class _ImageSection extends StatelessWidget {
   final ProductEntity item;
@@ -294,7 +287,6 @@ class _ImageSection extends StatelessWidget {
           borderRadius: 0,
           fit: BoxFit.cover,
         ),
-        // Gradient scrim for readability
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -304,7 +296,6 @@ class _ImageSection extends StatelessWidget {
             ),
           ),
         ),
-        // Status / feature tags at bottom-left (original)
         Positioned(
           bottom: 16,
           left: 16,
@@ -325,7 +316,6 @@ class _ImageSection extends StatelessWidget {
             ],
           ),
         ),
-        // Promotion corner tag (NEW)
         if (item.isOnPromotion)
           Positioned(
             top: 10,
@@ -356,7 +346,7 @@ class _ImageSection extends StatelessWidget {
   }
 }
 
-// ─── Promotion Pricing Section (NEW) ──────────────────────────────────────
+// ─── Promotion Pricing Section ────────────────────────────────────────────────
 
 class _PromotionPricingSection extends StatelessWidget {
   final ProductEntity item;
@@ -410,8 +400,7 @@ class _PromotionPricingSection extends StatelessWidget {
   }
 }
 
-// ─── Info Card ────────────────────────────────────────────────────────────
-// Original "Product Information" card, extended with sale price row.
+// ─── Info Card ────────────────────────────────────────────────────────────────
 
 class _InfoCard extends StatelessWidget {
   final ProductEntity item;
@@ -451,7 +440,6 @@ class _InfoCard extends StatelessWidget {
             const Divider(height: 24),
             _field(context, 'Category', categoryName ?? '...'),
             _field(context, 'Base Price', formatPrice(item.price)),
-            // Sale price row — only when on promotion (NEW)
             if (item.isOnPromotion)
               _field(
                 context,
@@ -511,89 +499,164 @@ class _InfoCard extends StatelessWidget {
   }
 }
 
-// ─── Inventory Card ───────────────────────────────────────────────────────
-// Unchanged from the original; extracted into its own widget for clarity.
+// ─── Live Inventory Card ──────────────────────────────────────────────────────
+//
+// Replaces the old static _InventoryCard.
+//
+// Loads VariantStockEntity from GetVariantStockUseCase on mount and after
+// returning from the receive-stock form. Shows:
+//   • Total live stock (from inventory batches, not metadata)
+//   • Per-batch breakdown grouped by status (active / near-expiry / expired)
+//   • "Receive Stock" shortcut button pre-selecting this product
+//   • Falls back to metadata (batchNumber / packSize / expiryDate from
+//     ProductEntity) when variantId is null (product not yet received)
 
-class _InventoryCard extends StatelessWidget {
+class _LiveInventoryCard extends StatefulWidget {
   final ProductEntity item;
   final ColorScheme scheme;
 
-  const _InventoryCard({required this.item, required this.scheme});
+  const _LiveInventoryCard({required this.item, required this.scheme});
+
+  @override
+  State<_LiveInventoryCard> createState() => _LiveInventoryCardState();
+}
+
+class _LiveInventoryCardState extends State<_LiveInventoryCard> {
+  VariantStockEntity? _stock;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final variantId = widget.item.variantId;
+    if (variantId == null) return;
+
+    setState(() { _loading = true; _error = null; });
+
+    try {
+      final orgId   = GetIt.instance<OrgContext>().requireRootOrgId();
+      final useCase = GetIt.instance<GetVariantStockUseCase>();
+      final result  = await useCase(
+        GetVariantStockParams(orgId: orgId, variantId: variantId),
+      );
+      result.fold(
+        (f) {
+          if (mounted) setState(() { _loading = false; _error = f.message; });
+        },
+        (stock) {
+          if (mounted) setState(() { _loading = false; _stock = stock; });
+        },
+      );
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+    }
+  }
+
+  // Navigate to receive stock, pre-selecting this product, then refresh
+  Future<void> _navigateToReceiveStock(BuildContext context) async {
+    await context.push(
+      AppRouter.inventoryReceiveStock,
+      extra: {'productId': widget.item.id},
+    );
+    // Refresh inventory data when returning
+    _load();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = widget.scheme;
+    final item   = widget.item;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Inventory',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: scheme.primary,
-                fontWeight: FontWeight.w700,
-              ),
+            // ── Header ─────────────────────────────────────────────
+            Row(
+              children: [
+                Text(
+                  'Inventory',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                // Refresh button
+                if (item.variantId != null)
+                  IconButton(
+                    icon: _loading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.refresh, size: 18),
+                    tooltip: 'Refresh stock',
+                    onPressed: _loading ? null : _load,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+              ],
             ),
             const Divider(height: 24),
-            _field(context, 'Batch Number', item.batchNumber ?? '—'),
-            _field(context, 'Pack Size', item.packSize ?? '—'),
-            _field(
-              context,
-              'Available Qty',
-              item.quantityAvailable != null
-                  ? item.quantityAvailable.toString()
-                  : '—',
-            ),
-            _field(
-              context,
-              'Expiry Date',
-              item.expiryDate != null
-                  ? '${item.expiryDate!.year}-'
-                        '${item.expiryDate!.month.toString().padLeft(2, '0')}-'
-                        '${item.expiryDate!.day.toString().padLeft(2, '0')}'
-                  : '—',
-            ),
-            if (item.expiryDate != null) ...[
-              const SizedBox(height: 4),
-              Builder(
-                builder: (context) {
-                  final daysLeft = item.expiryDate!
-                      .difference(DateTime.now())
-                      .inDays;
-                  final isExpiringSoon = daysLeft <= 180;
-                  final isExpired = daysLeft < 0;
-                  return Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isExpired
-                          ? scheme.errorContainer
-                          : isExpiringSoon
-                          ? Colors.orange.withValues(alpha: 0.15)
-                          : Colors.green.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
+
+            // ── No variantId — product not received yet ─────────────
+            if (item.variantId == null) ...[
+              _staticFallback(context, item, scheme),
+            ]
+
+            // ── Loading ────────────────────────────────────────────
+            else if (_loading && _stock == null) ...[
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+            ]
+
+            // ── Error ──────────────────────────────────────────────
+            else if (_error != null && _stock == null) ...[
+              Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      size: 18, color: scheme.error),
+                  const SizedBox(width: 8),
+                  Expanded(
                     child: Text(
-                      isExpired
-                          ? 'Expired ${daysLeft.abs()} days ago'
-                          : isExpiringSoon
-                          ? 'Expires in $daysLeft days — check stock'
-                          : 'Expires in $daysLeft days',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: isExpired
-                            ? scheme.onErrorContainer
-                            : isExpiringSoon
-                            ? Colors.orange.shade800
-                            : Colors.green.shade800,
-                      ),
+                      'Could not load stock: $_error',
+                      style: TextStyle(fontSize: 13, color: scheme.error),
                     ),
-                  );
-                },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _staticFallback(context, item, scheme),
+            ]
+
+            // ── Live data ──────────────────────────────────────────
+            else if (_stock != null) ...[
+              _liveStock(context, _stock!, scheme),
+            ],
+
+            // ── Receive Stock button ────────────────────────────────
+            if (item.variantId != null) ...[
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () => _navigateToReceiveStock(context),
+                icon: const Icon(Icons.add_box_outlined, size: 18),
+                label: const Text('Receive Stock'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(44),
+                ),
               ),
             ],
           ],
@@ -602,7 +665,367 @@ class _InventoryCard extends StatelessWidget {
     );
   }
 
-  Widget _field(BuildContext context, String label, String value) {
+  // Static fallback — shows metadata fields when variantId is unavailable
+  Widget _staticFallback(
+    BuildContext context,
+    ProductEntity item,
+    ColorScheme scheme,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _field(context, 'Batch Number', item.batchNumber ?? '—', scheme),
+        _field(context, 'Pack Size', item.packSize ?? '—', scheme),
+        _field(
+          context,
+          'Available Qty',
+          item.quantityAvailable?.toString() ?? '—',
+          scheme,
+        ),
+        _expiryRow(context, item.expiryDate, scheme),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, size: 16, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Live stock tracking starts once stock is received into a warehouse.',
+                  style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Live inventory — shows totalStock + per-batch breakdown
+  Widget _liveStock(
+    BuildContext context,
+    VariantStockEntity stock,
+    ColorScheme scheme,
+  ) {
+    final batches     = stock.batches;
+    final active      = batches.where((b) => b.isActive && !b.isExpired && !b.isNearExpiry && !b.isDepleted).toList();
+    final nearExpiry  = batches.where((b) => b.isNearExpiry && !b.isExpired).toList();
+    final expired     = batches.where((b) => b.isExpired).toList();
+    final depleted    = batches.where((b) => b.isDepleted && !b.isExpired).toList();
+
+    // Total stock colour
+    final isLow      = stock.totalStock > 0 && stock.totalStock <= 10;
+    final isDepleted = stock.totalStock <= 0;
+    final stockColor = isDepleted
+        ? scheme.error
+        : isLow
+            ? Colors.orange.shade700
+            : Colors.green.shade700;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Total stock summary ─────────────────────────────────
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: stockColor.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: stockColor.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                isDepleted
+                    ? Icons.remove_shopping_cart_outlined
+                    : Icons.inventory_2_outlined,
+                color: stockColor,
+                size: 22,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Total Available Stock',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: stockColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      '${stock.totalStock} units',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: stockColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isDepleted)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: scheme.errorContainer,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'OUT OF STOCK',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: scheme.onErrorContainer,
+                    ),
+                  ),
+                )
+              else if (isLow)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'LOW STOCK',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.orange.shade800,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        if (batches.isEmpty) ...[
+          const SizedBox(height: 12),
+          Text(
+            'No stock batches received yet.',
+            style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+          ),
+        ] else ...[
+          const SizedBox(height: 16),
+
+          // ── Batch groups ──────────────────────────────────────
+          if (expired.isNotEmpty) ...[
+            _batchGroupHeader('Expired (${expired.length})',
+                Colors.red.shade700),
+            ...expired.map((b) => _batchRow(context, b, scheme)),
+            const SizedBox(height: 10),
+          ],
+          if (nearExpiry.isNotEmpty) ...[
+            _batchGroupHeader('Near Expiry (${nearExpiry.length})',
+                Colors.orange.shade700),
+            ...nearExpiry.map((b) => _batchRow(context, b, scheme)),
+            const SizedBox(height: 10),
+          ],
+          if (active.isNotEmpty) ...[
+            _batchGroupHeader('Active (${active.length})',
+                Colors.green.shade700),
+            ...active.map((b) => _batchRow(context, b, scheme)),
+            const SizedBox(height: 10),
+          ],
+          if (depleted.isNotEmpty) ...[
+            _batchGroupHeader('Depleted (${depleted.length})',
+                Colors.grey.shade600),
+            ...depleted.map((b) => _batchRow(context, b, scheme)),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _batchGroupHeader(String label, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+
+  Widget _batchRow(
+    BuildContext context,
+    InventoryBatchEntity batch,
+    ColorScheme scheme,
+  ) {
+    final statusColor = batch.isExpired
+        ? Colors.red.shade700
+        : batch.isNearExpiry
+            ? Colors.orange.shade700
+            : batch.isDepleted
+                ? Colors.grey.shade600
+                : Colors.green.shade700;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  batch.batchNumber != null
+                      ? 'Batch: ${batch.batchNumber}'
+                      : 'Batch: ${batch.id.substring(0, 8)}…',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${batch.quantityAvailable} units',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (batch.warehouseName.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.warehouse_outlined,
+                    size: 13, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 4),
+                Text(
+                  batch.warehouseName,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (batch.expiresAt != null) ...[
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                Icon(Icons.event_outlined,
+                    size: 13, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 4),
+                Text(
+                  'Expires: ${_fmtDate(batch.expiresAt!)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: batch.isExpired
+                        ? Colors.red.shade700
+                        : batch.isNearExpiry
+                            ? Colors.orange.shade700
+                            : scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _fmtDate(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  Widget _expiryRow(
+    BuildContext context,
+    DateTime? expiryDate,
+    ColorScheme scheme,
+  ) {
+    final label = expiryDate != null
+        ? '${expiryDate.year}-'
+            '${expiryDate.month.toString().padLeft(2, '0')}-'
+            '${expiryDate.day.toString().padLeft(2, '0')}'
+        : '—';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _field(context, 'Expiry Date', label, scheme),
+        if (expiryDate != null) ...[
+          const SizedBox(height: 4),
+          Builder(builder: (context) {
+            final daysLeft = expiryDate.difference(DateTime.now()).inDays;
+            final isExpiringSoon = daysLeft <= 180;
+            final isExpired = daysLeft < 0;
+            return Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: isExpired
+                    ? scheme.errorContainer
+                    : isExpiringSoon
+                        ? Colors.orange.withValues(alpha: 0.15)
+                        : Colors.green.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                isExpired
+                    ? 'Expired ${daysLeft.abs()} days ago'
+                    : isExpiringSoon
+                        ? 'Expires in $daysLeft days — check stock'
+                        : 'Expires in $daysLeft days',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isExpired
+                      ? scheme.onErrorContainer
+                      : isExpiringSoon
+                          ? Colors.orange.shade800
+                          : Colors.green.shade800,
+                ),
+              ),
+            );
+          }),
+        ],
+      ],
+    );
+  }
+
+  Widget _field(
+    BuildContext context,
+    String label,
+    String value,
+    ColorScheme scheme,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -612,13 +1035,17 @@ class _InventoryCard extends StatelessWidget {
             width: 120,
             child: Text(
               label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
           Expanded(
-            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
+            child: Text(
+              value,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
           ),
         ],
       ),
@@ -626,8 +1053,7 @@ class _InventoryCard extends StatelessWidget {
   }
 }
 
-// ─── Actions Section ──────────────────────────────────────────────────────
-// Identical logic to original; extracted into its own widget.
+// ─── Actions Section ──────────────────────────────────────────────────────────
 
 class _ActionsSection extends StatelessWidget {
   final ProductEntity item;

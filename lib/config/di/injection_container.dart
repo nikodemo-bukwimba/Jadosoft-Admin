@@ -202,6 +202,17 @@ import 'package:jadosoft_admin/features/activity_log/domain/usecases/update_acti
 import 'package:jadosoft_admin/features/activity_log/domain/usecases/delete_activity_log_usecase.dart';
 import 'package:jadosoft_admin/features/activity_log/presentation/bloc/activity_log_bloc.dart';
 
+// Phase 10 — Inventory (L2)
+import 'package:jadosoft_admin/features/inventory/data/datasources/inventory_remote_datasource.dart';
+import 'package:jadosoft_admin/features/inventory/data/repositories/inventory_repository_impl.dart';
+import 'package:jadosoft_admin/features/inventory/domain/repositories/inventory_repository.dart';
+import 'package:jadosoft_admin/features/inventory/domain/usecases/get_warehouses_usecase.dart';
+import 'package:jadosoft_admin/features/inventory/domain/usecases/create_warehouse_usecase.dart';
+import 'package:jadosoft_admin/features/inventory/domain/usecases/get_batches_usecase.dart';
+import 'package:jadosoft_admin/features/inventory/domain/usecases/receive_stock_usecase.dart';
+import 'package:jadosoft_admin/features/inventory/domain/usecases/get_variant_stock_usecase.dart';
+import 'package:jadosoft_admin/features/inventory/presentation/bloc/inventory_bloc.dart';
+
 // -- END GENERATOR FEATURE IMPORTS ----------------------------
 
 import 'package:dio/dio.dart';
@@ -573,6 +584,33 @@ Future<void> initDependencies() async {
       updateUseCase: sl(),
       deleteUseCase: sl(),
       domainService: sl(),
+    ),
+  );
+
+  // ─────────────────────────────────────────────────────────────
+  // ADD this registration block inside initDependencies(),
+  // after the Product section (Seq 9) and before Promotions (Phase 6):
+  // ─────────────────────────────────────────────────────────────
+
+  // Seq 9b — Inventory (L2)
+  sl.registerLazySingleton<InventoryRemoteDataSource>(
+    () => InventoryRemoteDataSourceImpl(dio: sl(), orgContext: sl()),
+  );
+  sl.registerLazySingleton<InventoryRepository>(
+    () => InventoryRepositoryImpl(remoteDataSource: sl()),
+  );
+  sl.registerLazySingleton(() => GetWarehousesUseCase(sl()));
+  sl.registerLazySingleton(() => CreateWarehouseUseCase(sl()));
+  sl.registerLazySingleton(() => GetBatchesUseCase(sl()));
+  sl.registerLazySingleton(() => ReceiveStockUseCase(sl()));
+  sl.registerLazySingleton(() => GetVariantStockUseCase(sl()));
+  sl.registerFactory<InventoryBloc>(
+    () => InventoryBloc(
+      getWarehousesUseCase: sl(),
+      createWarehouseUseCase: sl(),
+      getBatchesUseCase: sl(),
+      receiveStockUseCase: sl(),
+      getVariantStockUseCase: sl(),
     ),
   );
 

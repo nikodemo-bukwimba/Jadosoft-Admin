@@ -6,6 +6,7 @@ import '../../../../core/network/api_paths.dart';
 import '../../../../core/network/base_remote_datasource.dart';
 import '../../../../core/network/paginated_response.dart';
 import '../models/officer_model.dart';
+import 'package:flutter/foundation.dart';
 
 abstract class OfficerRemoteDataSource {
   Future<PaginatedResponse<OfficerModel>> getAll({
@@ -41,6 +42,8 @@ abstract class OfficerRemoteDataSource {
     int? level,
     String? status,
     String? branchId,
+    String? name,
+    String? phone,
   });
 
   /// Problem #3 fix: safe branch transfer that never deletes root membership.
@@ -162,17 +165,24 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     int? level,
     String? status,
     String? branchId,
+    String? name,
+    String? phone,
   }) async {
     final orgId = (branchId != null && branchId.isNotEmpty)
         ? branchId
         : _orgContext.effectiveOrgId;
 
+    debugPrint(
+      '[OFFICER UPDATE] name=$name, phone=$phone, orgId=$orgId, userId=$userId',
+    );
     return patchAndParse(
       ApiPaths.orgs.member(orgId, userId),
       {
-        if (orgRoleId != null) 'org_role_id': orgRoleId,
-        if (level != null) 'level': level,
-        if (status != null) 'status': status,
+        'org_role_id': ?orgRoleId,
+        'level': ?level,
+        'status': ?status,
+        if (name != null && name.isNotEmpty) 'name': name,
+        if (phone != null && phone.isNotEmpty) 'phone': phone,
       },
       OfficerModel.fromJson,
       dataKey: 'membership',

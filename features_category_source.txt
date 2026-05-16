@@ -1,8 +1,9 @@
 ﻿// ================================================================
 // features_category_source.txt
-// Generated : 2026-04-11 01:03:41
-// Files     : 19
-// Usage     : Upload to Claude Project documents as reference.
+// Project Type : Flutter/Dart
+// Generated    : 2026-05-15 09:58:15
+// Files        : 19
+// Usage        : Upload to Claude Project documents as reference.
 // ================================================================
 
 // === FILE: lib/features/category/data/datasources/category_api_datasource.dart ===

@@ -39,6 +39,8 @@ abstract class OfficerRepository {
     int? level,
     String? status,
     String? branchId,
+    String? name,
+    String? phone,
   });
 
   /// Problem #3 fix: safe branch transfer via the dedicated transfer endpoint.

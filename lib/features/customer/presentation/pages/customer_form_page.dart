@@ -834,6 +834,7 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
           CustomerUpdateRequested(
             s.item.copyWith(
               name: _nameCtl.text.trim(),
+              customerType: _customerType,
               phone: _phoneCtl.text.trim(),
               email: _emailCtl.text.trim(),
               whatsappNumber: _whatsappCtl.text.trim(),
