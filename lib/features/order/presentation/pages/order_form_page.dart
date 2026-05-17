@@ -16,6 +16,7 @@ import '../../../product/domain/repositories/product_repository.dart';
 import '../../../product/data/models/product_model.dart';
 import '../../../promotion/domain/repositories/promotion_repository.dart';
 import '../../../product/domain/services/client_promotion_pricing_service.dart';
+import '../../../inventory/domain/usecases/get_variant_stock_usecase.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OrderFormPage — Manual order creation / edit
@@ -40,6 +41,7 @@ class _OrderFormPageState extends State<OrderFormPage> {
 
   List<CustomerModel> _customers = [];
   List<ProductModel> _products = [];
+  final Map<String, int> _liveStock = {};
   CustomerModel? _selectedCustomer;
   final List<_OrderLineItem> _lineItems = [];
 
@@ -111,7 +113,7 @@ class _OrderFormPageState extends State<OrderFormPage> {
       if (mounted) setState(() => _loadingLookups = false);
     }
   }
-  
+
   // double get _calculatedTotal =>
   //     _lineItems.fold(0.0, (sum, e) => sum + e.product.price * e.quantity);
 
@@ -518,20 +520,56 @@ class _OrderFormPageState extends State<OrderFormPage> {
     );
   }
 
-  Future<int?> _showQtyDialog(ProductModel product) {
-    final available = product.quantityAvailable;
-    final maxQty = (available != null && available > 0) ? available : 999;
+  Future<int?> _showQtyDialog(ProductModel product) async {
+    // Capture context-dependent objects BEFORE any await
+    final messenger = ScaffoldMessenger.of(context);
+    final errorColor = Theme.of(context).colorScheme.error;
 
-    if (available != null && available == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${product.name} is out of stock. Available: 0.'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
-      return Future.value(null);
+    int? available;
+    final variantId = product.variantId;
+
+    if (variantId != null) {
+      // Use cached value if already fetched this session
+      if (_liveStock.containsKey(variantId)) {
+        available = _liveStock[variantId];
+      } else {
+        try {
+          final orgId = sl<OrgContext>().requireRootOrgId();
+          final result = await sl<GetVariantStockUseCase>()(
+            GetVariantStockParams(orgId: orgId, variantId: variantId),
+          );
+          result.fold(
+            (_) => null, // inventory unavailable — fall back to metadata
+            (stock) {
+              available = stock.totalStock;
+              _liveStock[variantId] = stock.totalStock; // cache it
+            },
+          );
+        } catch (_) {
+          // Inventory service unreachable — fall back to metadata
+        }
+      }
     }
 
+    // Fall back to product metadata if live stock unavailable
+    available ??= product.quantityAvailable;
+
+    // Pin to a final local — Dart can't promote variables assigned inside closures
+    final a = available;
+    final int maxQty = (a != null && a > 0) ? a : 999;
+
+    if (a != null && a == 0) {
+      if (!mounted) return null;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('${product.name} is out of stock. Available: 0.'),
+          backgroundColor: errorColor,
+        ),
+      );
+      return null;
+    }
+
+    final localAvailable = a; // used inside the dialog closure
     final controller = TextEditingController(text: '1');
     int qty = 1;
 
@@ -547,12 +585,6 @@ class _OrderFormPageState extends State<OrderFormPage> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Text(
-              //   'TZS ${product.price.toStringAsFixed(0)} per unit',
-              //   style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-              //     color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-              //   ),
-              // ),
               if (product.isOnPromotion) ...[
                 Text(
                   'TZS ${product.effectivePrice.toStringAsFixed(0)} per unit',
@@ -562,7 +594,8 @@ class _OrderFormPageState extends State<OrderFormPage> {
                   ),
                 ),
                 Text(
-                  'Was TZS ${product.price.toStringAsFixed(0)} · ${product.discountPercentage!.toStringAsFixed(0)}% off',
+                  'Was TZS ${product.price.toStringAsFixed(0)} · '
+                  '${product.discountPercentage!.toStringAsFixed(0)}% off',
                   style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
                     color: Theme.of(ctx).colorScheme.onSurfaceVariant,
                     decoration: TextDecoration.lineThrough,
@@ -576,24 +609,24 @@ class _OrderFormPageState extends State<OrderFormPage> {
                   ),
                 ),
               const SizedBox(height: 4),
-              if (available != null)
+              if (localAvailable != null)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: available <= 10
+                    color: localAvailable <= 10
                         ? Colors.orange.withValues(alpha: 0.12)
                         : Colors.green.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    'Available: $available units',
+                    'Available: $localAvailable units',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: available <= 10
+                      color: localAvailable <= 10
                           ? Colors.orange.shade800
                           : Colors.green.shade700,
                     ),
@@ -615,7 +648,6 @@ class _OrderFormPageState extends State<OrderFormPage> {
                         : null,
                   ),
                   const SizedBox(width: 8),
-                  // ── Typing input ──────────────────────────────
                   SizedBox(
                     width: 72,
                     child: TextField(
@@ -638,7 +670,6 @@ class _OrderFormPageState extends State<OrderFormPage> {
                         if (parsed != null && parsed >= 1 && parsed <= maxQty) {
                           setS(() => qty = parsed);
                         } else if (parsed != null && parsed > maxQty) {
-                          // Clamp and correct the field
                           setS(() {
                             qty = maxQty;
                             controller.text = '$maxQty';
@@ -701,7 +732,11 @@ class _OrderFormPageState extends State<OrderFormPage> {
 
     // Inventory check
     for (final line in _lineItems) {
-      final available = line.product.quantityAvailable;
+      final available =
+          (line.product.variantId != null &&
+              _liveStock.containsKey(line.product.variantId))
+          ? _liveStock[line.product.variantId]
+          : line.product.quantityAvailable;
       if (available != null && available == 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -799,7 +834,7 @@ class _OrderFormPageState extends State<OrderFormPage> {
           : null;
       final effectiveRef = [
         if (baseRef.isNotEmpty) baseRef,
-        if (mobileNote != null) mobileNote,
+        ?mobileNote,
       ].join('|');
 
       context.read<OrderBloc>().add(
