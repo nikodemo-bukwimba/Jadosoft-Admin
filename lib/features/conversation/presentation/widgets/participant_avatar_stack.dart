@@ -1,3 +1,4 @@
+// === FILE: lib/features/conversation/presentation/widgets/participant_avatar_stack.dart ===
 import 'package:flutter/material.dart';
 import '../../domain/entities/conversation_entity.dart';
 
@@ -5,31 +6,53 @@ class ParticipantAvatarStack extends StatelessWidget {
   final List<ConversationParticipant> participants;
   final bool isGroup;
   final double size;
+
+  /// The current user's actor ID.
+  /// When provided and the conversation is a DM, the avatar shows the
+  /// OTHER participant's initials instead of always using participants.first.
+  final String? currentUserId;
+
   const ParticipantAvatarStack({
     super.key,
     required this.participants,
     required this.isGroup,
     this.size = 48,
+    this.currentUserId, // ← new optional param, backward-compatible
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    if (!isGroup || participants.length <= 1) {
-      final p = participants.isNotEmpty ? participants.first : null;
+
+    if (!isGroup) {
+      // ── DM: show the OTHER person's avatar ──────────────────
+      // Find the participant that is NOT the current user.
+      // Falls back to first if currentUserId is null or not found.
+      ConversationParticipant? other;
+      if (currentUserId != null && participants.length > 1) {
+        other = participants.firstWhere(
+          (p) => p.id.toLowerCase() != currentUserId!.toLowerCase(),
+          orElse: () => participants.first,
+        );
+      }
+      other ??= participants.isNotEmpty ? participants.first : null;
+
       return _avatarWithStatus(
         context,
-        p?.name ?? '?',
-        _roleColor(p?.role ?? 'unknown', cs),
+        other?.name ?? '?',
+        _roleColor(other?.role ?? 'unknown', cs),
         size,
-        p?.onlineStatus,
+        other?.onlineStatus,
       );
     }
+
+    // ── Group: stack up to 3 avatars ────────────────────────
     final visible = participants.take(3).toList();
     final overlap = size * 0.3;
     final smallSize = size * 0.7;
     final totalWidth =
         size + (visible.length - 1) * (smallSize - overlap * 0.5);
+
     return SizedBox(
       width: totalWidth,
       height: size,

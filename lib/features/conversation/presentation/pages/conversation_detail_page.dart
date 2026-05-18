@@ -690,6 +690,8 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
               participants: conv.participants,
               isGroup: isGroup,
               size: 36,
+              currentUserId:
+                  currentUserId, 
             ),
             const SizedBox(width: 10),
             Flexible(

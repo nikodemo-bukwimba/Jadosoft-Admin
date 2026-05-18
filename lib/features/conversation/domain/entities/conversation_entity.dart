@@ -1,4 +1,5 @@
-﻿import 'package:equatable/equatable.dart';
+﻿// === FILE: lib/features/conversation/domain/entities/conversation_entity.dart ===
+import 'package:equatable/equatable.dart';
 
 enum ConversationType { direct, group }
 
@@ -53,6 +54,11 @@ class ConversationEntity extends Equatable {
   final String? lastMessage;
   final DateTime? lastMessageAt;
   final String? lastMessageSenderName;
+
+  /// True when the last message was an image/photo.
+  /// Used by ConversationTile to show a 📷 Photo preview instead of empty text.
+  final bool lastMessageIsImage;
+
   final int unreadCount;
   final String? closedBy;
   final DateTime? closedAt;
@@ -67,6 +73,7 @@ class ConversationEntity extends Equatable {
     this.lastMessage,
     this.lastMessageAt,
     this.lastMessageSenderName,
+    this.lastMessageIsImage = false,
     required this.unreadCount,
     this.closedBy,
     this.closedAt,
@@ -78,6 +85,8 @@ class ConversationEntity extends Equatable {
     return participants.any((p) => p.id.toLowerCase() == lower);
   }
 
+  /// Returns the display name for this conversation from the perspective of
+  /// [currentUserId]. For DMs returns the OTHER person's name.
   String displayName(String currentUserId) {
     if (type == ConversationType.group) return title ?? 'Group Chat';
     final lower = currentUserId.toLowerCase();
@@ -87,7 +96,7 @@ class ConversationEntity extends Equatable {
 
   String subtitle(String currentUserId) {
     if (type == ConversationType.group) {
-      return participants.map((p) => p.name).join(', ');
+      return '${participants.length} members';
     }
     final lower = currentUserId.toLowerCase();
     final other = participants.where((p) => p.id.toLowerCase() != lower);
@@ -114,6 +123,7 @@ class ConversationEntity extends Equatable {
     String? lastMessage,
     DateTime? lastMessageAt,
     String? lastMessageSenderName,
+    bool? lastMessageIsImage,
     int? unreadCount,
     String? closedBy,
     DateTime? closedAt,
@@ -129,6 +139,7 @@ class ConversationEntity extends Equatable {
       lastMessageAt: lastMessageAt ?? this.lastMessageAt,
       lastMessageSenderName:
           lastMessageSenderName ?? this.lastMessageSenderName,
+      lastMessageIsImage: lastMessageIsImage ?? this.lastMessageIsImage,
       unreadCount: unreadCount ?? this.unreadCount,
       closedBy: closedBy ?? this.closedBy,
       closedAt: closedAt ?? this.closedAt,
@@ -146,6 +157,7 @@ class ConversationEntity extends Equatable {
     lastMessage,
     lastMessageAt,
     lastMessageSenderName,
+    lastMessageIsImage,
     unreadCount,
     closedBy,
     closedAt,

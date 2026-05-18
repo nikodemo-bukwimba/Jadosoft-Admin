@@ -1,4 +1,5 @@
-﻿import '../../domain/entities/conversation_entity.dart';
+﻿// === FILE: lib/features/conversation/data/models/conversation_model.dart ===
+import '../../domain/entities/conversation_entity.dart';
 
 class ConversationModel extends ConversationEntity {
   const ConversationModel({
@@ -10,6 +11,7 @@ class ConversationModel extends ConversationEntity {
     super.lastMessage,
     super.lastMessageAt,
     super.lastMessageSenderName,
+    super.lastMessageIsImage,
     required super.unreadCount,
     super.closedBy,
     super.closedAt,
@@ -34,6 +36,13 @@ class ConversationModel extends ConversationEntity {
       );
     }).toList();
 
+    // Detect whether the last message was a photo.
+    // Backend sends last_message_content_type = 'image' when it was a photo.
+    final lastContentType =
+        j['last_message_content_type'] as String? ??
+        j['last_message_type'] as String?;
+    final lastIsImage = lastContentType == 'image';
+
     return ConversationModel(
       id: j['id'] as String? ?? '',
       type: (j['type'] as String? ?? 'direct') == 'group'
@@ -49,6 +58,7 @@ class ConversationModel extends ConversationEntity {
           ? DateTime.parse(j['last_message_at'] as String)
           : null,
       lastMessageSenderName: j['last_message_sender_name'] as String?,
+      lastMessageIsImage: lastIsImage,
       unreadCount: (j['unread_count'] as num?)?.toInt() ?? 0,
       closedBy: j['closed_by'] as String?,
       closedAt: j['closed_at'] != null
@@ -80,6 +90,7 @@ class ConversationModel extends ConversationEntity {
     'last_message': lastMessage,
     'last_message_at': lastMessageAt?.toIso8601String(),
     'last_message_sender_name': lastMessageSenderName,
+    'last_message_is_image': lastMessageIsImage,
     'unread_count': unreadCount,
     'closed_by': closedBy,
     'closed_at': closedAt?.toIso8601String(),
@@ -96,6 +107,7 @@ class ConversationModel extends ConversationEntity {
         lastMessage: e.lastMessage,
         lastMessageAt: e.lastMessageAt,
         lastMessageSenderName: e.lastMessageSenderName,
+        lastMessageIsImage: e.lastMessageIsImage,
         unreadCount: e.unreadCount,
         closedBy: e.closedBy,
         closedAt: e.closedAt,
