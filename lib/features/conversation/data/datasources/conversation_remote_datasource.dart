@@ -93,9 +93,10 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
 
   /// Actor-ID → display name cache.
   /// Populated from:
-  ///   1. registerName() called at DI time with the current user
-  ///   2. Participant data from getAll / getById responses
-  ///   3. Message sender data from getMessages responses
+  ///   1. registerName() called at route time with the current user's actor_id
+  ///   2. _resolveActorNames() bulk-fetched before normalization
+  ///   3. Participant data from getAll / getById responses
+  ///   4. Message sender data from getMessages responses
   final Map<String, String> _nameCache = {};
 
   @override
@@ -108,38 +109,40 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     }
   }
 
-  /// Returns true if the value looks like a raw ULID (26 uppercase alphanumeric).
+  // ── Helpers ───────────────────────────────────────────────
+
+  /// Returns true if the value looks like a raw ULID (26 alphanumeric chars).
   bool _isUlid(String? v) {
     if (v == null || v.length != 26) return false;
     return RegExp(r'^[0-9A-Z]{26}$', caseSensitive: false).hasMatch(v);
   }
 
-  /// Resolve a name: use cache if the raw value looks like a ULID.
+  /// Resolve a display name for an actor.
+  /// Priority: non-ULID raw value from API → _nameCache → truncated ID.
   String _resolveName(String? raw, String? actorId) {
-    // If we have a non-ULID name from the API, use it
+    // Use the API value if it's a real name (not a ULID)
     if (raw != null && raw.isNotEmpty && !_isUlid(raw)) {
-      // Also cache it
       if (actorId != null && actorId.isNotEmpty) {
         _nameCache[actorId] = raw;
       }
       return raw;
     }
-    // Try the cache
+    // Try cache (exact match)
     final id = actorId ?? raw ?? '';
     if (_nameCache.containsKey(id)) return _nameCache[id]!;
-    // Also try case-insensitive
+    // Try cache (case-insensitive)
     final lower = id.toLowerCase();
     for (final entry in _nameCache.entries) {
       if (entry.key.toLowerCase() == lower) return entry.value;
     }
-    // Last resort: return a truncated ID
+    // Last resort: truncated ID so at least it's short
     if (id.length > 8) {
       return '${id.substring(0, 4)}…${id.substring(id.length - 4)}';
     }
     return id.isNotEmpty ? id : 'Unknown';
   }
 
-  /// Cache name from a participant map.
+  /// Cache the display name from a participant map.
   void _cacheParticipantName(Map<String, dynamic> p) {
     final id = p['actor_id'] as String? ?? p['id'] as String? ?? '';
     final name =
@@ -153,18 +156,13 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   }
 
   /// Unwraps a standard Laravel JSON resource response.
-  /// API responses may be: `{...fields}`, `{"data": {...fields}}`,
-  /// `{"group": {...fields}}`, or `{"data": {"group": {...fields}}}`.
   Map<String, dynamic> _unwrapResponse(dynamic raw, {String? wrapperKey}) {
     if (raw is! Map<String, dynamic>) return <String, dynamic>{};
-    // Check for nested wrapper key first (e.g. 'group')
     if (wrapperKey != null && raw[wrapperKey] is Map) {
       return raw[wrapperKey] as Map<String, dynamic>;
     }
-    // Standard Laravel 'data' wrapper
     if (raw.containsKey('data') && raw['data'] is Map<String, dynamic>) {
       final inner = raw['data'] as Map<String, dynamic>;
-      // Could be {"data": {"group": {...}}}
       if (wrapperKey != null && inner[wrapperKey] is Map) {
         return inner[wrapperKey] as Map<String, dynamic>;
       }
@@ -179,25 +177,97 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   String _msgScope(String convId) =>
       _typeCache[convId] == 'group' ? 'group' : 'dm';
 
+  String _msg(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic> && data['message'] is String) {
+      return data['message'] as String;
+    }
+    return 'An error occurred. Please try again.';
+  }
+
+  // ── Name resolution ───────────────────────────────────────
+
+  /// Bulk-resolves actor IDs → display names and populates _nameCache.
+  ///
+  /// Strategy (in order, stops when all IDs are resolved):
+  ///   1. communications/presence/bulk  — fastest, already in the module
+  ///   2. api/v1/platform/actors        — fallback, returns all org actors
+  ///
+  /// Both calls are best-effort: failures are silently swallowed so a
+  /// presence outage never breaks the conversation list.
+  Future<void> _resolveActorNames(List<String> actorIds) async {
+    if (actorIds.isEmpty) return;
+
+    // Remove IDs already in cache
+    final needed = actorIds.where((id) => !_nameCache.containsKey(id)).toList();
+    if (needed.isEmpty) return;
+
+    // ── 1. Presence bulk endpoint ────────────────────────────
+    try {
+      final r = await _dio.post(
+        '$_base/presence/bulk',
+        data: {'actor_ids': needed},
+      );
+      final list = r.data is List
+          ? r.data as List
+          : (r.data is Map ? (r.data['data'] as List? ?? []) : []);
+      for (final p in list) {
+        final m = p as Map<String, dynamic>;
+        final aid = m['actor_id'] as String? ?? '';
+        final name =
+            m['name'] as String? ??
+            m['display_name'] as String? ??
+            m['full_name'] as String? ??
+            '';
+        if (aid.isNotEmpty && name.isNotEmpty && !_isUlid(name)) {
+          _nameCache[aid] = name;
+        }
+      }
+    } catch (_) {}
+
+    // ── 2. Platform actors endpoint (fallback) ───────────────
+    final stillMissing = needed
+        .where((id) => !_nameCache.containsKey(id))
+        .toList();
+    if (stillMissing.isEmpty) return;
+
+    try {
+      final r = await _dio.get(
+        'api/v1/actors',
+        queryParameters: {'per_page': 200},
+      );
+      final raw = r.data;
+      final list = raw is Map
+          ? (raw['data'] as List? ?? [])
+          : (raw is List ? raw : []);
+      for (final a in list) {
+        final m = a as Map<String, dynamic>;
+        // Actors use 'id' as their PK (the actor ULID)
+        final aid = m['id'] as String? ?? '';
+        final name = m['display_name'] as String? ?? m['name'] as String? ?? '';
+        if (aid.isNotEmpty && name.isNotEmpty && !_isUlid(name)) {
+          _nameCache[aid] = name;
+        }
+      }
+    } catch (_) {}
+  }
+
   // ── Normalizers ───────────────────────────────────────────
 
   /// Normalizes DirectConversation API shape → ConversationModel shape.
+  /// Must be called AFTER _resolveActorNames() so the cache is warm.
   Map<String, dynamic> _normalizeDirect(Map<String, dynamic> j) {
-    // ── Debug: log raw API data for DM normalization ──
     debugPrint(
-      '  [_normalizeDirect] id=${j['id']} '
+      '[_normalizeDirect] id=${j['id']} '
       'initiator=${j['initiator_actor_id']} '
-      'recipient=${j['recipient_actor_id']} '
-      'keys=${j.keys.take(10).join(',')}',
+      'recipient=${j['recipient_actor_id']}',
     );
 
+    // If the API already returned a participants list, cache and return as-is
     final existing = j['participants'] as List?;
     if (existing != null && existing.isNotEmpty) {
-      // Cache names from existing participants
       for (final p in existing) {
-        if (p is Map<String, dynamic>) {
-          _cacheParticipantName(p);
-        }
+        if (p is Map<String, dynamic>) _cacheParticipantName(p);
       }
       return j;
     }
@@ -212,6 +282,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         '';
     final now = DateTime.now().toIso8601String();
 
+    // _resolveName now hits the warm cache populated by _resolveActorNames()
     final initiatorName = _resolveName(
       j['initiator_name'] as String? ??
           j['initiator_display_name'] as String? ??
@@ -260,24 +331,17 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     final participants = rawP.map((p) {
       final m = p as Map<String, dynamic>;
       final id = m['actor_id'] as String? ?? m['id'] as String? ?? '';
-
-      // Cache the name
       _cacheParticipantName(m);
-
       final name = _resolveName(
         m['name'] as String? ??
             m['display_name'] as String? ??
             m['full_name'] as String?,
         id,
       );
-
-      // Map super_admin → admin for display friendliness
-      final rawRole = m['role'] as String? ?? 'member';
-
       return {
         'id': id,
         'name': name,
-        'role': rawRole,
+        'role': m['role'] as String? ?? 'member',
         'joined_at': m['created_at'] as String? ?? now,
         'online_status': m['online_status'] as String? ?? 'offline',
         'last_seen_at': m['last_seen_at'],
@@ -295,7 +359,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     };
   }
 
-  /// Try to fetch presence for a list of actor IDs and update participant maps.
+  /// Best-effort presence enrichment for a participant list.
   Future<void> _enrichPresence(List<Map<String, dynamic>> participants) async {
     final actorIds = participants
         .map((p) => p['id'] as String? ?? '')
@@ -316,9 +380,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       for (final p in presenceList) {
         final m = p as Map<String, dynamic>;
         final aid = m['actor_id'] as String? ?? '';
-        if (aid.isNotEmpty) {
-          presenceMap[aid] = m;
-        }
+        if (aid.isNotEmpty) presenceMap[aid] = m;
       }
 
       for (final participant in participants) {
@@ -331,33 +393,19 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
           participant['last_seen_at'] = presence['last_seen_at'];
         }
       }
-    } catch (_) {
-      // Presence fetch is best-effort — don't fail the conversation load
-    }
+    } catch (_) {}
   }
 
-  // ── Type detection for getById ────────────────────────────
-
-  /// Detects conversation type from the API response data.
-  /// The API returns different shapes for DMs vs groups.
+  /// Detects conversation type from the API response shape.
   String _detectType(Map<String, dynamic> data) {
-    // Explicit type field
     final typeField = data['type'] as String?;
     if (typeField == 'group') return 'group';
     if (typeField == 'direct') return 'direct';
-
-    // Groups have 'name' field (group name), DMs don't
     if (data.containsKey('name') && data['name'] != null) return 'group';
-
-    // Groups typically have 'participant_ids' or multiple participants
     if (data.containsKey('participant_ids')) return 'group';
-
-    // DMs have initiator_actor_id / recipient_actor_id
     if (data.containsKey('initiator_actor_id') ||
         data.containsKey('recipient_actor_id'))
       return 'direct';
-
-    // Default to whatever was cached, or 'direct'
     return 'direct';
   }
 
@@ -370,22 +418,73 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       final groupFuture = _dio.get('$_base/groups');
       final results = await Future.wait([dmFuture, groupFuture]);
 
-      final dms = (results[0].data['data'] as List? ?? []).map((e) {
-        final map = e as Map<String, dynamic>;
-        _typeCache[map['id'] as String? ?? ''] = 'direct';
-        return ConversationModel.fromJson(_normalizeDirect(map));
-      }).toList();
-
+      final dmRawList = (results[0].data['data'] as List? ?? [])
+          .cast<Map<String, dynamic>>();
       final groupRaw = results[1].data;
-      final groupList = groupRaw is List
-          ? groupRaw
-          : (groupRaw is Map ? (groupRaw['data'] as List? ?? []) : <dynamic>[]);
+      final groupRawList =
+          (groupRaw is List
+                  ? groupRaw
+                  : (groupRaw is Map
+                        ? (groupRaw['data'] as List? ?? [])
+                        : <dynamic>[]))
+              .cast<Map<String, dynamic>>();
 
-      final groups = groupList.map((e) {
-        final map = e as Map<String, dynamic>;
-        _typeCache[map['id'] as String? ?? ''] = 'group';
-        return ConversationModel.fromJson(_normalizeGroup(map));
-      }).toList();
+      // ── Pre-warm the name cache BEFORE normalizing ────────
+      // Collect every actor ID that appears in DM initiator/recipient fields
+      // or group participant lists, then bulk-resolve them all at once.
+      // This ensures _normalizeDirect() hits a warm cache on first call.
+      final idsToResolve = <String>{};
+
+      for (final m in dmRawList) {
+        final iid =
+            m['initiator_actor_id'] as String? ??
+            m['initiator_id'] as String? ??
+            '';
+        final rid =
+            m['recipient_actor_id'] as String? ??
+            m['recipient_id'] as String? ??
+            '';
+        if (iid.isNotEmpty) idsToResolve.add(iid);
+        if (rid.isNotEmpty) idsToResolve.add(rid);
+        // Also check if the API already returned names inside participant lists
+        final existing = m['participants'] as List?;
+        if (existing != null) {
+          for (final p in existing) {
+            if (p is Map<String, dynamic>) {
+              final pid = p['actor_id'] as String? ?? p['id'] as String? ?? '';
+              if (pid.isNotEmpty) idsToResolve.add(pid);
+            }
+          }
+        }
+      }
+
+      for (final m in groupRawList) {
+        final rawP = m['participants'] as List<dynamic>? ?? [];
+        for (final p in rawP) {
+          if (p is Map<String, dynamic>) {
+            final pid = p['actor_id'] as String? ?? p['id'] as String? ?? '';
+            if (pid.isNotEmpty) idsToResolve.add(pid);
+          }
+        }
+      }
+
+      // Single bulk call — resolves all unknown IDs before any normalization
+      await _resolveActorNames(idsToResolve.toList());
+
+      // Now normalize with a warm cache — names resolve on first try
+      for (final m in dmRawList) {
+        _typeCache[m['id'] as String? ?? ''] = 'direct';
+      }
+      for (final m in groupRawList) {
+        _typeCache[m['id'] as String? ?? ''] = 'group';
+      }
+
+      final dms = dmRawList
+          .map((m) => ConversationModel.fromJson(_normalizeDirect(m)))
+          .toList();
+      final groups = groupRawList
+          .map((m) => ConversationModel.fromJson(_normalizeGroup(m)))
+          .toList();
 
       final all = [...dms, ...groups];
       all.sort(
@@ -402,8 +501,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   @override
   Future<ConversationModel> getById(String id) async {
     try {
-      // If we don't know the type, try the cached scope first.
-      // If it 404s and we tried 'conversations', retry with 'groups' (and vice versa).
       final cachedType = _typeCache[id];
       final primaryScope = cachedType == 'group' ? 'groups' : 'conversations';
       final fallbackScope = primaryScope == 'groups'
@@ -415,7 +512,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         final r = await _dio.get('$_base/$primaryScope/$id');
         data = _unwrapResponse(r.data);
       } on DioException catch (e) {
-        // If 404 and we didn't have a cached type, try the other scope
         if (e.response?.statusCode == 404 && cachedType == null) {
           final r2 = await _dio.get('$_base/$fallbackScope/$id');
           data = _unwrapResponse(r2.data);
@@ -424,20 +520,41 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         }
       }
 
-      // Detect and cache the type from response
       final detectedType = _detectType(data);
       _typeCache[id] = detectedType;
+
+      // Pre-warm cache for participants before normalizing
+      final idsToResolve = <String>[];
+      if (detectedType == 'direct') {
+        final iid =
+            data['initiator_actor_id'] as String? ??
+            data['initiator_id'] as String? ??
+            '';
+        final rid =
+            data['recipient_actor_id'] as String? ??
+            data['recipient_id'] as String? ??
+            '';
+        if (iid.isNotEmpty) idsToResolve.add(iid);
+        if (rid.isNotEmpty) idsToResolve.add(rid);
+      } else {
+        final rawP = data['participants'] as List<dynamic>? ?? [];
+        for (final p in rawP) {
+          if (p is Map<String, dynamic>) {
+            final pid = p['actor_id'] as String? ?? p['id'] as String? ?? '';
+            if (pid.isNotEmpty) idsToResolve.add(pid);
+          }
+        }
+      }
+      await _resolveActorNames(idsToResolve);
 
       final normalized = detectedType == 'group'
           ? _normalizeGroup(data)
           : _normalizeDirect(data);
 
-      // Enrich with presence data (best-effort)
       final participantMaps = (normalized['participants'] as List)
           .cast<Map<String, dynamic>>();
       await _enrichPresence(participantMaps);
 
-      // Rebuild model with enriched presence
       return ConversationModel.fromJson({
         ...normalized,
         'participants': participantMaps,
@@ -456,14 +573,10 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         final participants = data['participants'] as List<dynamic>? ?? [];
         final selfId = data['_currentUserId'] as String?;
 
-        // Cache names from the participant list we're sending
         for (final p in participants) {
-          if (p is Map<String, dynamic>) {
-            _cacheParticipantName(p);
-          }
+          if (p is Map<String, dynamic>) _cacheParticipantName(p);
         }
 
-        // Backend auto-adds creator — exclude self to avoid duplicate
         final participantIds = participants
             .map((p) => (p as Map<String, dynamic>)['id'] as String?)
             .where((id) => id != null && id.isNotEmpty && id != selfId)
@@ -483,11 +596,8 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       } else {
         final participants = data['participants'] as List<dynamic>? ?? [];
 
-        // Cache names from the participant list
         for (final p in participants) {
-          if (p is Map<String, dynamic>) {
-            _cacheParticipantName(p);
-          }
+          if (p is Map<String, dynamic>) _cacheParticipantName(p);
         }
 
         final recipientId =
@@ -502,6 +612,18 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         final conv = _unwrapResponse(r.data);
         final newId = conv['id'] as String? ?? '';
         _typeCache[newId] = 'direct';
+
+        // Pre-warm cache for the new DM's participants
+        final iid =
+            conv['initiator_actor_id'] as String? ??
+            conv['initiator_id'] as String? ??
+            '';
+        final rid =
+            conv['recipient_actor_id'] as String? ??
+            conv['recipient_id'] as String? ??
+            '';
+        await _resolveActorNames([iid, rid]..removeWhere((s) => s.isEmpty));
+
         return ConversationModel.fromJson(_normalizeDirect(conv));
       }
     } on DioException catch (e) {
@@ -552,21 +674,41 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
           ? (raw['data'] as List? ?? [])
           : (raw as List? ?? []);
 
-      final messages = list.map((e) {
+      // Collect sender IDs not yet in the cache
+      final uncachedIds = <String>{};
+      for (final e in list) {
         final msgMap = e as Map<String, dynamic>;
-        // Resolve sender name from cache if API returns only actor_id
         final senderId =
             msgMap['sender_actor_id'] as String? ??
             msgMap['sender_id'] as String? ??
             '';
-        final rawSenderName = msgMap['sender_name'] as String?;
-        final resolvedName = _resolveName(rawSenderName, senderId);
-        // Inject resolved name back into the map before parsing
-        msgMap['sender_name'] = resolvedName;
+        final rawName = msgMap['sender_name'] as String?;
+        if (senderId.isNotEmpty &&
+            !_nameCache.containsKey(senderId) &&
+            (rawName == null || rawName.isEmpty || _isUlid(rawName))) {
+          uncachedIds.add(senderId);
+        }
+      }
+
+      // Bulk-resolve before parsing so _resolveName() hits the warm cache
+      if (uncachedIds.isNotEmpty) {
+        await _resolveActorNames(uncachedIds.toList());
+      }
+
+      final messages = list.map((e) {
+        final msgMap = e as Map<String, dynamic>;
+        final senderId =
+            msgMap['sender_actor_id'] as String? ??
+            msgMap['sender_id'] as String? ??
+            '';
+        msgMap['sender_name'] = _resolveName(
+          msgMap['sender_name'] as String?,
+          senderId,
+        );
         return MessageModel.fromJson(msgMap);
       }).toList();
 
-      // API returns newest-first (desc) — reverse to chronological for UI
+      // API returns newest-first — reverse to chronological for the UI
       return messages.reversed.toList();
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -603,7 +745,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       final r = await _dio.post('$_base/$scope/$convId/messages', data: body);
       final msgData = _unwrapResponse(r.data);
 
-      // Resolve sender name
       final senderId =
           msgData['sender_actor_id'] as String? ??
           msgData['sender_id'] as String? ??
@@ -765,7 +906,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         '$_base/groups/$convId/participants',
         data: {'actor_id': pId},
       );
-      // Cache the added participant's name
       if (name.isNotEmpty && !_isUlid(name)) {
         _nameCache[pId] = name;
       }
@@ -813,7 +953,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     String? message,
   ) async {
     try {
-      // Cache the participant name
       if (participantName.isNotEmpty && !_isUlid(participantName)) {
         _nameCache[participantId] = participantName;
       }
@@ -836,15 +975,5 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
-  }
-
-  // ── Helpers ───────────────────────────────────────────────
-
-  String _msg(DioException e) {
-    final data = e.response?.data;
-    if (data is Map<String, dynamic> && data['message'] is String) {
-      return data['message'] as String;
-    }
-    return 'An error occurred. Please try again.';
   }
 }

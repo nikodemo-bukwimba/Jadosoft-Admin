@@ -1,0 +1,4007 @@
+﻿// ================================================================
+// features_promotion_source.txt
+// Project Type : Flutter/Dart
+// Generated    : 2026-05-12 15:33:44
+// Files        : 27
+// Usage        : Upload to Claude Project documents as reference.
+// ================================================================
+
+// === FILE: lib/features/promotion/data/datasources/promotion_remote_datasource.dart ===
+// admin app promotion_remote_datasource.dart
+// ─────────────────────────────────────────────────────────────
+// Nexora endpoint mapping:
+//   GET    /api/v1/pharma/orgs/{orgId}/product-updates   → getAll()
+//   POST   /api/v1/pharma/orgs/{orgId}/product-updates   → create()
+//   GET    /api/v1/pharma/product-updates/{id}           → getById()
+//   PATCH  /api/v1/pharma/product-updates/{id}           → update()
+//   POST   /api/v1/pharma/product-updates/{id}/publish   → publish()
+//   DELETE not available — cancel via PATCH status:failed, end via soft PATCH
+//
+// Status mapping (Nexora → local):
+//   draft           → draft
+//   sending | sent  → active
+//   failed          → cancelled
+//
+// Status mapping (local → Nexora PATCH):
+//   ended     → Nexora has no "ended" concept; use 'sent' to close out
+//   cancelled → 'failed'  (only valid terminal Nexora status for cancellation)
+//   (active transitions go through publish(), never through update())
+// ─────────────────────────────────────────────────────────────
+
+import 'package:dio/dio.dart';
+import '../../../../core/context/org_context.dart';
+import '../../../../core/error/exceptions.dart';
+import '../models/promotion_model.dart';
+
+abstract class PromotionRemoteDataSource {
+  Future<List<PromotionModel>> getAll();
+  Future<PromotionModel> getById(String id);
+  Future<PromotionModel> create(Map<String, dynamic> data);
+  Future<PromotionModel> update(String id, Map<String, dynamic> data);
+  Future<void> delete(String id);
+  Future<PromotionModel> publish(String id);
+}
+
+class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
+  final Dio _dio;
+  final OrgContext _orgContext;
+
+  PromotionRemoteDataSourceImpl({
+    required Dio dio,
+    required OrgContext orgContext,
+  }) : _dio = dio,
+       _orgContext = orgContext;
+
+  // String get _base =>
+  //     '/pharma/orgs/${_orgContext.effectiveOrgId}/product-updates';
+  String get _base =>
+      '/pharma/orgs/${_orgContext.requireRootOrgId()}/product-updates';
+
+  // ── Nexora response → PromotionModel ──────────────────────
+
+  PromotionModel _fromNexora(Map<String, dynamic> j) {
+    final channels = <String>[
+      if (j['send_sms'] == true) 'sms',
+      if (j['send_whatsapp'] == true) 'whatsapp',
+      if (j['send_in_app'] == true) 'in_app',
+    ];
+
+    final nexoraStatus = j['status'] as String? ?? 'draft';
+    final localStatus = _mapStatusFromNexora(nexoraStatus);
+
+    final sentAt = j['sent_at'] != null
+        ? DateTime.tryParse(j['sent_at'].toString())
+        : null;
+
+    // Read the new top-level date columns; fall back to sent_at for old records
+    final startDate = j['start_date'] != null
+        ? DateTime.tryParse(j['start_date'].toString()) ??
+              sentAt ??
+              DateTime.now()
+        : sentAt ?? DateTime.now();
+
+    final endDate = j['end_date'] != null
+        ? DateTime.tryParse(j['end_date'].toString()) ??
+              startDate.add(const Duration(days: 7))
+        : startDate.add(const Duration(days: 7));
+
+    return PromotionModel(
+      id: j['id']?.toString() ?? '',
+      title: j['title'] as String? ?? '',
+      description: j['body'] as String?,
+      productIds: List<String>.from((j['product_ids'] as List?) ?? []),
+      startDate: startDate,
+      endDate: endDate,
+      channels: channels,
+      status: localStatus,
+      createdAt: j['created_at'] != null
+          ? DateTime.tryParse(j['created_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      targetCount: j['total_recipients'] as int? ?? 0,
+      broadcastSentAt: sentAt,
+      discountPercentage: j['discount_percentage'] == null
+          ? null
+          : double.tryParse(j['discount_percentage'].toString()),
+    );
+  }
+
+  /// Nexora status string → local PromotionStatus name
+  String _mapStatusFromNexora(String s) => switch (s) {
+    'sending' || 'sent' => 'active',
+    'failed' => 'cancelled',
+    _ => s, // 'draft' passes through
+  };
+
+  // ── Local status → Nexora PATCH status ────────────────────
+  //
+  // Nexora only accepts: draft | sending | sent | failed
+  //
+  // local 'ended'     → 'sent'   (broadcast completed / campaign over)
+  // local 'cancelled' → 'failed' (campaign was aborted)
+  //
+  // Note: 'active' is NEVER patched here — it goes through publish().
+  String _mapStatusToNexora(String localStatus) => switch (localStatus) {
+    'ended' => 'sent',
+    'cancelled' => 'failed',
+    _ => localStatus, // 'draft' is the only other passthrough
+  };
+
+  // ── PromotionModel data → Nexora create body ───────────────
+  Map<String, dynamic> _toCreateBody(Map<String, dynamic> d) {
+    final channels = List<String>.from(d['channels'] as List? ?? []);
+    final startDate = d['start_date'] ?? d['startDate'];
+    final endDate = d['end_date'] ?? d['endDate'];
+
+    return {
+      'title': d['title'] ?? '',
+      'body': d['description'],
+      'update_type': 'promotion',
+      'target_segment': 'all',
+      'send_sms': channels.contains('sms'),
+      'send_whatsapp': channels.contains('whatsapp'),
+      'send_in_app': channels.contains('in_app'),
+      'product_ids': List<String>.from(d['product_ids'] as List? ?? []),
+      if (startDate != null)
+        'start_date': startDate.toString().substring(0, 10),
+      if (endDate != null) 'end_date': endDate.toString().substring(0, 10),
+      if (d['discount_percentage'] != null)
+        'discount_percentage': d['discount_percentage'],
+    };
+  }
+
+  Map<String, dynamic> _toUpdateBody(Map<String, dynamic> d) {
+    final channels = List<String>.from(d['channels'] as List? ?? []);
+    final startDate = d['start_date'] ?? d['startDate'];
+    final endDate = d['end_date'] ?? d['endDate'];
+
+    final body = <String, dynamic>{
+      'title': d['title'] ?? '',
+      'body': d['description'],
+      'send_sms': channels.contains('sms'),
+      'send_whatsapp': channels.contains('whatsapp'),
+      'send_in_app': channels.contains('in_app'),
+      'product_ids': List<String>.from(d['product_ids'] as List? ?? []),
+      if (startDate != null)
+        'start_date': startDate.toString().substring(0, 10),
+      if (endDate != null) 'end_date': endDate.toString().substring(0, 10),
+      if (d['discount_percentage'] != null)
+        'discount_percentage': d['discount_percentage'],
+    };
+
+    if (d['status'] != null) {
+      body['status'] = _mapStatusToNexora(d['status'] as String);
+    }
+
+    return body;
+  }
+
+  Map<String, dynamic> _unwrap(dynamic raw, String key) {
+    if (raw is Map<String, dynamic>) {
+      if (raw.containsKey(key)) return raw[key] as Map<String, dynamic>;
+      if (raw.containsKey('data') && raw['data'] is Map) {
+        return raw['data'] as Map<String, dynamic>;
+      }
+      return raw;
+    }
+    return {};
+  }
+
+  String _msg(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic> && data['message'] is String) {
+      return data['message'] as String;
+    }
+    return 'An error occurred. Please try again.';
+  }
+
+  // ── Interface implementation ───────────────────────────────
+
+  @override
+  Future<List<PromotionModel>> getAll() async {
+    try {
+      final res = await _dio.get(_base, queryParameters: {'per_page': 100});
+      final raw = res.data;
+      final List<dynamic> items = raw is Map
+          ? (raw['data'] ?? raw['updates'] ?? []) as List
+          : raw as List;
+      return items.cast<Map<String, dynamic>>().map(_fromNexora).toList();
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    } catch (e) {
+      throw ServerException(e.toString());
+    }
+  }
+
+  @override
+  Future<PromotionModel> getById(String id) async {
+    try {
+      final res = await _dio.get('/pharma/product-updates/$id');
+      return _fromNexora(_unwrap(res.data, 'update'));
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    } catch (e) {
+      throw ServerException(e.toString());
+    }
+  }
+
+  @override
+  Future<PromotionModel> create(Map<String, dynamic> data) async {
+    try {
+      final res = await _dio.post(_base, data: _toCreateBody(data));
+      return _fromNexora(_unwrap(res.data, 'update'));
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    } catch (e) {
+      throw ServerException(e.toString());
+    }
+  }
+
+  @override
+  Future<PromotionModel> update(String id, Map<String, dynamic> data) async {
+    try {
+      final res = await _dio.patch(
+        '/pharma/product-updates/$id',
+        data: _toUpdateBody(data),
+      );
+      return _fromNexora(_unwrap(res.data, 'update'));
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    } catch (e) {
+      throw ServerException(e.toString());
+    }
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    // Nexora has no hard DELETE — soft-cancel by patching status to 'failed'.
+    try {
+      await _dio.patch(
+        '/pharma/product-updates/$id',
+        data: {'status': 'failed'},
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return; // already gone
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    } catch (e) {
+      throw ServerException(e.toString());
+    }
+  }
+
+  @override
+  Future<PromotionModel> publish(String id) async {
+    try {
+      final res = await _dio.post('/pharma/product-updates/$id/publish');
+      return _fromNexora(_unwrap(res.data, 'update'));
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    } catch (e) {
+      throw ServerException(e.toString());
+    }
+  }
+}
+
+
+// === FILE: lib/features/promotion/data/models/promotion_model.dart ===
+// lib/features/promotion/data/models/promotion_model.dart
+
+import '../../domain/entities/promotion_entity.dart';
+
+class PromotionModel extends PromotionEntity {
+  final int targetCount;
+  final DateTime? broadcastSentAt;
+
+  const PromotionModel({
+    required super.id,
+    required super.title,
+    super.description,
+    required super.productIds,
+    required super.startDate,
+    required super.endDate,
+    required super.channels,
+    required super.status,
+    required super.createdAt,
+    super.discountPercentage,
+    this.targetCount = 0,
+    this.broadcastSentAt,
+  });
+
+  factory PromotionModel.fromJson(Map<String, dynamic> json) {
+    final sentAt = json['broadcast_sent_at'] != null
+        ? DateTime.tryParse(json['broadcast_sent_at'] as String)
+        : null;
+    final createdAt = json['created_at'] != null
+        ? DateTime.tryParse(json['created_at'] as String) ?? DateTime.now()
+        : DateTime.now();
+    final anchor = sentAt ?? createdAt;
+    final startDate = json['start_date'] != null
+        ? DateTime.tryParse(json['start_date'] as String) ?? anchor
+        : anchor;
+    final endDate = json['end_date'] != null
+        ? DateTime.tryParse(json['end_date'] as String) ??
+              startDate.add(const Duration(days: 7))
+        : startDate.add(const Duration(days: 7));
+
+    return PromotionModel(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      description: json['description'] as String?,
+      productIds: List<String>.from((json['product_ids'] as List?) ?? []),
+      startDate: startDate,
+      endDate: endDate,
+      channels: List<String>.from((json['channels'] as List?) ?? []),
+      status: json['status'] as String? ?? 'draft',
+      createdAt: createdAt,
+      discountPercentage: json['discount_percentage'] == null
+          ? null
+          : double.tryParse(json['discount_percentage'].toString()),
+      targetCount: json['target_count'] as int? ?? 0,
+      broadcastSentAt: sentAt,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'description': description,
+    'product_ids': productIds,
+    'start_date': startDate.toIso8601String(),
+    'end_date': endDate.toIso8601String(),
+    'channels': channels,
+    'status': status,
+    'created_at': createdAt.toIso8601String(),
+    'target_count': targetCount,
+    'broadcast_sent_at': broadcastSentAt?.toIso8601String(),
+    'discount_percentage': discountPercentage,
+  };
+
+  static PromotionModel fromEntity(PromotionEntity e) {
+    if (e is PromotionModel) return e;
+    return PromotionModel(
+      id: e.id,
+      title: e.title,
+      description: e.description,
+      productIds: e.productIds,
+      startDate: e.startDate,
+      endDate: e.endDate,
+      channels: e.channels,
+      status: e.status,
+      createdAt: e.createdAt,
+      discountPercentage: e.discountPercentage,
+    );
+  }
+
+  @override
+  PromotionModel copyWith({
+    String? id,
+    String? title,
+    String? description,
+    List<String>? productIds,
+    DateTime? startDate,
+    DateTime? endDate,
+    List<String>? channels,
+    String? status,
+    DateTime? createdAt,
+    double? discountPercentage,
+    bool clearDiscount = false,
+    int? targetCount,
+    DateTime? broadcastSentAt,
+  }) {
+    return PromotionModel(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      productIds: productIds ?? this.productIds,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      channels: channels ?? this.channels,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
+      discountPercentage: clearDiscount
+          ? null
+          : (discountPercentage ?? this.discountPercentage),
+      targetCount: targetCount ?? this.targetCount,
+      broadcastSentAt: broadcastSentAt ?? this.broadcastSentAt,
+    );
+  }
+}
+
+
+// === FILE: lib/features/promotion/data/repositories/promotion_repository_impl.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/exceptions.dart';
+import '../../../../core/error/failures.dart';
+import '../../domain/entities/promotion_entity.dart';
+import '../../domain/repositories/promotion_repository.dart';
+import '../models/promotion_model.dart';
+import '../datasources/promotion_remote_datasource.dart';
+
+class PromotionRepositoryImpl implements PromotionRepository {
+  final PromotionRemoteDataSource _remoteDataSource;
+
+  PromotionRepositoryImpl({required PromotionRemoteDataSource remoteDataSource})
+    : _remoteDataSource = remoteDataSource;
+
+  @override
+  Future<Either<Failure, List<PromotionEntity>>> getAll() async {
+    try {
+      final result = await _remoteDataSource.getAll();
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, PromotionEntity>> getById(String id) async {
+    try {
+      final result = await _remoteDataSource.getById(id);
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, PromotionEntity>> create(
+    PromotionEntity entity,
+  ) async {
+    try {
+      final model = PromotionModel.fromEntity(entity);
+      final result = await _remoteDataSource.create(model.toJson());
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, PromotionEntity>> update(
+    PromotionEntity entity,
+  ) async {
+    try {
+      final model = PromotionModel.fromEntity(entity);
+      final result = await _remoteDataSource.update(entity.id, model.toJson());
+      // For terminal local statuses (ended, cancelled) Nexora returns 'sent'/'failed'
+      // which would map back to active/cancelled. Preserve the locally-requested status.
+      const localOnlyStatuses = {'ended', 'cancelled'};
+      if (localOnlyStatuses.contains(entity.status)) {
+        return Right(result.copyWith(status: entity.status));
+      }
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, void>> delete(String id) async {
+    try {
+      await _remoteDataSource.delete(id);
+      return const Right(null);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, PromotionEntity>> publish(String id) async {
+    try {
+      final result = await _remoteDataSource.publish(id);
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+}
+
+
+// === FILE: lib/features/promotion/domain/entities/promotion_entity.dart ===
+// lib/features/promotion/domain/entities/promotion_entity.dart
+
+import 'package:equatable/equatable.dart';
+
+class PromotionEntity extends Equatable {
+  final String id;
+  final String title;
+  final String? description;
+  final List<String> productIds;
+  final DateTime startDate;
+  final DateTime endDate;
+  final List<String> channels;
+  final String status;
+  final DateTime createdAt;
+  final double? discountPercentage; // null = new product campaign
+
+  const PromotionEntity({
+    required this.id,
+    required this.title,
+    this.description,
+    required this.productIds,
+    required this.startDate,
+    required this.endDate,
+    required this.channels,
+    required this.status,
+    required this.createdAt,
+    this.discountPercentage,
+  });
+
+  PromotionEntity copyWith({
+    String? id,
+    String? title,
+    String? description,
+    List<String>? productIds,
+    DateTime? startDate,
+    DateTime? endDate,
+    List<String>? channels,
+    String? status,
+    DateTime? createdAt,
+    double? discountPercentage,
+    bool clearDiscount = false,
+  }) {
+    return PromotionEntity(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      productIds: productIds ?? this.productIds,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      channels: channels ?? this.channels,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
+      discountPercentage: clearDiscount
+          ? null
+          : (discountPercentage ?? this.discountPercentage),
+    );
+  }
+
+  @override
+  List<Object?> get props => [
+    id,
+    title,
+    description,
+    productIds,
+    startDate,
+    endDate,
+    channels,
+    status,
+    createdAt,
+    discountPercentage,
+  ];
+}
+
+
+// === FILE: lib/features/promotion/domain/events/promotion_domain_events.dart ===
+import '../entities/promotion_entity.dart';
+
+/// Base class for all Promotion domain events.
+abstract class PromotionDomainEvent {
+  final String entityId;
+  final Map<String, dynamic>? payload;
+  final DateTime occurredAt;
+
+  PromotionDomainEvent({
+    required this.entityId,
+    this.payload,
+    DateTime? occurredAt,
+  }) : occurredAt = occurredAt ?? DateTime.now();
+
+  String get name;
+
+  Map<String, dynamic> toMap() => {
+    'event':      name,
+    'entityId':   entityId,
+    'occurredAt': occurredAt.toIso8601String(),
+    if (payload != null) 'payload': payload,
+  };
+}
+
+class PromotionCreatedEvent extends PromotionDomainEvent {
+  PromotionCreatedEvent({required super.entityId, super.payload, super.occurredAt});
+
+  @override
+  String get name => 'promotion.created';
+}
+
+class PromotionUpdatedEvent extends PromotionDomainEvent {
+  PromotionUpdatedEvent({required super.entityId, super.payload, super.occurredAt});
+
+  @override
+  String get name => 'promotion.updated';
+}
+
+class PromotionStatusChangedEvent extends PromotionDomainEvent {
+  final String fromStatus;
+  final String toStatus;
+
+  PromotionStatusChangedEvent({
+    required super.entityId,
+    required this.fromStatus,
+    required this.toStatus,
+    super.payload,
+    super.occurredAt,
+  });
+
+  @override
+  String get name => 'promotion.status_changed';
+
+  @override
+  Map<String, dynamic> toMap() => {
+    ...super.toMap(),
+    'fromStatus': fromStatus,
+    'toStatus':   toStatus,
+  };
+}
+
+class PromotionDeletedEvent extends PromotionDomainEvent {
+  PromotionDeletedEvent({required super.entityId, super.payload, super.occurredAt});
+
+  @override
+  String get name => 'promotion.deleted';
+}
+
+class PromotionBroadcastsmsEvent extends PromotionDomainEvent {
+  PromotionBroadcastsmsEvent({
+    required super.entityId,
+    super.payload,
+    super.occurredAt,
+  });
+
+  @override
+  String get name => 'broadcastSms';
+}
+
+class PromotionBroadcastwhatsappEvent extends PromotionDomainEvent {
+  PromotionBroadcastwhatsappEvent({
+    required super.entityId,
+    super.payload,
+    super.occurredAt,
+  });
+
+  @override
+  String get name => 'broadcastWhatsApp';
+}
+
+
+// === FILE: lib/features/promotion/domain/guards/promotion_transition_guard.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../value_objects/promotion_status.dart';
+
+class PromotionTransitionGuard {
+  /// Validates that the transition from [current] to [target] is allowed.
+  /// Returns Right(target) if valid, Left(Failure) if not.
+  Either<Failure, PromotionStatus> validate({
+    required PromotionStatus current,
+    required PromotionStatus target,
+  }) {
+    if (!current.canTransitionTo(target)) {
+      return Left(ValidationFailure(
+        'Cannot transition from ${current.displayName} to ${target.displayName}',
+      ));
+    }
+
+    // -- HUMAN CUSTOMIZATION ZONE --
+    // Add business rule checks here, e.g.:
+    //   if (target == PromotionStatus.approved && !hasManagerRole) {
+    //     return Left(ValidationFailure('Manager approval required'));
+    //   }
+    // -- END CUSTOMIZATION ZONE --
+
+    return Right(target);
+  }
+}
+
+
+// === FILE: lib/features/promotion/domain/repositories/promotion_repository.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../entities/promotion_entity.dart';
+
+abstract class PromotionRepository {
+  Future<Either<Failure, List<PromotionEntity>>> getAll();
+  Future<Either<Failure, PromotionEntity>>       getById(String id);
+  Future<Either<Failure, PromotionEntity>>       create(PromotionEntity entity);
+  Future<Either<Failure, PromotionEntity>>       update(PromotionEntity entity);
+  Future<Either<Failure, void>>                  delete(String id);
+  Future<Either<Failure, PromotionEntity>>       publish(String id);
+}
+
+
+// === FILE: lib/features/promotion/domain/services/promotion_domain_service.dart ===
+// promotion_domain_service.dart
+// ─────────────────────────────────────────────────────────────
+// Replaces the Maishell version entirely.
+// Keeps the same class name, constructor, and transition() signature.
+//
+// Changes vs Maishell:
+//   • activate (draft → active): calls datasource.publish() directly
+//     instead of repository.update() — this hits the real Nexora
+//     POST /pharma/product-updates/{id}/publish endpoint.
+//   • end (active → ended): PATCH with local status 'ended' via update().
+//   • cancel (draft/active → cancelled): PATCH with status 'cancelled'
+//     via update().
+//   • Guard still validates all transitions before any API call.
+// ─────────────────────────────────────────────────────────────
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../entities/promotion_entity.dart';
+import '../guards/promotion_transition_guard.dart';
+import '../repositories/promotion_repository.dart';
+import '../value_objects/promotion_status.dart';
+
+class PromotionDomainService {
+  final PromotionRepository repository;
+  final PromotionTransitionGuard guard;
+
+  PromotionDomainService({
+    required this.repository,
+    required this.guard,
+  });
+
+  /// Performs a status transition with guard validation.
+  ///
+  /// [PromotionStatus.active]    → calls repository.publish() (real broadcast)
+  /// [PromotionStatus.ended]     → PATCH status via repository.update()
+  /// [PromotionStatus.cancelled] → PATCH status via repository.update()
+  Future<Either<Failure, PromotionEntity>> transition({
+    required String id,
+    required PromotionStatus targetStatus,
+  }) async {
+    // 1. Load current entity
+    final loadResult = await repository.getById(id);
+    if (loadResult.isLeft()) return loadResult;
+    final entity = loadResult.getOrElse(() => throw StateError('unreachable'));
+
+    // 2. Guard — validate transition is allowed
+    final guardResult = guard.validate(
+      current: PromotionStatusX.fromString(entity.status),
+      target:  targetStatus,
+    );
+    if (guardResult.isLeft()) {
+      return guardResult.fold((f) => Left(f), (_) => throw StateError('unreachable'));
+    }
+
+    // 3. Execute the correct API action per target status
+    switch (targetStatus) {
+      case PromotionStatus.active:
+        // Publish triggers the broadcast — dedicated Nexora endpoint
+        return repository.publish(id);
+
+      case PromotionStatus.ended:
+      case PromotionStatus.cancelled:
+        // Local status patch — Nexora has no dedicated endpoint for these
+        final updated = entity.copyWith(status: targetStatus.name);
+        return repository.update(updated);
+
+      case PromotionStatus.draft:
+        return const Left(ValidationFailure('Cannot transition back to draft'));
+    }
+  }
+}
+
+// === FILE: lib/features/promotion/domain/usecases/create_promotion_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/promotion_entity.dart';
+import '../repositories/promotion_repository.dart';
+
+class CreatePromotionParams {
+  final String title;
+  final String? description;
+  final List<String> productIds;
+  final DateTime startDate;
+  final DateTime endDate;
+  final List<String> channels;
+  final double? discountPercentage;
+
+  const CreatePromotionParams({
+    required this.title,
+    this.description,
+    required this.productIds,
+    required this.startDate,
+    required this.endDate,
+    required this.channels,
+    this.discountPercentage,
+  });
+}
+
+class CreatePromotionUseCase
+    implements UseCase<PromotionEntity, CreatePromotionParams> {
+  final PromotionRepository repository;
+  CreatePromotionUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, PromotionEntity>> call(CreatePromotionParams p) async {
+    if (p.title.trim().isEmpty) {
+      return const Left(ValidationFailure('Promotion title is required'));
+    }
+    if (p.title.trim().length < 3) {
+      return const Left(
+        ValidationFailure('Title must be at least 3 characters'),
+      );
+    }
+    if (p.discountPercentage != null &&
+        (p.discountPercentage! < 0 || p.discountPercentage! > 100)) {
+      return const Left(
+        ValidationFailure('Discount percentage must be between 0 and 100'),
+      );
+    }
+
+    return repository.create(
+      PromotionEntity(
+        id: '',
+        title: p.title.trim(),
+        description: p.description?.trim(),
+        productIds: p.productIds,
+        startDate: p.startDate,
+        endDate: p.endDate,
+        channels: p.channels,
+        status: '',
+        createdAt: DateTime.now(),
+        discountPercentage: p.discountPercentage,
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/promotion/domain/usecases/delete_promotion_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../repositories/promotion_repository.dart';
+
+class DeletePromotionParams {
+  final String id;
+  const DeletePromotionParams({required this.id});
+}
+
+class DeletePromotionUseCase implements UseCase<void, DeletePromotionParams> {
+  final PromotionRepository repository;
+  DeletePromotionUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, void>> call(DeletePromotionParams p) =>
+      repository.delete(p.id);
+}
+
+
+// === FILE: lib/features/promotion/domain/usecases/get_all_promotion_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/promotion_entity.dart';
+import '../repositories/promotion_repository.dart';
+
+class GetAllPromotionUseCase implements UseCase<List<PromotionEntity>, NoParams> {
+  final PromotionRepository repository;
+  GetAllPromotionUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, List<PromotionEntity>>> call(NoParams _) =>
+      repository.getAll();
+}
+
+
+// === FILE: lib/features/promotion/domain/usecases/get_promotion_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/promotion_entity.dart';
+import '../repositories/promotion_repository.dart';
+
+class GetPromotionParams {
+  final String id;
+  const GetPromotionParams({required this.id});
+}
+
+class GetPromotionUseCase implements UseCase<PromotionEntity, GetPromotionParams> {
+  final PromotionRepository repository;
+  GetPromotionUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, PromotionEntity>> call(GetPromotionParams p) =>
+      repository.getById(p.id);
+}
+
+
+// === FILE: lib/features/promotion/domain/usecases/update_promotion_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/promotion_entity.dart';
+import '../repositories/promotion_repository.dart';
+
+class UpdatePromotionParams {
+  final PromotionEntity entity;
+  const UpdatePromotionParams({required this.entity});
+}
+
+class UpdatePromotionUseCase implements UseCase<PromotionEntity, UpdatePromotionParams> {
+  final PromotionRepository repository;
+  UpdatePromotionUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, PromotionEntity>> call(UpdatePromotionParams p) async {
+    return repository.update(p.entity);
+  }
+}
+
+
+// === FILE: lib/features/promotion/domain/value_objects/promotion_status.dart ===
+import 'package:flutter/material.dart';
+
+enum PromotionStatus {
+  draft,
+  active,
+  ended,
+  cancelled,
+}
+
+extension PromotionStatusX on PromotionStatus {
+  static const Map<PromotionStatus, Set<PromotionStatus>> _transitions = {
+    PromotionStatus.draft:     {PromotionStatus.active, PromotionStatus.cancelled},
+    PromotionStatus.active:    {PromotionStatus.ended, PromotionStatus.cancelled},
+    PromotionStatus.ended:     {},
+    PromotionStatus.cancelled: {},
+  };
+
+  static const PromotionStatus initial = PromotionStatus.draft;
+
+  bool canTransitionTo(PromotionStatus target) =>
+      _transitions[this]?.contains(target) ?? false;
+
+  String get displayName => switch (this) {
+    PromotionStatus.draft     => 'Draft',
+    PromotionStatus.active    => 'Active',
+    PromotionStatus.ended     => 'Ended',
+    PromotionStatus.cancelled => 'Cancelled',
+  };
+
+  Color get color => switch (this) {
+    PromotionStatus.draft     => Colors.grey,
+    PromotionStatus.active    => Colors.green,
+    PromotionStatus.ended     => Colors.blue,
+    PromotionStatus.cancelled => Colors.red,
+  };
+
+  static PromotionStatus fromString(String? value) =>
+      PromotionStatus.values.firstWhere(
+        (e) => e.name == value,
+        orElse: () => PromotionStatus.draft,
+      );
+}
+
+// === FILE: lib/features/promotion/domain/workflow/promotion_workflow_executor.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../entities/promotion_entity.dart';
+import '../events/promotion_domain_events.dart';
+
+class PromotionWorkflowExecutor {
+  final List<PromotionDomainEvent> _emittedEvents = [];
+
+  List<PromotionDomainEvent> get emittedEvents => List.unmodifiable(_emittedEvents);
+
+  void clearEvents() => _emittedEvents.clear();
+
+  /// Executes the full workflow for the given entity.
+  /// Steps run in order; on failure, completed steps are rolled back.
+  Future<Either<Failure, PromotionEntity>> execute(PromotionEntity entity) async {
+    _emittedEvents.clear();
+    final completedSteps = <String>[];
+    var current = entity;
+    Either<Failure, PromotionEntity> result;
+
+    // Step: Broadcast via SMS
+    result = await _broadcastSms(current);
+    if (result.isLeft()) {
+      await _rollback(entity, completedSteps);
+      return result;
+    }
+    current = result.getOrElse(() => current);
+    completedSteps.add('broadcastSms');
+    // Step: Broadcast via WhatsApp
+    result = await _broadcastWhatsApp(current);
+    if (result.isLeft()) {
+      await _rollback(entity, completedSteps);
+      return result;
+    }
+    current = result.getOrElse(() => current);
+    completedSteps.add('broadcastWhatsApp');
+
+    return Right(current);
+  }
+
+  /// Step: Broadcast via SMS
+  Future<Either<Failure, PromotionEntity>> _broadcastSms(PromotionEntity entity) async {
+    // -- HUMAN CUSTOMIZATION ZONE --
+    // Implement: Broadcast via SMS
+    // Return Right(entity) on success, Left(Failure) on failure.
+    // -- END CUSTOMIZATION ZONE --
+    return Right(entity);
+  }
+  /// Step: Broadcast via WhatsApp
+  Future<Either<Failure, PromotionEntity>> _broadcastWhatsApp(PromotionEntity entity) async {
+    // -- HUMAN CUSTOMIZATION ZONE --
+    // Implement: Broadcast via WhatsApp
+    // Return Right(entity) on success, Left(Failure) on failure.
+    // -- END CUSTOMIZATION ZONE --
+    return Right(entity);
+  }
+
+  Future<void> _rollback(PromotionEntity entity, List<String> completedSteps) async {
+    for (final step in completedSteps.reversed) {
+      switch (step) {
+      case 'broadcastSms': break; // TODO: rollback Broadcast via SMS
+      case 'broadcastWhatsApp': break; // TODO: rollback Broadcast via WhatsApp
+      }
+    }
+  }
+
+  void _emit(PromotionDomainEvent event) => _emittedEvents.add(event);
+}
+
+
+// === FILE: lib/features/promotion/presentation/bloc/promotion_bloc.dart ===
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../../domain/services/promotion_domain_service.dart';
+import '../../domain/usecases/create_promotion_usecase.dart';
+import '../../domain/usecases/delete_promotion_usecase.dart';
+import '../../domain/usecases/get_promotion_usecase.dart';
+import '../../domain/usecases/get_all_promotion_usecase.dart';
+import '../../domain/usecases/update_promotion_usecase.dart';
+import '../../domain/value_objects/promotion_status.dart';
+import 'promotion_event.dart';
+import 'promotion_state.dart';
+
+class PromotionBloc extends Bloc<PromotionEvent, PromotionState> {
+  final GetAllPromotionUseCase getAllUseCase;
+  final GetPromotionUseCase getUseCase;
+  final CreatePromotionUseCase createUseCase;
+  final UpdatePromotionUseCase updateUseCase;
+  final DeletePromotionUseCase deleteUseCase;
+  final PromotionDomainService domainService;
+
+  PromotionBloc({
+    required this.getAllUseCase,
+    required this.getUseCase,
+    required this.createUseCase,
+    required this.updateUseCase,
+    required this.deleteUseCase,
+    required this.domainService,
+  }) : super(PromotionInitial()) {
+    on<PromotionLoadAllRequested>(_onLoadAll);
+    on<PromotionLoadOneRequested>(_onLoadOne);
+    on<PromotionCreateRequested>(_onCreate);
+    on<PromotionUpdateRequested>(_onUpdate);
+    on<PromotionDeleteRequested>(_onDelete);
+    on<PromotionFormReset>((_, emit) => emit(PromotionInitial()));
+    on<PromotionActivateRequested>(_onActivate);
+    on<PromotionEndRequested>(_onEnd);
+    on<PromotionCancelRequested>(_onCancel);
+  }
+
+  Future<void> _onLoadAll(
+    PromotionLoadAllRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
+    emit(PromotionLoading());
+    final result = await getAllUseCase(NoParams());
+    result.fold(
+      (f) => emit(PromotionFailure(f.message)),
+      (items) => items.isEmpty
+          ? emit(PromotionEmpty())
+          : emit(PromotionListLoaded(items)),
+    );
+  }
+
+  Future<void> _onLoadOne(
+    PromotionLoadOneRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
+    emit(PromotionLoading());
+    final result = await getUseCase(GetPromotionParams(id: event.id));
+    result.fold(
+      (f) => emit(PromotionFailure(f.message)),
+      (item) => emit(PromotionDetailLoaded(item)),
+    );
+  }
+
+  Future<void> _onCreate(
+    PromotionCreateRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
+    emit(PromotionLoading());
+    final result = await createUseCase(event.params);
+    if (emit.isDone) return;
+    result.fold(
+      (f) => emit(PromotionFailure(f.message)),
+      (_) => emit(PromotionOperationSuccess('Promotion created successfully')),
+    );
+  }
+
+  Future<void> _onUpdate(
+    PromotionUpdateRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
+    emit(PromotionLoading());
+    final result = await updateUseCase(
+      UpdatePromotionParams(entity: event.entity),
+    );
+    if (emit.isDone) return;
+    result.fold((f) => emit(PromotionFailure(f.message)), (updated) {
+      emit(
+        PromotionOperationSuccess(
+          'Promotion updated successfully',
+          updatedItem: updated,
+        ),
+      );
+
+      emit(PromotionDetailLoaded(updated));
+    });
+  }
+
+  Future<void> _onDelete(
+    PromotionDeleteRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
+    emit(PromotionLoading());
+    final result = await deleteUseCase(DeletePromotionParams(id: event.id));
+    if (emit.isDone) return;
+    result.fold(
+      (f) => emit(PromotionFailure(f.message)),
+      (_) => emit(PromotionOperationSuccess('Promotion deleted successfully')),
+    );
+  }
+
+  Future<void> _onEnd(
+    PromotionEndRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
+    emit(PromotionLoading());
+    final result = await domainService.transition(
+      id: event.id,
+      targetStatus: PromotionStatus.ended,
+    );
+    if (emit.isDone) return;
+    result.fold((f) => emit(PromotionFailure(f.message)), (entity) {
+      emit(
+        PromotionOperationSuccess(
+          'End Promotion successful',
+          updatedItem: entity,
+        ),
+      );
+
+      emit(PromotionDetailLoaded(entity));
+    });
+  }
+
+  Future<void> _onCancel(
+    PromotionCancelRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
+    emit(PromotionLoading());
+    final result = await domainService.transition(
+      id: event.id,
+      targetStatus: PromotionStatus.cancelled,
+    );
+    if (emit.isDone) return;
+    result.fold((f) => emit(PromotionFailure(f.message)), (entity) {
+      emit(
+        PromotionOperationSuccess(
+          'Cancel Promotion successful',
+          updatedItem: entity,
+        ),
+      );
+
+      emit(PromotionDetailLoaded(entity));
+    });
+  }
+
+  Future<void> _onActivate(
+    PromotionActivateRequested event,
+    Emitter<PromotionState> emit,
+  ) async {
+    emit(PromotionLoading());
+    final result = await domainService.transition(
+      id: event.id,
+      targetStatus: PromotionStatus.active,
+    );
+    if (emit.isDone) return;
+    result.fold((f) => emit(PromotionFailure(f.message)), (entity) {
+      emit(
+        PromotionOperationSuccess(
+          'Activate Promotion successful',
+          updatedItem: entity,
+        ),
+      );
+
+      emit(PromotionDetailLoaded(entity));
+    });
+  }
+}
+
+
+// === FILE: lib/features/promotion/presentation/bloc/promotion_event.dart ===
+import '../../domain/entities/promotion_entity.dart';
+import '../../domain/usecases/create_promotion_usecase.dart';
+
+abstract class PromotionEvent {}
+
+class PromotionLoadAllRequested extends PromotionEvent {}
+
+class PromotionLoadOneRequested extends PromotionEvent {
+  final String id;
+  PromotionLoadOneRequested(this.id);
+}
+
+class PromotionCreateRequested extends PromotionEvent {
+  final CreatePromotionParams params;
+  PromotionCreateRequested(this.params);
+}
+
+class PromotionUpdateRequested extends PromotionEvent {
+  final PromotionEntity entity;
+  PromotionUpdateRequested(this.entity);
+}
+
+class PromotionDeleteRequested extends PromotionEvent {
+  final String id;
+  PromotionDeleteRequested(this.id);
+}
+
+class PromotionFormReset extends PromotionEvent {}
+
+class PromotionActivateRequested extends PromotionEvent {
+  final String id;
+  PromotionActivateRequested(this.id);
+}
+
+class PromotionEndRequested extends PromotionEvent {
+  final String id;
+  PromotionEndRequested(this.id);
+}
+
+class PromotionCancelRequested extends PromotionEvent {
+  final String id;
+  PromotionCancelRequested(this.id);
+}
+
+class PromotionStatusOverridden extends PromotionEvent {
+  final PromotionEntity entity;
+  PromotionStatusOverridden(this.entity);
+}
+
+
+// === FILE: lib/features/promotion/presentation/bloc/promotion_state.dart ===
+import '../../domain/entities/promotion_entity.dart';
+
+abstract class PromotionState {}
+
+class PromotionInitial extends PromotionState {}
+class PromotionLoading extends PromotionState {}
+
+class PromotionListLoaded extends PromotionState {
+  final List<PromotionEntity> items;
+  PromotionListLoaded(this.items);
+}
+
+class PromotionDetailLoaded extends PromotionState {
+  final PromotionEntity item;
+  PromotionDetailLoaded(this.item);
+}
+
+class PromotionOperationSuccess extends PromotionState {
+  final String message;
+  final PromotionEntity? updatedItem;
+  PromotionOperationSuccess(this.message, {this.updatedItem});
+}
+
+class PromotionEmpty extends PromotionState {}
+
+class PromotionFailure extends PromotionState {
+  final String message;
+  PromotionFailure(this.message);
+}
+class PromotionSubmitting extends PromotionState {}
+
+// === FILE: lib/features/promotion/presentation/enums/promotion_form_node.dart ===
+/// Form navigation node for Promotion.
+/// Generated per-feature -- use PromotionFormNode to avoid conflicts
+/// across features that each have their own form pages.
+enum PromotionFormNode { create, edit }
+
+
+// === FILE: lib/features/promotion/presentation/pages/promotion_detail_page.dart ===
+// promotion_detail_page.dart
+// ─────────────────────────────────────────────────────────────
+// Admin App — Promotion detail with state transition actions.
+//
+// FIX (Issue 3): After End/Cancel transitions, Nexora maps
+// the status back to 'sent'/'failed' → 'active'/'cancelled'.
+// Re-fetching from API after these transitions would overwrite
+// the local terminal status. Instead, we apply the returned
+// entity directly via PromotionStatusOverridden so the UI
+// reflects the correct state without a network round-trip.
+//
+// UPDATED: Shows discount percentage section when applicable.
+// ─────────────────────────────────────────────────────────────
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../data/models/promotion_model.dart';
+import '../../domain/entities/promotion_entity.dart';
+import '../../domain/value_objects/promotion_status.dart';
+import '../bloc/promotion_bloc.dart';
+import '../bloc/promotion_event.dart';
+import '../bloc/promotion_state.dart';
+import '../widgets/promotion_status_badge.dart';
+import 'package:get_it/get_it.dart';
+import '../../../product/data/datasources/product_remote_datasource.dart';
+
+class PromotionDetailPage extends StatelessWidget {
+  const PromotionDetailPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocConsumer<PromotionBloc, PromotionState>(
+      listener: (context, state) {
+        if (state is PromotionOperationSuccess) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        if (state is PromotionFailure) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
+      },
+      builder: (context, state) {
+        if (state is PromotionLoading) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Promotion')),
+            body: const Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (state is PromotionDetailLoaded) {
+          return _DetailView(item: state.item);
+        }
+        if (state is PromotionFailure) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Promotion')),
+            body: Center(child: Text(state.message)),
+          );
+        }
+        return Scaffold(
+          appBar: AppBar(title: const Text('Promotion')),
+          body: const Center(child: CircularProgressIndicator()),
+        );
+      },
+    );
+  }
+}
+
+// ─── Detail View ───────────────────────────────────────────────────────────
+
+class _DetailView extends StatelessWidget {
+  final PromotionEntity item;
+  const _DetailView({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = PromotionStatusX.fromString(item.status);
+    final isWide = MediaQuery.of(context).size.width > 768;
+    final model = item is PromotionModel ? item as PromotionModel : null;
+    final hasDiscount = item.discountPercentage != null;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(item.title),
+        centerTitle: false,
+        actions: [
+          if (status == PromotionStatus.draft)
+            IconButton(
+              onPressed: () => context.go('/promotions/${item.id}/edit'),
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Edit',
+            ),
+          PromotionStatusBadge(status: status),
+          const SizedBox(width: 16),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.symmetric(
+          horizontal: isWide ? 48 : 16,
+          vertical: 16,
+        ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 860),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ── Broadcast Summary Banner (active/ended) ──
+                if (model != null && model.targetCount > 0)
+                  _BroadcastBanner(model: model),
+                if (model != null && model.targetCount > 0)
+                  const SizedBox(height: 12),
+
+                // ── Discount Banner ───────────────────────────
+                if (hasDiscount) ...[
+                  _DiscountBanner(percentage: item.discountPercentage!),
+                  const SizedBox(height: 12),
+                ],
+
+                // ── Overview ─────────────────────────────────
+                _SectionCard(
+                  title: 'Overview',
+                  icon: Icons.campaign_outlined,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 32,
+                        runSpacing: 12,
+                        children: [
+                          _InfoBlock(
+                            label: 'Start Date',
+                            value: _fmtDate(item.startDate),
+                          ),
+                          _InfoBlock(
+                            label: 'End Date',
+                            value: _fmtDate(item.endDate),
+                          ),
+                          _InfoBlock(
+                            label: 'Duration',
+                            value:
+                                '${item.endDate.difference(item.startDate).inDays} days',
+                          ),
+                          _InfoBlock(
+                            label: 'Created',
+                            value: _fmtDate(item.createdAt),
+                          ),
+                          if (hasDiscount)
+                            _InfoBlock(
+                              label: 'Discount',
+                              value:
+                                  '${item.discountPercentage!.toStringAsFixed(item.discountPercentage! % 1 == 0 ? 0 : 1)}% OFF',
+                              valueColor: Colors.deepOrange,
+                            ),
+                        ],
+                      ),
+                      if (item.description != null) ...[
+                        const SizedBox(height: 14),
+                        const Divider(height: 1),
+                        const SizedBox(height: 12),
+                        Text(
+                          item.description!,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            height: 1.6,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // ── Channels ──────────────────────────────────
+                _SectionCard(
+                  title: 'Broadcast Channels',
+                  icon: Icons.cell_tower_outlined,
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 8,
+                    children: item.channels.map((c) {
+                      final color = c == 'sms'
+                          ? Colors.orange
+                          : c == 'whatsapp'
+                          ? const Color(0xFF25D366)
+                          : Colors.indigo;
+                      final icon = c == 'sms'
+                          ? Icons.sms_outlined
+                          : c == 'whatsapp'
+                          ? Icons.chat_outlined
+                          : Icons.notifications_outlined;
+                      final label = c == 'sms'
+                          ? 'SMS'
+                          : c == 'whatsapp'
+                          ? 'WhatsApp Business API'
+                          : 'In-App';
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: color.withOpacity(0.35)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(icon, size: 16, color: color),
+                            const SizedBox(width: 6),
+                            Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: color,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // ── Products ──────────────────────────────────
+                _SectionCard(
+                  title: 'Promoted Products (${item.productIds.length})',
+                  icon: Icons.medication_outlined,
+                  child: Column(
+                    children: item.productIds
+                        .map((id) => _ProductRow(productId: id))
+                        .toList(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // ── Action Buttons ────────────────────────────
+                _ActionButtons(item: item, status: status),
+                const SizedBox(height: 32),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _fmtDate(DateTime d) {
+    const m = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${m[d.month - 1]} ${d.day}, ${d.year}';
+  }
+}
+
+// ─── Discount Banner ───────────────────────────────────────────────────────
+
+class _DiscountBanner extends StatelessWidget {
+  final double percentage;
+  const _DiscountBanner({required this.percentage});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final label = percentage % 1 == 0
+        ? '${percentage.toInt()}%'
+        : '${percentage.toStringAsFixed(1)}%';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.deepOrange.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.deepOrange.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.deepOrange.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.local_offer_outlined,
+              color: Colors.deepOrange,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Discount Campaign — $label OFF',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: Colors.deepOrange.shade700,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Applied to all selected products. '
+                  'Per-variant overrides can be configured via the Override API.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.deepOrange.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Broadcast Banner ──────────────────────────────────────────────────────
+
+class _BroadcastBanner extends StatelessWidget {
+  final PromotionModel model;
+  const _BroadcastBanner({required this.model});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final sentAt = model.broadcastSentAt;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.green.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle_outline, color: Colors.green, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Broadcast Sent to ${model.targetCount} Customers',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: Colors.green.shade700,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (sentAt != null)
+                  Text(
+                    'Sent on ${_fmtDate(sentAt)}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.green.shade600,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmtDate(DateTime d) {
+    const m = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${m[d.month - 1]} ${d.day}, ${d.year}';
+  }
+}
+
+// ─── Info Block ────────────────────────────────────────────────────────────
+
+class _InfoBlock extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  const _InfoBlock({required this.label, required this.value, this.valueColor});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            letterSpacing: 0.4,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: valueColor,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Product Row ───────────────────────────────────────────────────────────
+
+class _ProductRow extends StatefulWidget {
+  final String productId;
+  const _ProductRow({required this.productId});
+
+  @override
+  State<_ProductRow> createState() => _ProductRowState();
+}
+
+class _ProductRowState extends State<_ProductRow> {
+  String? name;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final ds = GetIt.instance<ProductRemoteDataSource>();
+      final product = await ds.getById(widget.productId);
+
+      if (mounted) {
+        setState(() {
+          name = product.name;
+          loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          name = widget.productId;
+          loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          const Icon(Icons.circle, size: 6),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              loading ? 'Loading...' : (name ?? widget.productId),
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Shared Widgets ────────────────────────────────────────────────────────
+
+class _SectionCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Widget child;
+  final Color? accentColor;
+
+  const _SectionCard({
+    required this.title,
+    required this.icon,
+    required this.child,
+    this.accentColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = accentColor ?? theme.colorScheme.primary;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.06),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
+              border: Border(
+                bottom: BorderSide(color: color.withValues(alpha: 0.2)),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: color),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(padding: const EdgeInsets.all(16), child: child),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Action Buttons ────────────────────────────────────────────────────────
+
+class _ActionButtons extends StatelessWidget {
+  final PromotionEntity item;
+  final PromotionStatus status;
+
+  const _ActionButtons({required this.item, required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final bloc = context.read<PromotionBloc>();
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        if (status == PromotionStatus.draft)
+          FilledButton.icon(
+            onPressed: () => _confirmAction(
+              context,
+              title: 'Publish Promotion?',
+              body:
+                  'This will broadcast to all eligible customers via selected channels. This cannot be undone.',
+              confirmLabel: 'Publish',
+              onConfirm: () => bloc.add(PromotionActivateRequested(item.id)),
+            ),
+            icon: const Icon(Icons.send_outlined, size: 18),
+            label: const Text('Publish'),
+          ),
+        if (status == PromotionStatus.active)
+          OutlinedButton.icon(
+            onPressed: () => _confirmAction(
+              context,
+              title: 'End Campaign?',
+              body:
+                  'The campaign will be marked as ended. No further broadcasts will be sent.',
+              confirmLabel: 'End Campaign',
+              onConfirm: () => bloc.add(PromotionEndRequested(item.id)),
+            ),
+            icon: const Icon(Icons.stop_circle_outlined, size: 18),
+            label: const Text('End Campaign'),
+          ),
+        if (status == PromotionStatus.draft || status == PromotionStatus.active)
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+              side: BorderSide(
+                color: Theme.of(context).colorScheme.error.withOpacity(0.5),
+              ),
+            ),
+            onPressed: () => _confirmAction(
+              context,
+              title: 'Cancel Promotion?',
+              body: 'The campaign will be cancelled. This cannot be undone.',
+              confirmLabel: 'Cancel Campaign',
+              onConfirm: () => bloc.add(PromotionCancelRequested(item.id)),
+            ),
+            icon: const Icon(Icons.cancel_outlined, size: 18),
+            label: const Text('Cancel'),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _confirmAction(
+    BuildContext context, {
+    required String title,
+    required String body,
+    required String confirmLabel,
+    required VoidCallback onConfirm,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      onConfirm();
+    }
+  }
+}
+
+
+// === FILE: lib/features/promotion/presentation/pages/promotion_form_page.dart ===
+// promotion_form_page.dart
+// Products are fetched from the real Nexora Commerce Products endpoint:
+//   GET /api/v1/commerce/orgs/{orgId}/products?per_page=200&status=active
+// No hardcoded product map. Products load on page init via _loadProducts().
+//
+// UPDATED: Added discount_percentage field (optional).
+//   null  → normal product campaign
+//   0-100 → discount campaign (percentage)
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:get_it/get_it.dart';
+import 'package:go_router/go_router.dart';
+import '../../../product/data/datasources/product_remote_datasource.dart';
+import '../../domain/entities/promotion_entity.dart';
+import '../../domain/usecases/create_promotion_usecase.dart';
+import '../../../../core/widgets/searchable_picker_sheet.dart';
+import '../bloc/promotion_bloc.dart';
+import '../bloc/promotion_event.dart';
+import '../bloc/promotion_state.dart';
+import '../enums/promotion_form_node.dart';
+
+class PromotionFormPage extends StatefulWidget {
+  final PromotionFormNode mode;
+  final String? id;
+
+  const PromotionFormPage({super.key, required this.mode, this.id});
+
+  @override
+  State<PromotionFormPage> createState() => _PromotionFormPageState();
+}
+
+class _PromotionFormPageState extends State<PromotionFormPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _titleCtrl = TextEditingController();
+  final _descCtrl = TextEditingController();
+  final _discountCtrl = TextEditingController();
+
+  DateTime _startDate = DateTime.now();
+  DateTime _endDate = DateTime.now().add(const Duration(days: 7));
+  final List<String> _selectedProducts = [];
+  final List<String> _selectedChannels = ['sms', 'whatsapp'];
+  bool _hasDiscount = false;
+
+  bool _populated = false;
+  PromotionEntity? _originalEntity;
+
+  // ── Product catalogue (loaded from API) ───────────────────
+  Map<String, String> _productMap = {};
+  bool _productsLoading = true;
+  String? _productsError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+
+    if (widget.mode == PromotionFormNode.edit) {
+      final currentState = context.read<PromotionBloc>().state;
+      if (currentState is PromotionDetailLoaded) {
+        _populate(currentState.item);
+      }
+    }
+  }
+
+  Future<void> _loadProducts() async {
+    setState(() {
+      _productsLoading = true;
+      _productsError = null;
+    });
+
+    try {
+      final productDs = GetIt.instance<ProductRemoteDataSource>();
+      final products = await productDs.getAll();
+
+      final map = <String, String>{
+        for (final p in products)
+          if (p.id.isNotEmpty) p.id: p.name,
+      };
+
+      if (mounted) {
+        setState(() {
+          _productMap = map;
+          _productsLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _productsLoading = false;
+          _productsError = 'Failed to load products. Tap to retry.';
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _descCtrl.dispose();
+    _discountCtrl.dispose();
+    super.dispose();
+  }
+
+  void _populate(PromotionEntity item) {
+    if (_populated) return;
+    _populated = true;
+    _originalEntity = item;
+    _titleCtrl.text = item.title;
+    _descCtrl.text = item.description ?? '';
+    _startDate = item.startDate;
+    _endDate = item.endDate;
+    _selectedProducts
+      ..clear()
+      ..addAll(item.productIds);
+    _selectedChannels
+      ..clear()
+      ..addAll(item.channels);
+
+    if (item.discountPercentage != null) {
+      _hasDiscount = true;
+      _discountCtrl.text = item.discountPercentage!.toStringAsFixed(
+        item.discountPercentage! % 1 == 0 ? 0 : 2,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isEdit = widget.mode == PromotionFormNode.edit;
+    final isWide = MediaQuery.of(context).size.width > 768;
+
+    return BlocConsumer<PromotionBloc, PromotionState>(
+      listenWhen: (_, state) =>
+          state is PromotionOperationSuccess || state is PromotionFailure,
+
+      listener: (context, state) {
+        if (state is PromotionOperationSuccess) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Colors.green,
+            ),
+          );
+
+          context.go('/promotions');
+        }
+
+        if (state is PromotionFailure) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: theme.colorScheme.error,
+            ),
+          );
+        }
+      },
+
+      builder: (context, state) {
+        if (isEdit && state is PromotionDetailLoaded) {
+          _populate(state.item);
+        }
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(isEdit ? 'Edit Promotion' : 'New Promotion'),
+            centerTitle: false,
+          ),
+          body: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(
+              horizontal: isWide ? 48 : 16,
+              vertical: 16,
+            ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // ── Promotion Details ─────────────────────
+                      _SectionCard(
+                        title: 'Promotion Details',
+                        icon: Icons.campaign_outlined,
+                        child: Column(
+                          children: [
+                            TextFormField(
+                              controller: _titleCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Title *',
+                                hintText: 'e.g. October Antibiotics Campaign',
+                                border: OutlineInputBorder(),
+                              ),
+                              validator: (v) {
+                                if (v == null || v.trim().isEmpty) {
+                                  return 'Title is required';
+                                }
+                                if (v.trim().length < 3) {
+                                  return 'At least 3 characters';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 14),
+                            TextFormField(
+                              controller: _descCtrl,
+                              maxLines: 3,
+                              decoration: const InputDecoration(
+                                labelText: 'Description',
+                                hintText:
+                                    'Optional — describe the promotion goal and target audience',
+                                border: OutlineInputBorder(),
+                                alignLabelWithHint: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // ── Discount / Campaign Type ──────────────
+                      _SectionCard(
+                        title: 'Campaign Type',
+                        icon: Icons.local_offer_outlined,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Toggle between product campaign and discount campaign
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _CampaignTypeButton(
+                                    label: 'Product Campaign',
+                                    subtitle:
+                                        'Announce new or featured products',
+                                    icon: Icons.medication_outlined,
+                                    selected: !_hasDiscount,
+                                    onTap: () => setState(() {
+                                      _hasDiscount = false;
+                                      _discountCtrl.clear();
+                                    }),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _CampaignTypeButton(
+                                    label: 'Discount Campaign',
+                                    subtitle: 'Offer a percentage discount',
+                                    icon: Icons.percent_outlined,
+                                    selected: _hasDiscount,
+                                    onTap: () =>
+                                        setState(() => _hasDiscount = true),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (_hasDiscount) ...[
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: _discountCtrl,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                    RegExp(r'^\d{0,3}(\.\d{0,2})?'),
+                                  ),
+                                ],
+                                decoration: InputDecoration(
+                                  labelText: 'Discount Percentage *',
+                                  hintText: 'e.g. 15',
+                                  border: const OutlineInputBorder(),
+                                  suffixText: '%',
+                                  suffixStyle: TextStyle(
+                                    color: theme.colorScheme.primary,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 16,
+                                  ),
+                                  helperText:
+                                      'Applied to all selected products. '
+                                      'Variant-level overrides can be set after publishing.',
+                                ),
+                                validator: (v) {
+                                  if (!_hasDiscount) return null;
+                                  if (v == null || v.trim().isEmpty) {
+                                    return 'Discount percentage is required';
+                                  }
+                                  final parsed = double.tryParse(v.trim());
+                                  if (parsed == null) {
+                                    return 'Enter a valid number';
+                                  }
+                                  if (parsed < 0 || parsed > 100) {
+                                    return 'Must be between 0 and 100';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // ── Date Range ────────────────────────────
+                      _SectionCard(
+                        title: 'Date Range',
+                        icon: Icons.date_range_outlined,
+                        child: isWide
+                            ? Row(
+                                children: [
+                                  Expanded(
+                                    child: _DateField(
+                                      label: 'Start Date',
+                                      value: _startDate,
+                                      onChanged: (d) =>
+                                          setState(() => _startDate = d),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: _DateField(
+                                      label: 'End Date',
+                                      value: _endDate,
+                                      firstDate: _startDate,
+                                      onChanged: (d) =>
+                                          setState(() => _endDate = d),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Column(
+                                children: [
+                                  _DateField(
+                                    label: 'Start Date',
+                                    value: _startDate,
+                                    onChanged: (d) =>
+                                        setState(() => _startDate = d),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _DateField(
+                                    label: 'End Date',
+                                    value: _endDate,
+                                    firstDate: _startDate,
+                                    onChanged: (d) =>
+                                        setState(() => _endDate = d),
+                                  ),
+                                ],
+                              ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // ── Broadcast Channels ────────────────────
+                      _SectionCard(
+                        title: 'Broadcast Channels',
+                        icon: Icons.cell_tower_outlined,
+                        child: Column(
+                          children: [
+                            _ChannelToggle(
+                              channel: 'sms',
+                              label: 'SMS',
+                              subtitle: 'Vodacom / Airtel / Yas gateway',
+                              icon: Icons.sms_outlined,
+                              color: Colors.orange,
+                              selected: _selectedChannels.contains('sms'),
+                              onToggle: (v) => setState(() {
+                                if (v) {
+                                  _selectedChannels.add('sms');
+                                } else {
+                                  _selectedChannels.remove('sms');
+                                }
+                              }),
+                            ),
+                            const SizedBox(height: 8),
+                            _ChannelToggle(
+                              channel: 'whatsapp',
+                              label: 'WhatsApp',
+                              subtitle: 'WhatsApp Business API',
+                              icon: Icons.chat_outlined,
+                              color: const Color(0xFF25D366),
+                              selected: _selectedChannels.contains('whatsapp'),
+                              onToggle: (v) => setState(() {
+                                if (v) {
+                                  _selectedChannels.add('whatsapp');
+                                } else {
+                                  _selectedChannels.remove('whatsapp');
+                                }
+                              }),
+                            ),
+                            if (_selectedChannels.isEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  'Select at least one channel',
+                                  style: TextStyle(
+                                    color: theme.colorScheme.error,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // ── Products ──────────────────────────────
+                      _SectionCard(
+                        title:
+                            'Products to Promote (${_selectedProducts.length} selected)',
+                        icon: Icons.medication_outlined,
+                        child: _productsLoading
+                            ? const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                      SizedBox(width: 10),
+                                      Text(
+                                        'Loading products…',
+                                        style: TextStyle(fontSize: 13),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            : _productsError != null
+                            ? _ProductsErrorState(
+                                message: _productsError!,
+                                onRetry: _loadProducts,
+                              )
+                            : _ProductPickerField(
+                                selectedProducts: _selectedProducts,
+                                productMap: _productMap,
+                                onChanged: (selected) => setState(() {
+                                  _selectedProducts.clear();
+                                  _selectedProducts.addAll(selected);
+                                }),
+                              ),
+                      ),
+                      if (_selectedProducts.isEmpty &&
+                          !_productsLoading &&
+                          _productsError == null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'Select at least one product',
+                            style: TextStyle(
+                              color: theme.colorScheme.error,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 24),
+
+                      // ── Submit ────────────────────────────────
+                      BlocBuilder<PromotionBloc, PromotionState>(
+                        buildWhen: (_, state) =>
+                            state is PromotionLoading ||
+                            state is PromotionFailure ||
+                            state is PromotionOperationSuccess,
+                        builder: (context, state) {
+                          final isSubmitting = state is PromotionSubmitting;
+                          return SizedBox(
+                            height: 48,
+                            child: FilledButton(
+                              onPressed: isSubmitting ? null : _submit,
+                              child: isSubmitting
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Text(
+                                      isEdit
+                                          ? 'Save Changes'
+                                          : 'Create Promotion',
+                                    ),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 32),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _submit() {
+    if (_selectedProducts.isEmpty || _selectedChannels.isEmpty) {
+      setState(() {});
+      return;
+    }
+    if (!_formKey.currentState!.validate()) return;
+
+    final bloc = context.read<PromotionBloc>();
+    final isEdit = widget.mode == PromotionFormNode.edit;
+
+    // Resolve discount percentage
+    double? discountPercentage;
+    if (_hasDiscount && _discountCtrl.text.trim().isNotEmpty) {
+      discountPercentage = double.tryParse(_discountCtrl.text.trim());
+    }
+
+    if (isEdit) {
+      if (_originalEntity == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not save. Please go back and try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      final updated = _originalEntity!.copyWith(
+        title: _titleCtrl.text.trim(),
+        description: _descCtrl.text.trim().isEmpty
+            ? null
+            : _descCtrl.text.trim(),
+        productIds: List<String>.from(_selectedProducts),
+        startDate: _startDate,
+        endDate: _endDate,
+        channels: List<String>.from(_selectedChannels),
+        discountPercentage: discountPercentage,
+        clearDiscount: !_hasDiscount,
+      );
+      bloc.add(PromotionUpdateRequested(updated));
+    } else {
+      bloc.add(
+        PromotionCreateRequested(
+          CreatePromotionParams(
+            title: _titleCtrl.text.trim(),
+            description: _descCtrl.text.trim().isEmpty
+                ? null
+                : _descCtrl.text.trim(),
+            productIds: List<String>.from(_selectedProducts),
+            startDate: _startDate,
+            endDate: _endDate,
+            channels: List<String>.from(_selectedChannels),
+            discountPercentage: discountPercentage,
+          ),
+        ),
+      );
+    }
+  }
+}
+
+// ─── Campaign Type Button ──────────────────────────────────────────────────
+
+class _CampaignTypeButton extends StatelessWidget {
+  final String label;
+  final String subtitle;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CampaignTypeButton({
+    required this.label,
+    required this.subtitle,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = selected ? theme.colorScheme.primary : Colors.grey;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: selected ? color.withOpacity(0.08) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected
+                ? color.withOpacity(0.5)
+                : Colors.grey.withOpacity(0.3),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 20, color: color),
+                const Spacer(),
+                if (selected) Icon(Icons.check_circle, size: 18, color: color),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: selected ? color : null,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Product Picker Field ──────────────────────────────────────────────────
+
+class _ProductPickerField extends StatelessWidget {
+  final List<String> selectedProducts;
+  final Map<String, String> productMap;
+  final ValueChanged<List<String>> onChanged;
+
+  const _ProductPickerField({
+    required this.selectedProducts,
+    required this.productMap,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (selectedProducts.isNotEmpty)
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: selectedProducts
+                .map(
+                  (id) => Chip(
+                    label: Text(
+                      productMap[id] ?? id,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    onDeleted: () {
+                      final updated = List<String>.from(selectedProducts)
+                        ..remove(id);
+                      onChanged(updated);
+                    },
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                )
+                .toList(),
+          ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: productMap.isEmpty
+              ? null
+              : () async {
+                  final result = await showSearchableMultiPicker<String>(
+                    context: context,
+                    title: 'Select Products',
+                    hint: 'Search products…',
+                    items: productMap.entries
+                        .map(
+                          (e) =>
+                              (value: e.key, label: e.value, subtitle: e.key),
+                        )
+                        .toList(),
+                    selected: selectedProducts.toSet(),
+                  );
+                  if (result != null) onChanged(result.toList());
+                },
+          icon: const Icon(Icons.add, size: 18),
+          label: Text(
+            productMap.isEmpty ? 'No products available' : 'Select Products',
+          ),
+          style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Products Error/Retry State ────────────────────────────────────────────
+
+class _ProductsErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  const _ProductsErrorState({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(
+            Icons.warning_amber_outlined,
+            size: 18,
+            color: Theme.of(context).colorScheme.error,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Date Field ────────────────────────────────────────────────────────────
+
+class _DateField extends StatelessWidget {
+  final String label;
+  final DateTime value;
+  final DateTime? firstDate;
+  final ValueChanged<DateTime> onChanged;
+
+  const _DateField({
+    required this.label,
+    required this.value,
+    this.firstDate,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    return InkWell(
+      onTap: () async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: value,
+          firstDate: firstDate ?? DateTime(2024),
+          lastDate: DateTime(2030),
+        );
+        if (picked != null) onChanged(picked);
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+          suffixIcon: const Icon(Icons.calendar_today_outlined, size: 18),
+        ),
+        child: Text(
+          '${months[value.month - 1]} ${value.day}, ${value.year}',
+          style: theme.textTheme.bodyMedium,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Channel Toggle ────────────────────────────────────────────────────────
+
+class _ChannelToggle extends StatelessWidget {
+  final String channel;
+  final String label;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final bool selected;
+  final ValueChanged<bool> onToggle;
+
+  const _ChannelToggle({
+    required this.channel,
+    required this.label,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.selected,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        color: selected ? color.withOpacity(0.08) : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: selected
+              ? color.withOpacity(0.4)
+              : Colors.grey.withOpacity(0.3),
+          width: selected ? 1.5 : 1,
+        ),
+      ),
+      child: SwitchListTile(
+        value: selected,
+        onChanged: onToggle,
+        secondary: Icon(icon, color: selected ? color : Colors.grey),
+        title: Text(
+          label,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: selected ? color : null,
+          ),
+        ),
+        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+        activeColor: color,
+        dense: true,
+      ),
+    );
+  }
+}
+
+// ─── Section Card ──────────────────────────────────────────────────────────
+
+class _SectionCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  const _SectionCard({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.primary;
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.06),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
+              border: Border(bottom: BorderSide(color: color.withOpacity(0.2))),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: color),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(padding: const EdgeInsets.all(16), child: child),
+        ],
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/promotion/presentation/pages/promotion_list_page.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../domain/entities/promotion_entity.dart';
+import '../../domain/value_objects/promotion_status.dart';
+import '../bloc/promotion_bloc.dart';
+import '../bloc/promotion_event.dart';
+import '../bloc/promotion_state.dart';
+import '../widgets/promotion_card_tile.dart';
+import '../widgets/promotion_tiles.dart';
+
+enum _ViewMode { cards, list, table }
+
+class PromotionListPage extends StatefulWidget {
+  const PromotionListPage({super.key});
+
+  @override
+  State<PromotionListPage> createState() => _PromotionListPageState();
+}
+
+class _PromotionListPageState extends State<PromotionListPage> {
+  _ViewMode _viewMode = _ViewMode.cards;
+  String _search = '';
+  PromotionStatus? _filterStatus;
+
+  List<PromotionEntity> _apply(List<PromotionEntity> items) {
+    var r = items;
+    if (_filterStatus != null) {
+      r = r
+          .where((e) => PromotionStatusX.fromString(e.status) == _filterStatus)
+          .toList();
+    }
+    if (_search.isNotEmpty) {
+      final q = _search.toLowerCase();
+      r = r
+          .where(
+            (e) =>
+                e.title.toLowerCase().contains(q) ||
+                (e.description ?? '').toLowerCase().contains(q),
+          )
+          .toList();
+    }
+    return r;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return BlocListener<PromotionBloc, PromotionState>(
+      listenWhen: (previous, state) {
+        if (state is PromotionOperationSuccess) {
+          // If updatedItem is set, this came from a detail-page transition
+          // (End/Cancel/Activate). Don't reload the list from here.
+          return state.updatedItem == null;
+        }
+        return state is PromotionFailure;
+      },
+      listener: (context, state) {
+        if (state is PromotionOperationSuccess) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Colors.green,
+            ),
+          );
+          context.read<PromotionBloc>().add(PromotionLoadAllRequested());
+        }
+        if (state is PromotionFailure) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Promotions'),
+          centerTitle: false,
+          actions: [
+            IconButton(
+              tooltip: 'Refresh',
+              icon: const Icon(Icons.refresh),
+              onPressed: () {
+                context.read<PromotionBloc>().add(PromotionLoadAllRequested());
+              },
+            ),
+            PopupMenuButton<PromotionStatus?>(
+              icon: Badge(
+                isLabelVisible: _filterStatus != null,
+                child: const Icon(Icons.filter_list),
+              ),
+              tooltip: 'Filter by status',
+              onSelected: (v) => setState(() => _filterStatus = v),
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: null, child: Text('All statuses')),
+                ...PromotionStatus.values.map(
+                  (s) => PopupMenuItem(value: s, child: Text(s.displayName)),
+                ),
+              ],
+            ),
+            _ViewToggle(
+              current: _viewMode,
+              onChanged: (v) => setState(() => _viewMode = v),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: () => context.go('/promotions/create'),
+          icon: const Icon(Icons.add),
+          label: const Text('New Promotion'),
+        ),
+        body: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: SearchBar(
+                hintText: 'Search promotions…',
+                leading: const Icon(Icons.search, size: 20),
+                padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 16),
+                ),
+                onChanged: (v) => setState(() => _search = v),
+              ),
+            ),
+            if (_filterStatus != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                child: Row(
+                  children: [
+                    FilterChip(
+                      label: Text(_filterStatus!.displayName),
+                      selected: true,
+                      onSelected: (_) => setState(() => _filterStatus = null),
+                      deleteIcon: const Icon(Icons.close, size: 14),
+                      onDeleted: () => setState(() => _filterStatus = null),
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: BlocBuilder<PromotionBloc, PromotionState>(
+                builder: (context, state) {
+                  if (state is PromotionLoading) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (state is PromotionFailure) {
+                    return _ErrorView(
+                      message: state.message,
+                      onRetry: () => context.read<PromotionBloc>().add(
+                        PromotionLoadAllRequested(),
+                      ),
+                    );
+                  }
+                  if (state is PromotionEmpty) {
+                    return const _EmptyView(filtered: false);
+                  }
+                  if (state is PromotionListLoaded) {
+                    final items = _apply(state.items);
+                    if (items.isEmpty) {
+                      return const _EmptyView(filtered: true);
+                    }
+                    return _buildContent(items, theme);
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(List<PromotionEntity> items, ThemeData theme) {
+    switch (_viewMode) {
+      case _ViewMode.cards:
+        return RefreshIndicator(
+          onRefresh: () async =>
+              context.read<PromotionBloc>().add(PromotionLoadAllRequested()),
+          child: ListView.builder(
+            padding: const EdgeInsets.only(bottom: 80),
+            itemCount: items.length,
+            itemBuilder: (_, i) => PromotionCardTile(item: items[i]),
+          ),
+        );
+      case _ViewMode.list:
+        return RefreshIndicator(
+          onRefresh: () async =>
+              context.read<PromotionBloc>().add(PromotionLoadAllRequested()),
+          child: ListView.separated(
+            padding: const EdgeInsets.only(bottom: 80, top: 8),
+            itemCount: items.length,
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, color: theme.colorScheme.outlineVariant),
+            itemBuilder: (_, i) => PromotionListRow(item: items[i]),
+          ),
+        );
+      case _ViewMode.table:
+        return SingleChildScrollView(
+          scrollDirection: Axis.vertical,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: IntrinsicWidth(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  PromotionTableRow.header(),
+                  ...items.map((e) => PromotionTableRow(item: e)),
+                ],
+              ),
+            ),
+          ),
+        );
+    }
+  }
+}
+
+// ─── View Toggle ───────────────────────────────────────────────────────────
+
+class _ViewToggle extends StatelessWidget {
+  final _ViewMode current;
+  final ValueChanged<_ViewMode> onChanged;
+  const _ViewToggle({required this.current, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _btn(context, _ViewMode.cards, Icons.view_agenda_outlined),
+        _btn(context, _ViewMode.list, Icons.format_list_bulleted),
+        _btn(context, _ViewMode.table, Icons.table_rows_outlined),
+      ],
+    );
+  }
+
+  Widget _btn(BuildContext ctx, _ViewMode mode, IconData icon) {
+    final selected = current == mode;
+    return IconButton(
+      icon: Icon(icon),
+      color: selected
+          ? Theme.of(ctx).colorScheme.primary
+          : Theme.of(ctx).colorScheme.outline,
+      iconSize: 20,
+      onPressed: () => onChanged(mode),
+      tooltip: mode.name,
+    );
+  }
+}
+
+// ─── Empty & Error ─────────────────────────────────────────────────────────
+
+class _EmptyView extends StatelessWidget {
+  final bool filtered;
+  const _EmptyView({required this.filtered});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.campaign_outlined,
+            size: 56,
+            color: Theme.of(context).colorScheme.outline,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            filtered ? 'No promotions match your filter' : 'No promotions yet',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Tap + to create your first promotion.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  const _ErrorView({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 48,
+            color: Theme.of(context).colorScheme.error,
+          ),
+          const SizedBox(height: 12),
+          Text(message, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          FilledButton.tonal(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/promotion/presentation/widgets/promotion_card.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/entities/promotion_entity.dart';
+import '../../domain/value_objects/promotion_status.dart';
+import 'promotion_status_badge.dart';
+
+class PromotionCard extends StatelessWidget {
+  final PromotionEntity item;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  const PromotionCard({
+    super.key,
+    required this.item,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        onTap: onTap,
+        title: Text(
+          item.title,
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: Text(item.description ?? ''),        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PromotionStatusBadge(status: PromotionStatusX.fromString(item.status), compact: true),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: Icon(Icons.delete_outline, color: scheme.error),
+              tooltip: 'Delete',
+              onPressed: () => _confirmDelete(context),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete?'),
+        content: Text('Remove "${item.title}"? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) onDelete();
+  }
+}
+
+
+// === FILE: lib/features/promotion/presentation/widgets/promotion_card_tile.dart ===
+// promotion_card_tile.dart
+// Removed all references to PromotionMockDataSource.productName().
+// Product IDs are displayed as-is on the card chips until the Product
+// feature (Seq 7) provides a name cache.
+//
+// UPDATED: Shows discount percentage badge when discountPercentage is set.
+
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../../data/models/promotion_model.dart';
+import '../../domain/entities/promotion_entity.dart';
+import '../../domain/value_objects/promotion_status.dart';
+import '../widgets/promotion_status_badge.dart';
+import 'promotion_product_names.dart';
+
+class PromotionCardTile extends StatelessWidget {
+  final PromotionEntity item;
+  const PromotionCardTile({super.key, required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = PromotionStatusX.fromString(item.status);
+    final isActive = status == PromotionStatus.active;
+    final isDraft = status == PromotionStatus.draft;
+    final model = item is PromotionModel ? item as PromotionModel : null;
+    final hasDiscount = item.discountPercentage != null;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: isActive
+              ? Colors.green.withOpacity(0.4)
+              : theme.colorScheme.outlineVariant,
+          width: isActive ? 1.5 : 1,
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => context.go('/promotions/${item.id}'),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header ──────────────────────────────────────
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: status.color.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      hasDiscount
+                          ? Icons.local_offer_outlined
+                          : Icons.campaign_outlined,
+                      size: 20,
+                      color: status.color,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.title,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          '${_fmtDate(item.startDate)} – ${_fmtDate(item.endDate)}',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // ── Discount badge ─────────────────────────
+                  if (hasDiscount)
+                    _DiscountBadge(percentage: item.discountPercentage!),
+                  if (hasDiscount) const SizedBox(width: 6),
+                  PromotionStatusBadge(status: status, compact: true),
+                ],
+              ),
+
+              // ── Description ──────────────────────────────
+              if (item.description != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  item.description!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+
+              // ── Products ─────────────────────────────────
+              if (item.productIds.isNotEmpty) _productNamesChip(theme),
+              const SizedBox(height: 10),
+
+              // ── Footer ───────────────────────────────────
+              Row(
+                children: [
+                  ..._channelIcons(item.channels, theme),
+                  const Spacer(),
+                  if (!isDraft && model != null) _broadcastCount(model, theme),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _productNamesChip(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: PromotionProductNames(
+        productIds: item.productIds,
+        style: theme.textTheme.labelSmall?.copyWith(fontSize: 10),
+      ),
+    );
+  }
+
+  List<Widget> _channelIcons(List<String> channels, ThemeData theme) {
+    return channels.map((c) {
+      final icon = c == 'sms'
+          ? Icons.sms_outlined
+          : c == 'whatsapp'
+          ? Icons.chat_outlined
+          : Icons.notifications_outlined;
+      final color = c == 'sms'
+          ? Colors.orange
+          : c == 'whatsapp'
+          ? const Color(0xFF25D366)
+          : Colors.indigo;
+      return Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 11, color: color),
+              const SizedBox(width: 3),
+              Text(
+                c == 'sms'
+                    ? 'SMS'
+                    : c == 'whatsapp'
+                    ? 'WhatsApp'
+                    : 'In-App',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  Widget _broadcastCount(PromotionModel model, ThemeData theme) {
+    final count = model.targetCount;
+    if (count == 0) return const SizedBox.shrink();
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.people_outline,
+          size: 13,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          '$count customers reached',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _fmtDate(DateTime d) {
+    const m = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${m[d.month - 1]} ${d.day}';
+  }
+}
+
+// ─── Discount Badge ────────────────────────────────────────────────────────
+
+class _DiscountBadge extends StatelessWidget {
+  final double percentage;
+  const _DiscountBadge({required this.percentage});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = percentage % 1 == 0
+        ? '${percentage.toInt()}% OFF'
+        : '${percentage.toStringAsFixed(1)}% OFF';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.deepOrange.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.deepOrange.withOpacity(0.4)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 10,
+          color: Colors.deepOrange,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/promotion/presentation/widgets/promotion_product_names.dart ===
+import 'package:flutter/material.dart';
+import 'package:get_it/get_it.dart';
+
+import '../../../product/data/datasources/product_remote_datasource.dart';
+
+class PromotionProductNames extends StatefulWidget {
+  final List<String> productIds;
+  final int maxItems;
+  final TextStyle? style;
+
+  const PromotionProductNames({
+    super.key,
+    required this.productIds,
+    this.maxItems = 2,
+    this.style,
+  });
+
+  @override
+  State<PromotionProductNames> createState() => _PromotionProductNamesState();
+}
+
+class _PromotionProductNamesState extends State<PromotionProductNames> {
+  bool loading = true;
+  List<String> names = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final ds = GetIt.instance<ProductRemoteDataSource>();
+
+      final products = await Future.wait(
+        widget.productIds.map((id) => ds.getById(id)),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        names = products.map((e) => e.name).toList();
+        loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        names = widget.productIds;
+        loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return Text('Loading...', style: widget.style);
+    }
+
+    final visible = names.take(widget.maxItems).toList();
+
+    var text = visible.join('  •  ');
+
+    if (names.length > widget.maxItems) {
+      text += ' +${names.length - widget.maxItems}';
+    }
+
+    return Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: widget.style,
+    );
+  }
+}
+
+
+// === FILE: lib/features/promotion/presentation/widgets/promotion_status_badge.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/value_objects/promotion_status.dart';
+
+class PromotionStatusBadge extends StatelessWidget {
+  final PromotionStatus status;
+  final bool compact;
+
+  const PromotionStatusBadge({
+    super.key,
+    required this.status,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = status.color;
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 3 : 5,
+      ),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: compact ? 5 : 6,
+            height: compact ? 5 : 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            status.displayName,
+            style: TextStyle(
+              color: color,
+              fontSize: compact ? 10 : 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// === FILE: lib/features/promotion/presentation/widgets/promotion_tiles.dart ===
+// promotion_tiles.dart
+// Removed all references to PromotionMockDataSource.productName().
+// Product IDs are displayed as-is until the Product feature (Seq 7)
+// provides a name cache/repository.
+//
+// UPDATED: List row and table row now show discount percentage when set.
+
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../../domain/entities/promotion_entity.dart';
+import '../../domain/value_objects/promotion_status.dart';
+import '../widgets/promotion_status_badge.dart';
+import 'promotion_product_names.dart';
+
+// ─── List Row ──────────────────────────────────────────────────────────────
+
+class PromotionListRow extends StatelessWidget {
+  final PromotionEntity item;
+  const PromotionListRow({super.key, required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = PromotionStatusX.fromString(item.status);
+    final hasDiscount = item.discountPercentage != null;
+
+    return InkWell(
+      onTap: () => context.go('/promotions/${item.id}'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: status.color.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                hasDiscount
+                    ? Icons.local_offer_outlined
+                    : Icons.campaign_outlined,
+                size: 18,
+                color: status.color,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.title,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${_fmtDate(item.startDate)} – ${_fmtDate(item.endDate)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+
+                      const SizedBox(height: 2),
+
+                      PromotionProductNames(
+                        productIds: item.productIds,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+
+                      if (hasDiscount) ...[
+                        const SizedBox(height: 4),
+                        _InlineDiscountBadge(
+                          percentage: item.discountPercentage!,
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            PromotionStatusBadge(status: status, compact: true),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _fmtDate(DateTime d) {
+    const m = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${m[d.month - 1]} ${d.day}';
+  }
+}
+
+// ─── Table Row ─────────────────────────────────────────────────────────────
+
+class PromotionTableRow extends StatelessWidget {
+  final PromotionEntity? item;
+  const PromotionTableRow({super.key, this.item});
+  const PromotionTableRow.header({super.key}) : item = null;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (item == null) return _buildHeader(theme);
+    return _buildRow(context, theme);
+  }
+
+  Widget _buildHeader(ThemeData theme) {
+    return Container(
+      color: theme.colorScheme.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          _hcell('Title', flex: 3, theme: theme),
+          _hcell('Products', flex: 2, theme: theme),
+          _hcell('Discount', flex: 1, theme: theme),
+          _hcell('Channels', flex: 2, theme: theme),
+          _hcell('Date Range', flex: 2, theme: theme),
+          _hcell('Status', flex: 1, theme: theme),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRow(BuildContext context, ThemeData theme) {
+    final e = item!;
+    final status = PromotionStatusX.fromString(e.status);
+
+    final discountDisplay = e.discountPercentage != null
+        ? '${e.discountPercentage!.toStringAsFixed(e.discountPercentage! % 1 == 0 ? 0 : 1)}%'
+        : '—';
+
+    return InkWell(
+      onTap: () => context.go('/promotions/${e.id}'),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: Text(
+                e.title,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: PromotionProductNames(
+                productIds: e.productIds,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 1,
+              child: e.discountPercentage != null
+                  ? Text(
+                      discountDisplay,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.deepOrange,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    )
+                  : Text(
+                      '—',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+            ),
+            Expanded(
+              flex: 2,
+              child: Text(
+                e.channels
+                    .map(
+                      (c) => c == 'sms'
+                          ? 'SMS'
+                          : c == 'whatsapp'
+                          ? 'WhatsApp'
+                          : 'In-App',
+                    )
+                    .join(', '),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: Text(
+                '${_fmtDate(e.startDate)} – ${_fmtDate(e.endDate)}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 1,
+              child: PromotionStatusBadge(status: status, compact: true),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _hcell(String text, {required int flex, required ThemeData theme}) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        text,
+        style: theme.textTheme.labelSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: theme.colorScheme.onSurfaceVariant,
+          letterSpacing: 0.5,
+          fontSize: 10,
+        ),
+      ),
+    );
+  }
+
+  String _fmtDate(DateTime d) {
+    const m = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${m[d.month - 1]} ${d.day}';
+  }
+}
+
+// ─── Inline Discount Badge ─────────────────────────────────────────────────
+
+class _InlineDiscountBadge extends StatelessWidget {
+  final double percentage;
+  const _InlineDiscountBadge({required this.percentage});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = percentage % 1 == 0
+        ? '${percentage.toInt()}%'
+        : '${percentage.toStringAsFixed(1)}%';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: Colors.deepOrange.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.deepOrange.withOpacity(0.35)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 9,
+          color: Colors.deepOrange,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+

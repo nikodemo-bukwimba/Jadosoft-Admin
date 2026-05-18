@@ -207,8 +207,9 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   Map<String, dynamic> _parseBody(Response response) {
     final data = response.data;
     if (data == null) throw const ServerException('Empty response body');
-    if (data is! Map<String, dynamic>)
+    if (data is! Map<String, dynamic>) {
       throw const ServerException('Unexpected response format');
+    }
     return data;
   }
 

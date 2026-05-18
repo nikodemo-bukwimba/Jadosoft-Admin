@@ -1,54 +1,24 @@
-// Admin app product api datasource
+// lib/features/product/data/datasources/product_api_datasource.dart
 //
-// product_api_datasource.dart
-// ─────────────────────────────────────────────────────────────
-// Nexora Commerce Products API implementation.
-// Implements the original ProductRemoteDataSource interface unchanged.
-// All existing Maishell files are untouched — this is a NEW file only.
+// FIX: Added uploadImage(String localPath) → POST /api/v1/media/upload
 //
-// Endpoints used:
-//   GET    /api/v1/commerce/orgs/{orgId}/products
-//   POST   /api/v1/commerce/orgs/{orgId}/products
-//   GET    /api/v1/commerce/products/{id}
-//   PATCH  /api/v1/commerce/products/{id}
-//   POST   /api/v1/commerce/products/{id}/archive  (no hard DELETE in Nexora)
+// Previously _imageSource (a local device file path like
+// /data/.../image_picker_abc.jpg) was passed raw as image_url in the
+// JSON body.  The server stored a local path that is meaningless on
+// any other session or device.
 //
-// OrgContext usage:
-//   Products catalog is org-level (root org owns all products).
-//   → Always uses requireRootOrgId() — never effectiveOrgId.
-//
-// Field mapping:
-//   price        → variants[default].base_price
-//   categoryId   → attributes.category_id + metadata.category_id
-//   isAvailable  → metadata.is_available
-//   isFeatured   → metadata.is_featured  (local concept — no Nexora equivalent)
-//   isNew        → metadata.is_new
-//   imageUrl     → media[0].url  OR  metadata.image_url (fallback)
-//   status       → draft·active·archived (suspended → archived)
-//
-// NOTE on seller_actor_id:
-//   Required by Nexora on create. Must be passed in the data map by the
-//   caller. Pass it from the active auth session actor id at the form layer.
-//   The form page should inject AuthBloc and read:
-//     (context.read<AuthBloc>().state as AuthAuthenticated)
-//       .activeSession.user.actorId
-//   then include it in CreateProductParams / data map.
-//
-// To activate — in injection_container.dart:
-//   ADD import:
-//     import 'package:admin_panel/features/product/data/datasources/product_api_datasource.dart';
-//
-//   REPLACE (in Products section):
-//     sl.registerLazySingleton<ProductRemoteDataSource>(
-//       () => ProductMockDataSource(),
-//     );
-//   WITH:
-//     sl.registerLazySingleton<ProductRemoteDataSource>(
-//       () => ProductApiDataSource(dio: sl(), orgContext: sl()),
-//     );
+// Fix flow:
+//   1. _pickImage stores the local path in _imageSource (unchanged).
+//   2. Before dispatching create/update, the form calls
+//      datasource.uploadImage(_imageSource!) which multipart-POSTs the
+//      file to /api/v1/media/upload and returns a public https:// URL.
+//   3. That URL is stored as image_url in the JSON body.
 // ─────────────────────────────────────────────────────────────
 
+import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:path/path.dart' as p;
+
 import '../../../../core/context/org_context.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/product_model.dart';
@@ -62,7 +32,7 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     : _dio = dio,
       _orgContext = orgContext;
 
-  // ── Error helper ───────────────────────────────────────────
+  // ── Error helper ─────────────────────────────────────────────
 
   String _msg(DioException e) {
     final data = e.response?.data;
@@ -72,22 +42,20 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     return 'An error occurred. Please try again.';
   }
 
-  // ── Response unwrapper ─────────────────────────────────────
+  // ── Response unwrapper ───────────────────────────────────────
 
   Map<String, dynamic> _unwrapProduct(dynamic raw) {
     if (raw is Map<String, dynamic>) {
-      if (raw.containsKey('product')) {
+      if (raw.containsKey('product'))
         return raw['product'] as Map<String, dynamic>;
-      }
-      if (raw.containsKey('data') && raw['data'] is Map) {
+      if (raw.containsKey('data') && raw['data'] is Map)
         return raw['data'] as Map<String, dynamic>;
-      }
       return raw;
     }
     return {};
   }
 
-  // ── Nexora JSON → ProductModel ─────────────────────────────
+  // ── Nexora JSON → ProductModel ───────────────────────────────
 
   ProductModel _fromNexora(Map<String, dynamic> j) {
     final variants =
@@ -99,13 +67,22 @@ class ProductApiDataSource implements ProductRemoteDataSource {
             orElse: () => variants.first,
           );
 
-    // ── Capture variant ID — this is what the basket endpoint needs ──
     final variantId = defaultVariant?['id']?.toString();
 
     final rawPrice = defaultVariant?['base_price'];
     final price = rawPrice == null
         ? 0.0
         : double.tryParse(rawPrice.toString()) ?? 0.0;
+
+    final rawEffective = defaultVariant?['effective_price'];
+    final effectivePrice = rawEffective == null
+        ? price
+        : double.tryParse(rawEffective.toString()) ?? price;
+
+    final discountPercentage = (defaultVariant?['discount_percentage'] as num?)
+        ?.toDouble();
+    final hasPromotion = defaultVariant?['has_promotion'] as bool? ?? false;
+    final promotionId = defaultVariant?['promotion_id'] as String?;
 
     final meta = (j['metadata'] as Map<String, dynamic>?) ?? {};
     final attrs = (j['attributes'] as Map<String, dynamic>?) ?? {};
@@ -122,10 +99,14 @@ class ProductApiDataSource implements ProductRemoteDataSource {
 
     return ProductModel(
       id: j['id']?.toString() ?? '',
-      variantId: variantId, // ← stored now
+      variantId: variantId,
       name: j['name']?.toString() ?? '',
       description: j['description']?.toString(),
       price: price,
+      effectivePrice: effectivePrice,
+      discountPercentage: discountPercentage,
+      hasPromotion: hasPromotion,
+      promotionId: promotionId,
       categoryId: categoryId,
       isAvailable: parseBool(meta['is_available'], j['status'] == 'active'),
       isFeatured: parseBool(meta['is_featured'], false),
@@ -158,7 +139,7 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     return meta['image_url'] as String? ?? j['image_url'] as String?;
   }
 
-  // ── ProductModel data → Nexora create body ─────────────────
+  // ── Nexora create body ───────────────────────────────────────
 
   Map<String, dynamic> _createBody(Map<String, dynamic> d) => {
     'name': d['name'] ?? '',
@@ -190,6 +171,8 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     ],
   };
 
+  // ── Nexora update body ───────────────────────────────────────
+
   Map<String, dynamic> _updateBody(Map<String, dynamic> d) => {
     'name': d['name'] ?? '',
     'description': d['description'],
@@ -208,12 +191,11 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     },
   };
 
-  // ── ProductRemoteDataSource interface ──────────────────────
+  // ── ProductRemoteDataSource interface ────────────────────────
 
   @override
   Future<List<ProductModel>> getAll() async {
     try {
-      // Products catalog is org-level — always root org id
       final orgId = _orgContext.requireRootOrgId();
       final res = await _dio.get(
         '/commerce/orgs/$orgId/products',
@@ -232,9 +214,13 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   }
 
   @override
-  Future<ProductModel> getById(String id) async {
+  Future<ProductModel> getById(String id, {String? orgId}) async {
     try {
-      final res = await _dio.get('/commerce/products/$id');
+      final effectiveOrgId = orgId ?? _orgContext.effectiveOrgId;
+      final res = await _dio.get(
+        '/commerce/products/$id',
+        queryParameters: {'org_id': effectiveOrgId},
+      );
       return _fromNexora(_unwrapProduct(res.data));
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -246,7 +232,6 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   @override
   Future<ProductModel> create(Map<String, dynamic> data) async {
     try {
-      // Products catalog is org-level — always root org id
       final orgId = _orgContext.requireRootOrgId();
       final res = await _dio.post(
         '/commerce/orgs/$orgId/products',
@@ -266,17 +251,13 @@ class ProductApiDataSource implements ProductRemoteDataSource {
       final newStatus = data['status']?.toString();
 
       if (newStatus == 'active') {
-        // Publish: draft/featured → active requires the dedicated endpoint
         await _dio.post('/commerce/products/$id/publish');
       } else if (newStatus == 'archived') {
-        // Archive via its own endpoint (already used in delete())
         await _dio.post('/commerce/products/$id/archive');
       } else {
-        // Plain metadata/name update — no status change
         await _dio.patch('/commerce/products/$id', data: _updateBody(data));
       }
 
-      // Always re-fetch to return accurate, server-confirmed state
       return await getById(id);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -285,45 +266,61 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     }
   }
 
-  /// Patches the default variant base_price. Non-fatal if it fails —
-  /// the product metadata update already succeeded.
-  // Future<void> _updateVariantPrice(String productId, double price) async {
-  //   try {
-  //     final res = await _dio.get('/commerce/products/$productId');
-  //     final productData = _unwrapProduct(res.data);
-  //     final variants =
-  //         (productData['variants'] as List?)?.cast<Map<String, dynamic>>() ??
-  //         [];
-  //     if (variants.isEmpty) return;
-  //     final defaultVariant = variants.firstWhere(
-  //       (v) => v['is_default'] == true,
-  //       orElse: () => variants.first,
-  //     );
-  //     final variantId = defaultVariant['id']?.toString();
-  //     if (variantId == null || variantId.isEmpty) return;
-  //     await _dio.patch(
-  //       '/commerce/products/$productId/variants/$variantId',
-  //       data: {'base_price': price},
-  //     );
-  //   } catch (_) {
-  //     // Non-fatal
-  //   }
-  // }
-
   @override
   Future<void> delete(String id) async {
-    // Nexora Commerce has no hard DELETE for products.
-    // Archive is the equivalent operation (active → archived).
     try {
       await _dio.post('/commerce/products/$id/archive');
     } on DioException catch (e) {
-      // 404 = already gone, 422 = already archived → treat as success
-      if (e.response?.statusCode == 404 || e.response?.statusCode == 422) {
+      if (e.response?.statusCode == 404 || e.response?.statusCode == 422)
         return;
-      }
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     } catch (e) {
       throw ServerException(e.toString());
+    }
+  }
+
+  // ── FIX: Image upload ────────────────────────────────────────
+  //
+  // Uploads the local file to POST /api/v1/media/upload and returns
+  // the server-generated public URL.
+  //
+  // The caller (product form widget) must call this BEFORE building
+  // the create/update payload so that image_url in the body is a
+  // real https:// URL, not a local device path.
+
+  @override
+  Future<String> uploadImage(String localPath) async {
+    try {
+      final file = File(localPath);
+      if (!file.existsSync()) {
+        throw ServerException('Image file not found at: $localPath');
+      }
+
+      final fileName = p.basename(localPath);
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(localPath, filename: fileName),
+        'type': 'product',
+      });
+
+      final res = await _dio.post('/media/upload', data: formData);
+      final url = res.data?['url'] as String?;
+
+      if (url == null || url.isEmpty) {
+        throw const ServerException(
+          'Upload succeeded but server returned no URL.',
+        );
+      }
+
+      return url;
+    } on DioException catch (e) {
+      throw ServerException(
+        'Image upload failed: ${_msg(e)}',
+        statusCode: e.response?.statusCode,
+      );
+    } on ServerException {
+      rethrow;
+    } catch (e) {
+      throw ServerException('Image upload error: $e');
     }
   }
 }

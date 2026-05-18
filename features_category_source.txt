@@ -1,0 +1,1000 @@
+﻿// ================================================================
+// features_category_source.txt
+// Project Type : Flutter/Dart
+// Generated    : 2026-05-15 09:58:15
+// Files        : 19
+// Usage        : Upload to Claude Project documents as reference.
+// ================================================================
+
+// === FILE: lib/features/category/data/datasources/category_api_datasource.dart ===
+
+
+// === FILE: lib/features/category/data/datasources/category_mock_datasource.dart ===
+import '../../../../core/network/paginated_response.dart';
+import '../models/category_model.dart';
+import 'category_remote_datasource.dart';
+
+class CategoryMockDataSource implements CategoryRemoteDataSource {
+  static final List<Map<String, dynamic>> _store = [
+    {'id': 'cat-001', 'name': 'Painkillers & Analgesics', 'description': 'Over-the-counter and prescription pain relief medications', 'is_active': true},
+    {'id': 'cat-002', 'name': 'Antibiotics', 'description': 'Prescription antibacterial medications', 'is_active': true},
+    {'id': 'cat-003', 'name': 'Vitamins & Supplements', 'description': 'Daily vitamins, minerals, and dietary supplements', 'is_active': true},
+    {'id': 'cat-004', 'name': 'First Aid', 'description': 'Bandages, antiseptics, wound care supplies', 'is_active': true},
+    {'id': 'cat-005', 'name': 'Dermatology', 'description': 'Skin care, creams, and topical treatments', 'is_active': false},
+  ];
+  static int _idC = 6;
+  Future<void> _d() => Future.delayed(const Duration(milliseconds: 400));
+
+  @override Future<PaginatedResponse<CategoryModel>> getAll({String? search, int? perPage, int? page}) async {
+    await _d(); var list = List<Map<String, dynamic>>.from(_store);
+    if (search != null && search.isNotEmpty) {
+      final q = search.toLowerCase();
+      list = list.where((e) => (e['name'] ?? '').toString().toLowerCase().contains(q)).toList();
+    }
+    final items = list.map((e) => CategoryModel.fromJson(e)).toList();
+    return PaginatedResponse(items: items, currentPage: page ?? 1, lastPage: 1, total: items.length, perPage: perPage ?? 50);
+  }
+  @override Future<CategoryModel> getById(String id) async {
+    await _d(); return CategoryModel.fromJson(_store.firstWhere((e) => e['id'] == id, orElse: () => throw Exception('Not found'))); }
+  @override Future<CategoryModel> create(Map<String, dynamic> data) async {
+    await _d(); final id = 'cat-${(_idC++).toString().padLeft(3, '0')}';
+    final item = {'id': id, 'name': data['name'] ?? '', 'description': data['description'], 'is_active': data['is_active'] ?? false};
+    _store.add(item); return CategoryModel.fromJson(item); }
+  @override Future<CategoryModel> update(String id, Map<String, dynamic> data) async {
+    await _d(); final i = _store.indexWhere((e) => e['id'] == id); if (i == -1) throw Exception('Not found');
+    _store[i] = {..._store[i], ...data, 'id': id}; return CategoryModel.fromJson(_store[i]); }
+  @override Future<void> delete(String id) async { await _d(); _store.removeWhere((e) => e['id'] == id); }
+}
+
+
+// === FILE: lib/features/category/data/datasources/category_remote_datasource.dart ===
+import 'package:dio/dio.dart';
+import '../../../../core/context/org_context.dart';
+import '../../../../core/network/api_paths.dart';
+import '../../../../core/network/base_remote_datasource.dart';
+import '../../../../core/network/paginated_response.dart';
+import '../models/category_model.dart';
+
+abstract class CategoryRemoteDataSource {
+  Future<PaginatedResponse<CategoryModel>> getAll({String? search, int? perPage, int? page});
+  Future<CategoryModel> getById(String id);
+  Future<CategoryModel> create(Map<String, dynamic> data);
+  Future<CategoryModel> update(String id, Map<String, dynamic> data);
+  Future<void> delete(String id);
+}
+
+class CategoryRemoteDataSourceImpl extends BaseRemoteDataSource implements CategoryRemoteDataSource {
+  final OrgContext _orgContext;
+  CategoryRemoteDataSourceImpl({required Dio dio, required OrgContext orgContext})
+      : _orgContext = orgContext, super(dio: dio);
+
+  @override Future<PaginatedResponse<CategoryModel>> getAll({String? search, int? perPage, int? page}) {
+    final orgId = _orgContext.requireRootOrgId();
+    final p = <String, dynamic>{
+      if (search != null) 'search': search, if (perPage != null) 'per_page': perPage, if (page != null) 'page': page};
+    return fetchPaginatedList(ApiPaths.commerce.categories(orgId), CategoryModel.fromJson,
+      queryParams: p.isNotEmpty ? p : null);
+  }
+  @override Future<CategoryModel> getById(String id) =>
+    fetchSingle(ApiPaths.commerce.category(id), CategoryModel.fromJson, dataKey: 'category');
+  @override Future<CategoryModel> create(Map<String, dynamic> data) =>
+    postAndParse(ApiPaths.commerce.categories(_orgContext.requireRootOrgId()), data, CategoryModel.fromJson, dataKey: 'category');
+  @override Future<CategoryModel> update(String id, Map<String, dynamic> data) =>
+    patchAndParse(ApiPaths.commerce.category(id), data, CategoryModel.fromJson, dataKey: 'category');
+  @override Future<void> delete(String id) => deleteResource(ApiPaths.commerce.category(id));
+}
+
+
+// === FILE: lib/features/category/data/models/category_model.dart ===
+import '../../domain/entities/category_entity.dart';
+
+class CategoryModel extends CategoryEntity {
+  const CategoryModel({required super.id, required super.name, super.description, required super.isActive});
+
+  factory CategoryModel.fromJson(Map<String, dynamic> json) => CategoryModel(
+    id: json['id']?.toString() ?? '', name: json['name'] as String? ?? '',
+    description: json['description'] as String?, isActive: json['is_active'] as bool? ?? false);
+
+  Map<String, dynamic> toJson() => {'name': name, 'description': description, 'is_active': isActive};
+
+  factory CategoryModel.fromEntity(CategoryEntity e) => CategoryModel(
+    id: e.id, name: e.name, description: e.description, isActive: e.isActive);
+}
+
+
+// === FILE: lib/features/category/data/repositories/category_repository_impl.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/exceptions.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/network/paginated_response.dart';
+import '../../domain/entities/category_entity.dart';
+import '../../domain/repositories/category_repository.dart';
+import '../models/category_model.dart';
+import '../datasources/category_remote_datasource.dart';
+
+class CategoryRepositoryImpl implements CategoryRepository {
+  final CategoryRemoteDataSource _remote;
+  CategoryRepositoryImpl({required CategoryRemoteDataSource remoteDataSource}) : _remote = remoteDataSource;
+
+  Future<Either<Failure, T>> _guard<T>(Future<T> Function() call) async {
+    try { return Right(await call());
+    } on AuthException catch (e) { return Left(AuthFailure(e.message));
+    } on ServerException catch (e) { return Left(ServerFailure(e.message));
+    } on NetworkException catch (e) { return Left(NetworkFailure(e.message));
+    } catch (e) { return Left(GenericFailure(e.toString())); }
+  }
+
+  @override Future<Either<Failure, PaginatedResponse<CategoryEntity>>> getAll({String? search, int? perPage, int? page}) =>
+    _guard(() => _remote.getAll(search: search, perPage: perPage, page: page));
+  @override Future<Either<Failure, CategoryEntity>> getById(String id) => _guard(() => _remote.getById(id));
+  @override Future<Either<Failure, CategoryEntity>> create(CategoryEntity entity) =>
+    _guard(() => _remote.create(CategoryModel.fromEntity(entity).toJson()));
+  @override Future<Either<Failure, CategoryEntity>> update(CategoryEntity entity) =>
+    _guard(() => _remote.update(entity.id, CategoryModel.fromEntity(entity).toJson()));
+  @override Future<Either<Failure, void>> delete(String id) => _guard(() => _remote.delete(id));
+}
+
+
+// === FILE: lib/features/category/domain/entities/category_entity.dart ===
+import 'package:equatable/equatable.dart';
+
+class CategoryEntity extends Equatable {
+  final String id;
+  final String name;
+  final String? description;
+  final bool isActive;
+
+  const CategoryEntity({required this.id, required this.name, this.description, required this.isActive});
+
+  CategoryEntity copyWith({String? id, String? name, String? description, bool? isActive}) => CategoryEntity(
+    id: id ?? this.id, name: name ?? this.name, description: description ?? this.description, isActive: isActive ?? this.isActive);
+
+  @override List<Object?> get props => [id, name, description, isActive];
+}
+
+
+// === FILE: lib/features/category/domain/repositories/category_repository.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/network/paginated_response.dart';
+import '../entities/category_entity.dart';
+
+abstract class CategoryRepository {
+  Future<Either<Failure, PaginatedResponse<CategoryEntity>>> getAll({String? search, int? perPage, int? page});
+  Future<Either<Failure, CategoryEntity>> getById(String id);
+  Future<Either<Failure, CategoryEntity>> create(CategoryEntity entity);
+  Future<Either<Failure, CategoryEntity>> update(CategoryEntity entity);
+  Future<Either<Failure, void>> delete(String id);
+}
+
+
+// === FILE: lib/features/category/domain/usecases/create_category_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/category_entity.dart';
+import '../repositories/category_repository.dart';
+
+class CreateCategoryParams {
+  final String name;
+  final String? description;
+  final bool isActive;
+  const CreateCategoryParams({required this.name, this.description, required this.isActive});
+}
+
+class CreateCategoryUseCase implements UseCase<CategoryEntity, CreateCategoryParams> {
+  final CategoryRepository repository;
+  CreateCategoryUseCase(this.repository);
+  @override
+  Future<Either<Failure, CategoryEntity>> call(CreateCategoryParams p) async {
+    if (p.name.trim().isEmpty) return const Left(ValidationFailure('Category name is required'));
+    if (p.name.length < 2) return const Left(ValidationFailure('Name must be at least 2 characters'));
+    return repository.create(CategoryEntity(id: '', name: p.name.trim(), description: p.description?.trim(), isActive: p.isActive));
+  }
+}
+
+
+// === FILE: lib/features/category/domain/usecases/delete_category_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../repositories/category_repository.dart';
+
+class DeleteCategoryParams { final String id; const DeleteCategoryParams({required this.id}); }
+class DeleteCategoryUseCase implements UseCase<void, DeleteCategoryParams> {
+  final CategoryRepository repository;
+  DeleteCategoryUseCase(this.repository);
+  @override Future<Either<Failure, void>> call(DeleteCategoryParams p) => repository.delete(p.id);
+}
+
+
+// === FILE: lib/features/category/domain/usecases/get_all_category_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/network/paginated_response.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/category_entity.dart';
+import '../repositories/category_repository.dart';
+
+class GetAllCategoryUseCase implements UseCase<PaginatedResponse<CategoryEntity>, NoParams> {
+  final CategoryRepository repository;
+  GetAllCategoryUseCase(this.repository);
+  @override
+  Future<Either<Failure, PaginatedResponse<CategoryEntity>>> call(NoParams _) => repository.getAll();
+}
+
+
+// === FILE: lib/features/category/domain/usecases/get_category_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/category_entity.dart';
+import '../repositories/category_repository.dart';
+
+class GetCategoryParams { final String id; const GetCategoryParams({required this.id}); }
+class GetCategoryUseCase implements UseCase<CategoryEntity, GetCategoryParams> {
+  final CategoryRepository repository;
+  GetCategoryUseCase(this.repository);
+  @override Future<Either<Failure, CategoryEntity>> call(GetCategoryParams p) => repository.getById(p.id);
+}
+
+
+// === FILE: lib/features/category/domain/usecases/update_category_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/category_entity.dart';
+import '../repositories/category_repository.dart';
+
+class UpdateCategoryParams { final CategoryEntity entity; const UpdateCategoryParams({required this.entity}); }
+class UpdateCategoryUseCase implements UseCase<CategoryEntity, UpdateCategoryParams> {
+  final CategoryRepository repository;
+  UpdateCategoryUseCase(this.repository);
+  @override Future<Either<Failure, CategoryEntity>> call(UpdateCategoryParams p) => repository.update(p.entity);
+}
+
+
+// === FILE: lib/features/category/presentation/bloc/category_bloc.dart ===
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../../domain/usecases/create_category_usecase.dart';
+import '../../domain/usecases/delete_category_usecase.dart';
+import '../../domain/usecases/get_category_usecase.dart';
+import '../../domain/usecases/get_all_category_usecase.dart';
+import '../../domain/usecases/update_category_usecase.dart';
+import 'category_event.dart';
+import 'category_state.dart';
+
+class CategoryBloc extends Bloc<CategoryEvent, CategoryState> {
+  final GetAllCategoryUseCase getAllUseCase;
+  final GetCategoryUseCase getUseCase;
+  final CreateCategoryUseCase createUseCase;
+  final UpdateCategoryUseCase updateUseCase;
+  final DeleteCategoryUseCase deleteUseCase;
+
+  CategoryBloc({required this.getAllUseCase, required this.getUseCase,
+    required this.createUseCase, required this.updateUseCase, required this.deleteUseCase,
+  }) : super(CategoryInitial()) {
+    on<CategoryLoadAllRequested>(_onLoadAll);
+    on<CategoryLoadOneRequested>(_onLoadOne);
+    on<CategoryCreateRequested>(_onCreate);
+    on<CategoryUpdateRequested>(_onUpdate);
+    on<CategoryDeleteRequested>(_onDelete);
+    on<CategoryFormReset>((_, emit) => emit(CategoryInitial()));
+  }
+
+  Future<void> _onLoadAll(CategoryLoadAllRequested event, Emitter<CategoryState> emit) async {
+    emit(CategoryLoading());
+    final result = await getAllUseCase(NoParams());
+    result.fold((f) => emit(CategoryFailure(f.message)),
+      (paginated) => paginated.items.isEmpty ? emit(CategoryEmpty()) : emit(CategoryListLoaded(paginated.items)));
+  }
+  Future<void> _onLoadOne(CategoryLoadOneRequested event, Emitter<CategoryState> emit) async {
+    emit(CategoryLoading());
+    final result = await getUseCase(GetCategoryParams(id: event.id));
+    result.fold((f) => emit(CategoryFailure(f.message)), (item) => emit(CategoryDetailLoaded(item)));
+  }
+  Future<void> _onCreate(CategoryCreateRequested event, Emitter<CategoryState> emit) async {
+    emit(CategoryLoading());
+    final result = await createUseCase(event.params);
+    result.fold((f) => emit(CategoryFailure(f.message)), (_) => emit(CategoryOperationSuccess('Category created')));
+  }
+  Future<void> _onUpdate(CategoryUpdateRequested event, Emitter<CategoryState> emit) async {
+    emit(CategoryLoading());
+    final result = await updateUseCase(UpdateCategoryParams(entity: event.entity));
+    result.fold((f) => emit(CategoryFailure(f.message)), (_) => emit(CategoryOperationSuccess('Category updated')));
+  }
+  Future<void> _onDelete(CategoryDeleteRequested event, Emitter<CategoryState> emit) async {
+    emit(CategoryLoading());
+    final result = await deleteUseCase(DeleteCategoryParams(id: event.id));
+    result.fold((f) => emit(CategoryFailure(f.message)), (_) => emit(CategoryOperationSuccess('Category deleted')));
+  }
+}
+
+
+// === FILE: lib/features/category/presentation/bloc/category_event.dart ===
+import '../../domain/entities/category_entity.dart';
+import '../../domain/usecases/create_category_usecase.dart';
+
+abstract class CategoryEvent {}
+class CategoryLoadAllRequested extends CategoryEvent {}
+class CategoryLoadOneRequested extends CategoryEvent { final String id; CategoryLoadOneRequested(this.id); }
+class CategoryCreateRequested extends CategoryEvent { final CreateCategoryParams params; CategoryCreateRequested(this.params); }
+class CategoryUpdateRequested extends CategoryEvent { final CategoryEntity entity; CategoryUpdateRequested(this.entity); }
+class CategoryDeleteRequested extends CategoryEvent { final String id; CategoryDeleteRequested(this.id); }
+class CategoryFormReset extends CategoryEvent {}
+
+
+// === FILE: lib/features/category/presentation/bloc/category_state.dart ===
+import '../../domain/entities/category_entity.dart';
+
+abstract class CategoryState {}
+class CategoryInitial extends CategoryState {}
+class CategoryLoading extends CategoryState {}
+class CategoryListLoaded extends CategoryState { final List<CategoryEntity> items; CategoryListLoaded(this.items); }
+class CategoryDetailLoaded extends CategoryState { final CategoryEntity item; CategoryDetailLoaded(this.item); }
+class CategoryOperationSuccess extends CategoryState { final String message; CategoryOperationSuccess(this.message); }
+class CategoryEmpty extends CategoryState {}
+class CategoryFailure extends CategoryState { final String message; CategoryFailure(this.message); }
+
+
+// === FILE: lib/features/category/presentation/pages/category_detail_page.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../bloc/category_bloc.dart';
+import '../bloc/category_event.dart';
+import '../bloc/category_state.dart';
+
+class CategoryDetailPage extends StatelessWidget {
+  const CategoryDetailPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Category Detail'),
+        actions: [
+          BlocBuilder<CategoryBloc, CategoryState>(
+            builder: (context, state) {
+              if (state is CategoryDetailLoaded) {
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined),
+                      tooltip: 'Edit',
+                      onPressed: () => context.push(
+                        AppRouter.categoryEditPath(state.item.id),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.delete_outline, color: scheme.error),
+                      tooltip: 'Delete',
+                      onPressed: () => _confirmDelete(
+                        context,
+                        state.item.id,
+                        state.item.name,
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+        ],
+      ),
+      body: BlocConsumer<CategoryBloc, CategoryState>(
+        listener: (context, state) {
+          if (state is CategoryOperationSuccess) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+            context.pop(); // go back to list after delete
+          }
+        },
+        builder: (context, state) {
+          if (state is CategoryLoading || state is CategoryInitial) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (state is CategoryFailure) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: scheme.error),
+                  const SizedBox(height: 16),
+                  Text(state.message),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => context.pop(),
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('Go Back'),
+                  ),
+                ],
+              ),
+            );
+          }
+          if (state is CategoryDetailLoaded) {
+            final item = state.item;
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header card
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 28,
+                            backgroundColor: item.isActive
+                                ? Colors.green.withValues(alpha: 0.15)
+                                : scheme.surfaceContainerHighest,
+                            child: Icon(
+                              Icons.category,
+                              color: item.isActive
+                                  ? Colors.green
+                                  : scheme.onSurfaceVariant,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.name,
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: item.isActive
+                                        ? Colors.green.withValues(alpha: 0.15)
+                                        : scheme.errorContainer.withValues(
+                                            alpha: 0.4,
+                                          ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    item.isActive ? 'Active' : 'Inactive',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: item.isActive
+                                          ? Colors.green
+                                          : scheme.error,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Details card
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Details',
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(
+                                  color: scheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          const Divider(height: 20),
+                          _buildField(context, 'Name', item.name),
+                          _buildField(
+                            context,
+                            'Description',
+                            item.description?.isNotEmpty == true
+                                ? item.description!
+                                : 'No description',
+                          ),
+                          _buildField(
+                            context,
+                            'Status',
+                            item.isActive ? 'Active' : 'Inactive',
+                          ),
+                          _buildField(context, 'ID', item.id),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+          return const SizedBox.shrink();
+        },
+      ),
+    );
+  }
+
+  Widget _buildField(BuildContext context, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    String id,
+    String name,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Category?'),
+        content: Text('Remove "$name"? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      context.read<CategoryBloc>().add(CategoryDeleteRequested(id));
+    }
+  }
+}
+
+
+// === FILE: lib/features/category/presentation/pages/category_form_page.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../bloc/category_bloc.dart';
+import '../bloc/category_event.dart';
+import '../bloc/category_state.dart';
+import '../../domain/usecases/create_category_usecase.dart';
+
+enum CategoryFormMode { create, edit }
+
+class CategoryFormPage extends StatefulWidget {
+  final CategoryFormMode mode;
+  final String? id;
+
+  const CategoryFormPage({
+    super.key,
+    this.mode = CategoryFormMode.create,
+    this.id,
+  });
+
+  @override
+  State<CategoryFormPage> createState() => _CategoryFormPageState();
+}
+
+class _CategoryFormPageState extends State<CategoryFormPage> {
+  final _formKey = GlobalKey<FormState>();
+
+  final _nameController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  bool _isActiveValue = true; // default active for new categories
+
+  bool _isSubmitting = false;
+  bool _fieldsPopulated = false;
+
+  bool get _isEdit => widget.mode == CategoryFormMode.edit;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  /// Pre-populate fields when BLoC loads the existing entity (edit mode).
+  void _populateFields(CategoryState state) {
+    if (_isEdit && !_fieldsPopulated && state is CategoryDetailLoaded) {
+      _nameController.text = state.item.name;
+      _descriptionController.text = state.item.description ?? '';
+      _isActiveValue = state.item.isActive;
+      _fieldsPopulated = true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_isEdit ? 'Edit Category' : 'New Category'),
+      ),
+      body: BlocConsumer<CategoryBloc, CategoryState>(
+        listener: (context, state) {
+          // Pre-populate on detail load (edit mode)
+          if (state is CategoryDetailLoaded) {
+            setState(() => _populateFields(state));
+          }
+          if (state is CategoryOperationSuccess) {
+            setState(() => _isSubmitting = false);
+            Navigator.of(context).pop(true);
+          }
+          if (state is CategoryFailure) {
+            setState(() => _isSubmitting = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+            );
+          }
+        },
+        builder: (context, state) {
+          // Show loader while fetching existing data in edit mode
+          if (_isEdit && state is CategoryLoading && !_fieldsPopulated) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          return Form(
+            key: _formKey,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextFormField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Category Name',
+                      hintText: 'e.g. Painkillers & Analgesics',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.label_outline),
+                    ),
+                    textCapitalization: TextCapitalization.words,
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return 'Category name is required';
+                      if (v.trim().length < 2) return 'Name must be at least 2 characters';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _descriptionController,
+                    decoration: const InputDecoration(
+                      labelText: 'Description',
+                      hintText: 'Brief description of this category',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.description_outlined),
+                    ),
+                    maxLines: 3,
+                    textCapitalization: TextCapitalization.sentences,
+                  ),
+                  const SizedBox(height: 16),
+                  SwitchListTile(
+                    title: const Text('Active'),
+                    subtitle: Text(
+                      _isActiveValue
+                          ? 'Category is visible to users'
+                          : 'Category is hidden from users',
+                    ),
+                    value: _isActiveValue,
+                    onChanged: (v) => setState(() => _isActiveValue = v),
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton.icon(
+                    onPressed: _isSubmitting ? null : _submit,
+                    icon: _isSubmitting
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(_isEdit ? Icons.save : Icons.add),
+                    label: Text(_isEdit ? 'Save Changes' : 'Create Category'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSubmitting = true);
+
+    if (_isEdit) {
+      // Edit mode — get the loaded entity and update it
+      final currentState = context.read<CategoryBloc>().state;
+      if (currentState is CategoryDetailLoaded) {
+        context.read<CategoryBloc>().add(
+          CategoryUpdateRequested(
+            currentState.item.copyWith(
+              name: _nameController.text.trim(),
+              description: _descriptionController.text.trim(),
+              isActive: _isActiveValue,
+            ),
+          ),
+        );
+      }
+    } else {
+      // Create mode
+      context.read<CategoryBloc>().add(
+        CategoryCreateRequested(
+          CreateCategoryParams(
+            name: _nameController.text.trim(),
+            description: _descriptionController.text.trim(),
+            isActive: _isActiveValue,
+          ),
+        ),
+      );
+    }
+  }
+}
+
+// === FILE: lib/features/category/presentation/pages/category_list_page.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../bloc/category_bloc.dart';
+import '../bloc/category_event.dart';
+import '../bloc/category_state.dart';
+import '../widgets/category_card.dart';
+
+class CategoryListPage extends StatefulWidget {
+  const CategoryListPage({super.key});
+
+  @override
+  State<CategoryListPage> createState() => _CategoryListPageState();
+}
+
+class _CategoryListPageState extends State<CategoryListPage> {
+  @override
+  void initState() {
+    super.initState();
+    context.read<CategoryBloc>().add(CategoryLoadAllRequested());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Product Categories')),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push(AppRouter.categoryCreate),
+        child: const Icon(Icons.add),
+      ),
+      body: BlocConsumer<CategoryBloc, CategoryState>(
+        listener: (context, state) {
+          if (state is CategoryOperationSuccess) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(state.message)),
+            );
+            context.read<CategoryBloc>().add(CategoryLoadAllRequested());
+          }
+          if (state is CategoryFailure) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: scheme.error,
+              ),
+            );
+          }
+        },
+        builder: (context, state) {
+          if (state is CategoryLoading || state is CategoryInitial) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (state is CategoryEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.category_outlined, size: 64, color: scheme.outlineVariant),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No categories yet.',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Tap + to create your first category.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+          if (state is CategoryFailure) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: scheme.error),
+                  const SizedBox(height: 16),
+                  Text(state.message, textAlign: TextAlign.center),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => context.read<CategoryBloc>().add(CategoryLoadAllRequested()),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
+          if (state is CategoryListLoaded) {
+            return RefreshIndicator(
+              onRefresh: () async =>
+                  context.read<CategoryBloc>().add(CategoryLoadAllRequested()),
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: state.items.length,
+                itemBuilder: (_, i) => CategoryCard(
+                  item: state.items[i],
+                  onTap: () => context.push(
+                    AppRouter.categoryDetailPath(state.items[i].id),
+                  ),
+                  onDelete: () => context.read<CategoryBloc>()
+                      .add(CategoryDeleteRequested(state.items[i].id)),
+                ),
+              ),
+            );
+          }
+          return const SizedBox.shrink();
+        },
+      ),
+    );
+  }
+}
+
+// === FILE: lib/features/category/presentation/widgets/category_card.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/entities/category_entity.dart';
+
+class CategoryCard extends StatelessWidget {
+  final CategoryEntity item;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  const CategoryCard({
+    super.key,
+    required this.item,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        onTap: onTap,
+        leading: CircleAvatar(
+          backgroundColor: item.isActive
+              ? Colors.green.withValues(alpha: 0.15)
+              : scheme.surfaceContainerHighest,
+          child: Icon(
+            Icons.category_outlined,
+            color: item.isActive ? Colors.green : scheme.onSurfaceVariant,
+            size: 20,
+          ),
+        ),
+        title: Text(
+          item.name,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        subtitle: item.description != null && item.description!.isNotEmpty
+            ? Text(
+                item.description!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              )
+            : null,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: item.isActive
+                    ? Colors.green.withValues(alpha: 0.15)
+                    : scheme.errorContainer.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                item.isActive ? 'Active' : 'Inactive',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: item.isActive ? Colors.green : scheme.error,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              icon: Icon(Icons.delete_outline, color: scheme.error, size: 20),
+              tooltip: 'Delete',
+              onPressed: () => _confirmDelete(context),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Category?'),
+        content: Text('Remove "${item.name}"? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) onDelete();
+  }
+}
+
+

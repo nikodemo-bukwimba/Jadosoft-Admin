@@ -19,14 +19,18 @@ abstract class OfficerRepository {
     String? branchId,
   });
 
-  Future<Either<Failure, OfficerEntity>> invite({
+  /// Problem #2 fix: creates a fully active User account.
+  /// The officer can log in immediately using [email] + [password].
+  /// [fullName] becomes actor.display_name (the real displayed name).
+  Future<Either<Failure, OfficerEntity>> create({
+    required String fullName,
     required String email,
-    String? username,
+    required String password,
+    required String passwordConfirmation,
     String? phone,
     required String branchId,
     required String orgRoleId,
-    String? appPassword,
-    String? appPasswordConfirmation,
+    int? level,
   });
 
   Future<Either<Failure, OfficerEntity>> updateMembership(
@@ -35,8 +39,11 @@ abstract class OfficerRepository {
     int? level,
     String? status,
     String? branchId,
+    String? name,
+    String? phone,
   });
 
+  /// Problem #3 fix: safe branch transfer via the dedicated transfer endpoint.
   Future<Either<Failure, void>> reassignBranch({
     required String userId,
     required String fromBranchId,

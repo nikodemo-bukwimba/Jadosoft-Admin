@@ -1,3 +1,4 @@
+// === FILE: lib/features/conversation/data/models/message_model.dart ===
 import '../../domain/entities/message_entity.dart';
 
 class MessageModel extends MessageEntity {
@@ -33,7 +34,6 @@ class MessageModel extends MessageEntity {
       final m = r as Map<String, dynamic>;
       return MessageReaction(
         emoji: m['emoji'] as String? ?? '',
-        // API uses actor_id not user_id
         userId: m['actor_id'] as String? ?? m['user_id'] as String? ?? '',
         userName: m['user_name'] as String? ?? '',
       );
@@ -51,16 +51,14 @@ class MessageModel extends MessageEntity {
       );
     }).toList();
 
-    // API uses sender_actor_id, fallback to sender_id
+    // sender_actor_id is what the platform API sends
     final senderId =
         j['sender_actor_id'] as String? ?? j['sender_id'] as String? ?? '';
 
-    // API uses conversation_id for DMs, group_id for groups
+    // conversation_id for DMs, group_id for groups
     final conversationId =
         j['conversation_id'] as String? ?? j['group_id'] as String? ?? '';
 
-    // API uses created_at (DirectMessage has $timestamps = false),
-    // fallback to sent_at for forward compatibility
     DateTime sentAt;
     if (j['sent_at'] != null) {
       sentAt = DateTime.parse(j['sent_at'] as String);
@@ -70,16 +68,41 @@ class MessageModel extends MessageEntity {
       sentAt = DateTime.now();
     }
 
-    // API uses content_type, fallback to type
     final contentType = j['content_type'] as String? ?? j['type'] as String?;
-
-    // API uses status field for delivery, fallback to delivery_status
     final deliveryStr =
         j['status'] as String? ?? j['delivery_status'] as String?;
+    final senderName = j['sender_name'] as String? ?? senderId;
 
-    // sender_name may not be in the API response — use actor_id as fallback
-    final senderName =
-        j['sender_name'] as String? ?? j['sender_actor_id'] as String? ?? '';
+    // ── Reply fields ──────────────────────────────────────────────────────
+    // The backend may return the replied-to message in two ways:
+    //   A. Flat:  reply_to_sender_name, reply_to_content  (our formatMessage)
+    //   B. Nested: reply_to: { id, sender_name, content, sender_actor_id }
+    //
+    // We support both so a backend upgrade never breaks the client.
+    String? replyToId = j['reply_to_id'] as String?;
+    String? replyToSenderName = j['reply_to_sender_name'] as String?;
+    String? replyToContent = j['reply_to_content'] as String?;
+
+    final replyToObj = j['reply_to'] as Map<String, dynamic>?;
+    if (replyToObj != null) {
+      replyToId ??= replyToObj['id'] as String?;
+      replyToSenderName ??=
+          replyToObj['sender_name'] as String? ??
+          replyToObj['sender_actor_id'] as String?;
+      replyToContent ??= replyToObj['content'] as String?;
+    }
+
+    // ── Image URL ─────────────────────────────────────────────────────────
+    // Backend may return image URL in image_url, attachment.url, or
+    // attachments[0].url
+    String? imageUrl = j['image_url'] as String?;
+    if (imageUrl == null) {
+      final attachments = j['attachments'] as List<dynamic>?;
+      if (attachments != null && attachments.isNotEmpty) {
+        final first = attachments.first as Map<String, dynamic>?;
+        imageUrl = first?['url'] as String? ?? first?['file_url'] as String?;
+      }
+    }
 
     return MessageModel(
       id: j['id'] as String? ?? '',
@@ -89,12 +112,12 @@ class MessageModel extends MessageEntity {
       senderRole: j['sender_role'] as String? ?? 'unknown',
       type: _parseType(contentType),
       content: j['content'] as String? ?? '',
-      imageUrl: j['image_url'] as String?,
+      imageUrl: imageUrl,
       deliveryStatus: _parseDelivery(deliveryStr),
       sentAt: sentAt,
-      replyToId: j['reply_to_id'] as String?,
-      replyToSenderName: j['reply_to_sender_name'] as String?,
-      replyToContent: j['reply_to_content'] as String?,
+      replyToId: replyToId,
+      replyToSenderName: replyToSenderName,
+      replyToContent: replyToContent,
       reactions: reactions,
       isPinned: j['is_pinned'] as bool? ?? false,
       isStarred: j['is_starred'] as bool? ?? false,

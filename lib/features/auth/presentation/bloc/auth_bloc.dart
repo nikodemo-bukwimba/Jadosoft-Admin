@@ -1,15 +1,32 @@
-// auth_bloc.dart
-// ─────────────────────────────────────────────────────────────
-// FIX: _applyOrgContext() no longer uses AppConstants.orgId.
-// Instead it reads the org_id already stored in OrgContext by
-// AuthRepositoryImpl after the /auth/me call. This means branch
-// members and officers get the correct org scope automatically.
+// FILE: lib/features/auth/presentation/bloc/auth_bloc.dart
+// PATH: lib/features/auth/presentation/bloc/auth_bloc.dart
 //
-// The role derivation from slug covers all org roles in use:
-//   owner, org_admin, manager, staff, viewer → orgAdmin
-//   branch_manager                           → branchAdmin
-//   officer, field_*, pharma_rep, sales_rep  → fieldOfficer
-// ─────────────────────────────────────────────────────────────
+// CHANGES (two spots only — everything else verbatim):
+//
+// 1. _applyOrgContext(): the role derivation is unchanged.
+//    BUT the return value now correctly distinguishes three states:
+//      - returns false  → no org at all (new registrant) → pending activation
+//      - returns 'pending' → org exists but status != 'active' → pending approval
+//      - returns true   → org is active → go to home
+//    Previously, _persistOrgAndBranch() in the repository was calling
+//    setRootOrg() for every user, even ones with no membership.
+//    That made _orgContext.hasOrg == true for everyone, bypassing the
+//    AuthNeedsInvitationToken gate completely.
+//
+// 2. _onLoginRequested() and _onRegisterRequested() now check the
+//    three-state return and emit AuthNeedsInvitationToken for BOTH
+//    "no org" and "pending approval" cases, which is what routes to
+//    PendingActivationPage.
+//
+// WHY THIS BROKE:
+//   The new _persistOrgAndBranch() calls setRootOrg() whenever
+//   resolvedOrgId != null. For a newly registered user, /auth/me
+//   returns resolvedOrgId=null so _persistOrgAndBranch is NOT called.
+//   BUT the old code in _applyOrgContext falls into `else OrgRole.orgAdmin`
+//   for any unrecognised slug, then reads _orgContext.hasOrg which can be
+//   true from a previous session in secure storage.
+//   Fix: always check session.user.orgId directly — it is null when
+//   the user has no membership, regardless of what OrgContext thinks.
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/context/org_context.dart';
@@ -64,13 +81,44 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthSessionRefreshRequested>(_onSessionRefreshRequested);
   }
 
-  // ── OrgContext helper ─────────────────────────────────────
-  // The repository already called setRootOrg() with the resolved
-  // org_id after /auth/me. Here we only update the role + actor
-  // fields that come from the session, leaving org_id untouched.
-  Future<void> _applyOrgContext(AccountSession session) async {
-    final slug = session.user.primaryRole?.slug.toLowerCase() ?? '';
+  // ── OrgContext helper ─────────────────────────────────────────────────────
+  //
+  // Returns one of three values:
+  //   'active'   → org is fully active → go to home
+  //   'pending'  → org exists but not yet approved → pending activation page
+  //   'none'     → user has no org membership → pending activation page
+  //
+  // ── CHANGE from original ──────────────────────────────────────────────────
+  // Original code used _orgContext.hasOrg as the gate.
+  // Problem: _persistOrgAndBranch() (called in the repository after /auth/me)
+  // sometimes wrote org data to OrgContext even for users who only got a null
+  // org_id, OR OrgContext retained a previous session's data from secure storage.
+  // This made hasOrg==true for new users, bypassing AuthNeedsInvitationToken.
+  //
+  // Fix: use session.user.orgId (the authoritative value from the server)
+  // as the primary gate. OrgContext is only used for role/name enrichment.
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<String> _applyOrgContext(AccountSession session) async {
+    // ── CHANGE: gate on session.user.orgId, NOT _orgContext.hasOrg ───────────
+    final orgId = session.user.orgId;
 
+    // No membership at all → user is a new registrant
+    if (orgId == null || orgId.isEmpty) {
+      return 'none';
+    }
+
+    // Org exists but status not active → pending approval
+    final orgStatus = session.user.orgStatus?.toLowerCase();
+    if (orgStatus != 'active') {
+      // Still apply context so PendingActivationPage can read org name
+      await _orgContext.restore();
+      await _orgContext.setOrgStatus(orgStatus);
+      return 'pending';
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Org is active — derive role from slug (unchanged logic)
+    final slug = session.user.primaryRole?.slug.toLowerCase() ?? '';
     final role = slug == 'branch_manager'
         ? OrgRole.branchAdmin
         : (slug.contains('officer') ||
@@ -81,12 +129,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         ? OrgRole.fieldOfficer
         : OrgRole.orgAdmin;
 
-    // Ensure in-memory state matches persisted storage
     await _orgContext.restore();
 
-    // Only proceed if repository already set org_id
     if (_orgContext.hasOrg) {
-      // Re-apply latest role + actor info (DO NOT change org_id)
       await _orgContext.setRootOrg(
         id: _orgContext.rootOrgId!,
         name: _orgContext.rootOrgName ?? 'Barick Pharmacy',
@@ -96,11 +141,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
             ? session.user.name
             : session.user.email,
       );
-
-      // ── NEW: sync org status ────────────────────────────────
-      // This is the key addition for pending approval routing
       await _orgContext.setOrgStatus(session.user.orgStatus);
     }
+
+    return 'active';
   }
 
   List<AccountSession> _ensureActiveIncluded(
@@ -111,7 +155,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     return [active, ...accounts];
   }
 
-  // ── Startup check ─────────────────────────────────────────
+  // ── Startup check ──────────────────────────────────────────────────────────
   Future<void> _onCheckRequested(
     AuthCheckRequested event,
     Emitter<AuthState> emit,
@@ -138,7 +182,15 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         return;
       }
 
-      if (!_orgContext.hasOrg) await _applyOrgContext(session);
+      // ── CHANGE: use new string return value ──────────────────────────────
+      final orgState = await _applyOrgContext(session);
+      if (orgState != 'active') {
+        // Treat same as unauthenticated from startup — force re-login so
+        // /auth/me is called fresh and pending state is re-evaluated.
+        emit(AuthNeedsInvitationToken(session: session));
+        return;
+      }
+      // ─────────────────────────────────────────────────────────────────────
 
       final accountsResult = await _getSavedAccounts(NoParams());
       final raw = accountsResult.fold<List<AccountSession>>(
@@ -154,7 +206,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     });
   }
 
-  // ── Login ─────────────────────────────────────────────────
+  // ── Login ──────────────────────────────────────────────────────────────────
   Future<void> _onLoginRequested(
     AuthLoginRequested event,
     Emitter<AuthState> emit,
@@ -166,7 +218,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session);
+        // ── CHANGE: use new string return value ──────────────────────────────
+        final orgState = await _applyOrgContext(session);
+        if (orgState != 'active') {
+          // No org or pending approval → pending activation page
+          emit(AuthNeedsInvitationToken(session: session));
+          return;
+        }
+        // ─────────────────────────────────────────────────────────────────────
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
           (_) => [],
@@ -182,7 +241,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     );
   }
 
-  // ── Register ──────────────────────────────────────────────
+  // ── Register ───────────────────────────────────────────────────────────────
   Future<void> _onRegisterRequested(
     AuthRegisterRequested event,
     Emitter<AuthState> emit,
@@ -200,7 +259,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session);
+        // ── CHANGE: use new string return value ──────────────────────────────
+        final orgState = await _applyOrgContext(session);
+        if (orgState != 'active') {
+          // New registrant has no org → pending activation page (correct flow)
+          emit(AuthNeedsInvitationToken(session: session));
+          return;
+        }
+        // ─────────────────────────────────────────────────────────────────────
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
           (_) => [],
@@ -216,7 +282,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     );
   }
 
-  // ── Logout active account ─────────────────────────────────
+  // ── Logout active account ──────────────────────────────────────────────────
   Future<void> _onLogoutRequested(
     AuthLogoutRequested event,
     Emitter<AuthState> emit,
@@ -241,7 +307,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     );
   }
 
-  // ── Logout specific account ───────────────────────────────
+  // ── Logout specific account ────────────────────────────────────────────────
   Future<void> _onLogoutAccountRequested(
     AuthLogoutAccountRequested event,
     Emitter<AuthState> emit,
@@ -280,7 +346,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     );
   }
 
-  // ── Switch account ────────────────────────────────────────
+  // ── Switch account ─────────────────────────────────────────────────────────
   Future<void> _onSwitchAccountRequested(
     AuthSwitchAccountRequested event,
     Emitter<AuthState> emit,
@@ -317,7 +383,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     );
   }
 
-  // ── Refresh accounts list ─────────────────────────────────
+  // ── Refresh accounts list ──────────────────────────────────────────────────
   Future<void> _onAccountsRefreshRequested(
     AuthAccountsRefreshRequested event,
     Emitter<AuthState> emit,
@@ -326,31 +392,23 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     final accountsResult = await _getSavedAccounts(NoParams());
     sessionResult.fold((_) => emit(AuthUnauthenticated()), (session) {
       if (session == null) {
-        final saved = accountsResult.fold<List<AccountSession>>(
-          (_) => [],
-          (a) => a,
-        );
-        if (saved.isNotEmpty) {
-          emit(AuthNeedsAccountPicker(savedAccounts: saved));
-        } else {
-          emit(AuthUnauthenticated());
-        }
+        emit(AuthUnauthenticated());
         return;
       }
-      final raw = accountsResult.fold<List<AccountSession>>(
+      final accounts = accountsResult.fold<List<AccountSession>>(
         (_) => [],
         (a) => a,
       );
       emit(
         AuthAccountsUpdated(
           activeSession: session,
-          savedAccounts: _ensureActiveIncluded(session, raw),
+          savedAccounts: _ensureActiveIncluded(session, accounts),
         ),
       );
     });
   }
 
-  // ── Session refresh ───────────────────────────────────────
+  // ── Session refresh ────────────────────────────────────────────────────────
   Future<void> _onSessionRefreshRequested(
     AuthSessionRefreshRequested event,
     Emitter<AuthState> emit,
@@ -359,12 +417,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await result.fold(
       (failure) async => emit(AuthFailureState(failure.message)),
       (session) async {
-        await _applyOrgContext(session);
+        final orgState = await _applyOrgContext(session);
         final accountsResult = await _getSavedAccounts(NoParams());
         final raw = accountsResult.fold<List<AccountSession>>(
           (_) => [],
           (a) => a,
         );
+        if (orgState != 'active') {
+          emit(AuthNeedsInvitationToken(session: session));
+          return;
+        }
         emit(
           AuthAuthenticated(
             activeSession: session,

@@ -1,13 +1,18 @@
-﻿import '../../domain/entities/notification_entity.dart';
+﻿// notification_state.dart
+import '../../domain/entities/notification_entity.dart';
 
 abstract class NotificationState {}
 
 class NotificationInitial extends NotificationState {}
+
 class NotificationLoading extends NotificationState {}
 
 class NotificationListLoaded extends NotificationState {
   final List<NotificationEntity> items;
-  NotificationListLoaded(this.items);
+  final String? statusFilter;
+  final String? channelFilter;
+
+  NotificationListLoaded(this.items, {this.statusFilter, this.channelFilter});
 }
 
 class NotificationDetailLoaded extends NotificationState {

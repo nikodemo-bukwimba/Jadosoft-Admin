@@ -1,33 +1,35 @@
-﻿import '../../domain/entities/notification_entity.dart';
-import '../../domain/usecases/create_notification_usecase.dart';
-
+﻿// notification_event.dart
 abstract class NotificationEvent {}
 
-class NotificationLoadAllRequested extends NotificationEvent {}
+class NotificationLoadAllRequested extends NotificationEvent {
+  final String? status;
+  final String? channel;
+  final int perPage;
+  final int page;
+
+  NotificationLoadAllRequested({
+    this.status,
+    this.channel,
+    this.perPage = 50,
+    this.page = 1,
+  });
+}
 
 class NotificationLoadOneRequested extends NotificationEvent {
   final String id;
   NotificationLoadOneRequested(this.id);
 }
 
-class NotificationCreateRequested extends NotificationEvent {
-  final CreateNotificationParams params;
-  NotificationCreateRequested(this.params);
-}
-
-class NotificationUpdateRequested extends NotificationEvent {
-  final NotificationEntity entity;
-  NotificationUpdateRequested(this.entity);
-}
-
-class NotificationDeleteRequested extends NotificationEvent {
-  final String id;
-  NotificationDeleteRequested(this.id);
-}
-
-class NotificationFormReset extends NotificationEvent {}
-
 class NotificationRetryRequested extends NotificationEvent {
   final String id;
   NotificationRetryRequested(this.id);
 }
+
+/// Fired when the user changes a status or channel filter chip.
+class NotificationFilterChanged extends NotificationEvent {
+  final String? status;
+  final String? channel;
+  NotificationFilterChanged({this.status, this.channel});
+}
+
+class NotificationFormReset extends NotificationEvent {}

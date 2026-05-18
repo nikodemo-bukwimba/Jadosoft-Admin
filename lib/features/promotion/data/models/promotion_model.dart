@@ -47,7 +47,9 @@ class PromotionModel extends PromotionEntity {
       channels: List<String>.from((json['channels'] as List?) ?? []),
       status: json['status'] as String? ?? 'draft',
       createdAt: createdAt,
-      discountPercentage: (json['discount_percentage'] as num?)?.toDouble(),
+      discountPercentage: json['discount_percentage'] == null
+          ? null
+          : double.tryParse(json['discount_percentage'].toString()),
       targetCount: json['target_count'] as int? ?? 0,
       broadcastSentAt: sentAt,
     );

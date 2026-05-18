@@ -80,6 +80,13 @@ class _PromotionListPageState extends State<PromotionListPage> {
           title: const Text('Promotions'),
           centerTitle: false,
           actions: [
+            IconButton(
+              tooltip: 'Refresh',
+              icon: const Icon(Icons.refresh),
+              onPressed: () {
+                context.read<PromotionBloc>().add(PromotionLoadAllRequested());
+              },
+            ),
             PopupMenuButton<PromotionStatus?>(
               icon: Badge(
                 isLabelVisible: _filterStatus != null,

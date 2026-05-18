@@ -1,8 +1,10 @@
+// lib/features/product/presentation/widgets/product_grid_tile.dart
 import 'package:flutter/material.dart';
 import '../../domain/entities/product_entity.dart';
 import '../../domain/value_objects/product_status.dart';
 import 'product_image.dart';
 import 'product_status_badge.dart';
+import 'promotion_price_display.dart';
 
 /// Grid view tile — compact thumbnail with name, price, status.
 class ProductGridTile extends StatelessWidget {
@@ -19,7 +21,6 @@ class ProductGridTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final statusEnum = ProductStatusX.fromString(item.status);
 
     return Card(
@@ -42,6 +43,7 @@ class ProductGridTile extends StatelessWidget {
                   ),
                   if (!item.isAvailable)
                     Container(color: Colors.black.withValues(alpha: 0.4)),
+                  // N / F mini badges — top right
                   Positioned(
                     top: 6,
                     right: 6,
@@ -54,6 +56,15 @@ class ProductGridTile extends StatelessWidget {
                       ],
                     ),
                   ),
+                  // Promotion corner tag — top left (NEW)
+                  if (item.isOnPromotion)
+                    Positioned(
+                      top: 6,
+                      left: 6,
+                      child: PromotionCornerTag(
+                        percentage: item.discountPercentage!,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -75,30 +86,13 @@ class ProductGridTile extends StatelessWidget {
                     ),
                     const Spacer(),
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                formatPrice(item.displayPrice),
-                                style: Theme.of(context).textTheme.labelSmall
-                                    ?.copyWith(
-                                      color: scheme.primary,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                              ),
-
-                              if (item.isOnPromotion)
-                                Text(
-                                  '-${item.discountPercentage!.toStringAsFixed(0)}%',
-                                  style: const TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.green,
-                                  ),
-                                ),
-                            ],
+                          // Promotion-aware price (NEW — replaces plain Text)
+                          child: PromotionPriceDisplay(
+                            product: item,
+                            formatPrice: formatPrice,
                           ),
                         ),
                         ProductStatusBadge(status: statusEnum, compact: true),

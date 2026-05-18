@@ -1,12 +1,29 @@
-﻿import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import '../enums/notification_form_node.dart';
-import '../bloc/notification_bloc.dart';
-import '../bloc/notification_event.dart';
-import '../bloc/notification_state.dart';
-import '../../domain/usecases/create_notification_usecase.dart';
+﻿// notification_form_page.dart
+// ─────────────────────────────────────────────────────────────
+// DEPRECATED — NotificationFormPage has no backend to talk to.
+//
+// The backend NotificationController exposes only:
+//   GET  /notifications          (list)
+//   GET  /notifications/{id}     (show)
+//   POST /notifications/{id}/retry
+//
+// Notifications are created exclusively by the Laravel queue job
+// SendProductUpdateToCustomer when a promotion is published.
+// There is no admin-facing create / update / delete endpoint.
+//
+// This page now renders a clear informational screen so that
+// any route that accidentally navigates here does not crash,
+// and the developer knows to remove the route registration.
+//
+// ACTION: Remove the promotionCreate / notificationCreate routes
+// from your router, and remove this file once confirmed.
+// ─────────────────────────────────────────────────────────────
 
-class NotificationFormPage extends StatefulWidget {
+import 'package:flutter/material.dart';
+import '../enums/notification_form_node.dart';
+
+class NotificationFormPage extends StatelessWidget {
+  // Parameters kept so existing router references compile cleanly.
   final NotificationFormNode mode;
   final String? id;
 
@@ -17,153 +34,44 @@ class NotificationFormPage extends StatefulWidget {
   });
 
   @override
-  State<NotificationFormPage> createState() => _NotificationFormPageState();
-}
-
-class _NotificationFormPageState extends State<NotificationFormPage> {
-  final _formKey = GlobalKey<FormState>();
-
-  final _recipientIdController = TextEditingController();
-  final _recipientTypeController = TextEditingController();
-  final _channelController = TextEditingController();
-  final _contentController = TextEditingController();
-  final _templateIdController = TextEditingController();
-
-  bool _isSubmitting = false;
-
-  @override
-  void dispose() {
-    _recipientIdController.dispose();
-    _recipientTypeController.dispose();
-    _channelController.dispose();
-    _contentController.dispose();
-    _templateIdController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final isCreate = widget.mode == NotificationFormNode.create;
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text(isCreate ? 'New Notifications' : 'Edit Notifications'),
-      ),
-      body: BlocListener<NotificationBloc, NotificationState>(
-        listener: (context, state) {
-          if (state is NotificationOperationSuccess) {
-            setState(() => _isSubmitting = false);
-            Navigator.of(context).pop(true);
-          }
-          if (state is NotificationFailure) {
-            setState(() => _isSubmitting = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: Theme.of(context).colorScheme.error,
+      appBar: AppBar(title: const Text('Not Available')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.block_outlined,
+                size: 48,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
-            );
-          }
-        },
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextFormField(
-                  controller: _recipientIdController,
-                  decoration: const InputDecoration(
-                    labelText: 'Recipient Id',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Recipient is required';
-                    return null;
-                  },
+              const SizedBox(height: 16),
+              Text(
+                'Notifications cannot be created manually.',
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Deliveries are generated automatically when a promotion '
+                'is published. Use the Delivery Center to view and retry '
+                'failed deliveries.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _recipientTypeController,
-                  decoration: const InputDecoration(
-                    labelText: 'Recipient Type',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Recipient type is required';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _channelController,
-                  decoration: const InputDecoration(
-                    labelText: 'Channel',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Channel is required';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _contentController,
-                  decoration: const InputDecoration(
-                    labelText: 'Content',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Content is required';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _templateIdController,
-                  decoration: const InputDecoration(
-                    labelText: 'Template Id',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.text,
-
-                ),
-                const SizedBox(height: 16),
-                const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: _isSubmitting ? null : _submit,
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          height: 20, width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(isCreate ? 'Create Notifications' : 'Save Changes'),
-                ),
-              ],
-            ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('Go Back'),
+              ),
+            ],
           ),
-        ),
-      ),
-    );
-  }
-
-  void _submit() {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isSubmitting = true);
-
-    context.read<NotificationBloc>().add(
-      NotificationCreateRequested(
-        CreateNotificationParams(
-          recipientId: _recipientIdController.text,
-          recipientType: _recipientTypeController.text,
-          channel: _channelController.text,
-          content: _contentController.text,
-          templateId: _templateIdController.text,
         ),
       ),
     );

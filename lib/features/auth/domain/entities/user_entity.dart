@@ -11,6 +11,10 @@
 //   'suspended'/'rejected' → org not usable
 // ─────────────────────────────────────────────────────────────
 
+// FILE: lib/features/auth/domain/entities/user_entity.dart
+// CHANGE: Added branchId and branchName fields.
+//         Everything else unchanged.
+
 class RoleEntity {
   final String id;
   final String name;
@@ -43,14 +47,17 @@ class UserEntity {
   final String subscriptionStatus;
   final DateTime? createdAt;
 
-  // ── Org context fields from /auth/me ─────────────────────
-  /// The org_status returned by the server for the resolved membership.
-  /// null means the user has no active membership at all.
+  // Org context fields from /auth/me
   final String? orgStatus;
-
-  /// The name of the resolved org node (for display during pending state).
   final String? orgName;
   final String? orgId;
+
+  // ── NEW: Branch context fields ────────────────────────────────────
+  // Populated from pm_officers.branch_id via /auth/me response.
+  // Always reflects the officer's CURRENT branch after a transfer.
+  final String? branchId;
+  final String? branchName;
+  // ─────────────────────────────────────────────────────────────────
 
   const UserEntity({
     required this.id,
@@ -68,15 +75,15 @@ class UserEntity {
     this.orgStatus,
     this.orgId,
     this.orgName,
+    this.branchId, // ── NEW ──
+    this.branchName, // ── NEW ──
   });
 
   String get displayName => name.isNotEmpty ? name : email;
 
   bool hasRole(String roleName) => roles.any((r) => r.name == roleName);
 
-  /// True when the user has an org but it hasn't been approved yet.
   bool get isOrgPendingApproval => orgStatus == 'pending_approval';
 
-  /// True when org is fully active.
   bool get isOrgActive => orgStatus == 'active';
 }

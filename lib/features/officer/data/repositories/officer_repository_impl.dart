@@ -49,34 +49,38 @@ class OfficerRepositoryImpl implements OfficerRepository {
     String? branchId,
   }) => _guard(() => _remote.getById(userId, branchId: branchId));
 
+  // Problem #2 fix: delegates to the new create() method
   @override
-  Future<Either<Failure, OfficerEntity>> invite({
+  Future<Either<Failure, OfficerEntity>> create({
+    required String fullName,
     required String email,
-    String? username,
+    required String password,
+    required String passwordConfirmation,
     String? phone,
     required String branchId,
     required String orgRoleId,
-    String? appPassword,
-    String? appPasswordConfirmation,
+    int? level,
   }) => _guard(
-    () => _remote.invite(
+    () => _remote.create(
+      fullName: fullName,
       email: email,
-      username: username,
+      password: password,
+      passwordConfirmation: passwordConfirmation,
       phone: phone,
       branchId: branchId,
       orgRoleId: orgRoleId,
-      appPassword: appPassword,
-      appPasswordConfirmation: appPasswordConfirmation,
+      level: level,
     ),
   );
 
-  @override
   Future<Either<Failure, OfficerEntity>> updateMembership(
     String userId, {
     String? orgRoleId,
     int? level,
     String? status,
     String? branchId,
+    String? name, 
+    String? phone, 
   }) => _guard(
     () => _remote.updateMembership(
       userId,
@@ -84,9 +88,12 @@ class OfficerRepositoryImpl implements OfficerRepository {
       level: level,
       status: status,
       branchId: branchId,
+      name: name, 
+      phone: phone, 
     ),
   );
 
+  // Problem #3 fix: delegates to the new transfer endpoint
   @override
   Future<Either<Failure, void>> reassignBranch({
     required String userId,

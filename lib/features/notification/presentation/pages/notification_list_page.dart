@@ -1,4 +1,14 @@
-﻿import 'package:flutter/material.dart';
+﻿// notification_list_page.dart
+// ─────────────────────────────────────────────────────────────
+// Delivery Center — lists ProductUpdateDelivery records from
+// the backend NotificationController.
+//
+// Filtering is done server-side via query params.
+// No mock data. Status/channel filter chips fire
+// NotificationFilterChanged → bloc re-fetches from API.
+// ─────────────────────────────────────────────────────────────
+
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../domain/entities/notification_entity.dart';
 import '../../domain/value_objects/notification_status.dart';
@@ -6,9 +16,7 @@ import '../bloc/notification_bloc.dart';
 import '../bloc/notification_event.dart';
 import '../bloc/notification_state.dart';
 import '../widgets/notification_card_tile.dart';
-import '../widgets/notification_list_row.dart';
-
-enum _ViewMode { cards, list, table }
+import '../widgets/notification_tiles.dart';
 
 class NotificationListPage extends StatefulWidget {
   const NotificationListPage({super.key});
@@ -18,302 +26,264 @@ class NotificationListPage extends StatefulWidget {
 }
 
 class _NotificationListPageState extends State<NotificationListPage> {
-  _ViewMode _viewMode = _ViewMode.cards;
-  String _search = '';
-  NotificationStatus? _filterStatus;
-  String? _filterChannel;
+  String? _statusFilter;
+  String? _channelFilter;
 
-  static const _channels = ['sms', 'whatsapp', 'in_app'];
+  static const _statusOptions = [
+    (label: 'All', value: null),
+    (label: 'Queued', value: 'queued'),
+    (label: 'Sent', value: 'sent'),
+    (label: 'Delivered', value: 'delivered'),
+    (label: 'Failed', value: 'failed'),
+  ];
 
-  List<NotificationEntity> _apply(List<NotificationEntity> items) {
-    var r = items;
-    if (_filterStatus != null) {
-      r = r
-          .where((e) =>
-              NotificationStatusX.fromString(e.status) == _filterStatus)
-          .toList();
-    }
-    if (_filterChannel != null) {
-      r = r.where((e) => e.channel == _filterChannel).toList();
-    }
-    if (_search.isNotEmpty) {
-      final q = _search.toLowerCase();
-      r = r
-          .where((e) =>
-              e.recipientId.toLowerCase().contains(q) ||
-              e.content.toLowerCase().contains(q) ||
-              (e.templateId ?? '').toLowerCase().contains(q))
-          .toList();
-    }
-    return r;
+  static const _channelOptions = [
+    (label: 'All', value: null),
+    (label: 'SMS', value: 'sms'),
+    (label: 'WhatsApp', value: 'whatsapp'),
+    (label: 'In-App', value: 'in_app'),
+  ];
+
+  void _applyFilter({String? status, String? channel}) {
+    setState(() {
+      _statusFilter = status;
+      _channelFilter = channel;
+    });
+    context.read<NotificationBloc>().add(
+      NotificationFilterChanged(status: status, channel: channel),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isWide = MediaQuery.of(context).size.width > 768;
 
-    return BlocListener<NotificationBloc, NotificationState>(
-      listener: (context, state) {
-        if (state is NotificationOperationSuccess) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: Colors.green,
-            ),
-          );
-          context
-              .read<NotificationBloc>()
-              .add(NotificationLoadAllRequested());
-        }
-        if (state is NotificationFailure) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: theme.colorScheme.error,
-            ),
-          );
-        }
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Notifications'),
-          centerTitle: false,
-          actions: [
-            // Status filter
-            PopupMenuButton<NotificationStatus?>(
-              icon: Badge(
-                isLabelVisible: _filterStatus != null,
-                child: const Icon(Icons.filter_list),
-              ),
-              tooltip: 'Filter by status',
-              onSelected: (v) => setState(() => _filterStatus = v),
-              itemBuilder: (_) => [
-                const PopupMenuItem(value: null, child: Text('All statuses')),
-                ...NotificationStatus.values.map((s) => PopupMenuItem(
-                      value: s,
-                      child: Text(s.displayName),
-                    )),
-              ],
-            ),
-            // Channel filter
-            PopupMenuButton<String?>(
-              icon: Badge(
-                isLabelVisible: _filterChannel != null,
-                child: const Icon(Icons.cell_tower_outlined),
-              ),
-              tooltip: 'Filter by channel',
-              onSelected: (v) => setState(() => _filterChannel = v),
-              itemBuilder: (_) => [
-                const PopupMenuItem(value: null, child: Text('All channels')),
-                ..._channels.map((c) => PopupMenuItem(
-                      value: c,
-                      child: Text(_channelLabel(c)),
-                    )),
-              ],
-            ),
-            // View toggle
-            _ViewToggle(
-                current: _viewMode,
-                onChanged: (v) => setState(() => _viewMode = v)),
-            const SizedBox(width: 8),
-          ],
-        ),
-        body: Column(
-          children: [
-            // Search
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-              child: SearchBar(
-                hintText: 'Search by recipient, content…',
-                leading: const Icon(Icons.search, size: 20),
-                padding: const WidgetStatePropertyAll(
-                    EdgeInsets.symmetric(horizontal: 16)),
-                onChanged: (v) => setState(() => _search = v),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Delivery Center'),
+        centerTitle: false,
+        actions: [
+          IconButton(
+            onPressed: () => context.read<NotificationBloc>().add(
+              NotificationLoadAllRequested(
+                status: _statusFilter,
+                channel: _channelFilter,
               ),
             ),
-            // Active filter chips
-            if (_filterStatus != null || _filterChannel != null)
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                child: Row(
-                  children: [
-                    if (_filterStatus != null)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
+            icon: const Icon(Icons.refresh_outlined),
+            tooltip: 'Refresh',
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: Column(
+        children: [
+          // ── KPI Banner ────────────────────────────────────
+          BlocBuilder<NotificationBloc, NotificationState>(
+            buildWhen: (_, s) =>
+                s is NotificationListLoaded || s is NotificationEmpty,
+            builder: (context, state) {
+              if (state is! NotificationListLoaded) {
+                return const SizedBox.shrink();
+              }
+              return _KpiBanner(items: state.items);
+            },
+          ),
+
+          // ── Filter Bar ────────────────────────────────────
+          Container(
+            color: theme.colorScheme.surface,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: _statusOptions.map((opt) {
+                      final selected = _statusFilter == opt.value;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 6),
                         child: FilterChip(
-                          label: Text(_filterStatus!.displayName),
-                          selected: true,
-                          onSelected: (_) =>
-                              setState(() => _filterStatus = null),
-                          deleteIcon: const Icon(Icons.close, size: 14),
-                          onDeleted: () =>
-                              setState(() => _filterStatus = null),
+                          label: Text(opt.label),
+                          selected: selected,
+                          onSelected: (_) => _applyFilter(
+                            status: opt.value,
+                            channel: _channelFilter,
+                          ),
+                          visualDensity: VisualDensity.compact,
                         ),
-                      ),
-                    if (_filterChannel != null)
-                      FilterChip(
-                        label: Text(_channelLabel(_filterChannel!)),
-                        selected: true,
-                        onSelected: (_) =>
-                            setState(() => _filterChannel = null),
-                        deleteIcon: const Icon(Icons.close, size: 14),
-                        onDeleted: () =>
-                            setState(() => _filterChannel = null),
-                      ),
-                  ],
+                      );
+                    }).toList(),
+                  ),
                 ),
-              ),
-            // Content
-            Expanded(
-              child: BlocBuilder<NotificationBloc, NotificationState>(
-                builder: (context, state) {
-                  if (state is NotificationLoading) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (state is NotificationFailure) {
-                    return _ErrorView(
-                      message: state.message,
-                      onRetry: () => context
-                          .read<NotificationBloc>()
-                          .add(NotificationLoadAllRequested()),
-                    );
-                  }
-                  if (state is NotificationEmpty) {
-                    return const _EmptyView(filtered: false);
-                  }
-                  if (state is NotificationListLoaded) {
-                    final items = _apply(state.items);
-                    if (items.isEmpty) {
-                      return const _EmptyView(filtered: true);
-                    }
-                    return _buildContent(items, theme);
-                  }
-                  return const SizedBox.shrink();
-                },
-              ),
+                const SizedBox(height: 4),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: _channelOptions.map((opt) {
+                      final selected = _channelFilter == opt.value;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: FilterChip(
+                          label: Text(opt.label),
+                          selected: selected,
+                          onSelected: (_) => _applyFilter(
+                            status: _statusFilter,
+                            channel: opt.value,
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          avatar: opt.value != null
+                              ? Icon(_channelIcon(opt.value!), size: 14)
+                              : null,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+
+          const Divider(height: 1),
+
+          // ── Content ───────────────────────────────────────
+          Expanded(
+            child: BlocBuilder<NotificationBloc, NotificationState>(
+              builder: (context, state) {
+                if (state is NotificationLoading) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (state is NotificationFailure) {
+                  return _ErrorState(
+                    message: state.message,
+                    onRetry: () => context.read<NotificationBloc>().add(
+                      NotificationLoadAllRequested(
+                        status: _statusFilter,
+                        channel: _channelFilter,
+                      ),
+                    ),
+                  );
+                }
+                if (state is NotificationEmpty) {
+                  return const _EmptyState();
+                }
+                if (state is NotificationListLoaded) {
+                  if (isWide) {
+                    return _TableView(items: state.items);
+                  }
+                  return _MobileListView(items: state.items);
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildContent(List<NotificationEntity> items, ThemeData theme) {
-    switch (_viewMode) {
-      case _ViewMode.cards:
-        return RefreshIndicator(
-          onRefresh: () async => context
-              .read<NotificationBloc>()
-              .add(NotificationLoadAllRequested()),
-          child: ListView.builder(
-            padding: const EdgeInsets.only(bottom: 24),
-            itemCount: items.length,
-            itemBuilder: (_, i) => NotificationCardTile(item: items[i]),
-          ),
-        );
+  IconData _channelIcon(String channel) => switch (channel) {
+    'sms' => Icons.sms_outlined,
+    'whatsapp' => Icons.chat_outlined,
+    _ => Icons.notifications_outlined,
+  };
+}
 
-      case _ViewMode.list:
-        return RefreshIndicator(
-          onRefresh: () async => context
-              .read<NotificationBloc>()
-              .add(NotificationLoadAllRequested()),
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: items.length,
-            separatorBuilder: (_, __) =>
-                Divider(height: 1, color: theme.colorScheme.outlineVariant),
-            itemBuilder: (_, i) => NotificationListRow(item: items[i]),
-          ),
-        );
+// ─── KPI Banner ────────────────────────────────────────────────────────────
 
-      case _ViewMode.table:
-        return SingleChildScrollView(
-          scrollDirection: Axis.vertical,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: IntrinsicWidth(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  NotificationTableRow.header(),
-                  ...items.map((e) => NotificationTableRow(item: e)),
-                ],
-              ),
+class _KpiBanner extends StatelessWidget {
+  final List<NotificationEntity> items;
+  const _KpiBanner({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final total = items.length;
+    final delivered = items
+        .where(
+          (e) =>
+              NotificationStatusX.fromString(e.status) ==
+              NotificationStatus.delivered,
+        )
+        .length;
+    final failed = items
+        .where(
+          (e) =>
+              NotificationStatusX.fromString(e.status) ==
+              NotificationStatus.failed,
+        )
+        .length;
+    final queued = items
+        .where(
+          (e) =>
+              NotificationStatusX.fromString(e.status) ==
+              NotificationStatus.queued,
+        )
+        .length;
+
+    return Container(
+      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          _KpiChip(
+            label: 'Total',
+            value: '$total',
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: 12),
+          _KpiChip(
+            label: 'Delivered',
+            value: '$delivered',
+            color: Colors.green,
+          ),
+          const SizedBox(width: 12),
+          _KpiChip(label: 'Failed', value: '$failed', color: Colors.red),
+          const SizedBox(width: 12),
+          _KpiChip(label: 'Queued', value: '$queued', color: Colors.orange),
+        ],
+      ),
+    );
+  }
+}
+
+class _KpiChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _KpiChip({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.30)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            value,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w800,
             ),
           ),
-        );
-    }
-  }
-
-  String _channelLabel(String c) => switch (c) {
-        'sms' => 'SMS',
-        'whatsapp' => 'WhatsApp',
-        'in_app' => 'In-App',
-        _ => c,
-      };
-}
-
-// ─── View Toggle ───────────────────────────────────────────────────────────
-
-class _ViewToggle extends StatelessWidget {
-  final _ViewMode current;
-  final ValueChanged<_ViewMode> onChanged;
-  const _ViewToggle({required this.current, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _btn(context, _ViewMode.cards, Icons.view_agenda_outlined),
-        _btn(context, _ViewMode.list, Icons.format_list_bulleted),
-        _btn(context, _ViewMode.table, Icons.table_rows_outlined),
-      ],
-    );
-  }
-
-  Widget _btn(BuildContext ctx, _ViewMode mode, IconData icon) {
-    final selected = current == mode;
-    return IconButton(
-      icon: Icon(icon),
-      color: selected
-          ? Theme.of(ctx).colorScheme.primary
-          : Theme.of(ctx).colorScheme.outline,
-      iconSize: 20,
-      onPressed: () => onChanged(mode),
-      tooltip: mode.name,
-    );
-  }
-}
-
-// ─── Empty & Error ─────────────────────────────────────────────────────────
-
-class _EmptyView extends StatelessWidget {
-  final bool filtered;
-  const _EmptyView({required this.filtered});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.notifications_none_outlined,
-              size: 56, color: Theme.of(context).colorScheme.outline),
-          const SizedBox(height: 16),
+          const SizedBox(width: 5),
           Text(
-            filtered
-                ? 'No notifications match your filter'
-                : 'No notifications yet',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'System notifications will appear here.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(color: color),
           ),
         ],
       ),
@@ -321,23 +291,104 @@ class _EmptyView extends StatelessWidget {
   }
 }
 
-class _ErrorView extends StatelessWidget {
+// ─── Mobile List View ──────────────────────────────────────────────────────
+
+class _MobileListView extends StatelessWidget {
+  final List<NotificationEntity> items;
+  const _MobileListView({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      itemCount: items.length,
+      separatorBuilder: (_, index) => const Divider(height: 1),
+      itemBuilder: (context, i) => NotificationCardTile(item: items[i]),
+    );
+  }
+}
+
+// ─── Table View ────────────────────────────────────────────────────────────
+
+class _TableView extends StatelessWidget {
+  final List<NotificationEntity> items;
+  const _TableView({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const NotificationTableRow.header(),
+        Expanded(
+          child: ListView.builder(
+            itemCount: items.length,
+            itemBuilder: (context, i) => NotificationTableRow(item: items[i]),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Empty State ───────────────────────────────────────────────────────────
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.notifications_none_outlined,
+            size: 48,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'No deliveries found',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Try changing the filters or publish a promotion.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Error State ───────────────────────────────────────────────────────────
+
+class _ErrorState extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
-  const _ErrorView({required this.message, required this.onRetry});
+
+  const _ErrorState({required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.error_outline,
-              size: 48, color: Theme.of(context).colorScheme.error),
+          const Icon(Icons.error_outline, size: 40, color: Colors.red),
           const SizedBox(height: 12),
           Text(message, textAlign: TextAlign.center),
           const SizedBox(height: 16),
-          FilledButton.tonal(onPressed: onRetry, child: const Text('Retry')),
+          OutlinedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+          ),
         ],
       ),
     );

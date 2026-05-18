@@ -1,0 +1,3125 @@
+﻿// ================================================================
+// features_officer_source.txt
+// Project Type : Flutter/Dart
+// Generated    : 2026-05-16 03:55:20
+// Files        : 26
+// Usage        : Upload to Claude Project documents as reference.
+// ================================================================
+
+// === FILE: lib/features/officer/data/datasources/officer_remote_datasource.dart ===
+// lib/features/officer/data/datasources/officer_remote_datasource.dart
+
+import 'package:dio/dio.dart';
+import '../../../../core/context/org_context.dart';
+import '../../../../core/network/api_paths.dart';
+import '../../../../core/network/base_remote_datasource.dart';
+import '../../../../core/network/paginated_response.dart';
+import '../models/officer_model.dart';
+
+abstract class OfficerRemoteDataSource {
+  Future<PaginatedResponse<OfficerModel>> getAll({
+    String? status,
+    String? search,
+    int? perPage,
+    int? page,
+  });
+
+  /// [branchId] — the org the officer actually belongs to.
+  Future<OfficerModel> getById(String userId, {String? branchId});
+
+  /// Problem #2 fix: creates a fully active User account immediately.
+  /// No invitation email — the officer can log in with [password].
+  ///
+  /// Always creates:
+  ///   1. A root org membership (required anchor for future transfers)
+  ///   2. A branch membership if [branchId] != rootOrgId
+  Future<OfficerModel> create({
+    required String fullName,
+    required String email,
+    required String password,
+    required String passwordConfirmation,
+    String? phone,
+    required String branchId,
+    required String orgRoleId,
+    int? level,
+  });
+
+  Future<OfficerModel> updateMembership(
+    String userId, {
+    String? orgRoleId,
+    int? level,
+    String? status,
+    String? branchId,
+  });
+
+  /// Problem #3 fix: safe branch transfer that never deletes root membership.
+  Future<void> reassignBranch({
+    required String userId,
+    required String fromBranchId,
+    required String toBranchId,
+    required String orgRoleId,
+  });
+
+  Future<OfficerModel> suspend(String userId, {String? branchId});
+  Future<OfficerModel> activate(String userId, {String? branchId});
+  Future<void> suspendUser(String userId);
+  Future<void> deactivateUser(String userId);
+  Future<void> remove(String userId);
+}
+
+class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
+    implements OfficerRemoteDataSource {
+  final OrgContext _orgContext;
+
+  OfficerRemoteDataSourceImpl({
+    required Dio dio,
+    required OrgContext orgContext,
+  }) : _orgContext = orgContext,
+       super(dio: dio);
+
+  // ── LIST ──────────────────────────────────────────────────
+
+  @override
+  Future<PaginatedResponse<OfficerModel>> getAll({
+    String? status,
+    String? search,
+    int? perPage,
+    int? page,
+  }) async {
+    final orgId = _orgContext.effectiveOrgId;
+    final params = <String, dynamic>{
+      if (status != null) 'status': status,
+      if (search != null) 'search': search,
+      if (perPage != null) 'per_page': perPage,
+      if (page != null) 'page': page,
+    };
+    return fetchPaginatedList(
+      ApiPaths.orgs.members(orgId),
+      OfficerModel.fromJson,
+      queryParams: params.isNotEmpty ? params : null,
+    );
+  }
+
+  // ── GET BY ID ─────────────────────────────────────────────
+
+  @override
+  Future<OfficerModel> getById(String userId, {String? branchId}) async {
+    final orgId = (branchId != null && branchId.isNotEmpty)
+        ? branchId
+        : _orgContext.effectiveOrgId;
+
+    return fetchSingle(
+      '${ApiPaths.orgs.members(orgId)}/$userId',
+      OfficerModel.fromJson,
+      dataKey: 'membership',
+    );
+  }
+
+  // ── CREATE WITH ACCOUNT ───────────────────────────────────
+  //
+  // Problem #2 fix: calls POST /orgs/{rootOrgId}/officers
+  //
+  // The backend:
+  //   1. Creates User + Actor (actor.display_name = fullName)
+  //   2. Creates root org membership (so login + transfer both work)
+  //   3. Creates branch membership (if branchId != rootOrgId)
+  //   4. Returns the officer JSON with 'name' = actor.display_name
+  //
+  // The officer receives their credentials out-of-band (e.g. SMS/WhatsApp)
+  // and can log in immediately — no invitation acceptance step.
+
+  @override
+  Future<OfficerModel> create({
+    required String fullName,
+    required String email,
+    required String password,
+    required String passwordConfirmation,
+    String? phone,
+    required String branchId,
+    required String orgRoleId,
+    int? level,
+  }) async {
+    final rootOrgId = _orgContext.rootOrgId ?? _orgContext.effectiveOrgId;
+
+    final response = await dio.post(
+      ApiPaths.orgs.officers(rootOrgId),
+      data: {
+        'full_name': fullName,
+        'email': email,
+        'password': password,
+        'password_confirmation': passwordConfirmation,
+        if (phone != null && phone.isNotEmpty) 'phone': phone,
+        'org_role_id': orgRoleId,
+        if (level != null) 'level': level,
+        // Only send branch_id when it differs from root org;
+        // otherwise the backend only creates the root membership.
+        if (branchId != rootOrgId) 'branch_id': branchId,
+      },
+    );
+
+    final body = response.data as Map<String, dynamic>? ?? {};
+    final raw = body['officer'] ?? body['member'] ?? body['data'] ?? body;
+    return OfficerModel.fromJson(raw as Map<String, dynamic>);
+  }
+
+  // ── UPDATE MEMBERSHIP ─────────────────────────────────────
+
+  @override
+  Future<OfficerModel> updateMembership(
+    String userId, {
+    String? orgRoleId,
+    int? level,
+    String? status,
+    String? branchId,
+  }) async {
+    final orgId = (branchId != null && branchId.isNotEmpty)
+        ? branchId
+        : _orgContext.effectiveOrgId;
+
+    return patchAndParse(
+      ApiPaths.orgs.member(orgId, userId),
+      {
+        if (orgRoleId != null) 'org_role_id': orgRoleId,
+        if (level != null) 'level': level,
+        if (status != null) 'status': status,
+      },
+      OfficerModel.fromJson,
+      dataKey: 'membership',
+    );
+  }
+
+  // ── REASSIGN BRANCH ───────────────────────────────────────
+  //
+  // Problem #3 fix: calls POST /orgs/{rootOrgId}/officers/{userId}/transfer
+  //
+  // The backend handles all the edge cases:
+  //   - Self-heals missing root membership if it somehow doesn't exist
+  //   - Only removes the branch membership (never root)
+  //   - Creates new branch membership inheriting level from root
+
+  @override
+  Future<void> reassignBranch({
+    required String userId,
+    required String fromBranchId,
+    required String toBranchId,
+    required String orgRoleId,
+  }) async {
+    final rootOrgId = _orgContext.rootOrgId ?? _orgContext.effectiveOrgId;
+
+    await dio.post(
+      ApiPaths.orgs.officerTransfer(rootOrgId, userId),
+      data: {
+        'from_branch_id': fromBranchId,
+        'to_branch_id': toBranchId,
+        'org_role_id': orgRoleId,
+      },
+    );
+  }
+
+  // ── SUSPEND / ACTIVATE ────────────────────────────────────
+
+  @override
+  Future<OfficerModel> suspend(String userId, {String? branchId}) =>
+      updateMembership(userId, status: 'suspended', branchId: branchId);
+
+  @override
+  Future<OfficerModel> activate(String userId, {String? branchId}) =>
+      updateMembership(userId, status: 'active', branchId: branchId);
+
+  // ── PLATFORM-LEVEL ACTIONS ────────────────────────────────
+
+  @override
+  Future<void> suspendUser(String userId) async {
+    await dio.patch(
+      ApiPaths.admin.userStatus(userId),
+      data: {'status': 'suspended'},
+    );
+  }
+
+  @override
+  Future<void> deactivateUser(String userId) async {
+    await dio.patch(
+      ApiPaths.admin.userStatus(userId),
+      data: {'status': 'deactivated'},
+    );
+  }
+
+  // ── REMOVE FROM ORG ───────────────────────────────────────
+
+  @override
+  Future<void> remove(String userId) async {
+    final orgId = _orgContext.effectiveOrgId;
+    await deleteResource(ApiPaths.orgs.member(orgId, userId));
+  }
+}
+
+
+// === FILE: lib/features/officer/data/models/officer_model.dart ===
+import '../../domain/entities/officer_entity.dart';
+
+class OfficerModel extends OfficerEntity {
+  const OfficerModel({
+    required super.userId,
+    required super.actorId,
+    required super.fullName,
+    required super.username,
+    required super.email,
+    super.phone,
+    super.userStatus,
+    required super.branchId,
+    super.branchName,
+    super.orgRoleId,
+    super.orgRoleName,
+    super.level,
+    required super.membershipStatus,
+    super.createdAt,
+  });
+
+  factory OfficerModel.fromJson(Map<String, dynamic> json) {
+    // The response can come from two sources:
+    //   1. OfficerController.store() / formatOfficer() → flat structure
+    //   2. OrgMembershipController.index() → nested user + actor + role
+    final user = json['user'] as Map<String, dynamic>? ?? {};
+    final role =
+        json['role'] as Map<String, dynamic>? ??
+        json['org_role'] as Map<String, dynamic>? ??
+        {};
+    final actor =
+        json['actor'] as Map<String, dynamic>? ??
+        user['actor'] as Map<String, dynamic>? ??
+        {};
+
+    final userId = (json['user_id'] ?? user['id'] ?? '').toString();
+    final actorId = (json['actor_id'] ?? user['actor_id'] ?? actor['id'] ?? '')
+        .toString();
+
+    // ── Problem #1 FIX — resolve real display name ──────────────
+    //
+    // Resolution priority (highest → lowest):
+    //   1. json['name']              — flat format from OfficerController
+    //   2. actor['display_name']     — nested actor in OrgMembershipController
+    //   3. user['name']              — User model appended attribute
+    //   4. user['username']          — last resort (the random technical handle)
+    final fullName = _firstNonEmpty([
+      json['name'] as String?,
+      actor['display_name'] as String?,
+      user['name'] as String?,
+      user['username'] as String?,
+      json['username'] as String?,
+    ]);
+
+    // Keep the technical username for internal use (never displayed).
+    final username = _firstNonEmpty([
+      user['username'] as String?,
+      json['username'] as String?,
+      fullName, // absolute last resort
+    ]);
+
+    return OfficerModel(
+      userId: userId,
+      actorId: actorId,
+      fullName: fullName,
+      username: username,
+      email: (user['email'] as String?) ?? (json['email'] as String?) ?? '',
+      phone: (user['phone'] as String?) ?? (json['phone'] as String?),
+      userStatus:
+          (user['status'] as String?) ?? (json['user_status'] as String?),
+      branchId: (json['branch_id'] ?? json['org_id'] ?? '').toString(),
+      branchName:
+          json['branch_name'] as String? ??
+          json['org_name'] as String? ??
+          (json['org'] is Map ? (json['org'] as Map)['name'] as String? : null),
+      orgRoleId: (json['org_role_id'] ?? role['id'] ?? '').toString(),
+      orgRoleName: role['name'] as String? ?? json['role_name'] as String?,
+      level: (json['level'] as num?)?.toInt() ?? 0,
+      membershipStatus: json['status'] as String? ?? 'active',
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString())
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'user_id': userId,
+    'actor_id': actorId,
+    'name': fullName,
+    'username': username,
+    'email': email,
+    'phone': phone,
+    'user_status': userStatus,
+    'org_id': branchId,
+    'org_name': branchName,
+    'org_role_id': orgRoleId,
+    'org_role_name': orgRoleName,
+    'level': level,
+    'status': membershipStatus,
+    'created_at': createdAt?.toIso8601String(),
+  };
+
+  factory OfficerModel.fromEntity(OfficerEntity e) => OfficerModel(
+    userId: e.userId,
+    actorId: e.actorId,
+    fullName: e.fullName,
+    username: e.username,
+    email: e.email,
+    phone: e.phone,
+    userStatus: e.userStatus,
+    branchId: e.branchId,
+    branchName: e.branchName,
+    orgRoleId: e.orgRoleId,
+    orgRoleName: e.orgRoleName,
+    level: e.level,
+    membershipStatus: e.membershipStatus,
+    createdAt: e.createdAt,
+  );
+
+  // ── Helpers ─────────────────────────────────────────────────
+
+  /// Returns the first non-null, non-blank string from [candidates].
+  static String _firstNonEmpty(List<String?> candidates) {
+    for (final s in candidates) {
+      if (s != null && s.trim().isNotEmpty) return s.trim();
+    }
+    return '';
+  }
+}
+
+
+// === FILE: lib/features/officer/data/repositories/officer_repository_impl.dart ===
+// lib/features/officer/data/repositories/officer_repository_impl.dart
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/exceptions.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/network/paginated_response.dart';
+import '../../domain/entities/officer_entity.dart';
+import '../../domain/repositories/officer_repository.dart';
+import '../datasources/officer_remote_datasource.dart';
+
+class OfficerRepositoryImpl implements OfficerRepository {
+  final OfficerRemoteDataSource _remote;
+
+  OfficerRepositoryImpl({required OfficerRemoteDataSource remoteDataSource})
+    : _remote = remoteDataSource;
+
+  Future<Either<Failure, T>> _guard<T>(Future<T> Function() call) async {
+    try {
+      return Right(await call());
+    } on AuthException catch (e) {
+      return Left(AuthFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, PaginatedResponse<OfficerEntity>>> getAll({
+    String? status,
+    String? search,
+    int? perPage,
+    int? page,
+  }) => _guard(
+    () => _remote.getAll(
+      status: status,
+      search: search,
+      perPage: perPage,
+      page: page,
+    ),
+  );
+
+  @override
+  Future<Either<Failure, OfficerEntity>> getById(
+    String userId, {
+    String? branchId,
+  }) => _guard(() => _remote.getById(userId, branchId: branchId));
+
+  // Problem #2 fix: delegates to the new create() method
+  @override
+  Future<Either<Failure, OfficerEntity>> create({
+    required String fullName,
+    required String email,
+    required String password,
+    required String passwordConfirmation,
+    String? phone,
+    required String branchId,
+    required String orgRoleId,
+    int? level,
+  }) => _guard(
+    () => _remote.create(
+      fullName: fullName,
+      email: email,
+      password: password,
+      passwordConfirmation: passwordConfirmation,
+      phone: phone,
+      branchId: branchId,
+      orgRoleId: orgRoleId,
+      level: level,
+    ),
+  );
+
+  @override
+  Future<Either<Failure, OfficerEntity>> updateMembership(
+    String userId, {
+    String? orgRoleId,
+    int? level,
+    String? status,
+    String? branchId,
+  }) => _guard(
+    () => _remote.updateMembership(
+      userId,
+      orgRoleId: orgRoleId,
+      level: level,
+      status: status,
+      branchId: branchId,
+    ),
+  );
+
+  // Problem #3 fix: delegates to the new transfer endpoint
+  @override
+  Future<Either<Failure, void>> reassignBranch({
+    required String userId,
+    required String fromBranchId,
+    required String toBranchId,
+    required String orgRoleId,
+  }) => _guard(
+    () => _remote.reassignBranch(
+      userId: userId,
+      fromBranchId: fromBranchId,
+      toBranchId: toBranchId,
+      orgRoleId: orgRoleId,
+    ),
+  );
+
+  @override
+  Future<Either<Failure, OfficerEntity>> suspend(
+    String userId, {
+    String? branchId,
+  }) => _guard(() => _remote.suspend(userId, branchId: branchId));
+
+  @override
+  Future<Either<Failure, OfficerEntity>> activate(
+    String userId, {
+    String? branchId,
+  }) => _guard(() => _remote.activate(userId, branchId: branchId));
+
+  @override
+  Future<Either<Failure, void>> suspendUser(String userId) =>
+      _guard(() => _remote.suspendUser(userId));
+
+  @override
+  Future<Either<Failure, void>> deactivateUser(String userId) =>
+      _guard(() => _remote.deactivateUser(userId));
+
+  @override
+  Future<Either<Failure, void>> remove(String userId) =>
+      _guard(() => _remote.remove(userId));
+}
+
+
+// === FILE: lib/features/officer/domain/entities/officer_entity.dart ===
+import 'package:equatable/equatable.dart';
+
+class OfficerEntity extends Equatable {
+  final String userId;
+  final String actorId;
+
+  /// Real full name from actor.display_name — e.g. "John Mwangi".
+  /// Problem #1 fix: this field now carries the real identity name.
+  final String fullName;
+
+  /// Technical login handle — auto-generated, e.g. "john_mwangi_4j2k".
+  /// Never shown in the UI; kept for internal reference only.
+  final String username;
+
+  final String email;
+  final String? phone;
+  final String? userStatus;
+  final String branchId;
+  final String? branchName;
+  final String? orgRoleId;
+  final String? orgRoleName;
+  final int level;
+  final String membershipStatus;
+  final DateTime? createdAt;
+
+  const OfficerEntity({
+    required this.userId,
+    required this.actorId,
+    required this.fullName,
+    required this.username,
+    required this.email,
+    this.phone,
+    this.userStatus,
+    required this.branchId,
+    this.branchName,
+    this.orgRoleId,
+    this.orgRoleName,
+    this.level = 0,
+    required this.membershipStatus,
+    this.createdAt,
+  });
+
+  /// Problem #1 fix: always show fullName in the UI.
+  /// Falls back to username (technical) only when fullName is blank
+  /// (e.g. old records created before the name fix was deployed).
+  String get displayName {
+    if (fullName.trim().isNotEmpty) return fullName.trim();
+    if (username.trim().isNotEmpty) return username.trim();
+    return email;
+  }
+
+  String get effectiveStatus {
+    if (userStatus == 'suspended' || membershipStatus == 'suspended') {
+      return 'suspended';
+    }
+    if (userStatus == 'deactivated') return 'deactivated';
+    return membershipStatus;
+  }
+
+  bool get isActive => effectiveStatus == 'active';
+
+  OfficerEntity copyWith({
+    String? userId,
+    String? actorId,
+    String? fullName,
+    String? username,
+    String? email,
+    String? phone,
+    String? userStatus,
+    String? branchId,
+    String? branchName,
+    String? orgRoleId,
+    String? orgRoleName,
+    int? level,
+    String? membershipStatus,
+    DateTime? createdAt,
+  }) => OfficerEntity(
+    userId: userId ?? this.userId,
+    actorId: actorId ?? this.actorId,
+    fullName: fullName ?? this.fullName,
+    username: username ?? this.username,
+    email: email ?? this.email,
+    phone: phone ?? this.phone,
+    userStatus: userStatus ?? this.userStatus,
+    branchId: branchId ?? this.branchId,
+    branchName: branchName ?? this.branchName,
+    orgRoleId: orgRoleId ?? this.orgRoleId,
+    orgRoleName: orgRoleName ?? this.orgRoleName,
+    level: level ?? this.level,
+    membershipStatus: membershipStatus ?? this.membershipStatus,
+    createdAt: createdAt ?? this.createdAt,
+  );
+
+  @override
+  List<Object?> get props => [
+    userId,
+    actorId,
+    fullName,
+    username,
+    email,
+    phone,
+    userStatus,
+    branchId,
+    branchName,
+    orgRoleId,
+    orgRoleName,
+    level,
+    membershipStatus,
+    createdAt,
+  ];
+}
+
+
+// === FILE: lib/features/officer/domain/guards/officer_transition_guard.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../value_objects/officer_status.dart';
+
+class OfficerTransitionGuard {
+  Either<Failure, OfficerStatus> validate({
+    required OfficerStatus current, required OfficerStatus target,
+  }) {
+    if (!current.canTransitionTo(target)) {
+      return Left(ValidationFailure(
+        'Cannot transition from ${current.displayName} to ${target.displayName}',
+      ));
+    }
+    return Right(target);
+  }
+}
+
+
+// === FILE: lib/features/officer/domain/repositories/officer_repository.dart ===
+// lib/features/officer/domain/repositories/officer_repository.dart
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/network/paginated_response.dart';
+import '../entities/officer_entity.dart';
+
+abstract class OfficerRepository {
+  Future<Either<Failure, PaginatedResponse<OfficerEntity>>> getAll({
+    String? status,
+    String? search,
+    int? perPage,
+    int? page,
+  });
+
+  /// [branchId] — officer's actual branch; null falls back to root org.
+  Future<Either<Failure, OfficerEntity>> getById(
+    String userId, {
+    String? branchId,
+  });
+
+  /// Problem #2 fix: creates a fully active User account.
+  /// The officer can log in immediately using [email] + [password].
+  /// [fullName] becomes actor.display_name (the real displayed name).
+  Future<Either<Failure, OfficerEntity>> create({
+    required String fullName,
+    required String email,
+    required String password,
+    required String passwordConfirmation,
+    String? phone,
+    required String branchId,
+    required String orgRoleId,
+    int? level,
+  });
+
+  Future<Either<Failure, OfficerEntity>> updateMembership(
+    String userId, {
+    String? orgRoleId,
+    int? level,
+    String? status,
+    String? branchId,
+  });
+
+  /// Problem #3 fix: safe branch transfer via the dedicated transfer endpoint.
+  Future<Either<Failure, void>> reassignBranch({
+    required String userId,
+    required String fromBranchId,
+    required String toBranchId,
+    required String orgRoleId,
+  });
+
+  Future<Either<Failure, OfficerEntity>> suspend(
+    String userId, {
+    String? branchId,
+  });
+
+  Future<Either<Failure, OfficerEntity>> activate(
+    String userId, {
+    String? branchId,
+  });
+
+  Future<Either<Failure, void>> suspendUser(String userId);
+  Future<Either<Failure, void>> deactivateUser(String userId);
+  Future<Either<Failure, void>> remove(String userId);
+}
+
+
+// === FILE: lib/features/officer/domain/services/officer_domain_service.dart ===
+// lib/features/officer/domain/services/officer_domain_service.dart
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../entities/officer_entity.dart';
+import '../guards/officer_transition_guard.dart';
+import '../repositories/officer_repository.dart';
+import '../value_objects/officer_status.dart';
+
+class OfficerDomainService {
+  final OfficerRepository repository;
+  final OfficerTransitionGuard guard;
+
+  OfficerDomainService({required this.repository, required this.guard});
+
+  Future<Either<Failure, OfficerEntity>> transition({
+    required String userId,
+    required OfficerStatus targetStatus,
+    String? branchId, // forwarded from the loaded entity
+  }) async {
+    // Load officer using their actual branchId to avoid 404
+    final loadResult = await repository.getById(userId, branchId: branchId);
+    if (loadResult.isLeft()) return loadResult;
+
+    final entity = loadResult.getOrElse(() => throw StateError('unreachable'));
+
+    final guardResult = guard.validate(
+      current: OfficerStatusX.fromString(entity.effectiveStatus),
+      target: targetStatus,
+    );
+    if (guardResult.isLeft()) {
+      return guardResult.fold((f) => Left(f), (_) => throw StateError(''));
+    }
+
+    // Use entity.branchId for the actual PATCH URL
+    switch (targetStatus) {
+      case OfficerStatus.active:
+        return repository.activate(userId, branchId: entity.branchId);
+      case OfficerStatus.suspended:
+        return repository.suspend(userId, branchId: entity.branchId);
+      case OfficerStatus.deactivated:
+        final r = await repository.deactivateUser(userId);
+        return r.fold(
+          (f) => Left(f),
+          (_) => repository.getById(userId, branchId: entity.branchId),
+        );
+    }
+  }
+
+  Future<Either<Failure, void>> reassignBranch({
+    required String userId,
+    required String fromBranchId,
+    required String toBranchId,
+    required String orgRoleId,
+  }) => repository.reassignBranch(
+    userId: userId,
+    fromBranchId: fromBranchId,
+    toBranchId: toBranchId,
+    orgRoleId: orgRoleId,
+  );
+}
+
+
+// === FILE: lib/features/officer/domain/usecases/create_officer_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/officer_entity.dart';
+import '../repositories/officer_repository.dart';
+
+/// Parameters for creating an officer with a full account.
+///
+/// Problem #2 fix: [fullName] and [password] are now required so the
+/// backend can create a login-ready User account immediately.
+class CreateOfficerParams {
+  /// Real full name — stored as actor.display_name.
+  /// This is what gets displayed everywhere in the UI.
+  final String fullName;
+
+  final String email;
+  final String password;
+  final String passwordConfirmation;
+  final String? phone;
+  final String branchId;
+  final String orgRoleId;
+  final int? level;
+
+  const CreateOfficerParams({
+    required this.fullName,
+    required this.email,
+    required this.password,
+    required this.passwordConfirmation,
+    this.phone,
+    required this.branchId,
+    required this.orgRoleId,
+    this.level,
+  });
+}
+
+class CreateOfficerUseCase
+    implements UseCase<OfficerEntity, CreateOfficerParams> {
+  final OfficerRepository repository;
+  CreateOfficerUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, OfficerEntity>> call(CreateOfficerParams p) async {
+    // Validate
+    if (p.fullName.trim().isEmpty) {
+      return const Left(ValidationFailure('Full name is required'));
+    }
+    if (p.email.trim().isEmpty || !p.email.contains('@')) {
+      return const Left(ValidationFailure('Enter a valid email'));
+    }
+    if (p.password.isEmpty) {
+      return const Left(ValidationFailure('Password is required'));
+    }
+    if (p.password != p.passwordConfirmation) {
+      return const Left(ValidationFailure('Passwords do not match'));
+    }
+    if (p.branchId.trim().isEmpty) {
+      return const Left(ValidationFailure('Branch is required'));
+    }
+    if (p.orgRoleId.trim().isEmpty) {
+      return const Left(ValidationFailure('Role is required'));
+    }
+
+    return repository.create(
+      fullName: p.fullName.trim(),
+      email: p.email.trim(),
+      password: p.password,
+      passwordConfirmation: p.passwordConfirmation,
+      phone: p.phone?.trim(),
+      branchId: p.branchId,
+      orgRoleId: p.orgRoleId,
+      level: p.level,
+    );
+  }
+}
+
+
+// === FILE: lib/features/officer/domain/usecases/delete_officer_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../repositories/officer_repository.dart';
+
+class DeleteOfficerParams { final String userId; const DeleteOfficerParams({required this.userId}); }
+
+class DeleteOfficerUseCase implements UseCase<void, DeleteOfficerParams> {
+  final OfficerRepository repository;
+  DeleteOfficerUseCase(this.repository);
+  @override
+  Future<Either<Failure, void>> call(DeleteOfficerParams p) => repository.remove(p.userId);
+}
+
+
+// === FILE: lib/features/officer/domain/usecases/get_all_officer_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/network/paginated_response.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/officer_entity.dart';
+import '../repositories/officer_repository.dart';
+
+class GetAllOfficerUseCase implements UseCase<PaginatedResponse<OfficerEntity>, NoParams> {
+  final OfficerRepository repository;
+  GetAllOfficerUseCase(this.repository);
+  @override
+  Future<Either<Failure, PaginatedResponse<OfficerEntity>>> call(NoParams _) => repository.getAll();
+}
+
+
+// === FILE: lib/features/officer/domain/usecases/get_officer_usecase.dart ===
+// lib/features/officer/domain/usecases/get_officer_usecase.dart
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/officer_entity.dart';
+import '../repositories/officer_repository.dart';
+
+class GetOfficerParams {
+  final String userId;
+  final String? branchId;
+  const GetOfficerParams({required this.userId, this.branchId});
+}
+
+class GetOfficerUseCase implements UseCase<OfficerEntity, GetOfficerParams> {
+  final OfficerRepository repository;
+  GetOfficerUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, OfficerEntity>> call(GetOfficerParams p) =>
+      repository.getById(p.userId, branchId: p.branchId);
+}
+
+
+// === FILE: lib/features/officer/domain/usecases/update_officer_usecase.dart ===
+// lib/features/officer/domain/usecases/update_officer_usecase.dart
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/officer_entity.dart';
+import '../repositories/officer_repository.dart';
+
+class UpdateOfficerParams {
+  final OfficerEntity entity;
+  const UpdateOfficerParams({required this.entity});
+}
+
+class UpdateOfficerUseCase
+    implements UseCase<OfficerEntity, UpdateOfficerParams> {
+  final OfficerRepository repository;
+  UpdateOfficerUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, OfficerEntity>> call(UpdateOfficerParams p) =>
+      repository.updateMembership(
+        p.entity.userId,
+        orgRoleId: p.entity.orgRoleId,
+        status: p.entity.membershipStatus,
+        branchId: p.entity.branchId, // use officer's actual branch
+      );
+}
+
+
+// === FILE: lib/features/officer/domain/value_objects/officer_status.dart ===
+import 'package:flutter/material.dart';
+
+enum OfficerStatus { active, suspended, deactivated }
+
+extension OfficerStatusX on OfficerStatus {
+  static const Map<OfficerStatus, Set<OfficerStatus>> _transitions = {
+    OfficerStatus.active:      {OfficerStatus.suspended, OfficerStatus.deactivated},
+    OfficerStatus.suspended:   {OfficerStatus.active, OfficerStatus.deactivated},
+    OfficerStatus.deactivated: {},
+  };
+  static const OfficerStatus initial = OfficerStatus.active;
+  bool canTransitionTo(OfficerStatus target) => _transitions[this]?.contains(target) ?? false;
+  String get displayName => switch (this) {
+    OfficerStatus.active => 'Active', OfficerStatus.suspended => 'Suspended',
+    OfficerStatus.deactivated => 'Deactivated',
+  };
+  Color get color => switch (this) {
+    OfficerStatus.active => Colors.green, OfficerStatus.suspended => Colors.orange,
+    OfficerStatus.deactivated => Colors.grey,
+  };
+  static OfficerStatus fromString(String? value) => OfficerStatus.values.firstWhere(
+    (e) => e.name == value, orElse: () => OfficerStatus.active,
+  );
+}
+
+
+// === FILE: lib/features/officer/presentation/bloc/officer_bloc.dart ===
+// lib/features/officer/presentation/bloc/officer_bloc.dart
+
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../../domain/services/officer_domain_service.dart';
+import '../../domain/usecases/create_officer_usecase.dart';
+import '../../domain/usecases/delete_officer_usecase.dart';
+import '../../domain/usecases/get_officer_usecase.dart';
+import '../../domain/usecases/get_all_officer_usecase.dart';
+import '../../domain/usecases/update_officer_usecase.dart';
+import '../../domain/value_objects/officer_status.dart';
+import 'officer_event.dart';
+import 'officer_state.dart';
+
+class OfficerBloc extends Bloc<OfficerEvent, OfficerState> {
+  final GetAllOfficerUseCase getAllUseCase;
+  final GetOfficerUseCase getUseCase;
+  final CreateOfficerUseCase createUseCase;
+  final UpdateOfficerUseCase updateUseCase;
+  final DeleteOfficerUseCase deleteUseCase;
+  final OfficerDomainService domainService;
+
+  OfficerBloc({
+    required this.getAllUseCase,
+    required this.getUseCase,
+    required this.createUseCase,
+    required this.updateUseCase,
+    required this.deleteUseCase,
+    required this.domainService,
+  }) : super(OfficerInitial()) {
+    on<OfficerLoadAllRequested>(_onLoadAll);
+    on<OfficerLoadOneRequested>(_onLoadOne);
+    on<OfficerCreateRequested>(_onCreate);
+    on<OfficerUpdateRequested>(_onUpdate);
+    on<OfficerDeleteRequested>(_onDelete);
+    on<OfficerFormReset>((_, emit) => emit(OfficerInitial()));
+    on<OfficerActivateRequested>(_onActivate);
+    on<OfficerSuspendRequested>(_onSuspend);
+    on<OfficerDeactivateRequested>(_onDeactivate);
+    on<OfficerReassignBranchRequested>(_onReassignBranch);
+  }
+
+  Future<void> _onLoadAll(
+    OfficerLoadAllRequested event,
+    Emitter<OfficerState> emit,
+  ) async {
+    emit(OfficerLoading());
+    final result = await getAllUseCase(NoParams());
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (p) => p.items.isEmpty
+          ? emit(OfficerEmpty())
+          : emit(OfficerListLoaded(p.items)),
+    );
+  }
+
+  Future<void> _onLoadOne(
+    OfficerLoadOneRequested event,
+    Emitter<OfficerState> emit,
+  ) async {
+    emit(OfficerLoading());
+    final result = await getUseCase(
+      GetOfficerParams(userId: event.userId, branchId: event.branchId),
+    );
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (item) => emit(OfficerDetailLoaded(item)),
+    );
+  }
+
+  // Problem #2 fix: CreateOfficerParams now carries fullName + password.
+  // The usecase calls repository.create() → POST /orgs/{rootOrgId}/officers
+  // which creates a fully active User account the officer can log in with.
+  Future<void> _onCreate(
+    OfficerCreateRequested event,
+    Emitter<OfficerState> emit,
+  ) async {
+    emit(OfficerLoading());
+    final result = await createUseCase(event.params);
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (officer) => emit(
+        OfficerOperationSuccess(
+          'Officer "${officer.displayName}" created. They can log in immediately.',
+          updatedItem: officer,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _onUpdate(
+    OfficerUpdateRequested event,
+    Emitter<OfficerState> emit,
+  ) async {
+    emit(OfficerLoading());
+    final result = await updateUseCase(
+      UpdateOfficerParams(entity: event.entity),
+    );
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (_) => emit(OfficerOperationSuccess('Officer updated successfully')),
+    );
+  }
+
+  Future<void> _onDelete(
+    OfficerDeleteRequested event,
+    Emitter<OfficerState> emit,
+  ) async {
+    emit(OfficerLoading());
+    final result = await deleteUseCase(
+      DeleteOfficerParams(userId: event.userId),
+    );
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (_) => emit(OfficerOperationSuccess('Officer removed successfully')),
+    );
+  }
+
+  Future<void> _onActivate(
+    OfficerActivateRequested event,
+    Emitter<OfficerState> emit,
+  ) async {
+    emit(OfficerLoading());
+    final loaded = await getUseCase(GetOfficerParams(userId: event.userId));
+    if (loaded.isLeft()) {
+      loaded.fold((f) => emit(OfficerFailure(f.message)), (_) {});
+      return;
+    }
+    final branchId = loaded.getOrElse(() => throw StateError('')).branchId;
+    final result = await domainService.transition(
+      userId: event.userId,
+      targetStatus: OfficerStatus.active,
+      branchId: branchId,
+    );
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (e) => emit(OfficerOperationSuccess('Activated', updatedItem: e)),
+    );
+  }
+
+  Future<void> _onSuspend(
+    OfficerSuspendRequested event,
+    Emitter<OfficerState> emit,
+  ) async {
+    emit(OfficerLoading());
+    final loaded = await getUseCase(GetOfficerParams(userId: event.userId));
+    if (loaded.isLeft()) {
+      loaded.fold((f) => emit(OfficerFailure(f.message)), (_) {});
+      return;
+    }
+    final branchId = loaded.getOrElse(() => throw StateError('')).branchId;
+    final result = await domainService.transition(
+      userId: event.userId,
+      targetStatus: OfficerStatus.suspended,
+      branchId: branchId,
+    );
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (e) => emit(OfficerOperationSuccess('Suspended', updatedItem: e)),
+    );
+  }
+
+  Future<void> _onDeactivate(
+    OfficerDeactivateRequested event,
+    Emitter<OfficerState> emit,
+  ) async {
+    emit(OfficerLoading());
+    final loaded = await getUseCase(GetOfficerParams(userId: event.userId));
+    if (loaded.isLeft()) {
+      loaded.fold((f) => emit(OfficerFailure(f.message)), (_) {});
+      return;
+    }
+    final branchId = loaded.getOrElse(() => throw StateError('')).branchId;
+    final result = await domainService.transition(
+      userId: event.userId,
+      targetStatus: OfficerStatus.deactivated,
+      branchId: branchId,
+    );
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (e) => emit(OfficerOperationSuccess('Deactivated', updatedItem: e)),
+    );
+  }
+
+  // Problem #3 fix: calls the dedicated transfer endpoint via domainService
+  // which never deletes the root org membership anchor.
+  Future<void> _onReassignBranch(
+    OfficerReassignBranchRequested event,
+    Emitter<OfficerState> emit,
+  ) async {
+    emit(OfficerLoading());
+    final result = await domainService.reassignBranch(
+      userId: event.userId,
+      fromBranchId: event.fromBranchId,
+      toBranchId: event.toBranchId,
+      orgRoleId: event.orgRoleId,
+    );
+    result.fold(
+      (f) => emit(OfficerFailure(f.message)),
+      (_) =>
+          emit(OfficerOperationSuccess('Officer transferred to new branch.')),
+    );
+  }
+}
+
+
+// === FILE: lib/features/officer/presentation/bloc/officer_event.dart ===
+// lib/features/officer/presentation/bloc/officer_event.dart
+//
+// Added `branchId` to OfficerLoadOneRequested so the datasource
+// can call GET /orgs/{branchId}/members/{userId} for branch-only officers.
+
+import '../../domain/entities/officer_entity.dart';
+import '../../domain/usecases/create_officer_usecase.dart';
+
+abstract class OfficerEvent {}
+
+class OfficerLoadAllRequested extends OfficerEvent {}
+
+class OfficerLoadOneRequested extends OfficerEvent {
+  final String userId;
+
+  /// The officer's actual org/branch id. Null = fall back to root org.
+  final String? branchId;
+  OfficerLoadOneRequested(this.userId, {this.branchId});
+}
+
+class OfficerCreateRequested extends OfficerEvent {
+  final CreateOfficerParams params;
+  OfficerCreateRequested(this.params);
+}
+
+class OfficerUpdateRequested extends OfficerEvent {
+  final OfficerEntity entity;
+  OfficerUpdateRequested(this.entity);
+}
+
+class OfficerDeleteRequested extends OfficerEvent {
+  final String userId;
+  OfficerDeleteRequested(this.userId);
+}
+
+class OfficerFormReset extends OfficerEvent {}
+
+class OfficerActivateRequested extends OfficerEvent {
+  final String userId;
+  OfficerActivateRequested(this.userId);
+}
+
+class OfficerSuspendRequested extends OfficerEvent {
+  final String userId;
+  OfficerSuspendRequested(this.userId);
+}
+
+class OfficerDeactivateRequested extends OfficerEvent {
+  final String userId;
+  OfficerDeactivateRequested(this.userId);
+}
+
+class OfficerReassignBranchRequested extends OfficerEvent {
+  final String userId;
+  final String fromBranchId;
+  final String toBranchId;
+  final String orgRoleId;
+
+  OfficerReassignBranchRequested({
+    required this.userId,
+    required this.fromBranchId,
+    required this.toBranchId,
+    required this.orgRoleId,
+  });
+}
+
+
+// === FILE: lib/features/officer/presentation/bloc/officer_state.dart ===
+import '../../domain/entities/officer_entity.dart';
+
+abstract class OfficerState {}
+class OfficerInitial extends OfficerState {}
+class OfficerLoading extends OfficerState {}
+class OfficerListLoaded extends OfficerState { final List<OfficerEntity> items; OfficerListLoaded(this.items); }
+class OfficerDetailLoaded extends OfficerState { final OfficerEntity item; OfficerDetailLoaded(this.item); }
+class OfficerOperationSuccess extends OfficerState {
+  final String message; final OfficerEntity? updatedItem;
+  OfficerOperationSuccess(this.message, {this.updatedItem});
+}
+class OfficerEmpty extends OfficerState {}
+class OfficerFailure extends OfficerState { final String message; OfficerFailure(this.message); }
+
+
+// === FILE: lib/features/officer/presentation/enums/officer_form_node.dart ===
+enum OfficerFormNode { create, edit }
+
+
+// === FILE: lib/features/officer/presentation/pages/officer_detail_page.dart ===
+// lib/features/officer/presentation/pages/officer_detail_page.dart
+// No logic changes from your version — only the two bloc captures fixed
+// (blocs captured BEFORE showDialog, passed into the dialog directly).
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../../../organization/domain/entities/branch_entity.dart';
+import '../../../organization/domain/entities/org_role_entity.dart';
+import '../../../organization/presentation/bloc/organization_bloc.dart';
+import '../../../organization/presentation/bloc/organization_state.dart';
+import '../../domain/entities/officer_entity.dart';
+import '../../domain/value_objects/officer_status.dart';
+import '../bloc/officer_bloc.dart';
+import '../bloc/officer_event.dart';
+import '../bloc/officer_state.dart';
+import '../widgets/officer_avatar.dart';
+import '../widgets/officer_status_badge.dart';
+
+class OfficerDetailPage extends StatelessWidget {
+  const OfficerDetailPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Officer Detail'),
+        actions: [
+          BlocBuilder<OfficerBloc, OfficerState>(
+            builder: (context, state) {
+              if (state is OfficerDetailLoaded) {
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined),
+                      tooltip: 'Edit',
+                      onPressed: () => context.push(
+                        AppRouter.officerEditPath(state.item.userId),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.delete_outline, color: scheme.error),
+                      tooltip: 'Delete',
+                      onPressed: () => _confirmDelete(
+                        context,
+                        state.item.userId,
+                        state.item.displayName,
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+        ],
+      ),
+      body: BlocConsumer<OfficerBloc, OfficerState>(
+        listener: (context, state) {
+          if (state is OfficerOperationSuccess) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+            if (state.updatedItem != null) {
+              context.read<OfficerBloc>().add(
+                OfficerLoadOneRequested(state.updatedItem!.userId),
+              );
+            } else {
+              context.pop();
+            }
+          }
+          if (state is OfficerFailure) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: scheme.error,
+              ),
+            );
+          }
+        },
+        builder: (context, state) {
+          if (state is OfficerLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (state is OfficerFailure) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: scheme.error),
+                  const SizedBox(height: 16),
+                  Text(state.message),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => context.pop(),
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('Go Back'),
+                  ),
+                ],
+              ),
+            );
+          }
+          if (state is OfficerDetailLoaded) {
+            return _buildContent(context, state.item);
+          }
+          return const SizedBox.shrink();
+        },
+      ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, OfficerEntity item) {
+    final scheme = Theme.of(context).colorScheme;
+    final statusEnum = OfficerStatusX.fromString(item.effectiveStatus);
+    final isWide = MediaQuery.of(context).size.width >= 600;
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(
+        horizontal: isWide ? MediaQuery.of(context).size.width * 0.1 : 16,
+        vertical: 16,
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Profile card ───────────────────────────────────────────
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Row(
+                  children: [
+                    OfficerAvatar(
+                      name: item.displayName,
+                      status: item.effectiveStatus,
+                      radius: 36,
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Problem #1 fix: displayName resolves to fullName
+                          Text(
+                            item.displayName,
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            item.orgRoleName ?? '',
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(
+                                  color: scheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          if (item.branchName != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              item.branchName!,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          OfficerStatusBadge(status: statusEnum),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildActions(context, item, statusEnum),
+            const SizedBox(height: 12),
+
+            // ── Contact info card ──────────────────────────────────────
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Contact Information',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Divider(height: 24),
+                    _infoRow(
+                      context,
+                      Icons.email_outlined,
+                      'Email',
+                      item.email,
+                    ),
+                    _infoRow(
+                      context,
+                      Icons.phone_outlined,
+                      'Phone',
+                      item.phone ?? 'N/A',
+                    ),
+                    _infoRow(
+                      context,
+                      Icons.badge_outlined,
+                      'Role',
+                      item.orgRoleName ?? 'N/A',
+                    ),
+                    _infoRow(
+                      context,
+                      Icons.business_outlined,
+                      'Branch',
+                      item.branchName ?? 'N/A',
+                    ),
+                    _infoRow(
+                      context,
+                      Icons.calendar_today_outlined,
+                      'Joined',
+                      item.createdAt?.toIso8601String().split('T').first ??
+                          'N/A',
+                    ),
+                    _infoRow(
+                      context,
+                      Icons.fingerprint,
+                      'User ID',
+                      item.userId,
+                    ),
+                    _infoRow(
+                      context,
+                      Icons.perm_identity,
+                      'Actor ID',
+                      item.actorId,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 80),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Actions card ───────────────────────────────────────────
+
+  Widget _buildActions(
+    BuildContext context,
+    OfficerEntity item,
+    OfficerStatus statusEnum,
+  ) {
+    final actions = <Widget>[];
+
+    if (statusEnum == OfficerStatus.suspended) {
+      actions.add(
+        _actionButton(
+          context,
+          icon: Icons.check_circle_outline,
+          label: 'Activate',
+          color: Colors.green,
+          onPressed: () => context.read<OfficerBloc>().add(
+            OfficerActivateRequested(item.userId),
+          ),
+        ),
+      );
+    }
+
+    if (statusEnum == OfficerStatus.active) {
+      actions.add(
+        _actionButton(
+          context,
+          icon: Icons.pause_circle_outline,
+          label: 'Suspend',
+          color: Colors.orange,
+          onPressed: () => context.read<OfficerBloc>().add(
+            OfficerSuspendRequested(item.userId),
+          ),
+        ),
+      );
+    }
+
+    // Transfer Branch — visible for active or suspended officers
+    if (statusEnum != OfficerStatus.deactivated && item.branchId.isNotEmpty) {
+      actions.add(
+        _actionButton(
+          context,
+          icon: Icons.swap_horiz_outlined,
+          label: 'Transfer Branch',
+          color: Theme.of(context).colorScheme.primary,
+          onPressed: () => _showTransferDialog(context, item),
+        ),
+      );
+    }
+
+    if (statusEnum == OfficerStatus.active ||
+        statusEnum == OfficerStatus.suspended) {
+      actions.add(
+        _actionButton(
+          context,
+          icon: Icons.cancel_outlined,
+          label: 'Deactivate',
+          color: Colors.grey.shade600,
+          onPressed: () => _confirmDeactivate(context, item),
+        ),
+      );
+    }
+
+    if (actions.isEmpty) return const SizedBox.shrink();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Actions',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const Divider(height: 20),
+            Wrap(spacing: 10, runSpacing: 10, children: actions),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // FIX: capture blocs BEFORE entering showDialog — the dialog's BuildContext
+  // is detached from the widget tree and cannot find inherited blocs.
+  void _showTransferDialog(BuildContext context, OfficerEntity officer) {
+    final officerBloc = context.read<OfficerBloc>();
+    final orgBloc = context.read<OrganizationBloc>();
+
+    showDialog(
+      context: context,
+      builder: (_) => _TransferBranchDialog(
+        officerBloc: officerBloc,
+        orgBloc: orgBloc,
+        officer: officer,
+      ),
+    );
+  }
+
+  // ── Helpers ────────────────────────────────────────────────
+
+  Widget _actionButton(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onPressed,
+  }) => FilledButton.tonalIcon(
+    onPressed: onPressed,
+    icon: Icon(icon, size: 18, color: color),
+    label: Text(label),
+    style: FilledButton.styleFrom(
+      minimumSize: Size.zero,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    ),
+  );
+
+  Widget _infoRow(
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 80,
+            child: Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmDeactivate(
+    BuildContext context,
+    OfficerEntity item,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _DeactivateConfirmDialog(officerName: item.displayName),
+    );
+    if (confirmed == true && context.mounted) {
+      context.read<OfficerBloc>().add(OfficerDeactivateRequested(item.userId));
+    }
+  }
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    String userId,
+    String name,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove Officer?'),
+        content: Text('Remove "$name"? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      context.read<OfficerBloc>().add(OfficerDeleteRequested(userId));
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Transfer Branch Dialog
+// ═══════════════════════════════════════════════════════════════════
+
+class _TransferBranchDialog extends StatefulWidget {
+  final OfficerBloc officerBloc;
+  final OrganizationBloc orgBloc;
+  final OfficerEntity officer;
+
+  const _TransferBranchDialog({
+    required this.officerBloc,
+    required this.orgBloc,
+    required this.officer,
+  });
+
+  @override
+  State<_TransferBranchDialog> createState() => _TransferBranchDialogState();
+}
+
+class _TransferBranchDialogState extends State<_TransferBranchDialog> {
+  List<BranchEntity> _branches = [];
+  List<OrgRoleEntity> _roles = [];
+  bool _loading = true;
+  String? _error;
+
+  BranchEntity? _selectedBranch;
+  OrgRoleEntity? _selectedRole;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    List<BranchEntity> branches = [];
+    List<OrgRoleEntity> roles = [];
+
+    // Use cached state when available
+    final orgState = widget.orgBloc.state;
+    if (orgState is BranchesLoaded) branches = orgState.branches;
+    if (orgState is RolesLoaded) roles = orgState.roles;
+
+    // Otherwise fetch directly via repository
+    if (branches.isEmpty) {
+      final rootOrgId = widget.orgBloc.orgContext.rootOrgId ?? '';
+      final res = await widget.orgBloc.repository.getBranches(rootOrgId);
+      res.fold((f) => _error = f.message, (b) => branches = b);
+    }
+    if (roles.isEmpty) {
+      final rootOrgId = widget.orgBloc.orgContext.rootOrgId ?? '';
+      final res = await widget.orgBloc.repository.getRoles(rootOrgId);
+      res.fold((f) => _error ??= f.message, (r) => roles = r);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      // Exclude current branch from targets
+      _branches =
+          branches.where((b) => b.id != widget.officer.branchId).toList()
+            ..sort((a, b) => a.name.compareTo(b.name));
+
+      // Deduplicate roles
+      final seen = <String, OrgRoleEntity>{};
+      for (final r in roles) seen[r.id] ??= r;
+      _roles = seen.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+
+      // Pre-select current role
+      try {
+        _selectedRole = _roles.firstWhere(
+          (r) => r.id == widget.officer.orgRoleId,
+        );
+      } catch (_) {
+        _selectedRole = null;
+      }
+
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return AlertDialog(
+      title: Row(
+        children: [
+          Icon(Icons.swap_horiz_outlined, color: scheme.primary),
+          const SizedBox(width: 10),
+          const Text('Transfer Branch'),
+        ],
+      ),
+      content: _loading
+          ? const SizedBox(
+              height: 80,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : _error != null
+          ? Text(_error!, style: TextStyle(color: scheme.error))
+          : _branches.isEmpty
+          ? const Text('No other branches available.')
+          : SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Current branch info
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.business_outlined,
+                          size: 16,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'From: ${widget.officer.branchName ?? widget.officer.branchId}',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: scheme.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<BranchEntity>(
+                    value: _selectedBranch,
+                    decoration: const InputDecoration(
+                      labelText: 'Transfer to Branch *',
+                      prefixIcon: Icon(Icons.store_outlined),
+                      border: OutlineInputBorder(),
+                    ),
+                    isExpanded: true,
+                    items: _branches
+                        .map(
+                          (b) => DropdownMenuItem(
+                            value: b,
+                            child: Text(
+                              b.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setState(() => _selectedBranch = v),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<OrgRoleEntity>(
+                    value: _selectedRole,
+                    decoration: const InputDecoration(
+                      labelText: 'Role in New Branch *',
+                      prefixIcon: Icon(Icons.admin_panel_settings_outlined),
+                      border: OutlineInputBorder(),
+                    ),
+                    isExpanded: true,
+                    items: _roles
+                        .map(
+                          (r) => DropdownMenuItem(
+                            value: r,
+                            child: Text(
+                              r.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setState(() => _selectedRole = v),
+                  ),
+                ],
+              ),
+            ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        if (!_loading && _error == null && _branches.isNotEmpty)
+          FilledButton.icon(
+            onPressed: (_selectedBranch == null || _selectedRole == null)
+                ? null
+                : () {
+                    Navigator.pop(context);
+                    widget.officerBloc.add(
+                      OfficerReassignBranchRequested(
+                        userId: widget.officer.userId,
+                        fromBranchId: widget.officer.branchId,
+                        toBranchId: _selectedBranch!.id,
+                        orgRoleId: _selectedRole!.id,
+                      ),
+                    );
+                  },
+            icon: const Icon(Icons.swap_horiz, size: 18),
+            label: const Text('Transfer'),
+          ),
+      ],
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Deactivate Confirmation Dialog
+// ═══════════════════════════════════════════════════════════════════
+
+class _DeactivateConfirmDialog extends StatefulWidget {
+  final String officerName;
+  const _DeactivateConfirmDialog({required this.officerName});
+
+  @override
+  State<_DeactivateConfirmDialog> createState() =>
+      _DeactivateConfirmDialogState();
+}
+
+class _DeactivateConfirmDialogState extends State<_DeactivateConfirmDialog> {
+  final _controller = TextEditingController();
+  bool _matches = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      final match = _controller.text.trim() == widget.officerName.trim();
+      if (match != _matches) setState(() => _matches = match);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final errorColor = scheme.error;
+
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: errorColor, size: 24),
+          const SizedBox(width: 10),
+          const Text('Deactivate Officer'),
+        ],
+      ),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: errorColor.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: errorColor.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'This action is permanent.',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: errorColor,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Deactivating ${widget.officerName} will revoke all '
+                    'platform access. This cannot be undone.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              "To confirm, type the officer's name:",
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.officerName,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.w700,
+                color: errorColor,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: 'Type name here',
+                border: const OutlineInputBorder(),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(
+                    color: _matches ? errorColor : scheme.primary,
+                    width: 2,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: _matches
+                ? errorColor
+                : scheme.surfaceContainerHighest,
+            foregroundColor: _matches
+                ? scheme.onError
+                : scheme.onSurfaceVariant,
+          ),
+          onPressed: _matches ? () => Navigator.pop(context, true) : null,
+          icon: const Icon(Icons.cancel_outlined, size: 18),
+          label: const Text('Deactivate'),
+        ),
+      ],
+    );
+  }
+}
+
+
+// === FILE: lib/features/officer/presentation/pages/officer_form_page.dart ===
+// lib/features/officer/presentation/pages/officer_form_page.dart
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../organization/domain/entities/branch_entity.dart';
+import '../../../organization/domain/entities/org_role_entity.dart';
+import '../../../organization/presentation/bloc/organization_bloc.dart';
+import '../../../organization/presentation/bloc/organization_event.dart';
+import '../../../organization/presentation/bloc/organization_state.dart';
+import '../enums/officer_form_node.dart';
+import '../bloc/officer_bloc.dart';
+import '../bloc/officer_event.dart';
+import '../bloc/officer_state.dart';
+import '../../domain/usecases/create_officer_usecase.dart';
+
+class OfficerFormPage extends StatefulWidget {
+  final OfficerFormNode mode;
+  final String? id;
+  const OfficerFormPage({
+    super.key,
+    this.mode = OfficerFormNode.create,
+    this.id,
+  });
+
+  @override
+  State<OfficerFormPage> createState() => _OfficerFormPageState();
+}
+
+class _OfficerFormPageState extends State<OfficerFormPage> {
+  final _formKey = GlobalKey<FormState>();
+
+  // Problem #1 fix: field is "Full Name", maps to actor.display_name.
+  // Label updated from "Username / Full Name" → "Full Name".
+  final _fullNameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPassController = TextEditingController();
+
+  // Problem #2 fix: default ON — officers always get a login account.
+  // The switch is kept so admin can optionally defer (e.g. bulk import),
+  // but the recommended default is enabled.
+  bool _enableAppLogin = true;
+  bool _obscurePassword = true;
+  bool _obscureConfirm = true;
+
+  OrgRoleEntity? _selectedRole;
+  BranchEntity? _selectedBranch;
+
+  List<BranchEntity> _branches = [];
+  List<OrgRoleEntity> _roles = [];
+  bool _branchesLoaded = false;
+  bool _rolesLoaded = false;
+
+  bool _isSubmitting = false;
+  bool _fieldsPopulated = false;
+  bool get _isEdit => widget.mode == OfficerFormNode.edit;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final orgBloc = context.read<OrganizationBloc>();
+      orgBloc.add(BranchesLoadRequested());
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) orgBloc.add(RolesLoadRequested());
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _fullNameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _passwordController.dispose();
+    _confirmPassController.dispose();
+    super.dispose();
+  }
+
+  void _populateFields(OfficerState state) {
+    if (_isEdit && !_fieldsPopulated && state is OfficerDetailLoaded) {
+      // Problem #1 fix: populate from displayName (actor.display_name).
+      _fullNameController.text = state.item.displayName;
+      _emailController.text = state.item.email;
+      _phoneController.text = state.item.phone ?? '';
+      try {
+        _selectedRole = _roles.firstWhere((r) => r.id == state.item.orgRoleId);
+      } catch (_) {
+        _selectedRole = null;
+      }
+      _fieldsPopulated = true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isWide = MediaQuery.of(context).size.width >= 600;
+
+    return Scaffold(
+      appBar: AppBar(title: Text(_isEdit ? 'Edit Officer' : 'New Officer')),
+      body: MultiBlocListener(
+        listeners: [
+          BlocListener<OrganizationBloc, OrganizationState>(
+            listener: (context, state) {
+              if (state is BranchesLoaded) {
+                setState(() {
+                  _branches = state.branches;
+                  _branchesLoaded = true;
+                });
+              }
+              if (state is RolesLoaded) {
+                setState(() {
+                  _roles = state.roles;
+                  _rolesLoaded = true;
+                });
+              }
+            },
+          ),
+          BlocListener<OfficerBloc, OfficerState>(
+            listener: (context, state) {
+              if (state is OfficerDetailLoaded) {
+                setState(() => _populateFields(state));
+              }
+              if (state is OfficerOperationSuccess) {
+                setState(() => _isSubmitting = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(state.message),
+                    backgroundColor: Colors.green.shade700,
+                  ),
+                );
+                Navigator.of(context).pop(true);
+              }
+              if (state is OfficerFailure) {
+                setState(() => _isSubmitting = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(state.message),
+                    backgroundColor: scheme.error,
+                  ),
+                );
+              }
+            },
+          ),
+        ],
+        child: BlocBuilder<OfficerBloc, OfficerState>(
+          builder: (context, officerState) {
+            if (_isEdit &&
+                officerState is OfficerLoading &&
+                !_fieldsPopulated) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            return Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isWide
+                      ? MediaQuery.of(context).size.width * 0.1
+                      : 16,
+                  vertical: 16,
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // ── Row 1: Full Name + Email ──────────────────────
+                      if (isWide)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: _buildFullNameField()),
+                            const SizedBox(width: 16),
+                            Expanded(child: _buildEmailField()),
+                          ],
+                        )
+                      else ...[
+                        _buildFullNameField(),
+                        const SizedBox(height: 16),
+                        _buildEmailField(),
+                      ],
+                      const SizedBox(height: 16),
+
+                      // ── Row 2: Phone + Role ───────────────────────────
+                      if (isWide)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: _buildPhoneField()),
+                            const SizedBox(width: 16),
+                            Expanded(child: _buildRoleDropdown()),
+                          ],
+                        )
+                      else ...[
+                        _buildPhoneField(),
+                        const SizedBox(height: 16),
+                        _buildRoleDropdown(),
+                      ],
+                      const SizedBox(height: 16),
+
+                      // ── Branch ────────────────────────────────────────
+                      if (!_isEdit)
+                        _buildBranchDropdown()
+                      else if (officerState is OfficerDetailLoaded)
+                        _buildBranchInfoRow(context, scheme, officerState),
+                      const SizedBox(height: 24),
+
+                      // ── App Login Credentials (create mode only) ──────
+                      if (!_isEdit) ...[
+                        _buildLoginSection(context, scheme),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // ── Submit ────────────────────────────────────────
+                      FilledButton.icon(
+                        onPressed: _isSubmitting ? null : _submit,
+                        icon: _isSubmitting
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Icon(_isEdit ? Icons.save : Icons.person_add),
+                        label: Text(
+                          _isEdit ? 'Save Changes' : 'Create Officer',
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // ── Field builders ────────────────────────────────────────
+
+  // Problem #1 fix: label is "Full Name", hint is a real person name.
+  Widget _buildFullNameField() => TextFormField(
+    controller: _fullNameController,
+    decoration: const InputDecoration(
+      labelText: 'Full Name *',
+      hintText: 'e.g. Celestine Msigwa',
+      border: OutlineInputBorder(),
+      prefixIcon: Icon(Icons.person_outlined),
+      helperText: 'Used as display name across all apps',
+    ),
+    textCapitalization: TextCapitalization.words,
+    validator: (v) {
+      if (v == null || v.trim().isEmpty) return 'Full name is required';
+      if (v.trim().length < 2) return 'At least 2 characters';
+      return null;
+    },
+  );
+
+  Widget _buildEmailField() => TextFormField(
+    controller: _emailController,
+    decoration: const InputDecoration(
+      labelText: 'Email *',
+      hintText: 'officer@barickpharmacy.co.tz',
+      border: OutlineInputBorder(),
+      prefixIcon: Icon(Icons.email_outlined),
+      helperText: 'Used for login',
+    ),
+    keyboardType: TextInputType.emailAddress,
+    validator: (v) {
+      if (v == null || v.trim().isEmpty) return 'Email is required';
+      if (!v.contains('@')) return 'Enter a valid email';
+      return null;
+    },
+  );
+
+  Widget _buildPhoneField() => TextFormField(
+    controller: _phoneController,
+    decoration: const InputDecoration(
+      labelText: 'Phone Number *',
+      hintText: '+255 7XX XXX XXX',
+      border: OutlineInputBorder(),
+      prefixIcon: Icon(Icons.phone_outlined),
+    ),
+    keyboardType: TextInputType.phone,
+    validator: (v) {
+      if (v == null || v.trim().isEmpty) return 'Phone is required';
+      return null;
+    },
+  );
+
+  Widget _buildRoleDropdown() => DropdownButtonFormField<OrgRoleEntity>(
+    value: _selectedRole,
+    decoration: InputDecoration(
+      labelText: 'Role *',
+      border: const OutlineInputBorder(),
+      prefixIcon: const Icon(Icons.badge_outlined),
+      suffixIcon: !_rolesLoaded
+          ? const Padding(
+              padding: EdgeInsets.all(12),
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          : null,
+    ),
+    items: _roles
+        .map((r) => DropdownMenuItem(value: r, child: Text(r.name)))
+        .toList(),
+    onChanged: _rolesLoaded ? (v) => setState(() => _selectedRole = v) : null,
+    validator: (v) => v == null ? 'Role is required' : null,
+  );
+
+  Widget _buildBranchDropdown() => DropdownButtonFormField<BranchEntity>(
+    value: _selectedBranch,
+    decoration: InputDecoration(
+      labelText: 'Branch *',
+      hintText: 'Assign to a branch',
+      border: const OutlineInputBorder(),
+      prefixIcon: const Icon(Icons.business_outlined),
+      helperText: 'Officer will report to this branch',
+      suffixIcon: !_branchesLoaded
+          ? const Padding(
+              padding: EdgeInsets.all(12),
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          : null,
+    ),
+    items: _branches
+        .map((b) => DropdownMenuItem(value: b, child: Text(b.name)))
+        .toList(),
+    onChanged: _branchesLoaded
+        ? (v) => setState(() => _selectedBranch = v)
+        : null,
+    validator: (v) => v == null ? 'Branch is required' : null,
+  );
+
+  Widget _buildBranchInfoRow(
+    BuildContext context,
+    ColorScheme scheme,
+    OfficerDetailLoaded state,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(4),
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.business_outlined,
+            color: scheme.onSurfaceVariant,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Branch',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                Text(
+                  state.item.branchName ?? state.item.branchId,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
+          Tooltip(
+            message:
+                'Use "Transfer Branch" on the detail page to change branch',
+            child: Icon(
+              Icons.lock_outline,
+              size: 16,
+              color: scheme.outlineVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Problem #2 fix: login section — always visible on create mode.
+  // Toggle lets admin defer, but default is ON.
+  Widget _buildLoginSection(BuildContext context, ColorScheme scheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(),
+        const SizedBox(height: 8),
+        Text(
+          'Officer App Login',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: scheme.primary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        SwitchListTile(
+          value: _enableAppLogin,
+          title: const Text('Create login account now'),
+          subtitle: const Text(
+            'Officer can log into the Officer App immediately with these credentials',
+          ),
+          onChanged: (v) => setState(() => _enableAppLogin = v),
+          contentPadding: EdgeInsets.zero,
+        ),
+        if (_enableAppLogin) ...[
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _passwordController,
+            obscureText: _obscurePassword,
+            decoration: InputDecoration(
+              labelText: 'Password *',
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.lock_outline),
+              helperText: 'Minimum 8 characters',
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                ),
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
+              ),
+            ),
+            validator: (v) {
+              if (!_enableAppLogin) return null;
+              if (v == null || v.isEmpty) return 'Password is required';
+              if (v.length < 8) return 'At least 8 characters';
+              return null;
+            },
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _confirmPassController,
+            obscureText: _obscureConfirm,
+            decoration: InputDecoration(
+              labelText: 'Confirm Password *',
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.lock_outline),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscureConfirm ? Icons.visibility_off : Icons.visibility,
+                ),
+                onPressed: () =>
+                    setState(() => _obscureConfirm = !_obscureConfirm),
+              ),
+            ),
+            validator: (v) {
+              if (!_enableAppLogin) return null;
+              if (v != _passwordController.text)
+                return 'Passwords do not match';
+              return null;
+            },
+          ),
+        ],
+      ],
+    );
+  }
+
+  // ── Submit ────────────────────────────────────────────────
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSubmitting = true);
+
+    if (_isEdit) {
+      final currentState = context.read<OfficerBloc>().state;
+      if (currentState is OfficerDetailLoaded) {
+        context.read<OfficerBloc>().add(
+          OfficerUpdateRequested(
+            currentState.item.copyWith(
+              // Problem #1 fix: update fullName, not username.
+              fullName: _fullNameController.text.trim(),
+              email: _emailController.text.trim(),
+              phone: _phoneController.text.trim(),
+              orgRoleId: _selectedRole?.id,
+              orgRoleName: _selectedRole?.name,
+            ),
+          ),
+        );
+      } else {
+        setState(() => _isSubmitting = false);
+      }
+      return;
+    }
+
+    // ── Create mode ───────────────────────────────────────────
+    // Problem #2 fix: dispatch fullName + password so backend creates
+    // a real User account the officer can log in with immediately.
+    context.read<OfficerBloc>().add(
+      OfficerCreateRequested(
+        CreateOfficerParams(
+          fullName: _fullNameController.text.trim(),
+          email: _emailController.text.trim(),
+          password: _enableAppLogin
+              ? _passwordController.text
+              : _generateTempPassword(),
+          passwordConfirmation: _enableAppLogin
+              ? _confirmPassController.text
+              : _passwordController.text,
+          phone: _phoneController.text.trim(),
+          branchId: _selectedBranch!.id,
+          orgRoleId: _selectedRole!.id,
+        ),
+      ),
+    );
+  }
+
+  /// When the admin toggles off "Create login account now", we still need
+  /// a password to satisfy the backend (officer can reset later via email).
+  /// Generate a secure random one they'll never see.
+  String _generateTempPassword() {
+    const chars =
+        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#\$';
+    final rand = List.generate(
+      16,
+      (i) =>
+          chars[(DateTime.now().microsecondsSinceEpoch + i * 7) % chars.length],
+    );
+    return rand.join();
+  }
+}
+
+
+// === FILE: lib/features/officer/presentation/pages/officer_list_page.dart ===
+// lib/features/officer/presentation/pages/officer_list_page.dart
+//
+// FIX 1: _navigateToDetail now accepts the full OfficerEntity so it can
+// pass branchId as route extra → router forwards it to OfficerLoadOneRequested.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../../domain/entities/officer_entity.dart';
+import '../bloc/officer_bloc.dart';
+import '../bloc/officer_event.dart';
+import '../bloc/officer_state.dart';
+import '../widgets/officer_card_tile.dart';
+import '../widgets/officer_list_row.dart';
+import '../widgets/officer_table_row.dart';
+
+enum _ViewMode { cards, list, details }
+
+class OfficerListPage extends StatefulWidget {
+  const OfficerListPage({super.key});
+  @override
+  State<OfficerListPage> createState() => _OfficerListPageState();
+}
+
+class _OfficerListPageState extends State<OfficerListPage> {
+  _ViewMode _viewMode = _ViewMode.cards;
+
+  @override
+  void initState() {
+    super.initState();
+    context.read<OfficerBloc>().add(OfficerLoadAllRequested());
+  }
+
+  // FIX: receive full entity so we can forward branchId as route extra.
+  void _navigateToDetail(OfficerEntity item) => context.push(
+    AppRouter.officerDetailPath(item.userId),
+    extra: {'branchId': item.branchId},
+  );
+
+  void _deleteOfficer(String userId, String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove Officer?'),
+        content: Text('Remove "$name"? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      context.read<OfficerBloc>().add(OfficerDeleteRequested(userId));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Marketing Officers'),
+        actions: [_buildViewToggle(scheme), const SizedBox(width: 8)],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push(AppRouter.officerCreate),
+        child: const Icon(Icons.person_add),
+      ),
+      body: BlocConsumer<OfficerBloc, OfficerState>(
+        listener: (context, state) {
+          if (state is OfficerOperationSuccess) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+            context.read<OfficerBloc>().add(OfficerLoadAllRequested());
+          }
+          if (state is OfficerFailure) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: scheme.error,
+              ),
+            );
+          }
+        },
+        builder: (context, state) {
+          if (state is OfficerLoading || state is OfficerInitial) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (state is OfficerEmpty) return _buildEmpty(context, scheme);
+          if (state is OfficerFailure) {
+            return _buildError(context, scheme, state.message);
+          }
+          if (state is OfficerListLoaded) {
+            return RefreshIndicator(
+              onRefresh: () async =>
+                  context.read<OfficerBloc>().add(OfficerLoadAllRequested()),
+              child: _buildView(state.items),
+            );
+          }
+          return const SizedBox.shrink();
+        },
+      ),
+    );
+  }
+
+  Widget _buildViewToggle(ColorScheme scheme) {
+    const modes = [
+      (_ViewMode.cards, Icons.dashboard_outlined, 'Cards'),
+      (_ViewMode.list, Icons.view_list_outlined, 'List'),
+      (_ViewMode.details, Icons.table_rows_outlined, 'Details'),
+    ];
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      padding: const EdgeInsets.all(2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: modes.map((m) {
+          final selected = m.$1 == _viewMode;
+          return Tooltip(
+            message: m.$3,
+            child: GestureDetector(
+              onTap: () => setState(() => _viewMode = m.$1),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: selected ? scheme.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  m.$2,
+                  size: 18,
+                  color: selected ? scheme.onPrimary : scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildView(List<OfficerEntity> items) => switch (_viewMode) {
+    _ViewMode.cards => _buildCardsView(items),
+    _ViewMode.list => _buildListView(items),
+    _ViewMode.details => _buildDetailsView(items),
+  };
+
+  Widget _buildCardsView(List<OfficerEntity> items) {
+    final width = MediaQuery.of(context).size.width;
+    if (width >= 1024) {
+      return GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: width >= 1200 ? 3 : 2,
+          childAspectRatio: 2.4,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 0,
+        ),
+        itemCount: items.length,
+        itemBuilder: (_, i) => OfficerCardTile(
+          item: items[i],
+          onTap: () => _navigateToDetail(items[i]),
+          onDelete: () => _deleteOfficer(items[i].userId, items[i].displayName),
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: items.length,
+      itemBuilder: (_, i) => OfficerCardTile(
+        item: items[i],
+        onTap: () => _navigateToDetail(items[i]),
+        onDelete: () => _deleteOfficer(items[i].userId, items[i].displayName),
+      ),
+    );
+  }
+
+  Widget _buildListView(List<OfficerEntity> items) => ListView.builder(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    itemCount: items.length,
+    itemBuilder: (_, i) => OfficerListRow(
+      item: items[i],
+      onTap: () => _navigateToDetail(items[i]),
+      onDelete: () => _deleteOfficer(items[i].userId, items[i].displayName),
+    ),
+  );
+
+  Widget _buildDetailsView(List<OfficerEntity> items) {
+    final scheme = Theme.of(context).colorScheme;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 44),
+                const SizedBox(width: 12),
+                Expanded(flex: 3, child: Text('Name', style: _headerStyle)),
+                Expanded(flex: 2, child: Text('Role', style: _headerStyle)),
+                Expanded(flex: 2, child: Text('Phone', style: _headerStyle)),
+                Expanded(flex: 1, child: Text('Status', style: _headerStyle)),
+                const SizedBox(width: 40),
+              ],
+            ),
+          ),
+          ...items.asMap().entries.map(
+            (e) => OfficerTableRow(
+              item: e.value,
+              isLast: e.key == items.length - 1,
+              onTap: () => _navigateToDetail(e.value),
+              onDelete: () =>
+                  _deleteOfficer(e.value.userId, e.value.displayName),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  TextStyle get _headerStyle => TextStyle(
+    fontSize: 11,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 0.5,
+    color: Theme.of(context).colorScheme.onSurfaceVariant,
+  );
+
+  Widget _buildEmpty(BuildContext context, ColorScheme scheme) => Center(
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.people_outline, size: 64, color: scheme.outlineVariant),
+        const SizedBox(height: 16),
+        Text(
+          'No officers yet.',
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Tap + to add your first officer.',
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildError(BuildContext context, ColorScheme scheme, String msg) =>
+      Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: scheme.error),
+            const SizedBox(height: 16),
+            Text(msg, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () =>
+                  context.read<OfficerBloc>().add(OfficerLoadAllRequested()),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+}
+
+
+// === FILE: lib/features/officer/presentation/widgets/officer_avatar.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/value_objects/officer_status.dart';
+
+class OfficerAvatar extends StatelessWidget {
+  final String name;
+  final String status;
+  final double radius;
+  const OfficerAvatar({super.key, required this.name, required this.status, this.radius = 22});
+
+  String get _initials {
+    final parts = name.trim().split(' ');
+    if (parts.length >= 2) return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    return name.isNotEmpty ? name[0].toUpperCase() : '?';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final statusColor = OfficerStatusX.fromString(status).color;
+    return Container(
+      decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: statusColor, width: 2.5)),
+      child: CircleAvatar(radius: radius, backgroundColor: scheme.primaryContainer.withValues(alpha: 0.5),
+        child: Text(_initials, style: TextStyle(fontSize: radius * 0.7, fontWeight: FontWeight.w700, color: scheme.primary))),
+    );
+  }
+}
+
+
+// === FILE: lib/features/officer/presentation/widgets/officer_card.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/entities/officer_entity.dart';
+import '../../domain/value_objects/officer_status.dart';
+import 'officer_status_badge.dart';
+
+class OfficerCard extends StatelessWidget {
+  final OfficerEntity item;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+  const OfficerCard({super.key, required this.item, required this.onTap, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        onTap: onTap,
+        title: Text(item.displayName, style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
+        subtitle: Text(item.orgRoleName ?? ''),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          OfficerStatusBadge(status: OfficerStatusX.fromString(item.effectiveStatus), compact: true),
+          const SizedBox(width: 8),
+          IconButton(icon: Icon(Icons.delete_outline, color: scheme.error), tooltip: 'Delete',
+            onPressed: () => _confirmDelete(context)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(context: context, builder: (_) => AlertDialog(
+      title: const Text('Delete?'), content: Text('Remove "${item.displayName}"? This cannot be undone.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+          onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+      ],
+    ));
+    if (confirmed == true) onDelete();
+  }
+}
+
+
+// === FILE: lib/features/officer/presentation/widgets/officer_card_tile.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/entities/officer_entity.dart';
+import '../../domain/value_objects/officer_status.dart';
+import 'officer_avatar.dart';
+import 'officer_status_badge.dart';
+
+class OfficerCardTile extends StatelessWidget {
+  final OfficerEntity item;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+  const OfficerCardTile({super.key, required this.item, required this.onTap, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final statusEnum = OfficerStatusX.fromString(item.effectiveStatus);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(16),
+        child: Padding(padding: const EdgeInsets.all(16), child: Row(children: [
+          OfficerAvatar(name: item.displayName, status: item.effectiveStatus, radius: 26),
+          const SizedBox(width: 16),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text(item.displayName, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                maxLines: 1, overflow: TextOverflow.ellipsis)),
+              OfficerStatusBadge(status: statusEnum, compact: true),
+            ]),
+            const SizedBox(height: 4),
+            Text(item.orgRoleName ?? '', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Row(children: [
+              Icon(Icons.email_outlined, size: 14, color: scheme.onSurfaceVariant), const SizedBox(width: 4),
+              Expanded(child: Text(item.email, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                maxLines: 1, overflow: TextOverflow.ellipsis)),
+            ]),
+            const SizedBox(height: 2),
+            Row(children: [
+              Icon(Icons.phone_outlined, size: 14, color: scheme.onSurfaceVariant), const SizedBox(width: 4),
+              Text(item.phone ?? '', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+            ]),
+          ])),
+          const SizedBox(width: 4),
+          IconButton(icon: Icon(Icons.delete_outline, color: scheme.error, size: 20), tooltip: 'Delete', onPressed: onDelete),
+        ]))),
+    );
+  }
+}
+
+
+// === FILE: lib/features/officer/presentation/widgets/officer_list_row.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/entities/officer_entity.dart';
+import '../../domain/value_objects/officer_status.dart';
+import 'officer_avatar.dart';
+import 'officer_status_badge.dart';
+
+class OfficerListRow extends StatelessWidget {
+  final OfficerEntity item;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+  const OfficerListRow({super.key, required this.item, required this.onTap, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final statusEnum = OfficerStatusX.fromString(item.effectiveStatus);
+    return Padding(padding: const EdgeInsets.only(bottom: 2), child: Material(color: Colors.transparent,
+      child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(10),
+        child: Padding(padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Row(children: [
+          OfficerAvatar(name: item.displayName, status: item.effectiveStatus, radius: 18),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(item.displayName, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(item.orgRoleName ?? '', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+          ])),
+          OfficerStatusBadge(status: statusEnum, compact: true),
+          const SizedBox(width: 4),
+          SizedBox(width: 36, child: IconButton(icon: Icon(Icons.delete_outline, color: scheme.error, size: 18),
+            onPressed: onDelete, padding: EdgeInsets.zero, constraints: const BoxConstraints())),
+        ])))));
+  }
+}
+
+
+// === FILE: lib/features/officer/presentation/widgets/officer_status_badge.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/value_objects/officer_status.dart';
+
+class OfficerStatusBadge extends StatelessWidget {
+  final OfficerStatus status;
+  final bool compact;
+  const OfficerStatusBadge({super.key, required this.status, this.compact = false});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 10, vertical: compact ? 2 : 4),
+      decoration: BoxDecoration(
+        color: status.color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: status.color.withValues(alpha: 0.4)),
+      ),
+      child: Text(status.displayName, style: TextStyle(
+        color: status.color, fontSize: compact ? 10 : 12, fontWeight: FontWeight.w600, letterSpacing: 0.3,
+      )),
+    );
+  }
+}
+
+
+// === FILE: lib/features/officer/presentation/widgets/officer_table_row.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/entities/officer_entity.dart';
+import '../../domain/value_objects/officer_status.dart';
+import 'officer_avatar.dart';
+import 'officer_status_badge.dart';
+
+class OfficerTableRow extends StatelessWidget {
+  final OfficerEntity item;
+  final bool isLast;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+  const OfficerTableRow({super.key, required this.item, required this.isLast, required this.onTap, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final statusEnum = OfficerStatusX.fromString(item.effectiveStatus);
+    return InkWell(onTap: onTap, child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(border: Border(bottom: isLast ? BorderSide.none : BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.3)))),
+      child: Row(children: [
+        OfficerAvatar(name: item.displayName, status: item.effectiveStatus, radius: 16),
+        const SizedBox(width: 12),
+        Expanded(flex: 3, child: Text(item.displayName, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)),
+        Expanded(flex: 2, child: Text(item.orgRoleName ?? '', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis)),
+        Expanded(flex: 2, child: Text(item.phone ?? '', style: Theme.of(context).textTheme.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis)),
+        Expanded(flex: 1, child: OfficerStatusBadge(status: statusEnum, compact: true)),
+        SizedBox(width: 40, child: IconButton(icon: Icon(Icons.delete_outline, color: scheme.error, size: 18), onPressed: onDelete, padding: EdgeInsets.zero)),
+      ]),
+    ));
+  }
+}
+
+

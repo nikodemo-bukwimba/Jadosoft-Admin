@@ -22,6 +22,8 @@ class UpdateOfficerUseCase
         p.entity.userId,
         orgRoleId: p.entity.orgRoleId,
         status: p.entity.membershipStatus,
-        branchId: p.entity.branchId, // use officer's actual branch
+        branchId: p.entity.branchId,
+        name: p.entity.fullName.isNotEmpty ? p.entity.fullName : null,
+        phone: p.entity.phone,
       );
 }

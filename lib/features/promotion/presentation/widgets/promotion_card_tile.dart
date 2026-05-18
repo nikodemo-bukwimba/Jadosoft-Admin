@@ -2,6 +2,8 @@
 // Removed all references to PromotionMockDataSource.productName().
 // Product IDs are displayed as-is on the card chips until the Product
 // feature (Seq 7) provides a name cache.
+//
+// UPDATED: Shows discount percentage badge when discountPercentage is set.
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +11,7 @@ import '../../data/models/promotion_model.dart';
 import '../../domain/entities/promotion_entity.dart';
 import '../../domain/value_objects/promotion_status.dart';
 import '../widgets/promotion_status_badge.dart';
+import 'promotion_product_names.dart';
 
 class PromotionCardTile extends StatelessWidget {
   final PromotionEntity item;
@@ -21,6 +24,7 @@ class PromotionCardTile extends StatelessWidget {
     final isActive = status == PromotionStatus.active;
     final isDraft = status == PromotionStatus.draft;
     final model = item is PromotionModel ? item as PromotionModel : null;
+    final hasDiscount = item.discountPercentage != null;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -42,7 +46,7 @@ class PromotionCardTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
+              // ── Header ──────────────────────────────────────
               Row(
                 children: [
                   Container(
@@ -52,7 +56,9 @@ class PromotionCardTile extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
-                      Icons.campaign_outlined,
+                      hasDiscount
+                          ? Icons.local_offer_outlined
+                          : Icons.campaign_outlined,
                       size: 20,
                       color: status.color,
                     ),
@@ -79,10 +85,16 @@ class PromotionCardTile extends StatelessWidget {
                       ],
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  // ── Discount badge ─────────────────────────
+                  if (hasDiscount)
+                    _DiscountBadge(percentage: item.discountPercentage!),
+                  if (hasDiscount) const SizedBox(width: 6),
                   PromotionStatusBadge(status: status, compact: true),
                 ],
               ),
-              // Description
+
+              // ── Description ──────────────────────────────
               if (item.description != null) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -96,26 +108,17 @@ class PromotionCardTile extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 10),
-              // Products — show count chip + first 2 IDs
-              // Names will be enriched when Product feature (Seq 7) is live
-              if (item.productIds.isNotEmpty)
-                Wrap(
-                  spacing: 5,
-                  runSpacing: 4,
-                  children: [
-                    ...item.productIds.take(2).map((id) => _productChip(id, theme)),
-                    if (item.productIds.length > 2)
-                      _productChip('+${item.productIds.length - 2} more', theme),
-                  ],
-                ),
+
+              // ── Products ─────────────────────────────────
+              if (item.productIds.isNotEmpty) _productNamesChip(theme),
               const SizedBox(height: 10),
-              // Footer
+
+              // ── Footer ───────────────────────────────────
               Row(
                 children: [
                   ..._channelIcons(item.channels, theme),
                   const Spacer(),
-                  if (!isDraft && model != null)
-                    _broadcastCount(model, theme),
+                  if (!isDraft && model != null) _broadcastCount(model, theme),
                 ],
               ),
             ],
@@ -125,16 +128,15 @@ class PromotionCardTile extends StatelessWidget {
     );
   }
 
-  Widget _productChip(String label, ThemeData theme) {
+  Widget _productNamesChip(ThemeData theme) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(
-        label,
+      child: PromotionProductNames(
+        productIds: item.productIds,
         style: theme.textTheme.labelSmall?.copyWith(fontSize: 10),
       ),
     );
@@ -145,18 +147,17 @@ class PromotionCardTile extends StatelessWidget {
       final icon = c == 'sms'
           ? Icons.sms_outlined
           : c == 'whatsapp'
-              ? Icons.chat_outlined
-              : Icons.notifications_outlined;
+          ? Icons.chat_outlined
+          : Icons.notifications_outlined;
       final color = c == 'sms'
           ? Colors.orange
           : c == 'whatsapp'
-              ? const Color(0xFF25D366)
-              : Colors.indigo;
+          ? const Color(0xFF25D366)
+          : Colors.indigo;
       return Padding(
         padding: const EdgeInsets.only(right: 6),
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
           decoration: BoxDecoration(
             color: color.withOpacity(0.10),
             borderRadius: BorderRadius.circular(12),
@@ -171,12 +172,13 @@ class PromotionCardTile extends StatelessWidget {
                 c == 'sms'
                     ? 'SMS'
                     : c == 'whatsapp'
-                        ? 'WhatsApp'
-                        : 'In-App',
+                    ? 'WhatsApp'
+                    : 'In-App',
                 style: TextStyle(
-                    fontSize: 10,
-                    color: color,
-                    fontWeight: FontWeight.w600),
+                  fontSize: 10,
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -191,9 +193,11 @@ class PromotionCardTile extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.people_outline,
-            size: 13,
-            color: theme.colorScheme.onSurfaceVariant),
+        Icon(
+          Icons.people_outline,
+          size: 13,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
         const SizedBox(width: 4),
         Text(
           '$count customers reached',
@@ -207,9 +211,51 @@ class PromotionCardTile extends StatelessWidget {
 
   String _fmtDate(DateTime d) {
     const m = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${m[d.month - 1]} ${d.day}';
+  }
+}
+
+// ─── Discount Badge ────────────────────────────────────────────────────────
+
+class _DiscountBadge extends StatelessWidget {
+  final double percentage;
+  const _DiscountBadge({required this.percentage});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = percentage % 1 == 0
+        ? '${percentage.toInt()}% OFF'
+        : '${percentage.toStringAsFixed(1)}% OFF';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.deepOrange.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.deepOrange.withOpacity(0.4)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 10,
+          color: Colors.deepOrange,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
   }
 }

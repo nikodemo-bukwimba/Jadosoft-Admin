@@ -6,7 +6,16 @@ import '../repositories/customer_repository.dart';
 
 class UpdateCustomerParams {
   final CustomerEntity entity;
-  const UpdateCustomerParams({required this.entity});
+  final String? contactName;
+  final String? contactPhone;
+  final String? contactRole;
+
+  const UpdateCustomerParams({
+    required this.entity,
+    this.contactName,
+    this.contactPhone,
+    this.contactRole,
+  });
 }
 
 class UpdateCustomerUseCase
@@ -18,6 +27,7 @@ class UpdateCustomerUseCase
   Future<Either<Failure, CustomerEntity>> call(UpdateCustomerParams p) =>
       repository.update(p.entity.id, {
         'name': p.entity.name,
+        'customer_type': p.entity.customerType,
         'category': p.entity.category,
         'tier': p.entity.tier,
         if (p.entity.assignedOfficerId != null &&
@@ -36,5 +46,11 @@ class UpdateCustomerUseCase
         'receives_whatsapp': p.entity.receivesWhatsapp,
         'receives_sms': p.entity.receivesSms,
         'receives_in_app': p.entity.receivesInApp,
+        if (p.contactName != null && p.contactName!.isNotEmpty)
+          'contact_name': p.contactName,
+        if (p.contactPhone != null && p.contactPhone!.isNotEmpty)
+          'contact_phone': p.contactPhone,
+        if (p.contactRole != null && p.contactRole!.isNotEmpty)
+          'contact_role': p.contactRole,
       });
 }

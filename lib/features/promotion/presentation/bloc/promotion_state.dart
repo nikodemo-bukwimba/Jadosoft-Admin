@@ -27,3 +27,4 @@ class PromotionFailure extends PromotionState {
   final String message;
   PromotionFailure(this.message);
 }
+class PromotionSubmitting extends PromotionState {}

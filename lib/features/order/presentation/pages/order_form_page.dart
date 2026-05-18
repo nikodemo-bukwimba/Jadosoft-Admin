@@ -1,4 +1,6 @@
-﻿import 'package:flutter/material.dart';
+﻿//Origin
+
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../enums/order_form_node.dart';
@@ -12,6 +14,9 @@ import '../../../customer/domain/repositories/customer_repository.dart';
 import '../../../customer/data/models/customer_model.dart';
 import '../../../product/domain/repositories/product_repository.dart';
 import '../../../product/data/models/product_model.dart';
+import '../../../promotion/domain/repositories/promotion_repository.dart';
+import '../../../product/domain/services/client_promotion_pricing_service.dart';
+import '../../../inventory/domain/usecases/get_variant_stock_usecase.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OrderFormPage — Manual order creation / edit
@@ -36,6 +41,7 @@ class _OrderFormPageState extends State<OrderFormPage> {
 
   List<CustomerModel> _customers = [];
   List<ProductModel> _products = [];
+  final Map<String, int> _liveStock = {};
   CustomerModel? _selectedCustomer;
   final List<_OrderLineItem> _lineItems = [];
 
@@ -59,18 +65,44 @@ class _OrderFormPageState extends State<OrderFormPage> {
 
       if (!mounted) return;
 
+      // ── Customers ──────────────────────────────────────────
+      final customers = customerResult.fold(
+        (_) => <CustomerModel>[],
+        (page) => page.items.whereType<CustomerModel>().toList(),
+      );
+
+      // ── Products (base list — never fails the form) ────────
+      List<ProductModel> products = productResult.fold(
+        (_) => <ProductModel>[],
+        (list) => list
+            .whereType<ProductModel>()
+            .where((p) => p.isAvailable && p.status != 'archived')
+            .toList(),
+      );
+
+      // ── Promotion decoration (best-effort, non-fatal) ──────
+      try {
+        final promoRepo = sl<PromotionRepository>();
+        final pricingService = const ClientPromotionPricingService();
+        final promoResult = await promoRepo.getAll();
+
+        promoResult.fold(
+          (_) => null, // promotions unavailable — keep plain products
+          (promos) {
+            products = pricingService
+                .decorateProducts(products, promos)
+                .whereType<ProductModel>()
+                .toList();
+          },
+        );
+      } catch (_) {
+        // PromotionRepository not registered or network error —
+        // products already loaded above, just skip decoration.
+      }
+
       setState(() {
-        _customers = customerResult.fold(
-          (_) => [],
-          (page) => page.items.whereType<CustomerModel>().toList(),
-        );
-        _products = productResult.fold(
-          (_) => [],
-          (list) => list
-              .whereType<ProductModel>()
-              .where((p) => p.isAvailable && p.status != 'archived')
-              .toList(),
-        );
+        _customers = customers;
+        _products = products;
         _loadingLookups = false;
       });
 
@@ -82,8 +114,13 @@ class _OrderFormPageState extends State<OrderFormPage> {
     }
   }
 
-  double get _calculatedTotal =>
-      _lineItems.fold(0.0, (sum, e) => sum + e.product.price * e.quantity);
+  // double get _calculatedTotal =>
+  //     _lineItems.fold(0.0, (sum, e) => sum + e.product.price * e.quantity);
+
+  double get _calculatedTotal => _lineItems.fold(
+    0.0,
+    (sum, e) => sum + e.product.effectivePrice * e.quantity,
+  );
 
   @override
   void dispose() {
@@ -483,20 +520,56 @@ class _OrderFormPageState extends State<OrderFormPage> {
     );
   }
 
-  Future<int?> _showQtyDialog(ProductModel product) {
-    final available = product.quantityAvailable;
-    final maxQty = (available != null && available > 0) ? available : 999;
+  Future<int?> _showQtyDialog(ProductModel product) async {
+    // Capture context-dependent objects BEFORE any await
+    final messenger = ScaffoldMessenger.of(context);
+    final errorColor = Theme.of(context).colorScheme.error;
 
-    if (available != null && available == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${product.name} is out of stock. Available: 0.'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
-      return Future.value(null);
+    int? available;
+    final variantId = product.variantId;
+
+    if (variantId != null) {
+      // Use cached value if already fetched this session
+      if (_liveStock.containsKey(variantId)) {
+        available = _liveStock[variantId];
+      } else {
+        try {
+          final orgId = sl<OrgContext>().requireRootOrgId();
+          final result = await sl<GetVariantStockUseCase>()(
+            GetVariantStockParams(orgId: orgId, variantId: variantId),
+          );
+          result.fold(
+            (_) => null, // inventory unavailable — fall back to metadata
+            (stock) {
+              available = stock.totalStock;
+              _liveStock[variantId] = stock.totalStock; // cache it
+            },
+          );
+        } catch (_) {
+          // Inventory service unreachable — fall back to metadata
+        }
+      }
     }
 
+    // Fall back to product metadata if live stock unavailable
+    available ??= product.quantityAvailable;
+
+    // Pin to a final local — Dart can't promote variables assigned inside closures
+    final a = available;
+    final int maxQty = (a != null && a > 0) ? a : 999;
+
+    if (a != null && a == 0) {
+      if (!mounted) return null;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('${product.name} is out of stock. Available: 0.'),
+          backgroundColor: errorColor,
+        ),
+      );
+      return null;
+    }
+
+    final localAvailable = a; // used inside the dialog closure
     final controller = TextEditingController(text: '1');
     int qty = 1;
 
@@ -512,31 +585,48 @@ class _OrderFormPageState extends State<OrderFormPage> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                'TZS ${product.price.toStringAsFixed(0)} per unit',
-                style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+              if (product.isOnPromotion) ...[
+                Text(
+                  'TZS ${product.effectivePrice.toStringAsFixed(0)} per unit',
+                  style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(ctx).colorScheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
+                Text(
+                  'Was TZS ${product.price.toStringAsFixed(0)} · '
+                  '${product.discountPercentage!.toStringAsFixed(0)}% off',
+                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                    decoration: TextDecoration.lineThrough,
+                  ),
+                ),
+              ] else
+                Text(
+                  'TZS ${product.price.toStringAsFixed(0)} per unit',
+                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                  ),
+                ),
               const SizedBox(height: 4),
-              if (available != null)
+              if (localAvailable != null)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: available <= 10
+                    color: localAvailable <= 10
                         ? Colors.orange.withValues(alpha: 0.12)
                         : Colors.green.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    'Available: $available units',
+                    'Available: $localAvailable units',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: available <= 10
+                      color: localAvailable <= 10
                           ? Colors.orange.shade800
                           : Colors.green.shade700,
                     ),
@@ -558,7 +648,6 @@ class _OrderFormPageState extends State<OrderFormPage> {
                         : null,
                   ),
                   const SizedBox(width: 8),
-                  // ── Typing input ──────────────────────────────
                   SizedBox(
                     width: 72,
                     child: TextField(
@@ -581,7 +670,6 @@ class _OrderFormPageState extends State<OrderFormPage> {
                         if (parsed != null && parsed >= 1 && parsed <= maxQty) {
                           setS(() => qty = parsed);
                         } else if (parsed != null && parsed > maxQty) {
-                          // Clamp and correct the field
                           setS(() {
                             qty = maxQty;
                             controller.text = '$maxQty';
@@ -609,7 +697,7 @@ class _OrderFormPageState extends State<OrderFormPage> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Total: TZS ${(product.price * qty).toStringAsFixed(0)}',
+                'Total: TZS ${(product.effectivePrice * qty).toStringAsFixed(0)}',
                 style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(ctx).colorScheme.primary,
                   fontWeight: FontWeight.w600,
@@ -644,7 +732,11 @@ class _OrderFormPageState extends State<OrderFormPage> {
 
     // Inventory check
     for (final line in _lineItems) {
-      final available = line.product.quantityAvailable;
+      final available =
+          (line.product.variantId != null &&
+              _liveStock.containsKey(line.product.variantId))
+          ? _liveStock[line.product.variantId]
+          : line.product.quantityAvailable;
       if (available != null && available == 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -669,15 +761,33 @@ class _OrderFormPageState extends State<OrderFormPage> {
 
     setState(() => _isSubmitting = true);
 
+    // final items = _lineItems
+    //     .map(
+    //       (e) => {
+    //         'productId': e.product.id,
+    //         'variantId': e.product.variantId ?? e.product.id,
+    //         'name': e.product.name,
+    //         'unitPrice': e.product.price,
+    //         'qty': e.quantity,
+    //         'subtotal': e.product.price * e.quantity,
+    //       },
+    //     )
+    //     .toList();
+
     final items = _lineItems
         .map(
           (e) => {
             'productId': e.product.id,
             'variantId': e.product.variantId ?? e.product.id,
             'name': e.product.name,
-            'unitPrice': e.product.price,
+            'basePrice': e.product.price,
+            'unitPrice': e.product.effectivePrice,
             'qty': e.quantity,
-            'subtotal': e.product.price * e.quantity,
+            'subtotal': e.product.effectivePrice * e.quantity,
+            if (e.product.hasPromotion) ...{
+              'promotionId': e.product.promotionId,
+              'discountPercentage': e.product.discountPercentage,
+            },
           },
         )
         .toList();
@@ -724,7 +834,7 @@ class _OrderFormPageState extends State<OrderFormPage> {
           : null;
       final effectiveRef = [
         if (baseRef.isNotEmpty) baseRef,
-        if (mobileNote != null) mobileNote,
+        ?mobileNote,
       ].join('|');
 
       context.read<OrderBloc>().add(
@@ -851,7 +961,7 @@ class _LineItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final subtotal = item.product.price * item.quantity;
+    final subtotal = item.product.effectivePrice * item.quantity;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -866,13 +976,35 @@ class _LineItemRow extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                Text(
-                  'TZS ${item.product.price.toStringAsFixed(0)} × '
-                  '${item.quantity} = TZS ${subtotal.toStringAsFixed(0)}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                if (item.product.isOnPromotion)
+                  Row(
+                    children: [
+                      Text(
+                        'TZS ${item.product.price.toStringAsFixed(0)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          decoration: TextDecoration.lineThrough,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'TZS ${item.product.effectivePrice.toStringAsFixed(0)} × '
+                        '${item.quantity} = TZS ${subtotal.toStringAsFixed(0)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Text(
+                    'TZS ${item.product.price.toStringAsFixed(0)} × '
+                    '${item.quantity} = TZS ${subtotal.toStringAsFixed(0)}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -1239,7 +1371,28 @@ class _ProductListSheetState extends State<_ProductListSheet> {
                           ),
                         ),
                         title: Text(p.name),
-                        subtitle: Text('TZS ${p.price.toStringAsFixed(0)}'),
+                        subtitle: p.isOnPromotion
+                            ? Row(
+                                children: [
+                                  Text(
+                                    'TZS ${p.effectivePrice.toStringAsFixed(0)}',
+                                    style: const TextStyle(
+                                      color: Colors.green,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'TZS ${p.price.toStringAsFixed(0)}',
+                                    style: TextStyle(
+                                      decoration: TextDecoration.lineThrough,
+                                      color: Colors.grey.shade500,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Text('TZS ${p.price.toStringAsFixed(0)}'),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => Navigator.of(ctx).pop(p),
                       );

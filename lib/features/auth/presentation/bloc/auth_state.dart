@@ -74,3 +74,14 @@ class AuthFailureState extends AuthState {
   @override
   List<Object?> get props => [message];
 }
+
+/// User is authenticated but has no org membership yet.
+/// UI should navigate to PendingActivationPage to enter invitation token.
+class AuthNeedsInvitationToken extends AuthState {
+  final AccountSession session;
+
+  const AuthNeedsInvitationToken({required this.session});
+
+  @override
+  List<Object?> get props => [session.user.email];
+}

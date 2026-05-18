@@ -1,19 +1,4 @@
-﻿// shell_nav_items.dart
-// ─────────────────────────────────────────────────────────────
-// FIX: Organization tab was gated on auth.can('org.manage')
-// which does NOT exist in the backend PlatformPermissionSeeder.
-//
-// The correct approach: show Organization to anyone who has
-// ANY membership permission. The backend org_permission_definitions
-// seeds 'members.view' for all roles including viewer/staff.
-// For users with NO permissions at all (owner role at root with
-// no explicit permission set), we fall back to checking the
-// role slug directly via auth.isAdminAppRole.
-//
-// GATING RULES:
-//   org tab  → members.view OR isAdminAppRole (owner/manager/etc)
-//   others   → keep existing permission slugs
-// ─────────────────────────────────────────────────────────────
+﻿// lib/app/shell/shell_nav_items.dart
 
 import 'package:flutter/material.dart';
 import '../../core/rbac/rbac_extensions.dart';
@@ -40,10 +25,6 @@ abstract class ShellNavItems {
 
       // ┌──────────────────────────────────────────────────────
       // │ ORGANIZATION MANAGEMENT
-      // │ FIX: was auth.can('org.manage') — slug doesn't exist.
-      // │ Show if user has members.view OR is an admin-role user
-      // │ (owner, manager, staff, etc.) who may have no explicit
-      // │ permissions seeded yet.
       // └──────────────────────────────────────────────────────
       if (auth.can('members.view') || auth.isAdminAppRole)
         NavItem(
@@ -111,8 +92,21 @@ abstract class ShellNavItems {
         NavItem(
           id: 'product',
           label: 'Products',
-          icon: Icons.inventory_2_outlined,
+          icon: Icons.medication_outlined,
           path: AppRouter.productList,
+        ),
+
+      // ── Inventory: shown alongside Products ────────────────
+      // Gated on inventory.view permission seeded in
+      // org_permission_definitions (group: inventory).
+      // Falls back to products.view for orgs that have not yet
+      // received an explicit inventory permission assignment.
+      if (auth.can('inventory.view') || auth.can('products.view'))
+        NavItem(
+          id: 'inventory',
+          label: 'Inventory',
+          icon: Icons.inventory_2_outlined,
+          path: AppRouter.inventoryList,
         ),
 
       if (auth.can('promotions.view'))
@@ -131,14 +125,6 @@ abstract class ShellNavItems {
           path: AppRouter.orderList,
         ),
 
-      // if (auth.can('payments.view'))
-      //   NavItem(
-      //     id: 'payment',
-      //     label: 'Payments',
-      //     icon: Icons.payments_outlined,
-      //     path: AppRouter.paymentList,
-      //   ),
-
       // ┌──────────────────────────────────────────────────────
       // │ COMMUNICATION
       // └──────────────────────────────────────────────────────
@@ -149,14 +135,6 @@ abstract class ShellNavItems {
           icon: Icons.forum_outlined,
           path: AppRouter.conversationList,
         ),
-
-      // if (auth.can('notifications.view'))
-      //   NavItem(
-      //     id: 'notification',
-      //     label: 'Notifications',
-      //     icon: Icons.notifications_outlined,
-      //     path: AppRouter.notificationList,
-      //   ),
 
       // ┌──────────────────────────────────────────────────────
       // │ ANALYTICS & REPORTS
@@ -193,27 +171,9 @@ abstract class ShellNavItems {
           path: AppRouter.activityLogList,
         ),
 
-      // // Actor (HMSCP core)
-      // if (auth.can('actors.view'))
-      //   NavItem(
-      //     id: 'actor',
-      //     label: 'Actors',
-      //     icon: Icons.people_outlined,
-      //     path: AppRouter.actorList,
-      //   ),
-
       // ── END GENERATOR TABS ─────────────────────────────────
 
-      // ── Permission-gated — Dashboard ───────────────────────
-      // if (auth.canViewDashboard)
-      //   NavItem(
-      //     id: 'dashboard',
-      //     label: 'Dashboard',
-      //     icon: Icons.dashboard_outlined,
-      //     path: AppRouter.dashboard,
-      //   ),
-
-      // ── Always visible — Profile (always last) ──────────────
+      // ── Always visible — Profile (always last) ─────────────
       NavItem(
         id: 'profile',
         label: 'Profile',

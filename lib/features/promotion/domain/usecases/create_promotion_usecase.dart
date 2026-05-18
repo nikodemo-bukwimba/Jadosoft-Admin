@@ -11,6 +11,7 @@ class CreatePromotionParams {
   final DateTime startDate;
   final DateTime endDate;
   final List<String> channels;
+  final double? discountPercentage;
 
   const CreatePromotionParams({
     required this.title,
@@ -19,21 +20,30 @@ class CreatePromotionParams {
     required this.startDate,
     required this.endDate,
     required this.channels,
+    this.discountPercentage,
   });
 }
 
-class CreatePromotionUseCase implements UseCase<PromotionEntity, CreatePromotionParams> {
+class CreatePromotionUseCase
+    implements UseCase<PromotionEntity, CreatePromotionParams> {
   final PromotionRepository repository;
   CreatePromotionUseCase(this.repository);
 
   @override
   Future<Either<Failure, PromotionEntity>> call(CreatePromotionParams p) async {
-    // -- Validation gate --
     if (p.title.trim().isEmpty) {
       return const Left(ValidationFailure('Promotion title is required'));
     }
     if (p.title.trim().length < 3) {
-      return const Left(ValidationFailure('Title must be at least 3 characters'));
+      return const Left(
+        ValidationFailure('Title must be at least 3 characters'),
+      );
+    }
+    if (p.discountPercentage != null &&
+        (p.discountPercentage! < 0 || p.discountPercentage! > 100)) {
+      return const Left(
+        ValidationFailure('Discount percentage must be between 0 and 100'),
+      );
     }
 
     return repository.create(
@@ -47,6 +57,7 @@ class CreatePromotionUseCase implements UseCase<PromotionEntity, CreatePromotion
         channels: p.channels,
         status: '',
         createdAt: DateTime.now(),
+        discountPercentage: p.discountPercentage,
       ),
     );
   }

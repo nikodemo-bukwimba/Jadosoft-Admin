@@ -1,8 +1,10 @@
+// lib/features/product/presentation/widgets/product_card_tile.dart
 import 'package:flutter/material.dart';
 import '../../domain/entities/product_entity.dart';
 import '../../domain/value_objects/product_status.dart';
 import 'product_image.dart';
 import 'product_status_badge.dart';
+import 'promotion_price_display.dart';
 
 /// Cards view tile — full-width image banner with overlays.
 class ProductCardTile extends StatelessWidget {
@@ -42,11 +44,13 @@ class ProductCardTile extends StatelessWidget {
                   height: 160,
                   borderRadius: 0,
                 ),
+                // Status badge — top left
                 Positioned(
                   top: 10,
                   left: 10,
                   child: ProductStatusBadge(status: statusEnum),
                 ),
+                // NEW / FEATURED tags — top right
                 Positioned(
                   top: 10,
                   right: 10,
@@ -60,6 +64,16 @@ class ProductCardTile extends StatelessWidget {
                     ],
                   ),
                 ),
+                // Promotion corner tag — bottom left (NEW)
+                if (item.isOnPromotion)
+                  Positioned(
+                    bottom: 8,
+                    left: 8,
+                    child: PromotionCornerTag(
+                      percentage: item.discountPercentage!,
+                    ),
+                  ),
+                // Unavailable overlay
                 if (!item.isAvailable)
                   Positioned.fill(
                     child: Container(
@@ -115,13 +129,10 @@ class ProductCardTile extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         const SizedBox(height: 6),
-                        Text(
-                          formatPrice(item.price),
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(
-                                color: scheme.primary,
-                                fontWeight: FontWeight.w700,
-                              ),
+                        // Promotion-aware price (NEW — replaces plain Text)
+                        PromotionPriceDisplay(
+                          product: item,
+                          formatPrice: formatPrice,
                         ),
                       ],
                     ),

@@ -1,0 +1,2278 @@
+﻿// ================================================================
+// features_inventory_source.txt
+// Project Type : Flutter/Dart
+// Generated    : 2026-05-17 15:43:36
+// Files        : 19
+// Usage        : Upload to Claude Project documents as reference.
+// ================================================================
+
+// === FILE: lib/features/inventory/data/datasources/inventory_remote_datasource.dart ===
+// lib/features/inventory/data/datasources/inventory_remote_datasource.dart
+
+import 'package:dio/dio.dart';
+import '../../../../core/context/org_context.dart';
+import '../../../../core/error/exceptions.dart';
+import '../models/inventory_model.dart';
+
+abstract class InventoryRemoteDataSource {
+  Future<List<WarehouseModel>> getWarehouses(String orgId);
+  Future<WarehouseModel> createWarehouse(
+      String orgId, Map<String, dynamic> data);
+  Future<List<InventoryBatchModel>> getBatches(
+    String orgId, {
+    String? warehouseId,
+    String? productId,
+    String? variantId,
+    String? status,
+  });
+  Future<InventoryBatchModel> receiveStock(
+      String warehouseId, Map<String, dynamic> data);
+  Future<VariantStockModel> getVariantStock(String orgId, String variantId);
+}
+
+class InventoryRemoteDataSourceImpl implements InventoryRemoteDataSource {
+  final Dio _dio;
+  final OrgContext _orgContext;
+
+  InventoryRemoteDataSourceImpl({
+    required Dio dio,
+    required OrgContext orgContext,
+  })  : _dio = dio,
+        _orgContext = orgContext;
+
+  String _msg(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic> && data['message'] is String) {
+      return data['message'] as String;
+    }
+    return 'An error occurred. Please try again.';
+  }
+
+  List<T> _unwrapList<T>(dynamic raw, T Function(Map<String, dynamic>) fromJson,
+      String key) {
+    final List items =
+        raw is Map ? ((raw[key] ?? raw['data'] ?? []) as List) : raw as List;
+    return items.cast<Map<String, dynamic>>().map(fromJson).toList();
+  }
+
+  Map<String, dynamic> _unwrapSingle(dynamic raw, String key) {
+    if (raw is Map<String, dynamic>) {
+      return (raw[key] ?? raw['data'] ?? raw) as Map<String, dynamic>;
+    }
+    return raw as Map<String, dynamic>;
+  }
+
+  @override
+  Future<List<WarehouseModel>> getWarehouses(String orgId) async {
+    try {
+      final res = await _dio.get('/inventory/orgs/$orgId/warehouses',
+          queryParameters: {'per_page': 100});
+      return _unwrapList(res.data, WarehouseModel.fromJson, 'warehouses');
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    } catch (e) {
+      throw ServerException(e.toString());
+    }
+  }
+
+  @override
+  Future<WarehouseModel> createWarehouse(
+      String orgId, Map<String, dynamic> data) async {
+    try {
+      final res =
+          await _dio.post('/inventory/orgs/$orgId/warehouses', data: data);
+      return WarehouseModel.fromJson(_unwrapSingle(res.data, 'warehouse'));
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    } catch (e) {
+      throw ServerException(e.toString());
+    }
+  }
+
+  @override
+  Future<List<InventoryBatchModel>> getBatches(
+    String orgId, {
+    String? warehouseId,
+    String? productId,
+    String? variantId,
+    String? status,
+  }) async {
+    try {
+      final res = await _dio.get(
+        '/inventory/orgs/$orgId/batches',
+        queryParameters: {
+          'per_page': 100,
+          if (warehouseId != null) 'warehouse_id': warehouseId,
+          if (productId != null) 'product_id': productId,
+          if (variantId != null) 'variant_id': variantId,
+          if (status != null) 'status': status,
+        },
+      );
+      return _unwrapList(res.data, InventoryBatchModel.fromJson, 'batches');
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    } catch (e) {
+      throw ServerException(e.toString());
+    }
+  }
+
+  @override
+  Future<InventoryBatchModel> receiveStock(
+      String warehouseId, Map<String, dynamic> data) async {
+    try {
+      final res = await _dio.post(
+          '/inventory/warehouses/$warehouseId/receive',
+          data: data);
+      return InventoryBatchModel.fromJson(
+          _unwrapSingle(res.data, 'batch'));
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    } catch (e) {
+      throw ServerException(e.toString());
+    }
+  }
+
+  @override
+  Future<VariantStockModel> getVariantStock(
+      String orgId, String variantId) async {
+    try {
+      final res = await _dio
+          .get('/inventory/orgs/$orgId/variants/$variantId/stock');
+      return VariantStockModel.fromJson(
+          res.data is Map<String, dynamic> ? res.data as Map<String, dynamic> : {});
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    } catch (e) {
+      throw ServerException(e.toString());
+    }
+  }
+}
+
+// === FILE: lib/features/inventory/data/models/inventory_model.dart ===
+// lib/features/inventory/data/models/inventory_model.dart
+
+import '../../domain/entities/inventory_entity.dart';
+
+class WarehouseModel extends WarehouseEntity {
+  const WarehouseModel({
+    required super.id,
+    required super.orgId,
+    required super.name,
+    required super.type,
+    required super.isActive,
+    super.address,
+  });
+
+  factory WarehouseModel.fromJson(Map<String, dynamic> j) => WarehouseModel(
+        id: j['id']?.toString() ?? '',
+        orgId: j['org_id']?.toString() ?? '',
+        name: j['name']?.toString() ?? '',
+        type: j['type']?.toString() ?? 'standard',
+        isActive: j['is_active'] as bool? ?? j['status'] == 'active',
+        address: j['address']?.toString(),
+      );
+}
+
+class InventoryBatchModel extends InventoryBatchEntity {
+  const InventoryBatchModel({
+    required super.id,
+    required super.warehouseId,
+    required super.warehouseName,
+    required super.productId,
+    super.variantId,
+    required super.orgId,
+    super.batchNumber,
+    super.sku,
+    required super.quantityReceived,
+    required super.quantityAvailable,
+    required super.quantityReserved,
+    required super.quantityDamaged,
+    super.unitCost,
+    required super.currency,
+    required super.status,
+    super.receivedAt,
+    super.expiresAt,
+    super.bestBeforeAt,
+  });
+
+  factory InventoryBatchModel.fromJson(Map<String, dynamic> j) {
+    final warehouse = j['warehouse'] as Map<String, dynamic>?;
+    return InventoryBatchModel(
+      id: j['id']?.toString() ?? '',
+      warehouseId: j['warehouse_id']?.toString() ?? '',
+      warehouseName: warehouse?['name']?.toString() ?? '',
+      productId: j['product_id']?.toString() ?? '',
+      variantId: j['variant_id']?.toString(),
+      orgId: j['org_id']?.toString() ?? '',
+      batchNumber: j['batch_number']?.toString(),
+      sku: j['sku']?.toString(),
+      quantityReceived: _parseInt(j['quantity_received']),
+      quantityAvailable: _parseInt(j['quantity_available']),
+      quantityReserved: _parseInt(j['quantity_reserved']),
+      quantityDamaged: _parseInt(j['quantity_damaged']),
+      unitCost: j['unit_cost'] != null
+          ? double.tryParse(j['unit_cost'].toString())
+          : null,
+      currency: j['currency']?.toString() ?? 'TZS',
+      status: j['status']?.toString() ?? 'active',
+      receivedAt: _parseDate(j['received_at']),
+      expiresAt: _parseDate(j['expires_at']),
+      bestBeforeAt: _parseDate(j['best_before_at']),
+    );
+  }
+
+  static int _parseInt(dynamic v) =>
+      v == null ? 0 : int.tryParse(v.toString()) ?? 0;
+
+  static DateTime? _parseDate(dynamic v) =>
+      v == null ? null : DateTime.tryParse(v.toString());
+}
+
+class VariantStockModel extends VariantStockEntity {
+  const VariantStockModel({
+    required super.variantId,
+    required super.productId,
+    required super.variantName,
+    required super.totalStock,
+    required super.batches,
+  });
+
+  factory VariantStockModel.fromJson(Map<String, dynamic> j) =>
+      VariantStockModel(
+        variantId: j['variant_id']?.toString() ?? '',
+        productId: j['product_id']?.toString() ?? '',
+        variantName: j['variant_name']?.toString() ?? '',
+        totalStock: int.tryParse(j['total_stock']?.toString() ?? '0') ?? 0,
+        batches: (j['batches'] as List? ?? [])
+            .cast<Map<String, dynamic>>()
+            .map(InventoryBatchModel.fromJson)
+            .toList(),
+      );
+}
+
+// === FILE: lib/features/inventory/data/repositories/inventory_repository_impl.dart ===
+// lib/features/inventory/data/repositories/inventory_repository_impl.dart
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/exceptions.dart';
+import '../../../../core/error/failures.dart';
+import '../../domain/entities/inventory_entity.dart';
+import '../../domain/repositories/inventory_repository.dart';
+import '../datasources/inventory_remote_datasource.dart';
+
+class InventoryRepositoryImpl implements InventoryRepository {
+  final InventoryRemoteDataSource remoteDataSource;
+
+  InventoryRepositoryImpl({required this.remoteDataSource});
+
+  @override
+  Future<Either<Failure, List<WarehouseEntity>>> getWarehouses(
+      String orgId) async {
+    try {
+      final result = await remoteDataSource.getWarehouses(orgId);
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, WarehouseEntity>> createWarehouse(
+      String orgId, Map<String, dynamic> data) async {
+    try {
+      final result = await remoteDataSource.createWarehouse(orgId, data);
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, List<InventoryBatchEntity>>> getBatches(
+    String orgId, {
+    String? warehouseId,
+    String? productId,
+    String? variantId,
+    String? status,
+  }) async {
+    try {
+      final result = await remoteDataSource.getBatches(
+        orgId,
+        warehouseId: warehouseId,
+        productId: productId,
+        variantId: variantId,
+        status: status,
+      );
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, InventoryBatchEntity>> receiveStock(
+      String warehouseId, Map<String, dynamic> data) async {
+    try {
+      final result = await remoteDataSource.receiveStock(warehouseId, data);
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, VariantStockEntity>> getVariantStock(
+      String orgId, String variantId) async {
+    try {
+      final result =
+          await remoteDataSource.getVariantStock(orgId, variantId);
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+}
+
+// === FILE: lib/features/inventory/domain/entities/inventory_entity.dart ===
+// lib/features/inventory/domain/entities/inventory_entity.dart
+
+import 'package:equatable/equatable.dart';
+
+class WarehouseEntity extends Equatable {
+  final String id;
+  final String orgId;
+  final String name;
+  final String type; // standard|cold|bonded|virtual
+  final bool isActive;
+  final String? address;
+
+  const WarehouseEntity({
+    required this.id,
+    required this.orgId,
+    required this.name,
+    required this.type,
+    required this.isActive,
+    this.address,
+  });
+
+  @override
+  List<Object?> get props => [id, orgId, name, type, isActive, address];
+}
+
+class InventoryBatchEntity extends Equatable {
+  final String id;
+  final String warehouseId;
+  final String warehouseName;
+  final String productId;
+  final String? variantId;
+  final String orgId;
+  final String? batchNumber;
+  final String? sku;
+  final int quantityReceived;
+  final int quantityAvailable;
+  final int quantityReserved;
+  final int quantityDamaged;
+  final double? unitCost;
+  final String currency;
+  final String status;
+  final DateTime? receivedAt;
+  final DateTime? expiresAt;
+  final DateTime? bestBeforeAt;
+
+  const InventoryBatchEntity({
+    required this.id,
+    required this.warehouseId,
+    required this.warehouseName,
+    required this.productId,
+    this.variantId,
+    required this.orgId,
+    this.batchNumber,
+    this.sku,
+    required this.quantityReceived,
+    required this.quantityAvailable,
+    required this.quantityReserved,
+    required this.quantityDamaged,
+    this.unitCost,
+    required this.currency,
+    required this.status,
+    this.receivedAt,
+    this.expiresAt,
+    this.bestBeforeAt,
+  });
+
+  int get availableQuantity => quantityAvailable - quantityReserved;
+  bool get isDepleted => quantityAvailable <= 0;
+  bool get isExpired =>
+      expiresAt != null && expiresAt!.isBefore(DateTime.now());
+  bool get isNearExpiry =>
+      expiresAt != null &&
+      !isExpired &&
+      expiresAt!.isBefore(DateTime.now().add(const Duration(days: 30)));
+  bool get isActive => status == 'active';
+
+  @override
+  List<Object?> get props => [id, warehouseId, productId, variantId, orgId,
+        batchNumber, sku, quantityAvailable, status, expiresAt];
+}
+
+class VariantStockEntity extends Equatable {
+  final String variantId;
+  final String productId;
+  final String variantName;
+  final int totalStock;
+  final List<InventoryBatchEntity> batches;
+
+  const VariantStockEntity({
+    required this.variantId,
+    required this.productId,
+    required this.variantName,
+    required this.totalStock,
+    required this.batches,
+  });
+
+  @override
+  List<Object?> get props => [variantId, productId, totalStock];
+}
+
+// === FILE: lib/features/inventory/domain/repositories/inventory_repository.dart ===
+// lib/features/inventory/domain/repositories/inventory_repository.dart
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../entities/inventory_entity.dart';
+
+abstract class InventoryRepository {
+  Future<Either<Failure, List<WarehouseEntity>>> getWarehouses(String orgId);
+  Future<Either<Failure, WarehouseEntity>> createWarehouse(
+      String orgId, Map<String, dynamic> data);
+  Future<Either<Failure, List<InventoryBatchEntity>>> getBatches(
+    String orgId, {
+    String? warehouseId,
+    String? productId,
+    String? variantId,
+    String? status,
+  });
+  Future<Either<Failure, InventoryBatchEntity>> receiveStock(
+      String warehouseId, Map<String, dynamic> data);
+  Future<Either<Failure, VariantStockEntity>> getVariantStock(
+      String orgId, String variantId);
+}
+
+// === FILE: lib/features/inventory/domain/usecases/create_warehouse_usecase.dart ===
+// lib/features/inventory/domain/usecases/create_warehouse_usecase.dart
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/inventory_entity.dart';
+import '../repositories/inventory_repository.dart';
+
+class CreateWarehouseParams {
+  final String orgId;
+  final String name;
+  final String type;
+  const CreateWarehouseParams({
+    required this.orgId,
+    required this.name,
+    required this.type,
+  });
+}
+
+class CreateWarehouseUseCase
+    implements UseCase<WarehouseEntity, CreateWarehouseParams> {
+  final InventoryRepository repository;
+  const CreateWarehouseUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, WarehouseEntity>> call(CreateWarehouseParams p) {
+    if (p.name.trim().isEmpty) {
+      return Future.value(
+          const Left(ValidationFailure('Warehouse name is required')));
+    }
+    return repository.createWarehouse(
+        p.orgId, {'name': p.name.trim(), 'type': p.type});
+  }
+}
+
+// === FILE: lib/features/inventory/domain/usecases/get_batches_usecase.dart ===
+// lib/features/inventory/domain/usecases/get_batches_usecase.dart
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/inventory_entity.dart';
+import '../repositories/inventory_repository.dart';
+
+class GetBatchesParams {
+  final String orgId;
+  final String? warehouseId;
+  final String? productId;
+  final String? variantId;
+  final String? status;
+  const GetBatchesParams({
+    required this.orgId,
+    this.warehouseId,
+    this.productId,
+    this.variantId,
+    this.status,
+  });
+}
+
+class GetBatchesUseCase
+    implements UseCase<List<InventoryBatchEntity>, GetBatchesParams> {
+  final InventoryRepository repository;
+  const GetBatchesUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, List<InventoryBatchEntity>>> call(
+          GetBatchesParams p) =>
+      repository.getBatches(
+        p.orgId,
+        warehouseId: p.warehouseId,
+        productId: p.productId,
+        variantId: p.variantId,
+        status: p.status,
+      );
+}
+
+// === FILE: lib/features/inventory/domain/usecases/get_variant_stock_usecase.dart ===
+// lib/features/inventory/domain/usecases/get_variant_stock_usecase.dart
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/inventory_entity.dart';
+import '../repositories/inventory_repository.dart';
+
+class GetVariantStockParams {
+  final String orgId;
+  final String variantId;
+  const GetVariantStockParams({required this.orgId, required this.variantId});
+}
+
+class GetVariantStockUseCase
+    implements UseCase<VariantStockEntity, GetVariantStockParams> {
+  final InventoryRepository repository;
+  const GetVariantStockUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, VariantStockEntity>> call(
+          GetVariantStockParams p) =>
+      repository.getVariantStock(p.orgId, p.variantId);
+}
+
+// === FILE: lib/features/inventory/domain/usecases/get_warehouses_usecase.dart ===
+// lib/features/inventory/domain/usecases/get_warehouses_usecase.dart
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/inventory_entity.dart';
+import '../repositories/inventory_repository.dart';
+
+class GetWarehousesParams {
+  final String orgId;
+  const GetWarehousesParams({required this.orgId});
+}
+
+class GetWarehousesUseCase
+    implements UseCase<List<WarehouseEntity>, GetWarehousesParams> {
+  final InventoryRepository repository;
+  const GetWarehousesUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, List<WarehouseEntity>>> call(
+          GetWarehousesParams p) =>
+      repository.getWarehouses(p.orgId);
+}
+
+// === FILE: lib/features/inventory/domain/usecases/receive_stock_usecase.dart ===
+// lib/features/inventory/domain/usecases/receive_stock_usecase.dart
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/inventory_entity.dart';
+import '../repositories/inventory_repository.dart';
+
+class ReceiveStockParams {
+  final String warehouseId;
+  final String productId;
+  final String variantId;
+  final String orgId;
+  final int quantity;
+  final double? unitCost;
+  final String currency;
+  final String? batchNumber;
+  final String? sku;
+  final DateTime? expiresAt;
+  final DateTime? bestBeforeAt;
+
+  const ReceiveStockParams({
+    required this.warehouseId,
+    required this.productId,
+    required this.variantId,
+    required this.orgId,
+    required this.quantity,
+    this.unitCost,
+    this.currency = 'TZS',
+    this.batchNumber,
+    this.sku,
+    this.expiresAt,
+    this.bestBeforeAt,
+  });
+}
+
+class ReceiveStockUseCase
+    implements UseCase<InventoryBatchEntity, ReceiveStockParams> {
+  final InventoryRepository repository;
+  const ReceiveStockUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, InventoryBatchEntity>> call(
+      ReceiveStockParams p) {
+    if (p.quantity < 1) {
+      return Future.value(
+          const Left(ValidationFailure('Quantity must be at least 1')));
+    }
+    return repository.receiveStock(p.warehouseId, {
+      'product_id': p.productId,
+      'variant_id': p.variantId,
+      'org_id': p.orgId,
+      'quantity': p.quantity,
+      if (p.unitCost != null) 'unit_cost': p.unitCost,
+      'currency': p.currency,
+      if (p.batchNumber != null) 'batch_number': p.batchNumber,
+      if (p.sku != null) 'sku': p.sku,
+      if (p.expiresAt != null) 'expires_at': p.expiresAt!.toIso8601String(),
+      if (p.bestBeforeAt != null)
+        'best_before_at': p.bestBeforeAt!.toIso8601String(),
+    });
+  }
+}
+
+// === FILE: lib/features/inventory/presentation/bloc/inventory_bloc.dart ===
+// lib/features/inventory/presentation/bloc/inventory_bloc.dart
+
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import '../../domain/usecases/create_warehouse_usecase.dart';
+import '../../domain/usecases/get_batches_usecase.dart';
+import '../../domain/usecases/get_variant_stock_usecase.dart';
+import '../../domain/usecases/get_warehouses_usecase.dart';
+import '../../domain/usecases/receive_stock_usecase.dart';
+
+import 'inventory_event.dart';
+import 'inventory_state.dart';
+
+class InventoryBloc extends Bloc<InventoryEvent, InventoryState> {
+  final GetWarehousesUseCase getWarehousesUseCase;
+  final CreateWarehouseUseCase createWarehouseUseCase;
+  final GetBatchesUseCase getBatchesUseCase;
+  final ReceiveStockUseCase receiveStockUseCase;
+  final GetVariantStockUseCase getVariantStockUseCase;
+
+  InventoryBloc({
+    required this.getWarehousesUseCase,
+    required this.createWarehouseUseCase,
+    required this.getBatchesUseCase,
+    required this.receiveStockUseCase,
+    required this.getVariantStockUseCase,
+  }) : super(InventoryLoaded()) {
+    on<InventoryWarehousesLoadRequested>(_onLoadWarehouses);
+    on<InventoryWarehouseCreateRequested>(_onCreateWarehouse);
+    on<InventoryBatchesLoadRequested>(_onLoadBatches);
+    on<InventoryReceiveStockRequested>(_onReceiveStock);
+    on<InventoryVariantStockLoadRequested>(_onLoadVariantStock);
+
+    on<InventoryFormReset>((event, emit) {
+      emit(InventoryLoaded());
+    });
+  }
+
+  InventoryLoaded get currentState {
+    if (state is InventoryLoaded) {
+      return state as InventoryLoaded;
+    }
+    return InventoryLoaded();
+  }
+
+  Future<void> _onLoadWarehouses(
+    InventoryWarehousesLoadRequested event,
+    Emitter<InventoryState> emit,
+  ) async {
+    emit(currentState.copyWith(loading: true));
+
+    final result = await getWarehousesUseCase(
+      GetWarehousesParams(orgId: event.orgId),
+    );
+
+    result.fold(
+      (f) {
+        emit(currentState.copyWith(loading: false, errorMessage: f.message));
+      },
+      (warehouses) {
+        emit(currentState.copyWith(loading: false, warehouses: warehouses));
+      },
+    );
+  }
+
+  Future<void> _onCreateWarehouse(
+    InventoryWarehouseCreateRequested event,
+    Emitter<InventoryState> emit,
+  ) async {
+    emit(currentState.copyWith(loading: true));
+
+    final result = await createWarehouseUseCase(
+      CreateWarehouseParams(
+        orgId: event.orgId,
+        name: event.name,
+        type: event.type,
+      ),
+    );
+
+    result.fold(
+      (f) {
+        emit(currentState.copyWith(loading: false, errorMessage: f.message));
+      },
+      (warehouse) {
+        final updatedWarehouses = [...currentState.warehouses, warehouse];
+
+        emit(
+          currentState.copyWith(
+            loading: false,
+            warehouses: updatedWarehouses,
+            createdWarehouse: warehouse,
+            successMessage: 'Warehouse created successfully',
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _onLoadBatches(
+    InventoryBatchesLoadRequested event,
+    Emitter<InventoryState> emit,
+  ) async {
+    emit(currentState.copyWith(loading: true));
+
+    final result = await getBatchesUseCase(
+      GetBatchesParams(
+        orgId: event.orgId,
+        warehouseId: event.warehouseId,
+        productId: event.productId,
+        variantId: event.variantId,
+        status: event.status,
+      ),
+    );
+
+    result.fold(
+      (f) {
+        emit(currentState.copyWith(loading: false, errorMessage: f.message));
+      },
+      (batches) {
+        emit(currentState.copyWith(loading: false, batches: batches));
+      },
+    );
+  }
+
+  Future<void> _onReceiveStock(
+    InventoryReceiveStockRequested event,
+    Emitter<InventoryState> emit,
+  ) async {
+    emit(currentState.copyWith(loading: true));
+
+    final result = await receiveStockUseCase(
+      ReceiveStockParams(
+        warehouseId: event.warehouseId,
+        productId: event.productId,
+        variantId: event.variantId,
+        orgId: event.orgId,
+        quantity: event.quantity,
+        unitCost: event.unitCost,
+        currency: event.currency,
+        batchNumber: event.batchNumber,
+        sku: event.sku,
+        expiresAt: event.expiresAt,
+        bestBeforeAt: event.bestBeforeAt,
+      ),
+    );
+
+    result.fold(
+      (f) {
+        emit(currentState.copyWith(loading: false, errorMessage: f.message));
+      },
+      (batch) {
+        final updatedBatches = [batch, ...currentState.batches];
+
+        emit(
+          currentState.copyWith(
+            loading: false,
+            batches: updatedBatches,
+            receivedBatch: batch,
+            successMessage: 'Stock received successfully',
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _onLoadVariantStock(
+    InventoryVariantStockLoadRequested event,
+    Emitter<InventoryState> emit,
+  ) async {
+    emit(currentState.copyWith(loading: true));
+
+    final result = await getVariantStockUseCase(
+      GetVariantStockParams(orgId: event.orgId, variantId: event.variantId),
+    );
+
+    result.fold(
+      (f) {
+        emit(currentState.copyWith(loading: false, errorMessage: f.message));
+      },
+      (stock) {
+        emit(currentState.copyWith(loading: false, variantStock: stock));
+      },
+    );
+  }
+}
+
+
+// === FILE: lib/features/inventory/presentation/bloc/inventory_event.dart ===
+// lib/features/inventory/presentation/bloc/inventory_event.dart
+
+abstract class InventoryEvent {}
+
+class InventoryWarehousesLoadRequested extends InventoryEvent {
+  final String orgId;
+  InventoryWarehousesLoadRequested(this.orgId);
+}
+
+class InventoryWarehouseCreateRequested extends InventoryEvent {
+  final String orgId;
+  final String name;
+  final String type;
+  InventoryWarehouseCreateRequested(this.orgId, this.name, this.type);
+}
+
+class InventoryBatchesLoadRequested extends InventoryEvent {
+  final String orgId;
+  final String? warehouseId;
+  final String? productId;
+  final String? variantId;
+  final String? status;
+  InventoryBatchesLoadRequested(
+    this.orgId, {
+    this.warehouseId,
+    this.productId,
+    this.variantId,
+    this.status,
+  });
+}
+
+class InventoryReceiveStockRequested extends InventoryEvent {
+  final String warehouseId;
+  final String productId;
+  final String variantId;
+  final String orgId;
+  final int quantity;
+  final double? unitCost;
+  final String currency;
+  final String? batchNumber;
+  final String? sku;
+  final DateTime? expiresAt;
+  final DateTime? bestBeforeAt;
+
+  InventoryReceiveStockRequested({
+    required this.warehouseId,
+    required this.productId,
+    required this.variantId,
+    required this.orgId,
+    required this.quantity,
+    this.unitCost,
+    this.currency = 'TZS',
+    this.batchNumber,
+    this.sku,
+    this.expiresAt,
+    this.bestBeforeAt,
+  });
+}
+
+class InventoryVariantStockLoadRequested extends InventoryEvent {
+  final String orgId;
+  final String variantId;
+  InventoryVariantStockLoadRequested(this.orgId, this.variantId);
+}
+
+class InventoryFormReset extends InventoryEvent {}
+
+// === FILE: lib/features/inventory/presentation/bloc/inventory_state.dart ===
+// lib/features/inventory/presentation/bloc/inventory_state.dart
+
+import '../../domain/entities/inventory_entity.dart';
+
+abstract class InventoryState {}
+
+class InventoryLoaded extends InventoryState {
+  final bool loading;
+
+  final List<WarehouseEntity> warehouses;
+  final List<InventoryBatchEntity> batches;
+
+  final VariantStockEntity? variantStock;
+
+  final WarehouseEntity? createdWarehouse;
+  final InventoryBatchEntity? receivedBatch;
+
+  final String? successMessage;
+  final String? errorMessage;
+
+  InventoryLoaded({
+    this.loading = false,
+    this.warehouses = const [],
+    this.batches = const [],
+    this.variantStock,
+    this.createdWarehouse,
+    this.receivedBatch,
+    this.successMessage,
+    this.errorMessage,
+  });
+
+  InventoryLoaded copyWith({
+    bool? loading,
+    List<WarehouseEntity>? warehouses,
+    List<InventoryBatchEntity>? batches,
+    VariantStockEntity? variantStock,
+    WarehouseEntity? createdWarehouse,
+    InventoryBatchEntity? receivedBatch,
+    String? successMessage,
+    String? errorMessage,
+  }) {
+    return InventoryLoaded(
+      loading: loading ?? this.loading,
+      warehouses: warehouses ?? this.warehouses,
+      batches: batches ?? this.batches,
+      variantStock: variantStock ?? this.variantStock,
+      createdWarehouse: createdWarehouse ?? this.createdWarehouse,
+      receivedBatch: receivedBatch ?? this.receivedBatch,
+      successMessage: successMessage,
+      errorMessage: errorMessage,
+    );
+  }
+}
+
+// === FILE: lib/features/inventory/presentation/enums/inventory_form_node.dart ===
+// lib/features/inventory/presentation/enums/inventory_form_node.dart
+
+enum InventoryFormNode { createWarehouse, receiveStock }
+
+// === FILE: lib/features/inventory/presentation/pages/inventory_form_page.dart ===
+// lib/features/inventory/presentation/pages/inventory_form_page.dart
+//
+// CHANGE: InventoryFormPage now accepts an optional productId via GoRouter
+// `extra` so that navigating from the product detail page pre-selects the
+// correct product in the receive-stock form.
+//
+// Usage from product detail:
+//   context.push(AppRouter.inventoryReceiveStock, extra: {'productId': item.id});
+//
+// Everything else is unchanged from the original.
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../config/di/injection_container.dart';
+import '../../../../core/context/org_context.dart';
+import '../bloc/inventory_bloc.dart';
+import '../bloc/inventory_event.dart';
+import '../bloc/inventory_state.dart';
+import '../enums/inventory_form_node.dart';
+import '../../domain/entities/inventory_entity.dart';
+import '../../../product/presentation/bloc/product_bloc.dart';
+import '../../../product/presentation/bloc/product_event.dart';
+import '../../../product/presentation/bloc/product_state.dart';
+
+class InventoryFormPage extends StatefulWidget {
+  final InventoryFormNode mode;
+
+  /// Optional: pre-select a product in receive-stock mode.
+  /// Passed via GoRouter extra: {'productId': '...'}.
+  final String? preselectedProductId;
+
+  const InventoryFormPage({
+    super.key,
+    required this.mode,
+    this.preselectedProductId,
+  });
+
+  @override
+  State<InventoryFormPage> createState() => _InventoryFormPageState();
+}
+
+class _InventoryFormPageState extends State<InventoryFormPage> {
+  final _formKey = GlobalKey<FormState>();
+
+  // ── Receive stock fields ─────────────────────────────────
+  String? _warehouseId;
+  String? _productId;
+  String? _variantId;
+  String? _variantName;
+  final _quantityCtrl = TextEditingController();
+  final _unitCostCtrl = TextEditingController();
+  final _batchNumberCtrl = TextEditingController();
+  final _skuCtrl = TextEditingController();
+  DateTime? _expiresAt;
+  DateTime? _bestBeforeAt;
+  bool _variantTouched = false;
+
+  // ── Create warehouse fields ──────────────────────────────
+  final _warehouseNameCtrl = TextEditingController();
+  String _warehouseType = 'standard';
+
+  final List<WarehouseEntity> _warehouses = [];
+
+  static const _warehouseTypes = ['standard', 'cold', 'bonded', 'virtual'];
+
+  bool get _isReceiveMode => widget.mode == InventoryFormNode.receiveStock;
+
+  @override
+  void dispose() {
+    _quantityCtrl.dispose();
+    _unitCostCtrl.dispose();
+    _batchNumberCtrl.dispose();
+    _skuCtrl.dispose();
+    _warehouseNameCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final orgId = sl<OrgContext>().requireRootOrgId();
+
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider.value(value: context.read<InventoryBloc>()),
+        if (_isReceiveMode)
+          BlocProvider(
+            create: (_) => sl<ProductBloc>()..add(ProductLoadAllRequested()),
+          ),
+      ],
+      child: BlocListener<InventoryBloc, InventoryState>(
+        listener: (ctx, state) {
+          if (state is! InventoryLoaded) return;
+
+          if (state.warehouses.isNotEmpty &&
+              _warehouses.length != state.warehouses.length) {
+            setState(() {
+              _warehouses
+                ..clear()
+                ..addAll(state.warehouses);
+            });
+          }
+
+          if (state.receivedBatch != null && state.successMessage != null) {
+            ScaffoldMessenger.of(ctx).showSnackBar(
+              const SnackBar(
+                content: Text('Stock received successfully.'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            ctx.pop();
+          }
+
+          if (state.createdWarehouse != null && state.successMessage != null) {
+            ScaffoldMessenger.of(ctx).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Warehouse "${state.createdWarehouse!.name}" created.',
+                ),
+                backgroundColor: Colors.green,
+              ),
+            );
+            ctx.pop();
+          }
+
+          if (state.errorMessage != null) {
+            ScaffoldMessenger.of(ctx).showSnackBar(
+              SnackBar(
+                content: Text(state.errorMessage!),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        },
+        child: Scaffold(
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          appBar: AppBar(
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            elevation: 0,
+            title: Text(
+              _isReceiveMode ? 'Receive Stock' : 'Add Warehouse',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          body: Form(
+            key: _formKey,
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: _isReceiveMode
+                  ? _buildReceiveStockFields(context, orgId)
+                  : _buildWarehouseFields(context, orgId),
+            ),
+          ),
+          bottomNavigationBar: _buildBottomBar(context, orgId),
+        ),
+      ),
+    );
+  }
+
+  // ── Receive Stock Form ────────────────────────────────────
+
+  List<Widget> _buildReceiveStockFields(BuildContext context, String orgId) {
+    return [
+      _buildSectionLabel(context, '1. Select Warehouse'),
+      const SizedBox(height: 8),
+      _buildWarehouseDropdown(context),
+      const SizedBox(height: 24),
+      _buildSectionLabel(context, '2. Select Product & Variant'),
+      const SizedBox(height: 8),
+      _buildProductVariantPicker(context),
+      if (_variantTouched && _variantId == null)
+        Padding(
+          padding: const EdgeInsets.only(top: 4, left: 4),
+          child: Text(
+            'Please select a product',
+            style: TextStyle(fontSize: 12, color: Colors.red.shade700),
+          ),
+        ),
+      const SizedBox(height: 24),
+      _buildSectionLabel(context, '3. Batch Details'),
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          Expanded(child: _buildBatchNumberField()),
+          const SizedBox(width: 12),
+          Expanded(child: _buildSkuField()),
+        ],
+      ),
+      const SizedBox(height: 14),
+      Row(
+        children: [
+          Expanded(child: _buildQuantityField()),
+          const SizedBox(width: 12),
+          Expanded(child: _buildUnitCostField()),
+        ],
+      ),
+      const SizedBox(height: 14),
+      Row(
+        children: [
+          Expanded(
+            child: _buildDateField(
+              context,
+              'Expiry Date',
+              Icons.event_outlined,
+              _expiresAt,
+              (d) => setState(() => _expiresAt = d),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _buildDateField(
+              context,
+              'Best Before',
+              Icons.event_available_outlined,
+              _bestBeforeAt,
+              (d) => setState(() => _bestBeforeAt = d),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 40),
+    ];
+  }
+
+  Widget _buildWarehouseDropdown(BuildContext context) {
+    return DropdownButtonFormField<String>(
+      value: _warehouseId,
+      decoration: const InputDecoration(
+        labelText: 'Warehouse *',
+        border: OutlineInputBorder(),
+        prefixIcon: Icon(Icons.warehouse_outlined),
+      ),
+      hint: const Text('Select warehouse'),
+      items: _warehouses
+          .map((w) => DropdownMenuItem(value: w.id, child: Text(w.name)))
+          .toList(),
+      onChanged: (v) => setState(() => _warehouseId = v),
+      validator: (v) => v == null ? 'Please select a warehouse' : null,
+    );
+  }
+
+  Widget _buildProductVariantPicker(BuildContext context) {
+    return BlocBuilder<ProductBloc, ProductState>(
+      builder: (ctx, state) {
+        if (state is ProductLoading) {
+          return const LinearProgressIndicator();
+        }
+
+        if (state is ProductListLoaded) {
+          final active = state.items
+              .where((p) => p.status == 'active')
+              .toList();
+
+          // Auto-select preselectedProductId on first load
+          if (widget.preselectedProductId != null &&
+              _productId == null &&
+              _variantId == null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              final match = active
+                  .where((p) => p.id == widget.preselectedProductId)
+                  .firstOrNull;
+              if (match != null && mounted) {
+                setState(() {
+                  _productId = match.id;
+                  _variantId = match.variantId;
+                  _variantName = match.name;
+                  _variantTouched = true;
+                });
+              }
+            });
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DropdownButtonFormField<String>(
+                value: _productId,
+                decoration: const InputDecoration(
+                  labelText: 'Product *',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.medication_outlined),
+                ),
+                hint: const Text('Select product'),
+                items: active
+                    .map(
+                      (p) => DropdownMenuItem<String>(
+                        value: p.id,
+                        child: Text(p.name, overflow: TextOverflow.ellipsis),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) {
+                  setState(() {
+                    _variantTouched = true;
+                    _productId = v;
+                    _variantId = null;
+                    _variantName = null;
+
+                    if (v != null) {
+                      final p = active.firstWhere((p) => p.id == v);
+                      if (p.variantId != null) {
+                        _variantId = p.variantId;
+                        _variantName = p.name;
+                      }
+                    }
+                  });
+                },
+              ),
+              if (_productId != null && _variantId != null) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Variant: $_variantName',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          );
+        }
+
+        if (state is ProductFailure) {
+          return Text(state.message);
+        }
+
+        return const SizedBox.shrink();
+      },
+    );
+  }
+
+  Widget _buildBatchNumberField() {
+    return TextFormField(
+      controller: _batchNumberCtrl,
+      decoration: const InputDecoration(
+        labelText: 'Batch Number',
+        border: OutlineInputBorder(),
+        prefixIcon: Icon(Icons.tag_rounded),
+      ),
+    );
+  }
+
+  Widget _buildSkuField() {
+    return TextFormField(
+      controller: _skuCtrl,
+      decoration: const InputDecoration(
+        labelText: 'SKU',
+        border: OutlineInputBorder(),
+        prefixIcon: Icon(Icons.qr_code_rounded),
+      ),
+    );
+  }
+
+  Widget _buildQuantityField() {
+    return TextFormField(
+      controller: _quantityCtrl,
+      keyboardType: TextInputType.number,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      decoration: const InputDecoration(
+        labelText: 'Quantity *',
+        border: OutlineInputBorder(),
+        prefixIcon: Icon(Icons.numbers_rounded),
+      ),
+      validator: (v) {
+        if (v == null || v.trim().isEmpty) return 'Required';
+        if ((int.tryParse(v) ?? 0) < 1) return 'Must be ≥ 1';
+        return null;
+      },
+    );
+  }
+
+  Widget _buildUnitCostField() {
+    return TextFormField(
+      controller: _unitCostCtrl,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: const InputDecoration(
+        labelText: 'Unit Cost (TZS)',
+        border: OutlineInputBorder(),
+        prefixIcon: Icon(Icons.attach_money_rounded),
+      ),
+    );
+  }
+
+  Widget _buildDateField(
+    BuildContext context,
+    String label,
+    IconData icon,
+    DateTime? value,
+    ValueChanged<DateTime?> onPicked,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () async {
+        final d = await showDatePicker(
+          context: context,
+          initialDate: value ?? DateTime.now().add(const Duration(days: 365)),
+          firstDate: DateTime.now(),
+          lastDate: DateTime.now().add(const Duration(days: 365 * 10)),
+        );
+        onPicked(d);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+        decoration: BoxDecoration(
+          border: Border.all(color: scheme.outline),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                value == null
+                    ? label
+                    : '${value.day}/${value.month}/${value.year}',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: value == null
+                      ? scheme.onSurfaceVariant
+                      : scheme.onSurface,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Create Warehouse Form ─────────────────────────────────
+
+  List<Widget> _buildWarehouseFields(BuildContext context, String orgId) {
+    return [
+      _buildSectionLabel(context, 'Warehouse Details'),
+      const SizedBox(height: 16),
+      TextFormField(
+        controller: _warehouseNameCtrl,
+        decoration: const InputDecoration(
+          labelText: 'Warehouse Name *',
+          border: OutlineInputBorder(),
+          prefixIcon: Icon(Icons.warehouse_outlined),
+        ),
+        validator: (v) =>
+            v == null || v.trim().isEmpty ? 'Name is required' : null,
+      ),
+      const SizedBox(height: 16),
+      DropdownButtonFormField<String>(
+        value: _warehouseType,
+        decoration: const InputDecoration(
+          labelText: 'Type',
+          border: OutlineInputBorder(),
+          prefixIcon: Icon(Icons.category_outlined),
+        ),
+        items: _warehouseTypes
+            .map(
+              (t) => DropdownMenuItem(
+                value: t,
+                child: Text(t[0].toUpperCase() + t.substring(1)),
+              ),
+            )
+            .toList(),
+        onChanged: (v) => setState(() => _warehouseType = v ?? 'standard'),
+      ),
+      const SizedBox(height: 40),
+    ];
+  }
+
+  // ── Shared ────────────────────────────────────────────────
+
+  Widget _buildSectionLabel(BuildContext context, String label) {
+    return Text(
+      label,
+      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+        fontWeight: FontWeight.w700,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    );
+  }
+
+  Widget _buildBottomBar(BuildContext context, String orgId) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+        child: BlocBuilder<InventoryBloc, InventoryState>(
+          builder: (ctx, state) {
+            final loading = state is InventoryLoaded && state.loading;
+            return FilledButton(
+              onPressed: loading ? null : () => _submit(ctx, orgId),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+                textStyle: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              child: loading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(_isReceiveMode ? 'Receive Stock' : 'Create Warehouse'),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _submit(BuildContext context, String orgId) {
+    if (_isReceiveMode) {
+      setState(() => _variantTouched = true);
+      if (_warehouseId == null || _variantId == null) return;
+      if (!_formKey.currentState!.validate()) return;
+
+      context.read<InventoryBloc>().add(
+        InventoryReceiveStockRequested(
+          warehouseId: _warehouseId!,
+          productId: _productId!,
+          variantId: _variantId!,
+          orgId: orgId,
+          quantity: int.parse(_quantityCtrl.text.trim()),
+          unitCost: _unitCostCtrl.text.isNotEmpty
+              ? double.tryParse(_unitCostCtrl.text.trim())
+              : null,
+          currency: 'TZS',
+          batchNumber: _batchNumberCtrl.text.isNotEmpty
+              ? _batchNumberCtrl.text.trim()
+              : null,
+          sku: _skuCtrl.text.isNotEmpty ? _skuCtrl.text.trim() : null,
+          expiresAt: _expiresAt,
+          bestBeforeAt: _bestBeforeAt,
+        ),
+      );
+    } else {
+      if (!_formKey.currentState!.validate()) return;
+      context.read<InventoryBloc>().add(
+        InventoryWarehouseCreateRequested(
+          orgId,
+          _warehouseNameCtrl.text.trim(),
+          _warehouseType,
+        ),
+      );
+    }
+  }
+}
+
+
+// === FILE: lib/features/inventory/presentation/pages/inventory_list_page.dart ===
+// lib/features/inventory/presentation/pages/inventory_list_page.dart
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../../../../config/di/injection_container.dart';
+import '../../../../core/context/org_context.dart';
+import '../bloc/inventory_bloc.dart';
+import '../bloc/inventory_event.dart';
+import '../bloc/inventory_state.dart';
+import '../widgets/inventory_batch_card.dart';
+import '../widgets/inventory_section_header.dart';
+import '../../domain/entities/inventory_entity.dart';
+
+class InventoryListPage extends StatelessWidget {
+  const InventoryListPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final orgId = sl<OrgContext>().requireRootOrgId();
+
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: scheme.surface,
+        appBar: AppBar(
+          backgroundColor: scheme.surface,
+          elevation: 0,
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Inventory',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              Text(
+                'Stock & Warehouses',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  context.push(AppRouter.inventoryReceiveStock);
+                },
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Receive Stock'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                ),
+              ),
+            ),
+          ],
+          bottom: TabBar(
+            labelColor: scheme.primary,
+            unselectedLabelColor: scheme.onSurfaceVariant,
+            indicatorColor: scheme.primary,
+            indicatorSize: TabBarIndicatorSize.label,
+            tabs: const [
+              Tab(
+                text: 'Stock Batches',
+                icon: Icon(Icons.inventory_2_outlined, size: 18),
+              ),
+              Tab(
+                text: 'Warehouses',
+                icon: Icon(Icons.warehouse_outlined, size: 18),
+              ),
+            ],
+          ),
+        ),
+        body: BlocConsumer<InventoryBloc, InventoryState>(
+          listener: (context, state) {
+            if (state is InventoryLoaded && state.errorMessage != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(state.errorMessage!), // fix: was state.message
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            if (state is InventoryLoaded && state.createdWarehouse != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Warehouse "${state.createdWarehouse!.name}" created.', // fix: was state.warehouse
+                  ),
+                  backgroundColor: Colors.green,
+                ),
+              );
+              context.read<InventoryBloc>().add(
+                InventoryWarehousesLoadRequested(orgId),
+              );
+            }
+          },
+          builder: (context, state) {
+            return TabBarView(
+              children: [
+                _buildBatchesTab(context, state, orgId),
+                _buildWarehousesTab(context, state, orgId),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // ── Batches tab ───────────────────────────────────────────
+
+  Widget _buildBatchesTab(
+    BuildContext context,
+    InventoryState state,
+    String orgId,
+  ) {
+    if (state is InventoryLoaded && state.loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (state is InventoryLoaded) {
+      if (state.batches.isEmpty) {
+        return _buildEmptyBatches(context);
+      }
+      return _buildBatchList(context, state.batches);
+    }
+    return _buildEmptyBatches(context);
+  }
+
+  Widget _buildBatchList(
+    BuildContext context,
+    List<InventoryBatchEntity> batches,
+  ) {
+    final expired = batches.where((b) => b.isExpired).toList();
+    final nearExpiry = batches
+        .where((b) => !b.isExpired && b.isNearExpiry)
+        .toList();
+    final active = batches
+        .where((b) => b.isActive && !b.isExpired && !b.isNearExpiry)
+        .toList();
+    final depleted = batches
+        .where((b) => b.isDepleted && !b.isExpired)
+        .toList();
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        if (expired.isNotEmpty) ...[
+          InventorySectionHeader(
+            label: 'Expired (${expired.length})',
+            color: Colors.red.shade700,
+          ),
+          ...expired.map((b) => InventoryBatchCard(batch: b)),
+          const SizedBox(height: 8),
+        ],
+        if (nearExpiry.isNotEmpty) ...[
+          InventorySectionHeader(
+            label: 'Near Expiry (${nearExpiry.length})',
+            color: Colors.orange.shade700,
+          ),
+          ...nearExpiry.map((b) => InventoryBatchCard(batch: b)),
+          const SizedBox(height: 8),
+        ],
+        if (active.isNotEmpty) ...[
+          InventorySectionHeader(
+            label: 'Active (${active.length})',
+            color: Colors.green.shade700,
+          ),
+          ...active.map((b) => InventoryBatchCard(batch: b)),
+          const SizedBox(height: 8),
+        ],
+        if (depleted.isNotEmpty) ...[
+          InventorySectionHeader(
+            label: 'Depleted (${depleted.length})',
+            color: Colors.grey.shade600,
+          ),
+          ...depleted.map((b) => InventoryBatchCard(batch: b)),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildEmptyBatches(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.inventory_2_outlined,
+            size: 64,
+            color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No stock batches yet',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Tap "Receive Stock" to add your first batch.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Warehouses tab ────────────────────────────────────────
+
+  Widget _buildWarehousesTab(
+    BuildContext context,
+    InventoryState state,
+    String orgId,
+  ) {
+    // fix: removed duplicate ternary; InventoryLoading doesn't exist — use loading flag
+    final warehouses = state is InventoryLoaded
+        ? state.warehouses
+        : <WarehouseEntity>[];
+
+    if (state is InventoryLoaded && state.loading && warehouses.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return _buildWarehouseList(context, warehouses, orgId);
+  }
+
+  Widget _buildWarehouseList(
+    BuildContext context,
+    List<WarehouseEntity> warehouses,
+    String orgId,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        OutlinedButton.icon(
+          onPressed: () => context.push(AppRouter.inventoryWarehouseCreate),
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('Add Warehouse'),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (warehouses.isEmpty)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.warehouse_outlined,
+                    size: 48,
+                    color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No warehouses yet.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          ...warehouses.map((w) => _buildWarehouseCard(context, w, scheme)),
+      ],
+    );
+  }
+
+  Widget _buildWarehouseCard(
+    BuildContext context,
+    WarehouseEntity w,
+    ColorScheme scheme,
+  ) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: scheme.primaryContainer,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(
+            _warehouseIcon(w.type),
+            color: scheme.onPrimaryContainer,
+            size: 22,
+          ),
+        ),
+        title: Text(
+          w.name,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          w.type[0].toUpperCase() + w.type.substring(1),
+          style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+        ),
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: w.isActive
+                ? Colors.green.withValues(alpha: 0.1)
+                : Colors.grey.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            w.isActive ? 'Active' : 'Inactive',
+            style: TextStyle(
+              fontSize: 11,
+              color: w.isActive ? Colors.green.shade700 : Colors.grey,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  IconData _warehouseIcon(String type) {
+    return switch (type) {
+      'cold' => Icons.ac_unit_rounded,
+      'bonded' => Icons.lock_outlined,
+      'virtual' => Icons.cloud_outlined,
+      _ => Icons.warehouse_outlined,
+    };
+  }
+}
+
+
+// === FILE: lib/features/inventory/presentation/widgets/inventory_batch_card.dart ===
+// lib/features/inventory/presentation/widgets/inventory_batch_card.dart
+
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../../domain/entities/inventory_entity.dart';
+
+class InventoryBatchCard extends StatelessWidget {
+  final InventoryBatchEntity batch;
+
+  const InventoryBatchCard({super.key, required this.batch});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final fmt = DateFormat('dd MMM yyyy');
+
+    final statusColor = _statusColor();
+    final statusLabel = _statusLabel();
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: batch.isExpired
+              ? Colors.red.shade200
+              : batch.isNearExpiry
+                  ? Colors.orange.shade200
+                  : scheme.outlineVariant,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildHeader(context, statusColor, statusLabel),
+            const SizedBox(height: 12),
+            _buildStockRow(context),
+            const SizedBox(height: 10),
+            const Divider(height: 1),
+            const SizedBox(height: 10),
+            _buildMetaRow(context, fmt, scheme),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(
+      BuildContext context, Color statusColor, String statusLabel) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (batch.batchNumber != null)
+                Text(
+                  'Batch #${batch.batchNumber}',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              if (batch.sku != null)
+                Text(
+                  'SKU: ${batch.sku}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              if (batch.batchNumber == null && batch.sku == null)
+                Text(
+                  'Batch ID: ...${batch.id.substring(batch.id.length - 8)}',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+            ],
+          ),
+        ),
+        _buildStatusChip(statusColor, statusLabel),
+      ],
+    );
+  }
+
+  Widget _buildStatusChip(Color color, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStockRow(BuildContext context) {
+    return Row(
+      children: [
+        _InventoryStatItem(
+          label: 'Available',
+          value: batch.availableQuantity.toString(),
+          color: Colors.green.shade700,
+        ),
+        const SizedBox(width: 20),
+        _InventoryStatItem(
+          label: 'Reserved',
+          value: batch.quantityReserved.toString(),
+          color: Colors.orange.shade700,
+        ),
+        const SizedBox(width: 20),
+        _InventoryStatItem(
+          label: 'Received',
+          value: batch.quantityReceived.toString(),
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetaRow(
+      BuildContext context, DateFormat fmt, ColorScheme scheme) {
+    return Wrap(
+      spacing: 14,
+      runSpacing: 6,
+      children: [
+        _InventoryMetaChip(
+          icon: Icons.warehouse_outlined,
+          label: batch.warehouseName.isNotEmpty ? batch.warehouseName : 'Warehouse',
+        ),
+        if (batch.expiresAt != null)
+          _InventoryMetaChip(
+            icon: Icons.schedule_rounded,
+            label: 'Exp: ${fmt.format(batch.expiresAt!)}',
+            color: batch.isExpired
+                ? Colors.red.shade700
+                : batch.isNearExpiry
+                    ? Colors.orange.shade700
+                    : null,
+          ),
+        if (batch.unitCost != null)
+          _InventoryMetaChip(
+            icon: Icons.attach_money_rounded,
+            label:
+                '${batch.currency} ${batch.unitCost!.toStringAsFixed(0)}/unit',
+          ),
+      ],
+    );
+  }
+
+  Color _statusColor() {
+    if (batch.isExpired) return Colors.red.shade700;
+    if (batch.isNearExpiry) return Colors.orange.shade700;
+    if (batch.isDepleted) return Colors.grey;
+    return Colors.green.shade700;
+  }
+
+  String _statusLabel() {
+    if (batch.isExpired) return 'Expired';
+    if (batch.isNearExpiry) return 'Near Expiry';
+    if (batch.isDepleted) return 'Depleted';
+    return 'Active';
+  }
+}
+
+class _InventoryStatItem extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _InventoryStatItem({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            color: color,
+          ),
+        ),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InventoryMetaChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color? color;
+
+  const _InventoryMetaChip({
+    required this.icon,
+    required this.label,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? Theme.of(context).colorScheme.onSurfaceVariant;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: c),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(fontSize: 12, color: c)),
+      ],
+    );
+  }
+}
+
+// === FILE: lib/features/inventory/presentation/widgets/inventory_section_header.dart ===
+// lib/features/inventory/presentation/widgets/inventory_section_header.dart
+
+import 'package:flutter/material.dart';
+
+class InventorySectionHeader extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const InventorySectionHeader({
+    super.key,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, top: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 16,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// === FILE: lib/features/inventory/presentation/widgets/inventory_warehouse_card.dart ===
+// lib/features/inventory/presentation/widgets/inventory_warehouse_card.dart
+
+import 'package:flutter/material.dart';
+import '../../domain/entities/inventory_entity.dart';
+
+class InventoryWarehouseCard extends StatelessWidget {
+  final WarehouseEntity warehouse;
+
+  const InventoryWarehouseCard({super.key, required this.warehouse});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
+      child: ListTile(
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: scheme.primaryContainer,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(
+            _typeIcon(),
+            color: scheme.onPrimaryContainer,
+            size: 22,
+          ),
+        ),
+        title: Text(
+          warehouse.name,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          warehouse.type[0].toUpperCase() + warehouse.type.substring(1),
+          style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+        ),
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: warehouse.isActive
+                ? Colors.green.withValues(alpha: 0.1)
+                : Colors.grey.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            warehouse.isActive ? 'Active' : 'Inactive',
+            style: TextStyle(
+              fontSize: 11,
+              color: warehouse.isActive
+                  ? Colors.green.shade700
+                  : Colors.grey,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  IconData _typeIcon() {
+    return switch (warehouse.type) {
+      'cold' => Icons.ac_unit_rounded,
+      'bonded' => Icons.lock_outlined,
+      'virtual' => Icons.cloud_outlined,
+      _ => Icons.warehouse_outlined,
+    };
+  }
+}
+

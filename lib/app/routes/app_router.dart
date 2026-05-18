@@ -141,6 +141,13 @@ import '../../features/activity_log/presentation/bloc/activity_log_event.dart';
 import '../../features/activity_log/presentation/pages/activity_log_list_page.dart';
 import '../../features/activity_log/presentation/pages/activity_log_detail_page.dart';
 
+import '../../features/inventory/presentation/bloc/inventory_bloc.dart';
+import '../../features/inventory/presentation/bloc/inventory_event.dart';
+import '../../features/inventory/presentation/pages/inventory_list_page.dart';
+import '../../features/inventory/presentation/pages/inventory_form_page.dart';
+import '../../features/inventory/presentation/enums/inventory_form_node.dart';
+import '../../core/context/org_context.dart';
+
 // -- FormNode enums -----------------------------------------
 import '../../features/officer/presentation/enums/officer_form_node.dart';
 import '../../features/customer/presentation/pages/customer_form_page.dart'
@@ -154,6 +161,7 @@ import '../../features/daily_report/presentation/enums/daily_report_form_node.da
 import '../../features/order/presentation/enums/order_form_node.dart';
 import '../../features/conversation/presentation/pages/conversation_form_page.dart'
     show ConversationFormMode;
+import '../../../../features/conversation/data/datasources/conversation_remote_datasource.dart';
 import '../../features/payment/presentation/pages/payment_form_page.dart'
     show PaymentFormMode;
 import '../../features/notification/presentation/enums/notification_form_node.dart';
@@ -297,6 +305,11 @@ class AppRouter {
   static const String activityLogList = '/activity-logs';
   static const String activityLogDetail = '/activity-logs/:id';
   static String activityLogDetailPath(String id) => '/activity-logs/$id';
+
+  // Phase 10 — Inventory
+  static const String inventoryList = '/inventory';
+  static const String inventoryReceiveStock = '/inventory/receive';
+  static const String inventoryWarehouseCreate = '/inventory/warehouses/create';
 
   // -- END GENERATOR ROUTE CONSTANTS --------------------------
 
@@ -652,6 +665,54 @@ class AppRouter {
               },
             ),
 
+            // --- Phase 10 — Inventory (L2) -----------------
+            GoRoute(
+              path: AppRouter.inventoryList,
+              builder: (_, _) => BlocProvider(
+                create: (_) => sl<InventoryBloc>()
+                  ..add(
+                    InventoryBatchesLoadRequested(
+                      sl<OrgContext>().requireRootOrgId(),
+                    ),
+                  )
+                  ..add(
+                    InventoryWarehousesLoadRequested(
+                      sl<OrgContext>().requireRootOrgId(),
+                    ),
+                  ),
+                child: const InventoryListPage(),
+              ),
+            ),
+
+GoRoute(
+  path: AppRouter.inventoryReceiveStock,
+  builder: (_, state) {
+    final extra = state.extra as Map<String, dynamic>?;
+    return BlocProvider(
+      create: (_) => sl<InventoryBloc>()
+        ..add(
+          InventoryWarehousesLoadRequested(
+            sl<OrgContext>().requireRootOrgId(),
+          ),
+        ),
+      child: InventoryFormPage(
+        mode: InventoryFormNode.receiveStock,
+        preselectedProductId: extra?['productId'] as String?,
+      ),
+    );
+  },
+),
+
+            GoRoute(
+              path: AppRouter.inventoryWarehouseCreate,
+              builder: (_, _) => BlocProvider(
+                create: (_) => sl<InventoryBloc>(),
+                child: const InventoryFormPage(
+                  mode: InventoryFormNode.createWarehouse,
+                ),
+              ),
+            ),
+
             // --- Phase 6 — Promotions (L3) ------------------
             GoRoute(
               path: promotionList,
@@ -822,20 +883,21 @@ class AppRouter {
               },
             ),
 
-            // --- Phase 8 — Conversations (L1) --------------
+            // --- Phase 8 — Conversations (L1) -------------------------
             GoRoute(
               path: conversationList,
-              builder: (_, _) => BlocProvider(
+              builder: (context, _) => BlocProvider(
                 create: (_) =>
-                    sl<ConversationBloc>()..add(ConversationLoadAllRequested()),
+                    _conversationBloc(context)
+                      ..add(ConversationLoadAllRequested()),
                 child: const ConversationListPage(),
               ),
             ),
             GoRoute(
               path: conversationCreate,
-              builder: (_, _) => MultiBlocProvider(
+              builder: (context, _) => MultiBlocProvider(
                 providers: [
-                  BlocProvider(create: (_) => sl<ConversationBloc>()),
+                  BlocProvider(create: (_) => _conversationBloc(context)),
                   BlocProvider(
                     create: (_) =>
                         sl<ActorBloc>()..add(ActorLoadAllRequested()),
@@ -856,17 +918,15 @@ class AppRouter {
             ),
             GoRoute(
               path: conversationDetail,
-              builder: (_, s) {
+              builder: (context, s) {
                 final id = s.pathParameters['id'] ?? '';
                 return MultiBlocProvider(
                   providers: [
                     BlocProvider(
                       create: (_) =>
-                          sl<ConversationBloc>()
+                          _conversationBloc(context)
                             ..add(ConversationLoadOneRequested(id)),
                     ),
-                    // FIX #7: Provide ActorBloc so the detail page can
-                    // populate availableContacts for the "Add Member" sheet.
                     BlocProvider(
                       create: (_) =>
                           sl<ActorBloc>()..add(ActorLoadAllRequested()),
@@ -878,13 +938,13 @@ class AppRouter {
             ),
             GoRoute(
               path: conversationEdit,
-              builder: (_, s) {
+              builder: (context, s) {
                 final id = s.pathParameters['id'] ?? '';
                 return MultiBlocProvider(
                   providers: [
                     BlocProvider(
                       create: (_) =>
-                          sl<ConversationBloc>()
+                          _conversationBloc(context)
                             ..add(ConversationLoadOneRequested(id)),
                     ),
                     BlocProvider(
@@ -1091,7 +1151,13 @@ class AppRouter {
 
   // -- Redirect logic ---------------------------------------
   static String? _redirect(AuthState authState, String location) {
-    const authRoutes = {login, register, accountPicker, wrongApp};
+    const authRoutes = {
+      login,
+      register,
+      accountPicker,
+      wrongApp,
+      pendingActivation,
+    };
     final isAuthRoute = authRoutes.contains(location);
     final isShellRoute = !isAuthRoute && location != splash;
 
@@ -1125,12 +1191,38 @@ class AppRouter {
       AuthLoading() => isShellRoute ? splash : null,
       AuthAccountsUpdated() => location == splash ? home : null,
       AuthNeedsAccountPicker() => isAuthRoute2 ? null : accountPicker,
+      AuthNeedsInvitationToken() => // ← ADD THIS
+      location == pendingActivation ? null : pendingActivation,
       AuthUnauthenticated() =>
         isShellRoute || location == splash ? login : null,
       AuthSwitching() => null,
       AuthFailureState() => isShellRoute ? login : null,
       _ => isShellRoute ? login : null,
     };
+  }
+
+  // Resolves ConversationBloc with the authenticated user's actor_id.
+  // Must be called inside a route builder where AuthBloc is accessible.
+  static ConversationBloc _conversationBloc(BuildContext context) {
+    final authState = context.read<AuthBloc>().state;
+    String actorId = '';
+    String actorName = '';
+
+    if (authState is AuthAuthenticated) {
+      final user = authState.activeSession.user;
+      // actor_id is the ULID used by the Communications API for participants.
+      // Fall back to user.id only as absolute last resort.
+      actorId = user.actorId?.isNotEmpty == true ? user.actorId! : user.id;
+      actorName = user.name.isNotEmpty ? user.name : user.email;
+    }
+
+    // Pre-populate the datasource name cache so the current user's
+    // messages resolve immediately without a round-trip.
+    if (actorId.isNotEmpty && actorName.isNotEmpty) {
+      sl<ConversationRemoteDataSource>().registerName(actorId, actorName);
+    }
+
+    return sl<ConversationBloc>(param1: actorId, param2: actorName);
   }
 }
 

@@ -43,8 +43,10 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
   }) : _dio = dio,
        _orgContext = orgContext;
 
+  // String get _base =>
+  //     '/pharma/orgs/${_orgContext.effectiveOrgId}/product-updates';
   String get _base =>
-      '/pharma/orgs/${_orgContext.effectiveOrgId}/product-updates';
+      '/pharma/orgs/${_orgContext.requireRootOrgId()}/product-updates';
 
   // ── Nexora response → PromotionModel ──────────────────────
 
@@ -88,7 +90,9 @@ class PromotionRemoteDataSourceImpl implements PromotionRemoteDataSource {
           : DateTime.now(),
       targetCount: j['total_recipients'] as int? ?? 0,
       broadcastSentAt: sentAt,
-      discountPercentage: (j['discount_percentage'] as num?)?.toDouble(),
+      discountPercentage: j['discount_percentage'] == null
+          ? null
+          : double.tryParse(j['discount_percentage'].toString()),
     );
   }
 

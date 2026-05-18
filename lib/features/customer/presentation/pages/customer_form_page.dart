@@ -834,6 +834,7 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
           CustomerUpdateRequested(
             s.item.copyWith(
               name: _nameCtl.text.trim(),
+              customerType: _customerType,
               phone: _phoneCtl.text.trim(),
               email: _emailCtl.text.trim(),
               whatsappNumber: _whatsappCtl.text.trim(),
@@ -852,6 +853,15 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
             appPasswordConfirmation: _enableAppLogin
                 ? _confirmPassCtl.text
                 : null,
+            // ── ADD: contact person fields ────────────────────────
+            contactName: _contactNameCtl.text.trim().isEmpty
+                ? null
+                : _contactNameCtl.text.trim(),
+            contactPhone: _contactPhoneCtl.text.trim().isEmpty
+                ? null
+                : _contactPhoneCtl.text.trim(),
+            contactRole: _contactRole,
+            // ─────────────────────────────────────────────────────
           ),
         );
       }
