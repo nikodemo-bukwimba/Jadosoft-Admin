@@ -1,8 +1,11 @@
+// lib/features/product/presentation/widgets/product_image.dart
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 
 /// Reusable product image widget.
-/// Handles network URLs (https://), local file paths, loading, error, placeholder.
+/// Handles network URLs (https://), local file paths on all platforms
+/// (Unix /path, Windows C:\path), loading states, errors, and placeholder.
 class ProductImage extends StatelessWidget {
   final String? imageUrl;
   final double? width;
@@ -19,17 +22,33 @@ class ProductImage extends StatelessWidget {
     this.fit = BoxFit.cover,
   });
 
+  /// Returns true when imageUrl is a local file path rather than a network URL.
+  ///
+  /// Covers:
+  ///   • Unix / macOS / Linux absolute paths  → start with /
+  ///   • file:// URIs                          → start with file://
+  ///   • Windows absolute paths               → start with a drive letter (C:\, D:/, etc.)
+  ///   • Windows UNC paths                    → start with \\
+  ///
+  /// Anything starting with http:// or https:// is treated as a network URL.
   bool get _isLocalFile {
-    if (imageUrl == null) return false;
+    if (imageUrl == null || imageUrl!.isEmpty) return false;
     if (imageUrl!.startsWith('http://') || imageUrl!.startsWith('https://')) {
       return false;
     }
-    // On mobile, paths from image_picker are absolute. Avoid existsSync() on
-    // non-absolute strings (e.g. relative paths, Android content:// URIs)
-    // which can return false even for valid files or throw on some platforms.
-    if (imageUrl!.startsWith('/') || imageUrl!.startsWith('file://')) {
-      return true; // treat as local file; Image.file handles errors via errorBuilder
+    // Unix / Linux / macOS absolute path
+    if (imageUrl!.startsWith('/')) return true;
+    // file:// URI
+    if (imageUrl!.startsWith('file://')) return true;
+    // Windows drive letter: C:\ or C:/
+    if (imageUrl!.length >= 3 &&
+        imageUrl![1] == ':' &&
+        (imageUrl![2] == '\\' || imageUrl![2] == '/')) {
+      return true;
     }
+    // Windows UNC path: \\server\share
+    if (imageUrl!.startsWith('\\\\')) return true;
+
     return false;
   }
 
@@ -41,7 +60,7 @@ class ProductImage extends StatelessWidget {
       return _placeholder(scheme);
     }
 
-    // Local file path (from image picker)
+    // ── Local file path (image_picker on mobile, file_picker on desktop) ──
     if (_isLocalFile) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(borderRadius),
@@ -55,7 +74,7 @@ class ProductImage extends StatelessWidget {
       );
     }
 
-    // Network URL
+    // ── Network URL ──────────────────────────────────────────────────────────
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
       child: Image.network(

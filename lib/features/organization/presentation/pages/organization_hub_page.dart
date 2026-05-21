@@ -33,7 +33,7 @@ import '../pages/invitations_tab.dart';
 import '../pages/delegation_tab.dart';
 import '../pages/permission_request_tab.dart';
 import '../pages/create_organization_page.dart';
-import 'accept_invitation_dialog.dart';
+// import 'accept_invitation_dialog.dart';
 import '../widgets/org_header_card.dart';
 import '../../domain/entities/organization_entity.dart';
 
@@ -59,8 +59,8 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
     Tab(icon: Icon(Icons.admin_panel_settings_outlined), text: 'Roles'),
     Tab(icon: Icon(Icons.people_outlined), text: 'Members'),
     Tab(icon: Icon(Icons.mail_outlined), text: 'Invitations'),
-    Tab(icon: Icon(Icons.swap_horiz_outlined), text: 'Delegations'),
-    Tab(icon: Icon(Icons.lock_open_outlined), text: 'Requests'),
+    // Tab(icon: Icon(Icons.swap_horiz_outlined), text: 'Delegations'),
+    // Tab(icon: Icon(Icons.lock_open_outlined), text: 'Requests'),
   ];
 
   static const int _kBranches = 0;
@@ -108,11 +108,11 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
   }
 
   List<Widget> _appBarActions(BuildContext context) => [
-    IconButton(
-      icon: const Icon(Icons.mail_outlined),
-      tooltip: 'Accept Invitation',
-      onPressed: () => AcceptInvitationDialog.show(context),
-    ),
+    // IconButton(
+    //   icon: const Icon(Icons.mail_outlined),
+    //   tooltip: 'Accept Invitation',
+    //   onPressed: () => AcceptInvitationDialog.show(context),
+    // ),
   ];
 
   @override

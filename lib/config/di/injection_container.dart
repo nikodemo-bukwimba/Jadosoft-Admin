@@ -187,9 +187,13 @@ import 'package:jadosoft_admin/features/sales_dashboard/presentation/cubit/sales
 
 // Phase 9 ? Report Export (L5)
 import 'package:jadosoft_admin/features/report_export/data/client/report_export_client.dart';
+import 'package:jadosoft_admin/features/report_export/data/client/report_export_client_impl.dart';
 import 'package:jadosoft_admin/features/report_export/domain/services/report_export_service.dart';
+import 'package:jadosoft_admin/features/report_export/domain/services/product_pdf_generator.dart';
+import 'package:jadosoft_admin/features/report_export/domain/services/product_excel_generator.dart';
 import 'package:jadosoft_admin/features/report_export/presentation/cubit/report_export_cubit.dart';
-import 'package:jadosoft_admin/features/report_export/domain/services/report_pdf_generator.dart';
+import 'package:jadosoft_admin/features/product/domain/usecases/get_products_with_promotions_usecase.dart';
+import 'package:jadosoft_admin/features/product/domain/services/client_promotion_pricing_service.dart';
 
 // Phase 9 ? Activity Logs (L1)
 import 'package:jadosoft_admin/features/activity_log/data/datasources/activity_log_remote_datasource.dart';
@@ -917,15 +921,43 @@ Future<void> initDependencies() async {
     () => SalesDashboardCubit(getProjection: sl()),
   );
 
-  // Seq 20 ? Report Export (L5)
-  //     sl.registerLazySingleton<ReportExportClient>(
-  //       () => ReportExportClientImpl(dio: sl()));
-  // sl.registerLazySingleton<ReportExportClient>(() => ReportExportMockClient());
+  // Seq 20 — Report Export
+
+  sl.registerLazySingleton<ReportExportClient>(
+    () => ReportExportClientImpl(dio: sl<Dio>()),
+  );
+
+  sl.registerLazySingleton<ClientPromotionPricingService>(
+    () => const ClientPromotionPricingService(),
+  );
+
+  sl.registerLazySingleton<GetProductsWithPromotionsUseCase>(
+    () => GetProductsWithPromotionsUseCase(
+      products: sl<ProductRepository>(),
+      promotions: sl<PromotionRepository>(),
+      pricingService: sl<ClientPromotionPricingService>(),
+    ),
+  );
+
+  sl.registerLazySingleton<ProductPdfGenerator>(
+    () => const ProductPdfGenerator(),
+  );
+
+  sl.registerLazySingleton<ProductExcelGenerator>(
+    () => const ProductExcelGenerator(),
+  );
+
   sl.registerLazySingleton<ReportExportService>(
     () => ReportExportService(client: sl<ReportExportClient>()),
   );
+
   sl.registerFactory<ReportExportCubit>(
-    () => ReportExportCubit(service: sl<ReportExportService>()),
+    () => ReportExportCubit(
+      service: sl<ReportExportService>(),
+      getProductsWithPromotions: sl<GetProductsWithPromotionsUseCase>(),
+      productPdfGenerator: sl<ProductPdfGenerator>(),
+      productExcelGenerator: sl<ProductExcelGenerator>(),
+    ),
   );
 
   // Seq 21 — Activity Logs (L1)

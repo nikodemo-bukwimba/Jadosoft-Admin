@@ -1,22 +1,32 @@
 ﻿// ================================================================
-// features_product_source.txt
+// Product_and_Export_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-05-20 16:12:27
-// Files        : 34
+// Generated    : 2026-05-19 15:49:21
+// Files        : 50
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
 
 // === FILE: lib/features/product/data/datasources/product_api_datasource.dart ===
 // lib/features/product/data/datasources/product_api_datasource.dart
+//
+// FIX: Added uploadImage(String localPath) → POST /api/v1/media/upload
+//
+// Previously _imageSource (a local device file path like
+// /data/.../image_picker_abc.jpg) was passed raw as image_url in the
+// JSON body.  The server stored a local path that is meaningless on
+// any other session or device.
+//
+// Fix flow:
+//   1. _pickImage stores the local path in _imageSource (unchanged).
+//   2. Before dispatching create/update, the form calls
+//      datasource.uploadImage(_imageSource!) which multipart-POSTs the
+//      file to /api/v1/media/upload and returns a public https:// URL.
+//   3. That URL is stored as image_url in the JSON body.
+// ─────────────────────────────────────────────────────────────
 
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, TargetPlatform;
-import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../../../../core/context/org_context.dart';
 import '../../../../core/error/exceptions.dart';
@@ -31,6 +41,8 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     : _dio = dio,
       _orgContext = orgContext;
 
+  // ── Error helper ─────────────────────────────────────────────
+
   String _msg(DioException e) {
     final data = e.response?.data;
     if (data is Map<String, dynamic> && data['message'] is String) {
@@ -38,6 +50,8 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     }
     return 'An error occurred. Please try again.';
   }
+
+  // ── Response unwrapper ───────────────────────────────────────
 
   Map<String, dynamic> _unwrapProduct(dynamic raw) {
     if (raw is Map<String, dynamic>) {
@@ -50,9 +64,7 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     return {};
   }
 
-  // ── add here ──
-  bool _isLocalPath(String path) =>
-      !path.startsWith('http://') && !path.startsWith('https://');
+  // ── Nexora JSON → ProductModel ───────────────────────────────
 
   ProductModel _fromNexora(Map<String, dynamic> j) {
     final variants =
@@ -65,14 +77,17 @@ class ProductApiDataSource implements ProductRemoteDataSource {
           );
 
     final variantId = defaultVariant?['id']?.toString();
+
     final rawPrice = defaultVariant?['base_price'];
     final price = rawPrice == null
         ? 0.0
         : double.tryParse(rawPrice.toString()) ?? 0.0;
+
     final rawEffective = defaultVariant?['effective_price'];
     final effectivePrice = rawEffective == null
         ? price
         : double.tryParse(rawEffective.toString()) ?? price;
+
     final discountPercentage = (defaultVariant?['discount_percentage'] as num?)
         ?.toDouble();
     final hasPromotion = defaultVariant?['has_promotion'] as bool? ?? false;
@@ -129,73 +144,70 @@ class ProductApiDataSource implements ProductRemoteDataSource {
 
   String? _resolveImage(Map<String, dynamic> j) {
     final media = (j['media'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
     if (media.isEmpty) return null;
+
     final primary = media.firstWhere(
       (m) => m['is_primary'] == true,
       orElse: () => media.first,
     );
+
     return primary['url'] as String?;
   }
 
-  Map<String, dynamic> _createBody(Map<String, dynamic> d) {
-    final imageUrl = d['image_url'] as String?;
-    return {
-      'name': d['name'] ?? '',
-      'description': d['description'],
-      'type': 'physical',
-      'seller_actor_id': d['seller_actor_id'] ?? '',
-      'track_inventory': true,
-      'requires_confirmation': false,
-      'attributes': {'category_id': d['category_id'] ?? ''},
-      if (imageUrl != null && imageUrl.isNotEmpty)
-        'media': [
-          {'url': imageUrl, 'type': 'image', 'is_primary': true},
-        ],
-      'metadata': {
-        'category_id': d['category_id'] ?? '',
-        'is_available': d['is_available'] ?? true,
-        'is_featured': d['is_featured'] ?? false,
-        'is_new': d['is_new'] ?? true,
-        if (d['batch_number'] != null) 'batch_number': d['batch_number'],
-        if (d['expiry_date'] != null) 'expiry_date': d['expiry_date'],
-        if (d['pack_size'] != null) 'pack_size': d['pack_size'],
-        if (d['quantity_available'] != null)
-          'quantity_available': d['quantity_available'],
-      },
-      'variants': [
-        {
-          'base_price': d['price'] ?? 0,
-          'currency': 'TZS',
-          'name': d['name'] ?? 'Default',
-          'is_default': true,
-        },
-      ],
-    };
-  }
+  // ── Nexora create body ───────────────────────────────────────
 
-  Map<String, dynamic> _updateBody(Map<String, dynamic> d) {
-    final imageUrl = d['image_url'] as String?;
-    return {
-      'name': d['name'] ?? '',
-      'description': d['description'],
-      'attributes': {'category_id': d['category_id'] ?? ''},
-      if (imageUrl != null && imageUrl.isNotEmpty)
-        'media': [
-          {'url': imageUrl, 'type': 'image', 'is_primary': true},
-        ],
-      'metadata': {
-        'category_id': d['category_id'] ?? '',
-        'is_available': d['is_available'] ?? true,
-        'is_featured': d['is_featured'] ?? false,
-        'is_new': d['is_new'] ?? true,
-        if (d['batch_number'] != null) 'batch_number': d['batch_number'],
-        if (d['expiry_date'] != null) 'expiry_date': d['expiry_date'],
-        if (d['pack_size'] != null) 'pack_size': d['pack_size'],
-        if (d['quantity_available'] != null)
-          'quantity_available': d['quantity_available'],
+  Map<String, dynamic> _createBody(Map<String, dynamic> d) => {
+    'name': d['name'] ?? '',
+    'description': d['description'],
+    'type': 'physical',
+    'seller_actor_id': d['seller_actor_id'] ?? '',
+    'track_inventory': true,
+    'requires_confirmation': false,
+    'attributes': {'category_id': d['category_id'] ?? ''},
+    'metadata': {
+      'category_id': d['category_id'] ?? '',
+      'is_available': d['is_available'] ?? true,
+      'is_featured': d['is_featured'] ?? false,
+      'is_new': d['is_new'] ?? true,
+      if (d['image_url'] != null) 'image_url': d['image_url'],
+      if (d['batch_number'] != null) 'batch_number': d['batch_number'],
+      if (d['expiry_date'] != null) 'expiry_date': d['expiry_date'],
+      if (d['pack_size'] != null) 'pack_size': d['pack_size'],
+      if (d['quantity_available'] != null)
+        'quantity_available': d['quantity_available'],
+    },
+    'variants': [
+      {
+        'base_price': d['price'] ?? 0,
+        'currency': 'TZS',
+        'name': d['name'] ?? 'Default',
+        'is_default': true,
       },
-    };
-  }
+    ],
+  };
+
+  // ── Nexora update body ───────────────────────────────────────
+
+  Map<String, dynamic> _updateBody(Map<String, dynamic> d) => {
+    'name': d['name'] ?? '',
+    'description': d['description'],
+    'attributes': {'category_id': d['category_id'] ?? ''},
+    'metadata': {
+      'category_id': d['category_id'] ?? '',
+      'is_available': d['is_available'] ?? true,
+      'is_featured': d['is_featured'] ?? false,
+      'is_new': d['is_new'] ?? true,
+      if (d['image_url'] != null) 'image_url': d['image_url'],
+      if (d['batch_number'] != null) 'batch_number': d['batch_number'],
+      if (d['expiry_date'] != null) 'expiry_date': d['expiry_date'],
+      if (d['pack_size'] != null) 'pack_size': d['pack_size'],
+      if (d['quantity_available'] != null)
+        'quantity_available': d['quantity_available'],
+    },
+  };
+
+  // ── ProductRemoteDataSource interface ────────────────────────
 
   @override
   Future<List<ProductModel>> getAll() async {
@@ -254,32 +266,15 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     try {
       final newStatus = data['status']?.toString();
 
-      final rawImagePath = data['image_url']?.toString();
-      if (rawImagePath != null &&
-          rawImagePath.isNotEmpty &&
-          _isLocalPath(rawImagePath)) {
-        final hostedUrl = await uploadImage(rawImagePath);
-        data = Map<String, dynamic>.from(data)..['image_url'] = hostedUrl;
-      }
-
-      await _dio.patch('/commerce/products/$id', data: _updateBody(data));
-
       if (newStatus == 'active') {
         await _dio.post('/commerce/products/$id/publish');
       } else if (newStatus == 'archived') {
         await _dio.post('/commerce/products/$id/archive');
+      } else {
+        await _dio.patch('/commerce/products/$id', data: _updateBody(data));
       }
 
-      // ── Debug: inspect what the server returns ─────────────────
-      final res = await _dio.get(
-        '/commerce/products/$id',
-        queryParameters: {'org_id': _orgContext.effectiveOrgId},
-      );
-      final raw = _unwrapProduct(res.data);
-      print('DEBUG product media after update: ${raw['media']}');
-      // ───────────────────────────────────────────────────────────
-
-      return _fromNexora(raw);
+      return await getById(id);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     } catch (e) {
@@ -300,47 +295,26 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     }
   }
 
-  // ── Image upload ─────────────────────────────────────────────
+  // ── FIX: Image upload ────────────────────────────────────────
   //
-  // Desktop (Windows/macOS/Linux): file_picker returns the raw uncompressed
-  // file — a typical photo can be 5–15 MB, exceeding PHP's default
-  // post_max_size of 8 MB.  We compress with the `image` package before
-  // sending: resize to fit within 1200 px, re-encode as JPEG @ 85 quality.
-  // This brings most photos under 500 KB.
+  // Uploads the local file to POST /api/v1/media/upload and returns
+  // the server-generated public URL.
   //
-  // Mobile: image_picker already applies maxWidth/maxHeight/imageQuality,
-  // so no further compression is needed.
-
-  static bool get _isDesktop =>
-      defaultTargetPlatform == TargetPlatform.windows ||
-      defaultTargetPlatform == TargetPlatform.macOS ||
-      defaultTargetPlatform == TargetPlatform.linux;
-
-  static const int _maxDimension = 1200;
-  static const int _jpegQuality = 85;
+  // The caller (product form widget) must call this BEFORE building
+  // the create/update payload so that image_url in the body is a
+  // real https:// URL, not a local device path.
 
   @override
   Future<String> uploadImage(String localPath) async {
     try {
       final file = File(localPath);
-      if (!await file.exists()) {
+      if (!file.existsSync()) {
         throw ServerException('Image file not found at: $localPath');
       }
 
-      String uploadPath = localPath;
-      String uploadName = p.basename(localPath);
-
-      // Compress on desktop before sending
-      if (_isDesktop) {
-        final compressed = await _compressForDesktop(file);
-        if (compressed != null) {
-          uploadPath = compressed.path;
-          uploadName = p.basename(compressed.path);
-        }
-      }
-
+      final fileName = p.basename(localPath);
       final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(uploadPath, filename: uploadName),
+        'file': await MultipartFile.fromFile(localPath, filename: fileName),
         'type': 'product',
       });
 
@@ -363,43 +337,6 @@ class ProductApiDataSource implements ProductRemoteDataSource {
       rethrow;
     } catch (e) {
       throw ServerException('Image upload error: $e');
-    }
-  }
-
-  /// Decodes [source], resizes to fit [_maxDimension] on the longest axis,
-  /// and re-encodes as JPEG at [_jpegQuality].  Writes to a temp file.
-  /// Returns null on any error so the caller can fall back to the original.
-  Future<File?> _compressForDesktop(File source) async {
-    try {
-      final bytes = await source.readAsBytes();
-      final decoded = img.decodeImage(bytes);
-      if (decoded == null) return null;
-
-      img.Image resized = decoded;
-      if (decoded.width > _maxDimension || decoded.height > _maxDimension) {
-        resized = img.copyResize(
-          decoded,
-          width: decoded.width >= decoded.height ? _maxDimension : -1,
-          height: decoded.height > decoded.width ? _maxDimension : -1,
-          interpolation: img.Interpolation.linear,
-        );
-      }
-
-      final Uint8List jpegBytes = Uint8List.fromList(
-        img.encodeJpg(resized, quality: _jpegQuality),
-      );
-
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File(
-        p.join(
-          tempDir.path,
-          'upload_${DateTime.now().millisecondsSinceEpoch}.jpg',
-        ),
-      );
-      await tempFile.writeAsBytes(jpegBytes);
-      return tempFile;
-    } catch (_) {
-      return null; // fall back to original file
     }
   }
 }
@@ -2343,45 +2280,24 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
     final variantId = widget.item.variantId;
     if (variantId == null) return;
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    setState(() { _loading = true; _error = null; });
 
     try {
-      final orgContext = GetIt.instance<OrgContext>();
-      final orgId =
-          orgContext.effectiveOrgId; // ← replace requireRootOrgId() with this
-
+      final orgId   = GetIt.instance<OrgContext>().requireRootOrgId();
       final useCase = GetIt.instance<GetVariantStockUseCase>();
-      final result = await useCase(
+      final result  = await useCase(
         GetVariantStockParams(orgId: orgId, variantId: variantId),
       );
       result.fold(
         (f) {
-          if (mounted) {
-            setState(() {
-              _loading = false;
-              _error = f.message;
-            });
-          }
+          if (mounted) setState(() { _loading = false; _error = f.message; });
         },
         (stock) {
-          if (mounted) {
-            setState(() {
-              _loading = false;
-              _stock = stock;
-            });
-          }
+          if (mounted) setState(() { _loading = false; _stock = stock; });
         },
       );
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = e.toString();
-        });
-      }
+      if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
@@ -2398,7 +2314,7 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
   @override
   Widget build(BuildContext context) {
     final scheme = widget.scheme;
-    final item = widget.item;
+    final item   = widget.item;
 
     return Card(
       child: Padding(
@@ -2440,6 +2356,7 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
             if (item.variantId == null) ...[
               _staticFallback(context, item, scheme),
             ]
+
             // ── Loading ────────────────────────────────────────────
             else if (_loading && _stock == null) ...[
               const Center(
@@ -2449,15 +2366,13 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
                 ),
               ),
             ]
+
             // ── Error ──────────────────────────────────────────────
             else if (_error != null && _stock == null) ...[
               Row(
                 children: [
-                  Icon(
-                    Icons.warning_amber_rounded,
-                    size: 18,
-                    color: scheme.error,
-                  ),
+                  Icon(Icons.warning_amber_rounded,
+                      size: 18, color: scheme.error),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -2470,6 +2385,7 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
               const SizedBox(height: 12),
               _staticFallback(context, item, scheme),
             ]
+
             // ── Live data ──────────────────────────────────────────
             else if (_stock != null) ...[
               _liveStock(context, _stock!, scheme),
@@ -2520,19 +2436,12 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.info_outline,
-                size: 16,
-                color: scheme.onSurfaceVariant,
-              ),
+              Icon(Icons.info_outline, size: 16, color: scheme.onSurfaceVariant),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Live stock tracking starts once stock is received into a warehouse.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: scheme.onSurfaceVariant,
-                  ),
+                  style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
                 ),
               ),
             ],
@@ -2548,28 +2457,20 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
     VariantStockEntity stock,
     ColorScheme scheme,
   ) {
-    final batches = stock.batches;
-    final active = batches
-        .where(
-          (b) => b.isActive && !b.isExpired && !b.isNearExpiry && !b.isDepleted,
-        )
-        .toList();
-    final nearExpiry = batches
-        .where((b) => b.isNearExpiry && !b.isExpired)
-        .toList();
-    final expired = batches.where((b) => b.isExpired).toList();
-    final depleted = batches
-        .where((b) => b.isDepleted && !b.isExpired)
-        .toList();
+    final batches     = stock.batches;
+    final active      = batches.where((b) => b.isActive && !b.isExpired && !b.isNearExpiry && !b.isDepleted).toList();
+    final nearExpiry  = batches.where((b) => b.isNearExpiry && !b.isExpired).toList();
+    final expired     = batches.where((b) => b.isExpired).toList();
+    final depleted    = batches.where((b) => b.isDepleted && !b.isExpired).toList();
 
     // Total stock colour
-    final isLow = stock.totalStock > 0 && stock.totalStock <= 10;
+    final isLow      = stock.totalStock > 0 && stock.totalStock <= 10;
     final isDepleted = stock.totalStock <= 0;
     final stockColor = isDepleted
         ? scheme.error
         : isLow
-        ? Colors.orange.shade700
-        : Colors.green.shade700;
+            ? Colors.orange.shade700
+            : Colors.green.shade700;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2618,9 +2519,7 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
               if (isDepleted)
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
+                      horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: scheme.errorContainer,
                     borderRadius: BorderRadius.circular(20),
@@ -2637,9 +2536,7 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
               else if (isLow)
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
+                      horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.orange.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
@@ -2668,34 +2565,26 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
 
           // ── Batch groups ──────────────────────────────────────
           if (expired.isNotEmpty) ...[
-            _batchGroupHeader(
-              'Expired (${expired.length})',
-              Colors.red.shade700,
-            ),
+            _batchGroupHeader('Expired (${expired.length})',
+                Colors.red.shade700),
             ...expired.map((b) => _batchRow(context, b, scheme)),
             const SizedBox(height: 10),
           ],
           if (nearExpiry.isNotEmpty) ...[
-            _batchGroupHeader(
-              'Near Expiry (${nearExpiry.length})',
-              Colors.orange.shade700,
-            ),
+            _batchGroupHeader('Near Expiry (${nearExpiry.length})',
+                Colors.orange.shade700),
             ...nearExpiry.map((b) => _batchRow(context, b, scheme)),
             const SizedBox(height: 10),
           ],
           if (active.isNotEmpty) ...[
-            _batchGroupHeader(
-              'Active (${active.length})',
-              Colors.green.shade700,
-            ),
+            _batchGroupHeader('Active (${active.length})',
+                Colors.green.shade700),
             ...active.map((b) => _batchRow(context, b, scheme)),
             const SizedBox(height: 10),
           ],
           if (depleted.isNotEmpty) ...[
-            _batchGroupHeader(
-              'Depleted (${depleted.length})',
-              Colors.grey.shade600,
-            ),
+            _batchGroupHeader('Depleted (${depleted.length})',
+                Colors.grey.shade600),
             ...depleted.map((b) => _batchRow(context, b, scheme)),
           ],
         ],
@@ -2726,10 +2615,10 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
     final statusColor = batch.isExpired
         ? Colors.red.shade700
         : batch.isNearExpiry
-        ? Colors.orange.shade700
-        : batch.isDepleted
-        ? Colors.grey.shade600
-        : Colors.green.shade700;
+            ? Colors.orange.shade700
+            : batch.isDepleted
+                ? Colors.grey.shade600
+                : Colors.green.shade700;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
@@ -2756,7 +2645,8 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: statusColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
@@ -2776,11 +2666,8 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
             const SizedBox(height: 4),
             Row(
               children: [
-                Icon(
-                  Icons.warehouse_outlined,
-                  size: 13,
-                  color: scheme.onSurfaceVariant,
-                ),
+                Icon(Icons.warehouse_outlined,
+                    size: 13, color: scheme.onSurfaceVariant),
                 const SizedBox(width: 4),
                 Text(
                   batch.warehouseName,
@@ -2796,11 +2683,8 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
             const SizedBox(height: 2),
             Row(
               children: [
-                Icon(
-                  Icons.event_outlined,
-                  size: 13,
-                  color: scheme.onSurfaceVariant,
-                ),
+                Icon(Icons.event_outlined,
+                    size: 13, color: scheme.onSurfaceVariant),
                 const SizedBox(width: 4),
                 Text(
                   'Expires: ${_fmtDate(batch.expiresAt!)}',
@@ -2809,8 +2693,8 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
                     color: batch.isExpired
                         ? Colors.red.shade700
                         : batch.isNearExpiry
-                        ? Colors.orange.shade700
-                        : scheme.onSurfaceVariant,
+                            ? Colors.orange.shade700
+                            : scheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -2832,8 +2716,8 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
   ) {
     final label = expiryDate != null
         ? '${expiryDate.year}-'
-              '${expiryDate.month.toString().padLeft(2, '0')}-'
-              '${expiryDate.day.toString().padLeft(2, '0')}'
+            '${expiryDate.month.toString().padLeft(2, '0')}-'
+            '${expiryDate.day.toString().padLeft(2, '0')}'
         : '—';
 
     return Column(
@@ -2842,43 +2726,39 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
         _field(context, 'Expiry Date', label, scheme),
         if (expiryDate != null) ...[
           const SizedBox(height: 4),
-          Builder(
-            builder: (context) {
-              final daysLeft = expiryDate.difference(DateTime.now()).inDays;
-              final isExpiringSoon = daysLeft <= 180;
-              final isExpired = daysLeft < 0;
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
+          Builder(builder: (context) {
+            final daysLeft = expiryDate.difference(DateTime.now()).inDays;
+            final isExpiringSoon = daysLeft <= 180;
+            final isExpired = daysLeft < 0;
+            return Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: isExpired
+                    ? scheme.errorContainer
+                    : isExpiringSoon
+                        ? Colors.orange.withValues(alpha: 0.15)
+                        : Colors.green.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                isExpired
+                    ? 'Expired ${daysLeft.abs()} days ago'
+                    : isExpiringSoon
+                        ? 'Expires in $daysLeft days — check stock'
+                        : 'Expires in $daysLeft days',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                   color: isExpired
-                      ? scheme.errorContainer
+                      ? scheme.onErrorContainer
                       : isExpiringSoon
-                      ? Colors.orange.withValues(alpha: 0.15)
-                      : Colors.green.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
+                          ? Colors.orange.shade800
+                          : Colors.green.shade800,
                 ),
-                child: Text(
-                  isExpired
-                      ? 'Expired ${daysLeft.abs()} days ago'
-                      : isExpiringSoon
-                      ? 'Expires in $daysLeft days — check stock'
-                      : 'Expires in $daysLeft days',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: isExpired
-                        ? scheme.onErrorContainer
-                        : isExpiringSoon
-                        ? Colors.orange.shade800
-                        : Colors.green.shade800,
-                  ),
-                ),
-              );
-            },
-          ),
+              ),
+            );
+          }),
         ],
       ],
     );
@@ -2899,13 +2779,17 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
             width: 120,
             child: Text(
               label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
           Expanded(
-            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
+            child: Text(
+              value,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
           ),
         ],
       ),
@@ -3026,16 +2910,10 @@ class _ActionsSection extends StatelessWidget {
   }
 }
 
-
 // === FILE: lib/features/product/presentation/pages/product_form_page.dart ===
-// lib/features/product/presentation/pages/product_form_page.dart
-
-import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart';
 import '../enums/product_form_node.dart';
 import '../bloc/product_bloc.dart';
 import '../bloc/product_event.dart';
@@ -3048,18 +2926,6 @@ import '../../../category/domain/entities/category_entity.dart';
 import '../../../../core/widgets/searchable_picker_sheet.dart';
 import '../widgets/product_image.dart';
 import '../../data/datasources/product_remote_datasource.dart';
-
-// ── Platform helpers ─────────────────────────────────────────────────────────
-
-/// True when running on a desktop OS (Windows, macOS, Linux).
-/// image_picker does not support desktop — file_picker is used instead.
-bool get _isDesktop {
-  return defaultTargetPlatform == TargetPlatform.windows ||
-      defaultTargetPlatform == TargetPlatform.macOS ||
-      defaultTargetPlatform == TargetPlatform.linux;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 class ProductFormPage extends StatefulWidget {
   final ProductFormNode mode;
@@ -3077,8 +2943,6 @@ class ProductFormPage extends StatefulWidget {
 
 class _ProductFormPageState extends State<ProductFormPage> {
   final _formKey = GlobalKey<FormState>();
-
-  // image_picker — used on mobile/web only
   final _imagePicker = ImagePicker();
 
   final _nameController = TextEditingController();
@@ -3089,8 +2953,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
   final _quantityController = TextEditingController();
   DateTime? _expiryDate;
 
-  /// Holds either a network URL (from existing product) or a local file path
-  /// (picked by image_picker on mobile, or file_picker on desktop).
+  /// Holds either a network URL (from existing product) or local file path (from picker).
   String? _imageSource;
   String? _selectedCategoryId;
   bool _isAvailableValue = true;
@@ -3163,54 +3026,9 @@ class _ProductFormPageState extends State<ProductFormPage> {
     }
   }
 
-  // ─── Image picking ──────────────────────────────────────────────────────────
+  // ─── Image Picker ──────────────────────────────────────────
 
-  /// Entry point for all platforms.
-  /// On desktop → file_picker (fully supported on Windows/macOS/Linux).
-  /// On mobile/web → image_picker (camera + gallery).
   Future<void> _pickImage(ImageSource source) async {
-    if (_isDesktop) {
-      await _pickImageDesktop();
-    } else {
-      await _pickImageMobile(source);
-    }
-  }
-
-  /// Desktop: uses file_picker which natively opens the OS file dialog.
-  Future<void> _pickImageDesktop() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        allowMultiple: false,
-        // withData: false keeps memory low — we only need the path
-        withData: false,
-      );
-
-      if (result == null || result.files.isEmpty) return; // user cancelled
-
-      final path = result.files.single.path;
-      if (path == null || path.isEmpty) {
-        // Shouldn't happen when withData:false on desktop, but guard anyway
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not read file path.')),
-          );
-        }
-        return;
-      }
-
-      if (mounted) setState(() => _imageSource = path);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not pick image: $e')));
-      }
-    }
-  }
-
-  /// Mobile / Web: original image_picker flow (unchanged).
-  Future<void> _pickImageMobile(ImageSource source) async {
     try {
       final picked = await _imagePicker.pickImage(
         source: source,
@@ -3230,16 +3048,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
     }
   }
 
-  // ─── Bottom sheet ───────────────────────────────────────────────────────────
-
   void _showImagePickerSheet() {
-    // On desktop, skip the sheet and go straight to file_picker.
-    if (_isDesktop) {
-      _pickImageDesktop();
-      return;
-    }
-
-    // Mobile / Web: show the camera / gallery / remove sheet.
     showModalBottomSheet(
       context: context,
       builder: (sheetContext) => SafeArea(
@@ -3313,7 +3122,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
     );
   }
 
-  // ─── Build ──────────────────────────────────────────────────────────────────
+  // ─── Build ─────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -3435,9 +3244,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
                       leading: const Icon(Icons.calendar_month_outlined),
                       title: Text(
                         _expiryDate != null
-                            ? 'Expiry: ${_expiryDate!.year}-'
-                                  '${_expiryDate!.month.toString().padLeft(2, '0')}-'
-                                  '${_expiryDate!.day.toString().padLeft(2, '0')}'
+                            ? 'Expiry: ${_expiryDate!.year}-${_expiryDate!.month.toString().padLeft(2, '0')}-${_expiryDate!.day.toString().padLeft(2, '0')}'
                             : 'Set Expiry Date',
                       ),
                       trailing: _expiryDate != null
@@ -3508,7 +3315,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
     );
   }
 
-  // ─── Form sections ──────────────────────────────────────────────────────────
+  // ─── Form Sections ─────────────────────────────────────────
 
   Widget _buildImagePicker(ColorScheme scheme) {
     return Center(
@@ -3522,6 +3329,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
               height: 160,
               borderRadius: 16,
             ),
+            // Camera overlay icon
             Positioned(
               bottom: 0,
               right: 0,
@@ -3539,21 +3347,6 @@ class _ProductFormPageState extends State<ProductFormPage> {
                 ),
               ),
             ),
-            // Desktop hint label
-            if (_isDesktop && _imageSource == null)
-              Positioned(
-                bottom: 10,
-                left: 0,
-                right: 0,
-                child: Text(
-                  'Click to browse',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
           ],
         ),
       ),
@@ -3699,13 +3492,13 @@ class _ProductFormPageState extends State<ProductFormPage> {
     );
   }
 
-  // ─── Submit ─────────────────────────────────────────────────────────────────
+  // ─── Submit ────────────────────────────────────────────────
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSubmitting = true);
 
-    // ── Upload local image first if needed ──────────────────────────────────
+    // ── Upload local image first if needed ──────────────────
     String? resolvedImageUrl = _imageSource;
 
     final isLocalFile =
@@ -3739,7 +3532,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
 
     if (!mounted) return;
 
-    // ── Dispatch BLoC event with resolved URL ───────────────────────────────
+    // ── Dispatch bloc event with resolved URL ───────────────
     if (_isEdit) {
       final currentState = context.read<ProductBloc>().state;
       if (currentState is ProductDetailLoaded) {
@@ -3752,7 +3545,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
               categoryId: _selectedCategoryId ?? '',
               isAvailable: _isAvailableValue,
               isNew: _isNewValue,
-              imageUrl: resolvedImageUrl,
+              imageUrl: resolvedImageUrl, // ← resolved URL, not local path
               batchNumber: _batchNumberController.text.trim().isEmpty
                   ? null
                   : _batchNumberController.text.trim(),
@@ -3776,7 +3569,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
             isAvailable: _isAvailableValue,
             isFeatured: false,
             isNew: _isNewValue,
-            imageUrl: resolvedImageUrl,
+            imageUrl: resolvedImageUrl, // ← resolved URL, not local path
             batchNumber: _batchNumberController.text.trim().isEmpty
                 ? null
                 : _batchNumberController.text.trim(),
@@ -5421,14 +5214,11 @@ class ProductGridTile extends StatelessWidget {
 
 
 // === FILE: lib/features/product/presentation/widgets/product_image.dart ===
-// lib/features/product/presentation/widgets/product_image.dart
-
 import 'dart:io';
 import 'package:flutter/material.dart';
 
 /// Reusable product image widget.
-/// Handles network URLs (https://), local file paths on all platforms
-/// (Unix /path, Windows C:\path), loading states, errors, and placeholder.
+/// Handles network URLs (https://), local file paths, loading, error, placeholder.
 class ProductImage extends StatelessWidget {
   final String? imageUrl;
   final double? width;
@@ -5445,33 +5235,17 @@ class ProductImage extends StatelessWidget {
     this.fit = BoxFit.cover,
   });
 
-  /// Returns true when imageUrl is a local file path rather than a network URL.
-  ///
-  /// Covers:
-  ///   • Unix / macOS / Linux absolute paths  → start with /
-  ///   • file:// URIs                          → start with file://
-  ///   • Windows absolute paths               → start with a drive letter (C:\, D:/, etc.)
-  ///   • Windows UNC paths                    → start with \\
-  ///
-  /// Anything starting with http:// or https:// is treated as a network URL.
   bool get _isLocalFile {
-    if (imageUrl == null || imageUrl!.isEmpty) return false;
+    if (imageUrl == null) return false;
     if (imageUrl!.startsWith('http://') || imageUrl!.startsWith('https://')) {
       return false;
     }
-    // Unix / Linux / macOS absolute path
-    if (imageUrl!.startsWith('/')) return true;
-    // file:// URI
-    if (imageUrl!.startsWith('file://')) return true;
-    // Windows drive letter: C:\ or C:/
-    if (imageUrl!.length >= 3 &&
-        imageUrl![1] == ':' &&
-        (imageUrl![2] == '\\' || imageUrl![2] == '/')) {
-      return true;
+    // On mobile, paths from image_picker are absolute. Avoid existsSync() on
+    // non-absolute strings (e.g. relative paths, Android content:// URIs)
+    // which can return false even for valid files or throw on some platforms.
+    if (imageUrl!.startsWith('/') || imageUrl!.startsWith('file://')) {
+      return true; // treat as local file; Image.file handles errors via errorBuilder
     }
-    // Windows UNC path: \\server\share
-    if (imageUrl!.startsWith('\\\\')) return true;
-
     return false;
   }
 
@@ -5483,7 +5257,7 @@ class ProductImage extends StatelessWidget {
       return _placeholder(scheme);
     }
 
-    // ── Local file path (image_picker on mobile, file_picker on desktop) ──
+    // Local file path (from image picker)
     if (_isLocalFile) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(borderRadius),
@@ -5497,7 +5271,7 @@ class ProductImage extends StatelessWidget {
       );
     }
 
-    // ── Network URL ──────────────────────────────────────────────────────────
+    // Network URL
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
       child: Image.network(
@@ -6192,4 +5966,3708 @@ class ViewModeToggle extends StatelessWidget {
     );
   }
 }
+
+// === FILE: lib/features/report_export/data/client/report_export_client.dart ===
+// report_export_client.dart
+// ─────────────────────────────────────────────────────────────────────────────
+// Abstract client interface for the Report Export feature.
+// Two implementations exist:
+//   • ReportExportMockClient  — in-memory, used during development
+//   • ReportExportClientImpl  — real Dio HTTP client, used in production
+//
+// To switch to production:
+//   In injection_container.dart replace:
+//     sl.registerLazySingleton<ReportExportClient>(() => ReportExportMockClient())
+//   with:
+//     sl.registerLazySingleton<ReportExportClient>(
+//       () => ReportExportClientImpl(dio: sl()))
+// ─────────────────────────────────────────────────────────────────────────────
+
+import '../../domain/models/request_export_request.dart';
+import '../../domain/models/request_export_response.dart';
+import '../../domain/models/get_export_status_response.dart';
+import '../../domain/models/download_export_response.dart';
+
+abstract class ReportExportClient {
+  /// Request an async export job. Returns exportId + initial status.
+  Future<RequestExportResponse> requestExport(RequestExportRequest request);
+
+  /// Poll export job status. Poll until status == 'ready' or 'failed'.
+  Future<GetExportStatusResponse> getExportStatus(String exportId);
+
+  /// Download the completed export. Returns download URL + metadata.
+  Future<DownloadExportResponse> downloadExport(String exportId);
+}
+
+// === FILE: lib/features/report_export/data/client/report_export_client_impl.dart ===
+// report_export_client_impl.dart
+// ─────────────────────────────────────────────────────────────────────────────
+// Production Dio HTTP client for the Report Export feature.
+// Connects to the Laravel backend /api/v1/exports endpoints.
+//
+// Activate by updating injection_container.dart:
+//   sl.registerLazySingleton<ReportExportClient>(
+//     () => ReportExportClientImpl(dio: sl()))
+// ─────────────────────────────────────────────────────────────────────────────
+
+import 'package:dio/dio.dart';
+import 'report_export_client.dart';
+import '../../domain/models/request_export_request.dart';
+import '../../domain/models/request_export_response.dart';
+import '../../domain/models/get_export_status_response.dart';
+import '../../domain/models/download_export_response.dart';
+
+class ReportExportClientImpl implements ReportExportClient {
+  final Dio _dio;
+  static const int _maxRetries = 3;
+  static const int _backoffMs = 2000;
+
+  ReportExportClientImpl({required Dio dio}) : _dio = dio;
+
+  Future<Response> _withRetry(Future<Response> Function() fn) async {
+    int attempt = 0;
+    while (true) {
+      try {
+        attempt++;
+        return await fn();
+      } on DioException catch (e) {
+        final code = e.response?.statusCode;
+        final retryable = e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.receiveTimeout ||
+            e.type == DioExceptionType.connectionError ||
+            (code != null && code >= 500 && code != 501);
+        if (!retryable || attempt >= _maxRetries) rethrow;
+        await Future.delayed(Duration(milliseconds: _backoffMs * (1 << (attempt - 1))));
+      }
+    }
+  }
+
+  @override
+  Future<RequestExportResponse> requestExport(RequestExportRequest request) async {
+    final res = await _withRetry(() => _dio.post('/exports', data: request.toJson()));
+    return RequestExportResponse.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<GetExportStatusResponse> getExportStatus(String exportId) async {
+    final res = await _withRetry(() => _dio.get('/exports/$exportId'));
+    return GetExportStatusResponse.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<DownloadExportResponse> downloadExport(String exportId) async {
+    final res = await _withRetry(() => _dio.get('/exports/$exportId/download'));
+    return DownloadExportResponse.fromJson(res.data as Map<String, dynamic>);
+  }
+}
+
+// === FILE: lib/features/report_export/data/client/report_export_mock_client.dart ===
+// // report_export_mock_client.dart
+// // ─────────────────────────────────────────────────────────────────────────────
+// // Development client that generates REAL PDF/XLSX files on-device from mock data.
+// // Uses ReportPdfGenerator (PDF) and ReportExcelGenerator (Excel).
+// //
+// // When the Laravel API is ready, swap this for ReportExportClientImpl —
+// // one line change in injection_container.dart.
+// // ─────────────────────────────────────────────────────────────────────────────
+
+// import 'report_export_client.dart';
+// import '../../domain/models/request_export_request.dart';
+// import '../../domain/models/request_export_response.dart';
+// import '../../domain/models/get_export_status_response.dart';
+// import '../../domain/models/download_export_response.dart';
+// import '../../domain/services/report_pdf_generator.dart';
+// import '../../domain/services/report_excel_generator.dart';
+
+// class ReportExportMockClient implements ReportExportClient {
+//   final Map<String, _MockJob> _jobs = {};
+
+//   @override
+//   Future<RequestExportResponse> requestExport(
+//     RequestExportRequest request,
+//   ) async {
+//     await Future.delayed(const Duration(milliseconds: 300));
+//     final id = 'exp-${DateTime.now().millisecondsSinceEpoch}';
+//     final job = _MockJob(
+//       reportType: request.reportType,
+//       format: request.format,
+//       referenceId: request.referenceId,
+//       dateFrom: request.dateRange?['from'],
+//       dateTo: request.dateRange?['to'],
+//       createdAt: DateTime.now(),
+//     );
+
+//     // Route to the correct generator based on format
+//     if (request.format == 'excel') {
+//       job.generateFuture = ReportExcelGenerator.generate(
+//         reportType: request.reportType,
+//         referenceId: request.referenceId,
+//         dateFrom: request.dateRange?['from'],
+//         dateTo: request.dateRange?['to'],
+//       ).then((file) {
+//         job.file = file;
+//         return file;
+//       }).catchError((e) {
+//         job.failed = true;
+//         job.error = e.toString();
+//       });
+//     } else {
+//       // Default: PDF
+//       job.generateFuture = ReportPdfGenerator.generate(
+//         reportType: request.reportType,
+//         referenceId: request.referenceId,
+//         dateFrom: request.dateRange?['from'],
+//         dateTo: request.dateRange?['to'],
+//       ).then((file) {
+//         job.file = file;
+//         return file;
+//       }).catchError((e) {
+//         job.failed = true;
+//         job.error = e.toString();
+//       });
+//     }
+
+//     _jobs[id] = job;
+//     return RequestExportResponse(
+//       exportId: id,
+//       status: 'pending',
+//       createdAt: DateTime.now(),
+//     );
+//   }
+
+//   @override
+//   Future<GetExportStatusResponse> getExportStatus(String exportId) async {
+//     await Future.delayed(const Duration(milliseconds: 400));
+//     final job = _jobs[exportId];
+//     if (job == null) {
+//       return GetExportStatusResponse(
+//         exportId: exportId,
+//         status: 'failed',
+//         progress: 0,
+//         error: 'Export job not found',
+//       );
+//     }
+//     if (job.file != null) {
+//       return GetExportStatusResponse(
+//         exportId: exportId,
+//         status: 'ready',
+//         progress: 100,
+//         downloadUrl: job.file!.path,
+//       );
+//     }
+//     if (job.failed) {
+//       return GetExportStatusResponse(
+//         exportId: exportId,
+//         status: 'failed',
+//         progress: 0,
+//         error: job.error ?? 'Generation failed',
+//       );
+//     }
+//     final elapsed = DateTime.now().difference(job.createdAt).inMilliseconds;
+//     final progress = (elapsed / 3000 * 80).clamp(10, 80).toInt();
+//     return GetExportStatusResponse(
+//       exportId: exportId,
+//       status: 'processing',
+//       progress: progress,
+//     );
+//   }
+
+//   @override
+//   Future<DownloadExportResponse> downloadExport(String exportId) async {
+//     final job = _jobs[exportId];
+//     if (job == null || job.file == null) {
+//       throw Exception('Export not ready — poll getExportStatus first');
+//     }
+//     final n = DateTime.now();
+//     final stamp =
+//         '${n.year}${n.month.toString().padLeft(2, '0')}${n.day.toString().padLeft(2, '0')}';
+//     final isExcel = job.format == 'excel';
+//     final ext = isExcel ? 'xlsx' : 'pdf';
+//     final name = '${job.reportType}_barick_$stamp.$ext';
+//     final size = await job.file!.length();
+//     return DownloadExportResponse(
+//       fileUrl: job.file!.path,
+//       fileName: name,
+//       contentType: isExcel
+//           ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+//           : 'application/pdf',
+//       fileSize: size,
+//     );
+//   }
+// }
+
+// class _MockJob {
+//   final String reportType;
+//   final String format;
+//   final String? referenceId;
+//   final String? dateFrom;
+//   final String? dateTo;
+//   final DateTime createdAt;
+//   Future<dynamic>? generateFuture;
+//   dynamic file;
+//   bool failed = false;
+//   String? error;
+
+//   _MockJob({
+//     required this.reportType,
+//     required this.format,
+//     this.referenceId,
+//     this.dateFrom,
+//     this.dateTo,
+//     required this.createdAt,
+//   });
+// }
+
+// === FILE: lib/features/report_export/domain/models/download_export_response.dart ===
+class DownloadExportResponse {
+  final String fileUrl;
+  final String fileName;
+  final String contentType;
+  final int fileSize;
+
+  const DownloadExportResponse({
+    required this.fileUrl,
+    required this.fileName,
+    required this.contentType,
+    required this.fileSize,
+  });
+
+  factory DownloadExportResponse.fromJson(Map<String, dynamic> json) {
+    return DownloadExportResponse(
+      fileUrl: json['file_url'] as String,
+      fileName: json['file_name'] as String,
+      contentType: json['content_type'] as String,
+      fileSize: json['file_size'] as int,
+    );
+  }
+}
+
+
+// === FILE: lib/features/report_export/domain/models/get_export_status_response.dart ===
+class GetExportStatusResponse {
+  final String exportId;
+  final String status;
+  final int? progress;
+  final String? downloadUrl;
+  final String? error;
+
+  const GetExportStatusResponse({
+    required this.exportId,
+    required this.status,
+    this.progress,
+    this.downloadUrl,
+    this.error,
+  });
+
+  factory GetExportStatusResponse.fromJson(Map<String, dynamic> json) {
+    return GetExportStatusResponse(
+      exportId: json['export_id'] as String,
+      status: json['status'] as String,
+      progress: json['progress'] as int?,
+      downloadUrl: json['download_url'] as String?,
+      error: json['error'] as String?,
+    );
+  }
+}
+
+
+// === FILE: lib/features/report_export/domain/models/report_data_models.dart ===
+
+
+// === FILE: lib/features/report_export/domain/models/request_export_request.dart ===
+// request_export_request.dart
+// ─────────────────────────────────────────────────────────────────────────────
+// Request model for POST /exports
+//
+// reportType values:
+//   marketing_summary   — visits, officers, plan compliance, daily reports
+//   sales_summary       — orders, revenue, payments, products
+//   customer_list       — all customer profiles
+//   customer_individual — single customer profile + visit history
+//   product_list        — all products with category + status
+//   invoice             — per-order invoice PDF
+//
+// format values: pdf | excel  (invoice only supports pdf)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class RequestExportRequest {
+  final String reportType;
+  final String format;
+  final Map<String, String>? dateRange; // { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }
+  final Map<String, dynamic>? filters;  // e.g. { customer_id: 'cust-001' } for individual
+  final String? referenceId;            // orderId for invoice, customerId for individual
+
+  const RequestExportRequest({
+    required this.reportType,
+    required this.format,
+    this.dateRange,
+    this.filters,
+    this.referenceId,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'report_type': reportType,
+    'format': format,
+    if (dateRange != null) 'date_range': dateRange,
+    if (filters != null) 'filters': filters,
+    if (referenceId != null) 'reference_id': referenceId,
+  };
+}
+
+// === FILE: lib/features/report_export/domain/models/request_export_response.dart ===
+class RequestExportResponse {
+  final String exportId;
+  final String status;
+  final DateTime createdAt;
+
+  const RequestExportResponse({
+    required this.exportId,
+    required this.status,
+    required this.createdAt,
+  });
+
+  factory RequestExportResponse.fromJson(Map<String, dynamic> json) {
+    return RequestExportResponse(
+      exportId: json['export_id'] as String,
+      status: json['status'] as String,
+      createdAt: DateTime.parse(json['created_at'] as String),
+    );
+  }
+}
+
+
+// === FILE: lib/features/report_export/domain/services/report_excel_generator.dart ===
+// // report_excel_generator.dart
+// // ─────────────────────────────────────────────────────────────────────────────
+// // Generates real .xlsx files from mock data.
+// // Product list format matches the required layout:
+// //   No | Product Description | Batch number | Expiry date |
+// //   Pack size | Pack price | Available quantity
+// // ─────────────────────────────────────────────────────────────────────────────
+
+// import 'dart:io';
+// import 'package:excel/excel.dart';
+// import 'package:path_provider/path_provider.dart';
+// import '../../../product/data/datasources/product_mock_datasource.dart';
+
+// class ReportExcelGenerator {
+//   // ── Public entry point ─────────────────────────────────────────────────────
+
+//   static Future<File> generate({
+//     required String reportType,
+//     String? referenceId,
+//     String? dateFrom,
+//     String? dateTo,
+//   }) async {
+//     switch (reportType) {
+//       case 'product_list':
+//         return _buildProductList();
+//       default:
+//         throw Exception('Excel export not supported for: $reportType');
+//     }
+//   }
+
+//   // ── Product List ───────────────────────────────────────────────────────────
+
+//   static Future<File> _buildProductList() async {
+//     final excel = Excel.createExcel();
+//     final sheet = excel['Product list'];
+
+//     // Remove default Sheet1
+//     excel.delete('Sheet1');
+
+//     // ── Styles ────────────────────────────────────────────────────────────────
+
+//     // Title style — merged, bold, centred
+//     final titleStyle = CellStyle(
+//       bold: true,
+//       fontSize: 14,
+//       horizontalAlign: HorizontalAlign.Center,
+//       verticalAlign: VerticalAlign.Center,
+//     );
+
+//     // Header style — bold, white text, dark green background, wrapped, centred
+//     final headerStyle = CellStyle(
+//       bold: true,
+//       fontSize: 10,
+//       fontColorHex: ExcelColor.fromHexString('#FFFFFF'),
+//       backgroundColorHex: ExcelColor.fromHexString('#1A6B4A'),
+//       horizontalAlign: HorizontalAlign.Center,
+//       verticalAlign: VerticalAlign.Center,
+//       textWrapping: TextWrapping.WrapText,
+//       leftBorder: Border(borderStyle: BorderStyle.Thin),
+//       rightBorder: Border(borderStyle: BorderStyle.Thin),
+//       topBorder: Border(borderStyle: BorderStyle.Thin),
+//       bottomBorder: Border(borderStyle: BorderStyle.Thin),
+//     );
+
+//     // Data style — normal, bordered, vertically centred
+//     final dataStyle = CellStyle(
+//       fontSize: 10,
+//       horizontalAlign: HorizontalAlign.Left,
+//       verticalAlign: VerticalAlign.Center,
+//       leftBorder: Border(borderStyle: BorderStyle.Thin),
+//       rightBorder: Border(borderStyle: BorderStyle.Thin),
+//       topBorder: Border(borderStyle: BorderStyle.Thin),
+//       bottomBorder: Border(borderStyle: BorderStyle.Thin),
+//     );
+
+//     final dataCenterStyle = CellStyle(
+//       fontSize: 10,
+//       horizontalAlign: HorizontalAlign.Center,
+//       verticalAlign: VerticalAlign.Center,
+//       leftBorder: Border(borderStyle: BorderStyle.Thin),
+//       rightBorder: Border(borderStyle: BorderStyle.Thin),
+//       topBorder: Border(borderStyle: BorderStyle.Thin),
+//       bottomBorder: Border(borderStyle: BorderStyle.Thin),
+//     );
+
+//     final dataNumStyle = CellStyle(
+//       fontSize: 10,
+//       horizontalAlign: HorizontalAlign.Right,
+//       verticalAlign: VerticalAlign.Center,
+//       leftBorder: Border(borderStyle: BorderStyle.Thin),
+//       rightBorder: Border(borderStyle: BorderStyle.Thin),
+//       topBorder: Border(borderStyle: BorderStyle.Thin),
+//       bottomBorder: Border(borderStyle: BorderStyle.Thin),
+//     );
+
+//     // Expiry warning — red text for near-expiry
+//     final expiryWarnStyle = CellStyle(
+//       fontSize: 10,
+//       fontColorHex: ExcelColor.fromHexString('#D32F2F'),
+//       horizontalAlign: HorizontalAlign.Center,
+//       verticalAlign: VerticalAlign.Center,
+//       bold: true,
+//       leftBorder: Border(borderStyle: BorderStyle.Thin),
+//       rightBorder: Border(borderStyle: BorderStyle.Thin),
+//       topBorder: Border(borderStyle: BorderStyle.Thin),
+//       bottomBorder: Border(borderStyle: BorderStyle.Thin),
+//     );
+
+//     // Alternating row background
+//     final altRowStyle = CellStyle(
+//       fontSize: 10,
+//       backgroundColorHex: ExcelColor.fromHexString('#F5F5F5'),
+//       horizontalAlign: HorizontalAlign.Left,
+//       verticalAlign: VerticalAlign.Center,
+//       leftBorder: Border(borderStyle: BorderStyle.Thin),
+//       rightBorder: Border(borderStyle: BorderStyle.Thin),
+//       topBorder: Border(borderStyle: BorderStyle.Thin),
+//       bottomBorder: Border(borderStyle: BorderStyle.Thin),
+//     );
+
+//     final altRowCenterStyle = CellStyle(
+//       fontSize: 10,
+//       backgroundColorHex: ExcelColor.fromHexString('#F5F5F5'),
+//       horizontalAlign: HorizontalAlign.Center,
+//       verticalAlign: VerticalAlign.Center,
+//       leftBorder: Border(borderStyle: BorderStyle.Thin),
+//       rightBorder: Border(borderStyle: BorderStyle.Thin),
+//       topBorder: Border(borderStyle: BorderStyle.Thin),
+//       bottomBorder: Border(borderStyle: BorderStyle.Thin),
+//     );
+
+//     final altRowNumStyle = CellStyle(
+//       fontSize: 10,
+//       backgroundColorHex: ExcelColor.fromHexString('#F5F5F5'),
+//       horizontalAlign: HorizontalAlign.Right,
+//       verticalAlign: VerticalAlign.Center,
+//       leftBorder: Border(borderStyle: BorderStyle.Thin),
+//       rightBorder: Border(borderStyle: BorderStyle.Thin),
+//       topBorder: Border(borderStyle: BorderStyle.Thin),
+//       bottomBorder: Border(borderStyle: BorderStyle.Thin),
+//     );
+
+//     // ── Row 1: Title (merged A1:G1) ───────────────────────────────────────────
+//     sheet.merge(CellIndex.indexByString('A1'), CellIndex.indexByString('G1'));
+//     final titleCell = sheet.cell(CellIndex.indexByString('A1'));
+//     titleCell.value = TextCellValue('Product list');
+//     titleCell.cellStyle = titleStyle;
+//     sheet.setRowHeight(0, 28);
+
+//     // ── Row 2: Headers ────────────────────────────────────────────────────────
+//     const headers = [
+//       'No',
+//       'Product Description',
+//       'Batch number',
+//       'Expiry date',
+//       'Pack size',
+//       'Pack price',
+//       'Available quantity',
+//     ];
+//     for (int c = 0; c < headers.length; c++) {
+//       final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 1));
+//       cell.value = TextCellValue(headers[c]);
+//       cell.cellStyle = headerStyle;
+//     }
+//     sheet.setRowHeight(1, 40);
+
+//     // ── Column widths ─────────────────────────────────────────────────────────
+//     sheet.setColumnWidth(0, 6);   // No
+//     sheet.setColumnWidth(1, 34);  // Product Description
+//     sheet.setColumnWidth(2, 18);  // Batch number
+//     sheet.setColumnWidth(3, 14);  // Expiry date
+//     sheet.setColumnWidth(4, 16);  // Pack size
+//     sheet.setColumnWidth(5, 14);  // Pack price
+//     sheet.setColumnWidth(6, 16);  // Available quantity
+
+//     // ── Data rows ─────────────────────────────────────────────────────────────
+//     final ds = ProductMockDataSource();
+//     final products = await ds.getAll();
+//     final now = DateTime.now();
+
+//     for (int i = 0; i < products.length; i++) {
+//       final p = products[i];
+//       final rowIdx = i + 2; // row 3 onward (0-indexed: 2)
+//       final isAlt = i % 2 != 0;
+
+//       final expiry = p.expiryDate;
+//       final expiryStr = expiry != null
+//           ? '${expiry.year}-${expiry.month.toString().padLeft(2, '0')}-${expiry.day.toString().padLeft(2, '0')}'
+//           : '—';
+//       final isExpiringSoon = expiry != null &&
+//           expiry.difference(now).inDays <= 180;
+
+//       // Resolve styles for this row
+//       final stC     = isAlt ? altRowCenterStyle : dataCenterStyle;
+//       final stN     = isAlt ? altRowNumStyle    : dataNumStyle;
+
+//       void setCell(int col, CellValue val, CellStyle style) {
+//         final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: rowIdx));
+//         cell.value = val;
+//         cell.cellStyle = style;
+//       }
+
+//       // Col A: No
+//       setCell(0, IntCellValue(i + 1), stC);
+
+//       // Col B: Product Description (name + description as wrapped text)
+//       final desc = p.description != null && p.description!.isNotEmpty
+//           ? '${p.name}\n${p.description}'
+//           : p.name;
+//       final descCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: rowIdx));
+//       descCell.value = TextCellValue(desc);
+//       descCell.cellStyle = (isAlt ? altRowStyle : dataStyle).copyWith(
+//         textWrappingVal: TextWrapping.WrapText,
+//       );
+
+//       // Col C: Batch number
+//       setCell(2, TextCellValue(p.batchNumber ?? '—'), stC);
+
+//       // Col D: Expiry date (red if expiring soon)
+//       final expiryCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: rowIdx));
+//       expiryCell.value = TextCellValue(expiryStr);
+//       expiryCell.cellStyle = isExpiringSoon
+//           ? expiryWarnStyle
+//           : stC;
+
+//       // Col E: Pack size
+//       setCell(4, TextCellValue(p.packSize ?? '—'), stC);
+
+//       // Col F: Pack price (TZS formatted)
+//       setCell(5, TextCellValue('TZS ${_fmtNum(p.price)}'), stN);
+
+//       // Col G: Available quantity
+//       final qty = p.quantityAvailable;
+//       final qtyVal = qty != null ? '$qty' : '—';
+//       final qtyStyle = qty != null && qty == 0
+//           ? (isAlt ? altRowCenterStyle : dataCenterStyle).copyWith(
+//               fontColorHexVal: ExcelColor.fromHexString('#D32F2F'),
+//               boldVal: true,
+//             )
+//           : stC;
+//       setCell(6, TextCellValue(qtyVal), qtyStyle);
+
+//       sheet.setRowHeight(rowIdx, p.description != null ? 36 : 20);
+//     }
+
+//     // ── Summary row at bottom ─────────────────────────────────────────────────
+//     final summaryRowIdx = products.length + 2;
+//     sheet.merge(
+//       CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: summaryRowIdx),
+//       CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: summaryRowIdx),
+//     );
+//     final summaryLabel = sheet.cell(
+//         CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: summaryRowIdx));
+//     summaryLabel.value = TextCellValue('Total Available Units');
+//     summaryLabel.cellStyle = CellStyle(
+//       bold: true,
+//       fontSize: 10,
+//       horizontalAlign: HorizontalAlign.Right,
+//       backgroundColorHex: ExcelColor.fromHexString('#E8F5E9'),
+//       leftBorder: Border(borderStyle: BorderStyle.Thin),
+//       rightBorder: Border(borderStyle: BorderStyle.Thin),
+//       topBorder: Border(borderStyle: BorderStyle.Thin),
+//       bottomBorder: Border(borderStyle: BorderStyle.Thin),
+//     );
+
+//     final totalQty = products.fold<int>(0, (s, p) => s + (p.quantityAvailable ?? 0));
+//     final summaryVal = sheet.cell(
+//         CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: summaryRowIdx));
+//     summaryVal.value = IntCellValue(totalQty);
+//     summaryVal.cellStyle = CellStyle(
+//       bold: true,
+//       fontSize: 10,
+//       horizontalAlign: HorizontalAlign.Center,
+//       backgroundColorHex: ExcelColor.fromHexString('#E8F5E9'),
+//       leftBorder: Border(borderStyle: BorderStyle.Thin),
+//       rightBorder: Border(borderStyle: BorderStyle.Thin),
+//       topBorder: Border(borderStyle: BorderStyle.Thin),
+//       bottomBorder: Border(borderStyle: BorderStyle.Thin),
+//     );
+
+//     // ── Save ──────────────────────────────────────────────────────────────────
+//     final dir = await getApplicationDocumentsDirectory();
+//     final stamp = DateTime.now().millisecondsSinceEpoch;
+//     final file = File('${dir.path}/product_list_$stamp.xlsx');
+//     final bytes = excel.encode();
+//     if (bytes == null) throw Exception('Excel encoding failed');
+//     await file.writeAsBytes(bytes);
+//     return file;
+//   }
+
+//   static String _fmtNum(double v) {
+//     final parts = v.toStringAsFixed(0).split('');
+//     final result = StringBuffer();
+//     for (int i = 0; i < parts.length; i++) {
+//       if (i > 0 && (parts.length - i) % 3 == 0) result.write(',');
+//       result.write(parts[i]);
+//     }
+//     return result.toString();
+//   }
+// }
+
+// === FILE: lib/features/report_export/domain/services/report_export_service.dart ===
+// report_export_service.dart
+import 'package:dartz/dartz.dart';
+import 'package:dio/dio.dart';
+import '../../../../core/error/failures.dart';
+import '../../data/client/report_export_client.dart';
+import '../models/request_export_response.dart';
+import '../models/request_export_request.dart';
+import '../models/get_export_status_response.dart';
+import '../models/download_export_response.dart';
+
+class ReportExportService {
+  final ReportExportClient _client;
+
+  ReportExportService({required ReportExportClient client}) : _client = client;
+
+  Future<Either<Failure, RequestExportResponse>> requestExport(RequestExportRequest request) async {
+    try {
+      return Right(await _client.requestExport(request));
+    } on DioException catch (e) {
+      return Left(ServerFailure(e.response?.data?.toString() ?? e.message ?? 'Export request failed'));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  Future<Either<Failure, GetExportStatusResponse>> getExportStatus(String exportId) async {
+    try {
+      return Right(await _client.getExportStatus(exportId));
+    } on DioException catch (e) {
+      return Left(ServerFailure(e.response?.data?.toString() ?? e.message ?? 'Status check failed'));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  Future<Either<Failure, DownloadExportResponse>> downloadExport(String exportId) async {
+    try {
+      return Right(await _client.downloadExport(exportId));
+    } on DioException catch (e) {
+      return Left(ServerFailure(e.response?.data?.toString() ?? e.message ?? 'Download failed'));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+}
+
+// === FILE: lib/features/report_export/domain/services/report_pdf_generator.dart ===
+// // report_pdf_generator.dart
+// // ─────────────────────────────────────────────────────────────────────────────
+// // On-device PDF generator for all Barick Pharmacy report types.
+// // Uses the 'pdf' package (dart PDF library) to generate real formatted PDFs.
+// // Order data comes from OrderRemoteDataSource (real API).
+// // All other datasources (customer, payment, product, visit, officer, plan)
+// // remain on their existing datasource implementations.
+// //
+// // Report types supported:
+// //   marketing_summary   — visits, officer performance, plan compliance
+// //   sales_summary       — orders, revenue, payments, products
+// //   customer_list       — all customer profiles
+// //   customer_individual — single customer + visit history
+// //   product_list        — all products with category + status
+// //   invoice             — per-order invoice PDF
+// // ─────────────────────────────────────────────────────────────────────────────
+
+// import 'dart:io';
+// import 'package:path_provider/path_provider.dart';
+// import 'package:pdf/pdf.dart';
+// import 'package:pdf/widgets.dart' as pw;
+// import '../../../customer/data/datasources/customer_mock_datasource.dart';
+// import '../../../order/data/datasources/order_remote_datasource.dart';
+// import '../../../payment/data/datasources/payment_mock_datasource.dart';
+// import '../../../product/data/datasources/product_mock_datasource.dart';
+// import '../../../visit/data/datasources/visit_mock_datasource.dart';
+// import '../../../officer/data/datasources/officer_mock_datasource.dart';
+// import '../../../weekly_plan/data/datasources/weekly_plan_mock_datasource.dart';
+// import '../../../order/data/models/order_model.dart';
+
+// // ── Colour palette ────────────────────────────────────────────────────────────
+// const _primary = PdfColor.fromInt(0xFF1A6B4A);
+// const _secondary = PdfColor.fromInt(0xFF2E7D32);
+// const _accent = PdfColor.fromInt(0xFF4CAF50);
+// const _grey = PdfColor.fromInt(0xFF757575);
+// const _lightGrey = PdfColor.fromInt(0xFFF5F5F5);
+// const _white = PdfColors.white;
+// const _black = PdfColors.black;
+// const _red = PdfColor.fromInt(0xFFD32F2F);
+// const _orange = PdfColor.fromInt(0xFFF57C00);
+
+// class ReportPdfGenerator {
+//   final OrderRemoteDataSource _orderDataSource;
+
+//   const ReportPdfGenerator({required OrderRemoteDataSource orderDataSource})
+//       : _orderDataSource = orderDataSource;
+
+//   // ── Public entry point ─────────────────────────────────────────────────────
+
+//   Future<File> generate({
+//     required String reportType,
+//     String? referenceId,
+//     String? dateFrom,
+//     String? dateTo,
+//   }) async {
+//     final pdf = pw.Document();
+
+//     switch (reportType) {
+//       case 'marketing_summary':
+//         await _buildMarketingSummary(pdf, dateFrom, dateTo);
+//         break;
+//       case 'sales_summary':
+//         await _buildSalesSummary(pdf, dateFrom, dateTo);
+//         break;
+//       case 'customer_list':
+//         await _buildCustomerList(pdf);
+//         break;
+//       case 'customer_individual':
+//         await _buildCustomerIndividual(pdf, referenceId ?? '');
+//         break;
+//       case 'product_list':
+//         await _buildProductList(pdf);
+//         break;
+//       case 'invoice':
+//         await _buildInvoice(pdf, referenceId ?? '');
+//         break;
+//       default:
+//         throw Exception('Unknown report type: $reportType');
+//     }
+
+//     return _saveToFile(pdf, reportType, referenceId);
+//   }
+
+//   // ── Save file ──────────────────────────────────────────────────────────────
+
+//   static Future<File> _saveToFile(
+//     pw.Document pdf,
+//     String type,
+//     String? refId,
+//   ) async {
+//     final dir = await getApplicationDocumentsDirectory();
+//     final stamp = DateTime.now().millisecondsSinceEpoch;
+//     final suffix = refId != null ? '_${refId.replaceAll('-', '')}' : '';
+//     final file = File('${dir.path}/${type}${suffix}_$stamp.pdf');
+//     await file.writeAsBytes(await pdf.save());
+//     return file;
+//   }
+
+//   // ── Shared header ──────────────────────────────────────────────────────────
+
+//   static pw.Widget _header(String title, String subtitle) {
+//     return pw.Container(
+//       width: double.infinity,
+//       padding: const pw.EdgeInsets.all(20),
+//       decoration: const pw.BoxDecoration(color: _primary),
+//       child: pw.Column(
+//         crossAxisAlignment: pw.CrossAxisAlignment.start,
+//         children: [
+//           pw.Row(
+//             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+//             children: [
+//               pw.Column(
+//                 crossAxisAlignment: pw.CrossAxisAlignment.start,
+//                 children: [
+//                   pw.Text(
+//                     'BARICK PHARMACY',
+//                     style: pw.TextStyle(
+//                       color: _white,
+//                       fontSize: 18,
+//                       fontWeight: pw.FontWeight.bold,
+//                     ),
+//                   ),
+//                   pw.SizedBox(height: 2),
+//                   pw.Text(
+//                     'Marketing Management System',
+//                     style: pw.TextStyle(color: _accent, fontSize: 9),
+//                   ),
+//                 ],
+//               ),
+//               pw.Column(
+//                 crossAxisAlignment: pw.CrossAxisAlignment.end,
+//                 children: [
+//                   pw.Text(
+//                     _fmtDate(DateTime.now()),
+//                     style: pw.TextStyle(color: _white, fontSize: 9),
+//                   ),
+//                   pw.Text(
+//                     'Mbeya, Tanzania',
+//                     style: pw.TextStyle(color: _accent, fontSize: 9),
+//                   ),
+//                 ],
+//               ),
+//             ],
+//           ),
+//           pw.SizedBox(height: 12),
+//           pw.Container(height: 1, color: _accent),
+//           pw.SizedBox(height: 10),
+//           pw.Text(
+//             title,
+//             style: pw.TextStyle(
+//               color: _white,
+//               fontSize: 16,
+//               fontWeight: pw.FontWeight.bold,
+//             ),
+//           ),
+//           pw.SizedBox(height: 2),
+//           pw.Text(subtitle, style: pw.TextStyle(color: _accent, fontSize: 10)),
+//         ],
+//       ),
+//     );
+//   }
+
+//   static pw.Widget _footer(pw.Context ctx) {
+//     return pw.Container(
+//       padding: const pw.EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+//       decoration: const pw.BoxDecoration(
+//         border: pw.Border(top: pw.BorderSide(color: _lightGrey)),
+//       ),
+//       child: pw.Row(
+//         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+//         children: [
+//           pw.Text(
+//             'Barick Pharmacy — Confidential',
+//             style: pw.TextStyle(color: _grey, fontSize: 8),
+//           ),
+//           pw.Text(
+//             'Page ${ctx.pageNumber} of ${ctx.pagesCount}',
+//             style: pw.TextStyle(color: _grey, fontSize: 8),
+//           ),
+//           pw.Text(
+//             'Generated ${_fmtDate(DateTime.now())}',
+//             style: pw.TextStyle(color: _grey, fontSize: 8),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+
+//   static pw.Widget _sectionTitle(String title) {
+//     return pw.Container(
+//       margin: const pw.EdgeInsets.only(top: 16, bottom: 6),
+//       padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+//       decoration: const pw.BoxDecoration(color: _lightGrey),
+//       child: pw.Text(
+//         title,
+//         style: pw.TextStyle(
+//           fontSize: 10,
+//           fontWeight: pw.FontWeight.bold,
+//           color: _primary,
+//         ),
+//       ),
+//     );
+//   }
+
+//   static pw.Widget _kpiRow(List<Map<String, String>> kpis) {
+//     return pw.Row(
+//       children: kpis
+//           .map(
+//             (k) => pw.Expanded(
+//               child: pw.Container(
+//                 margin: const pw.EdgeInsets.symmetric(horizontal: 4),
+//                 padding: const pw.EdgeInsets.all(10),
+//                 decoration: pw.BoxDecoration(
+//                   border: pw.Border.all(color: _accent),
+//                   borderRadius: pw.BorderRadius.circular(4),
+//                 ),
+//                 child: pw.Column(
+//                   crossAxisAlignment: pw.CrossAxisAlignment.start,
+//                   children: [
+//                     pw.Text(
+//                       k['value']!,
+//                       style: pw.TextStyle(
+//                         fontSize: 18,
+//                         fontWeight: pw.FontWeight.bold,
+//                         color: _primary,
+//                       ),
+//                     ),
+//                     pw.SizedBox(height: 2),
+//                     pw.Text(
+//                       k['label']!,
+//                       style: pw.TextStyle(fontSize: 8, color: _grey),
+//                     ),
+//                   ],
+//                 ),
+//               ),
+//             ),
+//           )
+//           .toList(),
+//     );
+//   }
+
+//   static pw.Widget _table({
+//     required List<String> headers,
+//     required List<List<String>> rows,
+//     List<pw.FlexColumnWidth>? widths,
+//   }) {
+//     final cols =
+//         widths ??
+//         List.generate(headers.length, (_) => const pw.FlexColumnWidth(1));
+//     return pw.Table(
+//       columnWidths: {for (int i = 0; i < cols.length; i++) i: cols[i]},
+//       border: pw.TableBorder.all(color: _lightGrey),
+//       children: [
+//         pw.TableRow(
+//           decoration: const pw.BoxDecoration(color: _primary),
+//           children: headers
+//               .map(
+//                 (h) => pw.Padding(
+//                   padding: const pw.EdgeInsets.symmetric(
+//                     horizontal: 8,
+//                     vertical: 5,
+//                   ),
+//                   child: pw.Text(
+//                     h,
+//                     style: pw.TextStyle(
+//                       color: _white,
+//                       fontSize: 8,
+//                       fontWeight: pw.FontWeight.bold,
+//                     ),
+//                   ),
+//                 ),
+//               )
+//               .toList(),
+//         ),
+//         ...rows.asMap().entries.map((e) {
+//           final isEven = e.key % 2 == 0;
+//           return pw.TableRow(
+//             decoration: pw.BoxDecoration(color: isEven ? _white : _lightGrey),
+//             children: e.value
+//                 .map(
+//                   (cell) => pw.Padding(
+//                     padding: const pw.EdgeInsets.symmetric(
+//                       horizontal: 8,
+//                       vertical: 4,
+//                     ),
+//                     child: pw.Text(
+//                       cell,
+//                       style: pw.TextStyle(fontSize: 8, color: _black),
+//                     ),
+//                   ),
+//                 )
+//                 .toList(),
+//           );
+//         }),
+//       ],
+//     );
+//   }
+
+//   // ── Marketing Summary ──────────────────────────────────────────────────────
+
+//   Future<void> _buildMarketingSummary(
+//     pw.Document pdf,
+//     String? from,
+//     String? to,
+//   ) async {
+//     final visitDs = VisitMockDataSource();
+//     final officerDs = OfficerMockDataSource();
+//     final planDs = WeeklyPlanMockDataSource();
+
+//     final visits = await visitDs.getAll();
+//     final officers = (await officerDs.getAll()).items;
+//     final plans = await planDs.getAll();
+
+//     final reviewed = visits.where((v) => v.status == 'reviewed').length;
+//     final approved = plans.where((p) => p.status == 'approved').length;
+//     final compliance = plans.isEmpty ? 0.0 : (approved / plans.length * 100);
+//     final activeOfficers = officers.where((o) => o.isActive).length;
+
+//     final visitsByOfficer = <String, int>{};
+//     for (final v in visits) {
+//       visitsByOfficer[v.officerId] = (visitsByOfficer[v.officerId] ?? 0) + 1;
+//     }
+
+//     final period = (from != null && to != null) ? '$from to $to' : 'All time';
+
+//     pdf.addPage(
+//       pw.MultiPage(
+//         pageFormat: PdfPageFormat.a4,
+//         margin: pw.EdgeInsets.zero,
+//         header: (_) =>
+//             _header('Marketing Performance Report', 'Period: $period'),
+//         footer: _footer,
+//         build: (ctx) => [
+//           pw.Padding(
+//             padding: const pw.EdgeInsets.all(24),
+//             child: pw.Column(
+//               crossAxisAlignment: pw.CrossAxisAlignment.start,
+//               children: [
+//                 _sectionTitle('KEY PERFORMANCE INDICATORS'),
+//                 pw.SizedBox(height: 8),
+//                 _kpiRow([
+//                   {'value': '${visits.length}', 'label': 'Total Visits'},
+//                   {'value': '$activeOfficers', 'label': 'Active Officers'},
+//                   {
+//                     'value': '${compliance.toStringAsFixed(1)}%',
+//                     'label': 'Plan Compliance',
+//                   },
+//                   {'value': '$reviewed', 'label': 'Reviewed Visits'},
+//                 ]),
+//                 _sectionTitle('VISITS BY OFFICER'),
+//                 pw.SizedBox(height: 4),
+//                 _table(
+//                   headers: ['Officer ID', 'Officer Name', 'Visits', 'Status'],
+//                   widths: [
+//                     const pw.FlexColumnWidth(1.5),
+//                     const pw.FlexColumnWidth(2.5),
+//                     const pw.FlexColumnWidth(1),
+//                     const pw.FlexColumnWidth(1),
+//                   ],
+//                   rows: officers.map((o) {
+//                     final count = visitsByOfficer[o.userId] ?? 0;
+//                     return [
+//                       o.userId,
+//                       o.displayName,
+//                       '$count',
+//                       o.effectiveStatus.toUpperCase(),
+//                     ];
+//                   }).toList(),
+//                 ),
+//                 _sectionTitle('WEEKLY PLAN STATUS'),
+//                 pw.SizedBox(height: 4),
+//                 _table(
+//                   headers: [
+//                     'Plan ID',
+//                     'Officer ID',
+//                     'Week Start',
+//                     'Week End',
+//                     'Status',
+//                   ],
+//                   rows: plans
+//                       .map(
+//                         (p) => [
+//                           p.id,
+//                           p.officerId,
+//                           _fmtDate(p.weekStart),
+//                           _fmtDate(p.weekEnd),
+//                           p.status.toUpperCase(),
+//                         ],
+//                       )
+//                       .toList(),
+//                 ),
+//                 _sectionTitle('RECENT VISITS'),
+//                 pw.SizedBox(height: 4),
+//                 _table(
+//                   headers: [
+//                     'Visit ID',
+//                     'Business',
+//                     'Officer',
+//                     'Date',
+//                     'Status',
+//                   ],
+//                   widths: [
+//                     const pw.FlexColumnWidth(1.2),
+//                     const pw.FlexColumnWidth(2),
+//                     const pw.FlexColumnWidth(1.2),
+//                     const pw.FlexColumnWidth(1.5),
+//                     const pw.FlexColumnWidth(1),
+//                   ],
+//                   rows: visits
+//                       .take(10)
+//                       .map(
+//                         (v) => [
+//                           v.id,
+//                           v.businessName,
+//                           v.officerId,
+//                           _fmtDate(v.visitDate),
+//                           v.status.toUpperCase(),
+//                         ].map((e) => e ?? '—').toList(),
+//                       )
+//                       .toList(),
+//                 ),
+//               ],
+//             ),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+
+//   // ── Sales Summary ──────────────────────────────────────────────────────────
+
+//   Future<void> _buildSalesSummary(
+//     pw.Document pdf,
+//     String? from,
+//     String? to,
+//   ) async {
+//     // ── Real order data from API ───────────────────────────
+//     final orders = await _orderDataSource.getAll();
+
+//     final paymentDs = PaymentMockDataSource();
+//     final productDs = ProductMockDataSource();
+
+//     final payments = await paymentDs.getAll();
+//     final products = await productDs.getAll();
+
+//     final totalRevenue = orders.fold<double>(0, (s, o) => s + o.total);
+//     final avgOrder = orders.isEmpty ? 0.0 : totalRevenue / orders.length;
+//     final confirmed = payments.where((p) => p.status == 'confirmed').length;
+//     final byStatus = <String, int>{};
+//     for (final o in orders) {
+//       byStatus[o.status] = (byStatus[o.status] ?? 0) + 1;
+//     }
+//     final period = (from != null && to != null) ? '$from to $to' : 'All time';
+
+//     pdf.addPage(
+//       pw.MultiPage(
+//         pageFormat: PdfPageFormat.a4,
+//         margin: pw.EdgeInsets.zero,
+//         header: (_) => _header('Sales Performance Report', 'Period: $period'),
+//         footer: _footer,
+//         build: (ctx) => [
+//           pw.Padding(
+//             padding: const pw.EdgeInsets.all(24),
+//             child: pw.Column(
+//               crossAxisAlignment: pw.CrossAxisAlignment.start,
+//               children: [
+//                 _sectionTitle('KEY SALES INDICATORS'),
+//                 pw.SizedBox(height: 8),
+//                 _kpiRow([
+//                   {'value': '${orders.length}', 'label': 'Total Orders'},
+//                   {
+//                     'value': 'TZS ${_fmtNum(totalRevenue)}',
+//                     'label': 'Total Revenue',
+//                   },
+//                   {
+//                     'value': 'TZS ${_fmtNum(avgOrder)}',
+//                     'label': 'Avg Order Value',
+//                   },
+//                   {'value': '$confirmed', 'label': 'Confirmed Payments'},
+//                 ]),
+//                 _sectionTitle('ORDERS BY STATUS'),
+//                 pw.SizedBox(height: 4),
+//                 _table(
+//                   headers: ['Status', 'Count', 'Percentage'],
+//                   rows: byStatus.entries.map((e) {
+//                     final pct =
+//                         (e.value / orders.length * 100).toStringAsFixed(1);
+//                     return [e.key.toUpperCase(), '${e.value}', '$pct%'];
+//                   }).toList(),
+//                 ),
+//                 _sectionTitle('ALL ORDERS'),
+//                 pw.SizedBox(height: 4),
+//                 _table(
+//                   headers: [
+//                     'Order ID',
+//                     'Customer',
+//                     'Placed By',
+//                     'Total (TZS)',
+//                     'Payment Ref',
+//                     'Status',
+//                   ],
+//                   widths: [
+//                     const pw.FlexColumnWidth(1.2),
+//                     const pw.FlexColumnWidth(1.5),
+//                     const pw.FlexColumnWidth(1.5),
+//                     const pw.FlexColumnWidth(1.2),
+//                     const pw.FlexColumnWidth(1.8),
+//                     const pw.FlexColumnWidth(1.2),
+//                   ],
+//                   rows: orders
+//                       .map(
+//                         (o) => [
+//                           o.id,
+//                           o.customerId,
+//                           o.createdByName ?? '—',
+//                           _fmtNum(o.total),
+//                           o.paymentRef ?? '—',
+//                           o.status.toUpperCase(),
+//                         ],
+//                       )
+//                       .toList(),
+//                 ),
+//                 _sectionTitle('PAYMENT RECORDS'),
+//                 pw.SizedBox(height: 4),
+//                 _table(
+//                   headers: [
+//                     'Pay ID',
+//                     'Order',
+//                     'Amount (TZS)',
+//                     'Provider',
+//                     'Ref',
+//                     'Status',
+//                   ],
+//                   widths: [
+//                     const pw.FlexColumnWidth(1),
+//                     const pw.FlexColumnWidth(1),
+//                     const pw.FlexColumnWidth(1.5),
+//                     const pw.FlexColumnWidth(1.5),
+//                     const pw.FlexColumnWidth(2),
+//                     const pw.FlexColumnWidth(1.2),
+//                   ],
+//                   rows: payments
+//                       .map(
+//                         (p) => [
+//                           p.id,
+//                           p.orderId,
+//                           _fmtNum(p.amount),
+//                           p.provider,
+//                           p.transactionRef,
+//                           p.status.toUpperCase(),
+//                         ].map((e) => e ?? '—').toList(),
+//                       )
+//                       .toList(),
+//                 ),
+//                 _sectionTitle('PRODUCT CATALOGUE SUMMARY'),
+//                 pw.SizedBox(height: 4),
+//                 _table(
+//                   headers: [
+//                     'Product ID',
+//                     'Name',
+//                     'Price (TZS)',
+//                     'Status',
+//                     'Featured',
+//                   ],
+//                   widths: [
+//                     const pw.FlexColumnWidth(1.2),
+//                     const pw.FlexColumnWidth(2.5),
+//                     const pw.FlexColumnWidth(1.5),
+//                     const pw.FlexColumnWidth(1.2),
+//                     const pw.FlexColumnWidth(1),
+//                   ],
+//                   rows: products
+//                       .map(
+//                         (p) => [
+//                           p.id,
+//                           p.name,
+//                           _fmtNum(p.price),
+//                           p.status.toUpperCase(),
+//                           p.isFeatured ? 'YES' : 'No',
+//                         ],
+//                       )
+//                       .toList(),
+//                 ),
+//               ],
+//             ),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+
+//   // ── Customer List ──────────────────────────────────────────────────────────
+
+//   Future<void> _buildCustomerList(pw.Document pdf) async {
+//     final ds = CustomerMockDataSource();
+//     final customers = (await ds.getAll()).items;
+
+//     pdf.addPage(
+//       pw.MultiPage(
+//         pageFormat: PdfPageFormat.a4,
+//         margin: pw.EdgeInsets.zero,
+//         header: (_) =>
+//             _header('Customer Directory', 'All registered customers'),
+//         footer: _footer,
+//         build: (ctx) => [
+//           pw.Padding(
+//             padding: const pw.EdgeInsets.all(24),
+//             child: pw.Column(
+//               crossAxisAlignment: pw.CrossAxisAlignment.start,
+//               children: [
+//                 _sectionTitle('SUMMARY'),
+//                 pw.SizedBox(height: 8),
+//                 _kpiRow([
+//                   {'value': '${customers.length}', 'label': 'Total Customers'},
+//                   {
+//                     'value':
+//                         '${customers.where((c) => c.primaryContact != null).length}',
+//                     'label': 'With Contact Person',
+//                   },
+//                   {
+//                     'value': '${customers.where((c) => c.hasGps).length}',
+//                     'label': 'GPS Captured',
+//                   },
+//                 ]),
+//                 _sectionTitle('CUSTOMER PROFILES'),
+//                 pw.SizedBox(height: 4),
+//                 _table(
+//                   headers: [
+//                     'ID',
+//                     'Name',
+//                     'Type',
+//                     'Phone',
+//                     'City',
+//                     'Officer ID',
+//                   ],
+//                   widths: [
+//                     const pw.FlexColumnWidth(0.8),
+//                     const pw.FlexColumnWidth(2),
+//                     const pw.FlexColumnWidth(1),
+//                     const pw.FlexColumnWidth(1.5),
+//                     const pw.FlexColumnWidth(1.5),
+//                     const pw.FlexColumnWidth(1),
+//                   ],
+//                   rows: customers
+//                       .map(
+//                         (c) => [
+//                           c.id,
+//                           c.name,
+//                           c.customerType.toUpperCase(),
+//                           c.phone ?? '—',
+//                           c.city ?? '—',
+//                           c.assignedOfficerId ?? '—',
+//                         ],
+//                       )
+//                       .toList(),
+//                 ),
+//                 pw.SizedBox(height: 16),
+//                 _sectionTitle('CONTACT PERSONS'),
+//                 pw.SizedBox(height: 4),
+//                 _table(
+//                   headers: ['Customer Name', 'Contact Person', 'Contact Phone'],
+//                   widths: [
+//                     const pw.FlexColumnWidth(2.5),
+//                     const pw.FlexColumnWidth(2),
+//                     const pw.FlexColumnWidth(1.5),
+//                   ],
+//                   rows: customers
+//                       .where((c) => c.primaryContact != null)
+//                       .map(
+//                         (c) => [
+//                           c.name,
+//                           c.primaryContact!.name,
+//                           c.primaryContact!.phone ?? '—',
+//                         ],
+//                       )
+//                       .toList(),
+//                 ),
+//               ],
+//             ),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+
+//   // ── Individual Customer ────────────────────────────────────────────────────
+
+//   Future<void> _buildCustomerIndividual(
+//     pw.Document pdf,
+//     String customerId,
+//   ) async {
+//     final customerDs = CustomerMockDataSource();
+//     final visitDs = VisitMockDataSource();
+
+//     final customers = (await customerDs.getAll()).items;
+//     final customer = customers.firstWhere(
+//       (c) => c.id == customerId,
+//       orElse: () => customers.first,
+//     );
+//     final visits = (await visitDs.getAll())
+//         .where((v) => v.customerId == customerId)
+//         .toList();
+
+//     pdf.addPage(
+//       pw.MultiPage(
+//         pageFormat: PdfPageFormat.a4,
+//         margin: pw.EdgeInsets.zero,
+//         header: (_) => _header('Customer Profile', customer.name),
+//         footer: _footer,
+//         build: (ctx) => [
+//           pw.Padding(
+//             padding: const pw.EdgeInsets.all(24),
+//             child: pw.Column(
+//               crossAxisAlignment: pw.CrossAxisAlignment.start,
+//               children: [
+//                 _sectionTitle('CUSTOMER INFORMATION'),
+//                 pw.SizedBox(height: 8),
+//                 _infoGrid([
+//                   ['Name', customer.name],
+//                   ['Customer Type', customer.customerType.toUpperCase()],
+//                   ['Tier', customer.tier],
+//                   ['Status', customer.status.toUpperCase()],
+//                   ['Phone', customer.phone ?? '—'],
+//                   ['Alt Phone', customer.altPhone ?? '—'],
+//                   ['Email', customer.email ?? '—'],
+//                   ['WhatsApp', customer.whatsappNumber ?? '—'],
+//                   ['Address', customer.address ?? '—'],
+//                   ['City', customer.city ?? '—'],
+//                   ['County', customer.county ?? '—'],
+//                   ['Assigned Officer', customer.assignedOfficerId ?? '—'],
+//                   [
+//                     'GPS Coordinates',
+//                     customer.hasGps
+//                         ? '${customer.latitude}, ${customer.longitude}'
+//                         : '—',
+//                   ],
+//                   [
+//                     'Created',
+//                     customer.createdAt != null
+//                         ? _fmtDate(customer.createdAt!)
+//                         : '—',
+//                   ],
+//                 ]),
+//                 if (customer.primaryContact != null) ...[
+//                   _sectionTitle('PRIMARY CONTACT'),
+//                   pw.SizedBox(height: 4),
+//                   _infoGrid([
+//                     ['Name', customer.primaryContact!.name],
+//                     ['Role', customer.primaryContact!.role ?? '—'],
+//                     ['Phone', customer.primaryContact!.phone ?? '—'],
+//                     ['Email', customer.primaryContact!.email ?? '—'],
+//                   ]),
+//                 ],
+//                 _sectionTitle('VISIT HISTORY (${visits.length} visits)'),
+//                 pw.SizedBox(height: 4),
+//                 if (visits.isEmpty)
+//                   pw.Text(
+//                     'No visits recorded for this customer.',
+//                     style: pw.TextStyle(color: _grey, fontSize: 9),
+//                   )
+//                 else
+//                   _table(
+//                     headers: [
+//                       'Visit ID',
+//                       'Date',
+//                       'Officer',
+//                       'Summary',
+//                       'Status',
+//                     ],
+//                     widths: [
+//                       const pw.FlexColumnWidth(1),
+//                       const pw.FlexColumnWidth(1.5),
+//                       const pw.FlexColumnWidth(1.2),
+//                       const pw.FlexColumnWidth(3),
+//                       const pw.FlexColumnWidth(1),
+//                     ],
+//                     rows: visits
+//                         .map(
+//                           (v) => [
+//                             v.id,
+//                             _fmtDate(v.visitDate),
+//                             v.officerId,
+//                             v.discussionSummary ?? v.notes ?? '—',
+//                             v.status.toUpperCase(),
+//                           ],
+//                         )
+//                         .toList(),
+//                   ),
+//               ],
+//             ),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+
+//   // ── Product List ───────────────────────────────────────────────────────────
+
+//   Future<void> _buildProductList(pw.Document pdf) async {
+//     final ds = ProductMockDataSource();
+//     final products = await ds.getAll();
+
+//     final active = products.where((p) => p.status == 'active').length;
+//     final featured = products.where((p) => p.isFeatured).length;
+//     final archived = products.where((p) => p.status == 'archived').length;
+//     final totalQty = products.fold<int>(
+//       0,
+//       (s, p) => s + (p.quantityAvailable ?? 0),
+//     );
+
+//     final available = products.where((p) => p.isAvailable).toList();
+//     final unavailable = products.where((p) => !p.isAvailable).toList();
+
+//     pdf.addPage(
+//       pw.MultiPage(
+//         pageFormat: PdfPageFormat.a4,
+//         margin: pw.EdgeInsets.zero,
+//         header: (_) => _header(
+//           'Product Catalogue',
+//           'Pharmaceutical stock register with batch & expiry data',
+//         ),
+//         footer: _footer,
+//         build: (ctx) => [
+//           pw.Padding(
+//             padding: const pw.EdgeInsets.fromLTRB(24, 24, 24, 0),
+//             child: pw.Column(
+//               crossAxisAlignment: pw.CrossAxisAlignment.start,
+//               children: [
+//                 _sectionTitle('CATALOGUE OVERVIEW'),
+//                 pw.SizedBox(height: 8),
+//                 _kpiRow([
+//                   {'value': '${products.length}', 'label': 'Total SKUs'},
+//                   {'value': '$active', 'label': 'Active'},
+//                   {'value': '$featured', 'label': 'Featured'},
+//                   {'value': '$archived', 'label': 'Archived'},
+//                   {'value': '$totalQty', 'label': 'Total Units'},
+//                 ]),
+//                 pw.SizedBox(height: 20),
+//                 _sectionTitle('AVAILABLE STOCK (${available.length})'),
+//                 pw.SizedBox(height: 6),
+//                 _productTable(available),
+//                 pw.SizedBox(height: 20),
+//                 if (unavailable.isNotEmpty) ...[
+//                   _sectionTitle(
+//                     'UNAVAILABLE / OUT OF STOCK (${unavailable.length})',
+//                   ),
+//                   pw.SizedBox(height: 6),
+//                   _productTable(unavailable),
+//                   pw.SizedBox(height: 20),
+//                 ],
+//                 () {
+//                   final now = DateTime.now();
+//                   final soon = products
+//                       .where(
+//                         (p) =>
+//                             p.expiryDate != null &&
+//                             p.expiryDate!.difference(now).inDays <= 365,
+//                       )
+//                       .toList()
+//                     ..sort((a, b) => a.expiryDate!.compareTo(b.expiryDate!));
+//                   if (soon.isEmpty) return pw.SizedBox();
+//                   return pw.Column(
+//                     crossAxisAlignment: pw.CrossAxisAlignment.start,
+//                     children: [
+//                       _sectionTitle(
+//                         '⚠  EXPIRY ALERT — WITHIN 12 MONTHS (${soon.length})',
+//                       ),
+//                       pw.SizedBox(height: 6),
+//                       _productTable(soon),
+//                       pw.SizedBox(height: 20),
+//                     ],
+//                   );
+//                 }(),
+//               ],
+//             ),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+
+//   static pw.Widget _productTable(List<dynamic> products) {
+//     return _table(
+//       headers: [
+//         '#',
+//         'Product Name',
+//         'Pack Size',
+//         'Batch No.',
+//         'Expiry Date',
+//         'Price (TZS)',
+//         'Qty',
+//         'Status',
+//       ],
+//       widths: [
+//         const pw.FlexColumnWidth(0.4),
+//         const pw.FlexColumnWidth(2.6),
+//         const pw.FlexColumnWidth(1.2),
+//         const pw.FlexColumnWidth(1.2),
+//         const pw.FlexColumnWidth(1.0),
+//         const pw.FlexColumnWidth(1.1),
+//         const pw.FlexColumnWidth(0.6),
+//         const pw.FlexColumnWidth(0.9),
+//       ],
+//       rows: products.asMap().entries.map((e) {
+//         final i = e.key;
+//         final p = e.value;
+//         final expiry = p.expiryDate;
+//         final expiryStr = expiry != null
+//             ? '${expiry.year}-${expiry.month.toString().padLeft(2, '0')}-${expiry.day.toString().padLeft(2, '0')}'
+//             : '—';
+//         final isExpiringSoon =
+//             expiry != null && expiry.difference(DateTime.now()).inDays <= 180;
+//         return <String>[
+//           '${i + 1}',
+//           p.name,
+//           p.packSize ?? '—',
+//           p.batchNumber ?? '—',
+//           isExpiringSoon ? '⚠ $expiryStr' : expiryStr,
+//           _fmtNum(p.price),
+//           p.quantityAvailable?.toString() ?? '—',
+//           p.status.toUpperCase(),
+//         ];
+//       }).toList(),
+//     );
+//   }
+
+//   // ── Invoice ────────────────────────────────────────────────────────────────
+
+//   Future<void> _buildInvoice(pw.Document pdf, String orderId) async {
+//     // ── Real order data from API ───────────────────────────
+//     OrderModel order;
+//     try {
+//       order = await _orderDataSource.getById(orderId);
+//     } catch (_) {
+//       // Fallback: fetch all and find by id
+//       final all = await _orderDataSource.getAll();
+//       final match = all.where((o) => o.id == orderId).toList();
+//       if (match.isEmpty) throw Exception('Order $orderId not found');
+//       order = match.first;
+//     }
+
+//     final customerDs = CustomerMockDataSource();
+//     final customers = (await customerDs.getAll()).items;
+//     final customer = customers.firstWhere(
+//       (c) => c.id == order.customerId,
+//       orElse: () => customers.first,
+//     );
+
+//     final invoiceNumber =
+//         'INV-${order.id.toUpperCase().replaceAll('-', '')}-${DateTime.now().year}';
+//     final isPaid = order.paymentRef != null;
+
+//     pdf.addPage(
+//       pw.Page(
+//         pageFormat: PdfPageFormat.a4,
+//         margin: pw.EdgeInsets.zero,
+//         build: (ctx) => pw.Column(
+//           crossAxisAlignment: pw.CrossAxisAlignment.start,
+//           children: [
+//             pw.Container(
+//               width: double.infinity,
+//               padding: const pw.EdgeInsets.all(24),
+//               decoration: const pw.BoxDecoration(color: _primary),
+//               child: pw.Row(
+//                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+//                 children: [
+//                   pw.Column(
+//                     crossAxisAlignment: pw.CrossAxisAlignment.start,
+//                     children: [
+//                       pw.Text(
+//                         'BARICK PHARMACY',
+//                         style: pw.TextStyle(
+//                           color: _white,
+//                           fontSize: 20,
+//                           fontWeight: pw.FontWeight.bold,
+//                         ),
+//                       ),
+//                       pw.SizedBox(height: 4),
+//                       pw.Text(
+//                         'Marketing Management System',
+//                         style: pw.TextStyle(color: _accent, fontSize: 9),
+//                       ),
+//                       pw.SizedBox(height: 4),
+//                       pw.Text(
+//                         'Mbeya, Tanzania',
+//                         style: pw.TextStyle(color: _white, fontSize: 9),
+//                       ),
+//                       pw.Text(
+//                         '+255 700 000 000',
+//                         style: pw.TextStyle(color: _white, fontSize: 9),
+//                       ),
+//                     ],
+//                   ),
+//                   pw.Column(
+//                     crossAxisAlignment: pw.CrossAxisAlignment.end,
+//                     children: [
+//                       pw.Text(
+//                         'INVOICE',
+//                         style: pw.TextStyle(
+//                           color: _white,
+//                           fontSize: 28,
+//                           fontWeight: pw.FontWeight.bold,
+//                         ),
+//                       ),
+//                       pw.SizedBox(height: 4),
+//                       pw.Text(
+//                         invoiceNumber,
+//                         style: pw.TextStyle(color: _accent, fontSize: 11),
+//                       ),
+//                       pw.SizedBox(height: 4),
+//                       pw.Container(
+//                         padding: const pw.EdgeInsets.symmetric(
+//                           horizontal: 10,
+//                           vertical: 4,
+//                         ),
+//                         decoration: pw.BoxDecoration(
+//                           color: isPaid ? _accent : _orange,
+//                           borderRadius: pw.BorderRadius.circular(4),
+//                         ),
+//                         child: pw.Text(
+//                           isPaid ? 'PAID' : 'UNPAID',
+//                           style: pw.TextStyle(
+//                             color: _white,
+//                             fontSize: 11,
+//                             fontWeight: pw.FontWeight.bold,
+//                           ),
+//                         ),
+//                       ),
+//                     ],
+//                   ),
+//                 ],
+//               ),
+//             ),
+
+//             pw.Padding(
+//               padding: const pw.EdgeInsets.all(24),
+//               child: pw.Column(
+//                 crossAxisAlignment: pw.CrossAxisAlignment.start,
+//                 children: [
+//                   pw.Row(
+//                     crossAxisAlignment: pw.CrossAxisAlignment.start,
+//                     children: [
+//                       pw.Expanded(
+//                         child: pw.Column(
+//                           crossAxisAlignment: pw.CrossAxisAlignment.start,
+//                           children: [
+//                             pw.Text(
+//                               'BILL TO',
+//                               style: pw.TextStyle(
+//                                 fontSize: 8,
+//                                 fontWeight: pw.FontWeight.bold,
+//                                 color: _grey,
+//                               ),
+//                             ),
+//                             pw.SizedBox(height: 4),
+//                             pw.Text(
+//                               customer.name,
+//                               style: pw.TextStyle(
+//                                 fontSize: 12,
+//                                 fontWeight: pw.FontWeight.bold,
+//                               ),
+//                             ),
+//                             if (customer.primaryContact != null)
+//                               pw.Text(
+//                                 customer.primaryContact!.name,
+//                                 style: pw.TextStyle(fontSize: 9),
+//                               ),
+//                             pw.Text(
+//                               customer.phone ?? '—',
+//                               style: pw.TextStyle(fontSize: 9),
+//                             ),
+//                             if (customer.address != null)
+//                               pw.Text(
+//                                 customer.address!,
+//                                 style: pw.TextStyle(fontSize: 9),
+//                               ),
+//                           ],
+//                         ),
+//                       ),
+//                       pw.Expanded(
+//                         child: pw.Column(
+//                           crossAxisAlignment: pw.CrossAxisAlignment.end,
+//                           children: [
+//                             _invoiceMetaRow('Invoice No', invoiceNumber),
+//                             _invoiceMetaRow(
+//                               'Order ID',
+//                               '#${order.id.toUpperCase()}',
+//                             ),
+//                             _invoiceMetaRow('Date', _fmtDate(order.createdAt)),
+//                             if (order.createdByName != null &&
+//                                 order.createdByName!.isNotEmpty)
+//                               _invoiceMetaRow('Placed by', order.createdByName!),
+//                             _invoiceMetaRow(
+//                               'Payment Method',
+//                               order.paymentRef != null
+//                                   ? order.paymentRef!.split('-').first
+//                                   : '—',
+//                             ),
+//                             if (order.paymentRef != null)
+//                               _invoiceMetaRow('Payment Ref', order.paymentRef!),
+//                           ],
+//                         ),
+//                       ),
+//                     ],
+//                   ),
+
+//                   pw.SizedBox(height: 20),
+
+//                   pw.Table(
+//                     columnWidths: {
+//                       0: const pw.FlexColumnWidth(3),
+//                       1: const pw.FlexColumnWidth(1),
+//                       2: const pw.FlexColumnWidth(1.5),
+//                       3: const pw.FlexColumnWidth(1.5),
+//                     },
+//                     border: pw.TableBorder.all(color: _lightGrey),
+//                     children: [
+//                       pw.TableRow(
+//                         decoration: const pw.BoxDecoration(color: _primary),
+//                         children:
+//                             ['PRODUCT', 'QTY', 'UNIT PRICE', 'SUBTOTAL']
+//                                 .map(
+//                                   (h) => pw.Padding(
+//                                     padding: const pw.EdgeInsets.symmetric(
+//                                       horizontal: 8,
+//                                       vertical: 6,
+//                                     ),
+//                                     child: pw.Text(
+//                                       h,
+//                                       style: pw.TextStyle(
+//                                         color: _white,
+//                                         fontSize: 8,
+//                                         fontWeight: pw.FontWeight.bold,
+//                                       ),
+//                                     ),
+//                                   ),
+//                                 )
+//                                 .toList(),
+//                       ),
+//                       ...order.items.asMap().entries.map((e) {
+//                         final isEven = e.key % 2 == 0;
+//                         final item = e.value;
+//                         return pw.TableRow(
+//                           decoration: pw.BoxDecoration(
+//                             color: isEven ? _white : _lightGrey,
+//                           ),
+//                           children: [
+//                             pw.Padding(
+//                               padding: const pw.EdgeInsets.symmetric(
+//                                 horizontal: 8,
+//                                 vertical: 5,
+//                               ),
+//                               child: pw.Text(
+//                                 item['name']?.toString() ?? '—',
+//                                 style: pw.TextStyle(fontSize: 9),
+//                               ),
+//                             ),
+//                             pw.Padding(
+//                               padding: const pw.EdgeInsets.symmetric(
+//                                 horizontal: 8,
+//                                 vertical: 5,
+//                               ),
+//                               child: pw.Text(
+//                                 '${item['qty'] ?? 0}',
+//                                 style: pw.TextStyle(fontSize: 9),
+//                               ),
+//                             ),
+//                             pw.Padding(
+//                               padding: const pw.EdgeInsets.symmetric(
+//                                 horizontal: 8,
+//                                 vertical: 5,
+//                               ),
+//                               child: pw.Text(
+//                                 'TZS ${_fmtNum((item['unitPrice'] as num?)?.toDouble() ?? 0)}',
+//                                 style: pw.TextStyle(fontSize: 9),
+//                               ),
+//                             ),
+//                             pw.Padding(
+//                               padding: const pw.EdgeInsets.symmetric(
+//                                 horizontal: 8,
+//                                 vertical: 5,
+//                               ),
+//                               child: pw.Text(
+//                                 'TZS ${_fmtNum((item['subtotal'] as num?)?.toDouble() ?? 0)}',
+//                                 style: pw.TextStyle(
+//                                   fontSize: 9,
+//                                   fontWeight: pw.FontWeight.bold,
+//                                 ),
+//                               ),
+//                             ),
+//                           ],
+//                         );
+//                       }),
+//                     ],
+//                   ),
+
+//                   pw.SizedBox(height: 8),
+
+//                   pw.Row(
+//                     mainAxisAlignment: pw.MainAxisAlignment.end,
+//                     children: [
+//                       pw.Container(
+//                         width: 240,
+//                         padding: const pw.EdgeInsets.all(12),
+//                         decoration: const pw.BoxDecoration(color: _lightGrey),
+//                         child: pw.Column(
+//                           children: [
+//                             _totalRow('Subtotal', _fmtNum(order.total)),
+//                             _totalRow('Tax (0%)', '0.00'),
+//                             pw.Divider(),
+//                             _totalRow(
+//                               'TOTAL',
+//                               'TZS ${_fmtNum(order.total)}',
+//                               bold: true,
+//                               big: true,
+//                             ),
+//                             if (isPaid) ...[
+//                               pw.SizedBox(height: 4),
+//                               _totalRow(
+//                                 'Amount Paid',
+//                                 'TZS ${_fmtNum(order.total)}',
+//                                 color: _secondary,
+//                               ),
+//                               _totalRow(
+//                                 'Balance Due',
+//                                 'TZS 0.00',
+//                                 bold: true,
+//                                 color: _secondary,
+//                               ),
+//                             ] else ...[
+//                               pw.SizedBox(height: 4),
+//                               _totalRow(
+//                                 'Balance Due',
+//                                 'TZS ${_fmtNum(order.total)}',
+//                                 bold: true,
+//                                 color: _red,
+//                               ),
+//                             ],
+//                           ],
+//                         ),
+//                       ),
+//                     ],
+//                   ),
+
+//                   pw.SizedBox(height: 24),
+
+//                   pw.Container(
+//                     width: double.infinity,
+//                     padding: const pw.EdgeInsets.all(12),
+//                     decoration: pw.BoxDecoration(
+//                       border: pw.Border.all(color: _accent),
+//                       borderRadius: pw.BorderRadius.circular(4),
+//                     ),
+//                     child: pw.Text(
+//                       isPaid
+//                           ? 'Payment confirmed via ${order.paymentRef}. Thank you for your business!'
+//                           : 'Payment pending. Please complete payment via M-Pesa or Airtel Money.',
+//                       style: pw.TextStyle(fontSize: 9, color: _grey),
+//                     ),
+//                   ),
+//                 ],
+//               ),
+//             ),
+
+//             pw.Expanded(child: pw.SizedBox()),
+//             _footer(ctx),
+//           ],
+//         ),
+//       ),
+//     );
+//   }
+
+//   // ── Shared small widgets ───────────────────────────────────────────────────
+
+//   static pw.Widget _infoGrid(List<List<String>> rows) {
+//     return pw.Table(
+//       columnWidths: {
+//         0: const pw.FlexColumnWidth(1.5),
+//         1: const pw.FlexColumnWidth(3),
+//       },
+//       children: rows
+//           .map(
+//             (r) => pw.TableRow(
+//               children: [
+//                 pw.Padding(
+//                   padding: const pw.EdgeInsets.symmetric(
+//                     horizontal: 8,
+//                     vertical: 3,
+//                   ),
+//                   child: pw.Text(
+//                     r[0],
+//                     style: pw.TextStyle(
+//                       fontSize: 9,
+//                       fontWeight: pw.FontWeight.bold,
+//                       color: _grey,
+//                     ),
+//                   ),
+//                 ),
+//                 pw.Padding(
+//                   padding: const pw.EdgeInsets.symmetric(
+//                     horizontal: 8,
+//                     vertical: 3,
+//                   ),
+//                   child: pw.Text(r[1], style: pw.TextStyle(fontSize: 9)),
+//                 ),
+//               ],
+//             ),
+//           )
+//           .toList(),
+//     );
+//   }
+
+//   static pw.Widget _invoiceMetaRow(String label, String value) {
+//     return pw.Padding(
+//       padding: const pw.EdgeInsets.only(bottom: 3),
+//       child: pw.Row(
+//         mainAxisAlignment: pw.MainAxisAlignment.end,
+//         children: [
+//           pw.Text('$label: ', style: pw.TextStyle(fontSize: 9, color: _grey)),
+//           pw.Text(
+//             value,
+//             style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+
+//   static pw.Widget _totalRow(
+//     String label,
+//     String value, {
+//     bool bold = false,
+//     bool big = false,
+//     PdfColor? color,
+//   }) {
+//     final style = pw.TextStyle(
+//       fontSize: big ? 11 : 9,
+//       fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+//       color: color ?? _black,
+//     );
+//     return pw.Row(
+//       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+//       children: [
+//         pw.Text(label, style: style),
+//         pw.Text(value, style: style),
+//       ],
+//     );
+//   }
+
+//   // ── Formatters ─────────────────────────────────────────────────────────────
+
+//   static String _fmtDate(DateTime d) =>
+//       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+//   static String _fmtNum(double n) {
+//     final parts = n.toStringAsFixed(2).split('.');
+//     final intPart = parts[0].replaceAllMapped(
+//       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+//       (m) => '${m[1]},',
+//     );
+//     return '$intPart.${parts[1]}';
+//   }
+// }
+
+// === FILE: lib/features/report_export/presentation/cubit/report_export_cubit.dart ===
+// report_export_cubit.dart
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:open_file/open_file.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../domain/services/report_export_service.dart';
+import '../../domain/models/request_export_request.dart';
+import 'report_export_state.dart';
+
+class ReportExportCubit extends Cubit<ReportExportState> {
+  final ReportExportService _service;
+  Timer? _pollTimer;
+
+  ReportExportCubit({required ReportExportService service})
+      : _service = service,
+        super(const ReportExportState());
+
+  @override
+  Future<void> close() {
+    _pollTimer?.cancel();
+    return super.close();
+  }
+
+  // ── Public export triggers ─────────────────────────────────────────────────
+
+  Future<void> exportMarketingSummary(
+          {required String format, String? dateFrom, String? dateTo}) =>
+      _startExport(
+        reportType: 'marketing_summary',
+        format: format,
+        loadingFlag: 'marketing',
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+      );
+
+  Future<void> exportSalesSummary(
+          {required String format, String? dateFrom, String? dateTo}) =>
+      _startExport(
+        reportType: 'sales_summary',
+        format: format,
+        loadingFlag: 'sales',
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+      );
+
+  Future<void> exportCustomerList({required String format}) =>
+      _startExport(
+          reportType: 'customer_list',
+          format: format,
+          loadingFlag: 'customer_list');
+
+  Future<void> exportCustomerIndividual(
+          {required String customerId, required String format}) =>
+      _startExport(
+        reportType: 'customer_individual',
+        format: format,
+        loadingFlag: 'customer_individual',
+        referenceId: customerId,
+      );
+
+  Future<void> exportProductList({required String format}) =>
+      _startExport(
+          reportType: 'product_list',
+          format: format,
+          loadingFlag: 'product_list');
+
+  Future<void> exportInvoice({required String orderId}) =>
+      _startExport(
+        reportType: 'invoice',
+        format: 'pdf',
+        loadingFlag: 'invoice',
+        referenceId: orderId,
+      );
+
+  void setInvoiceOrderId(String value) =>
+      emit(state.copyWith(invoiceOrderId: value, invoiceError: null));
+
+  // ── Core export flow ───────────────────────────────────────────────────────
+
+  Future<void> _startExport({
+    required String reportType,
+    required String format,
+    required String loadingFlag,
+    String? dateFrom,
+    String? dateTo,
+    String? referenceId,
+  }) async {
+    _setLoadingFlag(loadingFlag, true);
+
+    final request = RequestExportRequest(
+      reportType: reportType,
+      format: format,
+      dateRange: (dateFrom != null && dateTo != null)
+          ? {'from': dateFrom, 'to': dateTo}
+          : null,
+      referenceId: referenceId,
+    );
+
+    final result = await _service.requestExport(request);
+    result.fold(
+      (failure) {
+        _setLoadingFlag(loadingFlag, false);
+        if (loadingFlag == 'invoice') {
+          emit(state.copyWith(invoiceError: failure.message));
+        }
+      },
+      (response) {
+        final entry = ExportHistoryEntry(
+          exportId: response.exportId,
+          reportType: reportType,
+          format: format,
+          status: 'pending',
+          requestedAt: response.createdAt,
+        );
+        final history = [entry, ...state.exportHistory].take(10).toList();
+        emit(state.copyWith(
+          activeExportId: response.exportId,
+          exportHistory: history,
+          lastSyncAt: DateTime.now(),
+          // Clear any previous polling status so banner resets cleanly
+          pollingStatus: null,
+        ));
+        _setLoadingFlag(loadingFlag, false);
+        _startPolling(response.exportId);
+      },
+    );
+  }
+
+  // ── Polling ────────────────────────────────────────────────────────────────
+
+  void _startPolling(String exportId) {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      final result = await _service.getExportStatus(exportId);
+      result.fold(
+        (_) {
+          _pollTimer?.cancel();
+          // Mark failed in history
+          final history = state.exportHistory.map((e) {
+            if (e.exportId == exportId) return e.copyWith(status: 'failed');
+            return e;
+          }).toList();
+          emit(state.copyWith(
+            activeExportId: null,
+            pollingStatus: null,    // ← clear banner
+            exportHistory: history,
+          ));
+        },
+        (status) {
+          final history = state.exportHistory.map((e) {
+            if (e.exportId == exportId) return e.copyWith(status: status.status);
+            return e;
+          }).toList();
+
+          if (status.status == 'ready' || status.status == 'failed') {
+            _pollTimer?.cancel();
+            emit(state.copyWith(
+              activeExportId: null,   // ← stops banner
+              pollingStatus: null,    // ← clears banner content
+              exportHistory: history,
+            ));
+          } else {
+            emit(state.copyWith(pollingStatus: status, exportHistory: history));
+          }
+        },
+      );
+    });
+  }
+
+  // ── Download + save ────────────────────────────────────────────────────────
+
+  Future<void> downloadExport(String exportId) async {
+    emit(state.copyWith(isDownloadExportLoading: true, downloadExportError: null));
+    final result = await _service.downloadExport(exportId);
+    result.fold(
+      (f) => emit(state.copyWith(
+          isDownloadExportLoading: false, downloadExportError: f.message)),
+      (r) async {
+        emit(state.copyWith(
+            isDownloadExportLoading: false,
+            downloadExportResult: r,
+            lastSyncAt: DateTime.now()));
+
+        final url = r.fileUrl;
+
+        if (url.startsWith('/') || (url.length > 2 && url[1] == ':')) {
+          // ── Local file (dev/mock) — let user choose what to do ────────────
+          await _handleLocalFile(url, r.fileName);
+        } else if (url.startsWith('http')) {
+          // ── Remote URL (production) — open in browser ─────────────────────
+          final uri = Uri.parse(url);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        }
+
+        emit(state.copyWith(lastDownloadedFileName: r.fileName));
+      },
+    );
+  }
+
+  Future<void> _handleLocalFile(String filePath, String fileName) async {
+    final file = File(filePath);
+    if (!await file.exists()) return;
+
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      // Desktop: let user pick a save directory
+      final dir = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Choose where to save $fileName',
+      );
+      if (dir != null) {
+        final dest = File('$dir${Platform.pathSeparator}$fileName');
+        await file.copy(dest.path);
+        // Open the saved file
+        await OpenFile.open(dest.path);
+        emit(state.copyWith(lastSavedPath: dest.path));
+      }
+    } else {
+      // Mobile (Android/iOS): share sheet — user can save to Files, Drive, etc.
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(filePath, name: fileName, mimeType: 'application/pdf')],
+          subject: fileName,
+          text: 'Barick Pharmacy — $fileName',
+        ),
+      );
+    }
+  }
+
+  // ── Legacy service methods (kept for compatibility) ────────────────────────
+
+  Future<void> requestExport(RequestExportRequest request) async {
+    emit(state.copyWith(
+        isRequestExportLoading: true, requestExportError: null));
+    final result = await _service.requestExport(request);
+    result.fold(
+      (f) => emit(state.copyWith(
+          isRequestExportLoading: false, requestExportError: f.message)),
+      (_) => emit(state.copyWith(
+          isRequestExportLoading: false, lastSyncAt: DateTime.now())),
+    );
+  }
+
+  Future<void> getExportStatus(String exportId) async {
+    emit(state.copyWith(
+        isGetExportStatusLoading: true, getExportStatusError: null));
+    final result = await _service.getExportStatus(exportId);
+    result.fold(
+      (f) => emit(state.copyWith(
+          isGetExportStatusLoading: false, getExportStatusError: f.message)),
+      (r) => emit(state.copyWith(
+          isGetExportStatusLoading: false,
+          getExportStatusResult: r,
+          lastSyncAt: DateTime.now())),
+    );
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  void _setLoadingFlag(String flag, bool value) {
+    emit(state.copyWith(
+      isMarketingSummaryLoading:
+          flag == 'marketing' ? value : state.isMarketingSummaryLoading,
+      isSalesSummaryLoading:
+          flag == 'sales' ? value : state.isSalesSummaryLoading,
+      isCustomerListLoading:
+          flag == 'customer_list' ? value : state.isCustomerListLoading,
+      isCustomerIndividualLoading:
+          flag == 'customer_individual' ? value : state.isCustomerIndividualLoading,
+      isProductListLoading:
+          flag == 'product_list' ? value : state.isProductListLoading,
+      isInvoiceLoading:
+          flag == 'invoice' ? value : state.isInvoiceLoading,
+    ));
+  }
+}
+
+// === FILE: lib/features/report_export/presentation/cubit/report_export_state.dart ===
+// report_export_state.dart
+import 'package:equatable/equatable.dart';
+import '../../domain/models/get_export_status_response.dart';
+import '../../domain/models/download_export_response.dart';
+
+// Represents a single entry in the export history list
+class ExportHistoryEntry {
+  final String exportId;
+  final String reportType;
+  final String format;
+  final String status; // pending | processing | ready | failed
+  final DateTime requestedAt;
+  final DownloadExportResponse? download;
+
+  const ExportHistoryEntry({
+    required this.exportId,
+    required this.reportType,
+    required this.format,
+    required this.status,
+    required this.requestedAt,
+    this.download,
+  });
+
+  ExportHistoryEntry copyWith({
+    String? status,
+    DownloadExportResponse? download,
+    GetExportStatusResponse? statusResponse,
+  }) => ExportHistoryEntry(
+    exportId: exportId,
+    reportType: reportType,
+    format: format,
+    status: status ?? this.status,
+    requestedAt: requestedAt,
+    download: download ?? this.download,
+  );
+}
+
+class ReportExportState extends Equatable {
+  final bool isLoading;
+  final String? errorMessage;
+  final DateTime? lastSyncAt;
+
+  // Per-report loading flags
+  final bool isMarketingSummaryLoading;
+  final bool isSalesSummaryLoading;
+  final bool isCustomerListLoading;
+  final bool isCustomerIndividualLoading;
+  final bool isProductListLoading;
+  final bool isInvoiceLoading;
+
+  // Active polling job
+  final String? activeExportId;
+  final GetExportStatusResponse? pollingStatus;
+
+  // Export history (last 10)
+  final List<ExportHistoryEntry> exportHistory;
+
+  // Invoice search
+  final String invoiceOrderId;
+  final String? invoiceError;
+
+  // Generic loading states (kept for service layer)
+  final bool isRequestExportLoading;
+  final String? requestExportError;
+  final bool isGetExportStatusLoading;
+  final String? getExportStatusError;
+  final GetExportStatusResponse? getExportStatusResult;
+  final bool isDownloadExportLoading;
+  final String? downloadExportError;
+  final DownloadExportResponse? downloadExportResult;
+  final String?
+  lastDownloadedFileName; // set after successful download — triggers snackbar
+  final String?
+  lastSavedPath; // set after desktop save — shows path in snackbar
+
+  const ReportExportState({
+    this.isLoading = false,
+    this.errorMessage,
+    this.lastSyncAt,
+    this.isMarketingSummaryLoading = false,
+    this.isSalesSummaryLoading = false,
+    this.isCustomerListLoading = false,
+    this.isCustomerIndividualLoading = false,
+    this.isProductListLoading = false,
+    this.isInvoiceLoading = false,
+    this.activeExportId,
+    this.pollingStatus,
+    this.exportHistory = const [],
+    this.invoiceOrderId = '',
+    this.invoiceError,
+    this.isRequestExportLoading = false,
+    this.requestExportError,
+    this.isGetExportStatusLoading = false,
+    this.getExportStatusError,
+    this.getExportStatusResult,
+    this.isDownloadExportLoading = false,
+    this.downloadExportError,
+    this.downloadExportResult,
+    this.lastDownloadedFileName,
+    this.lastSavedPath,
+  });
+
+  ReportExportState copyWith({
+    bool? isLoading,
+    String? errorMessage,
+    DateTime? lastSyncAt,
+    bool? isMarketingSummaryLoading,
+    bool? isSalesSummaryLoading,
+    bool? isCustomerListLoading,
+    bool? isCustomerIndividualLoading,
+    bool? isProductListLoading,
+    bool? isInvoiceLoading,
+    String? activeExportId,
+    GetExportStatusResponse? pollingStatus,
+    List<ExportHistoryEntry>? exportHistory,
+    String? invoiceOrderId,
+    String? invoiceError,
+    bool? isRequestExportLoading,
+    String? requestExportError,
+    bool? isGetExportStatusLoading,
+    String? getExportStatusError,
+    GetExportStatusResponse? getExportStatusResult,
+    bool? isDownloadExportLoading,
+    String? downloadExportError,
+    DownloadExportResponse? downloadExportResult,
+    String? lastDownloadedFileName,
+    String? lastSavedPath,
+  }) {
+    return ReportExportState(
+      isLoading: isLoading ?? this.isLoading,
+      errorMessage: errorMessage ?? this.errorMessage,
+      lastSyncAt: lastSyncAt ?? this.lastSyncAt,
+      isMarketingSummaryLoading:
+          isMarketingSummaryLoading ?? this.isMarketingSummaryLoading,
+      isSalesSummaryLoading:
+          isSalesSummaryLoading ?? this.isSalesSummaryLoading,
+      isCustomerListLoading:
+          isCustomerListLoading ?? this.isCustomerListLoading,
+      isCustomerIndividualLoading:
+          isCustomerIndividualLoading ?? this.isCustomerIndividualLoading,
+      isProductListLoading: isProductListLoading ?? this.isProductListLoading,
+      isInvoiceLoading: isInvoiceLoading ?? this.isInvoiceLoading,
+      activeExportId: activeExportId ?? this.activeExportId,
+      pollingStatus: pollingStatus ?? this.pollingStatus,
+      exportHistory: exportHistory ?? this.exportHistory,
+      invoiceOrderId: invoiceOrderId ?? this.invoiceOrderId,
+      invoiceError: invoiceError ?? this.invoiceError,
+      isRequestExportLoading:
+          isRequestExportLoading ?? this.isRequestExportLoading,
+      requestExportError: requestExportError ?? this.requestExportError,
+      isGetExportStatusLoading:
+          isGetExportStatusLoading ?? this.isGetExportStatusLoading,
+      getExportStatusError: getExportStatusError ?? this.getExportStatusError,
+      getExportStatusResult:
+          getExportStatusResult ?? this.getExportStatusResult,
+      isDownloadExportLoading:
+          isDownloadExportLoading ?? this.isDownloadExportLoading,
+      downloadExportError: downloadExportError ?? this.downloadExportError,
+      downloadExportResult: downloadExportResult ?? this.downloadExportResult,
+      lastDownloadedFileName:
+          lastDownloadedFileName ?? this.lastDownloadedFileName,
+      lastSavedPath: lastSavedPath ?? this.lastSavedPath,
+    );
+  }
+
+  @override
+  List<Object?> get props => [
+    isLoading,
+    errorMessage,
+    lastSyncAt,
+    isMarketingSummaryLoading,
+    isSalesSummaryLoading,
+    isCustomerListLoading,
+    isCustomerIndividualLoading,
+    isProductListLoading,
+    isInvoiceLoading,
+    activeExportId,
+    pollingStatus,
+    exportHistory,
+    invoiceOrderId,
+    invoiceError,
+    isRequestExportLoading,
+    requestExportError,
+    isGetExportStatusLoading,
+    getExportStatusError,
+    getExportStatusResult,
+    isDownloadExportLoading,
+    downloadExportError,
+    downloadExportResult,
+    lastDownloadedFileName,
+    lastSavedPath,
+  ];
+}
+
+
+// === FILE: lib/features/report_export/presentation/pages/report_export_page.dart ===
+// report_export_page.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../cubit/report_export_cubit.dart';
+import '../cubit/report_export_state.dart';
+
+class ReportExportPage extends StatefulWidget {
+  const ReportExportPage({super.key});
+
+  @override
+  State<ReportExportPage> createState() => _ReportExportPageState();
+}
+
+class _ReportExportPageState extends State<ReportExportPage> {
+  // Date range
+  String _period = 'this_month';
+  DateTimeRange? _customRange;
+
+  // Invoice order ID controller
+  final _invoiceCtrl = TextEditingController();
+
+  // Customer individual ID controller
+  final _customerCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _invoiceCtrl.dispose();
+    _customerCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── Date helpers ────────────────────────────────────────────────────────
+
+  (String, String) _resolvedDateRange() {
+    final now = DateTime.now();
+    switch (_period) {
+      case 'today':
+        final d = _fmt(now);
+        return (d, d);
+      case 'this_week':
+        final start = now.subtract(Duration(days: now.weekday - 1));
+        return (_fmt(start), _fmt(now));
+      case 'this_month':
+        return (_fmt(DateTime(now.year, now.month, 1)), _fmt(now));
+      case 'custom':
+        if (_customRange != null) {
+          return (_fmt(_customRange!.start), _fmt(_customRange!.end));
+        }
+        return (_fmt(DateTime(now.year, now.month, 1)), _fmt(now));
+      default:
+        return (_fmt(DateTime(now.year, now.month, 1)), _fmt(now));
+    }
+  }
+
+  String _fmt(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> _pickCustomRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2024),
+      lastDate: DateTime.now(),
+      initialDateRange:
+          _customRange ??
+          DateTimeRange(
+            start: DateTime.now().subtract(const Duration(days: 30)),
+            end: DateTime.now(),
+          ),
+    );
+    if (picked != null) {
+      setState(() {
+        _customRange = picked;
+        _period = 'custom';
+      });
+    }
+  }
+
+  // ── Build ───────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final width = MediaQuery.of(context).size.width;
+    final isWide = width >= 840;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Report Export'), centerTitle: false),
+      body: BlocConsumer<ReportExportCubit, ReportExportState>(
+        listener: (ctx, state) {
+          // New export queued
+          if (state.activeExportId != null &&
+              state.exportHistory.isNotEmpty &&
+              state.exportHistory.first.status == 'pending') {
+            ScaffoldMessenger.of(ctx).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Export queued — ${_labelType(state.exportHistory.first.reportType)} will be ready shortly',
+                ),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+          // Download completed
+          if (state.lastDownloadedFileName != null) {
+            ScaffoldMessenger.of(ctx).showSnackBar(
+              SnackBar(
+                content: Text('Opening ${state.lastDownloadedFileName}…'),
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+          // Desktop save completed — show exact path
+          if (state.lastSavedPath != null) {
+            ScaffoldMessenger.of(ctx).showSnackBar(
+              SnackBar(
+                content: Text('Saved to ${state.lastSavedPath}'),
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 4),
+                action: SnackBarAction(
+                  label: 'Open',
+                  onPressed: () => context
+                      .read<ReportExportCubit>()
+                      .downloadExport(state.exportHistory.first.exportId),
+                ),
+              ),
+            );
+          }
+          // Download error
+          if (state.downloadExportError != null) {
+            ScaffoldMessenger.of(ctx).showSnackBar(
+              SnackBar(
+                content: Text('Download failed: ${state.downloadExportError}'),
+                backgroundColor: Theme.of(ctx).colorScheme.error,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        },
+        builder: (ctx, state) {
+          return SingleChildScrollView(
+            padding: EdgeInsets.symmetric(
+              horizontal: isWide ? (width - 960) / 2 : 16,
+              vertical: 16,
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 960),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Period filter ──────────────────────────────────────
+                  _PeriodSelector(
+                    selected: _period,
+                    customRange: _customRange,
+                    onChanged: (v) => setState(() => _period = v),
+                    onPickCustom: _pickCustomRange,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ── Polling banner ─────────────────────────────────────
+                  if (state.activeExportId != null) ...[
+                    _PollingBanner(status: state.pollingStatus),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // ── Main grid ─────────────────────────────────────────
+                  if (isWide)
+                    _WideLayout(
+                      state: state,
+                      period: _period,
+                      resolvedRange: _resolvedDateRange,
+                      invoiceCtrl: _invoiceCtrl,
+                      customerCtrl: _customerCtrl,
+                    )
+                  else
+                    _NarrowLayout(
+                      state: state,
+                      period: _period,
+                      resolvedRange: _resolvedDateRange,
+                      invoiceCtrl: _invoiceCtrl,
+                      customerCtrl: _customerCtrl,
+                    ),
+
+                  const SizedBox(height: 24),
+
+                  // ── Export history ─────────────────────────────────────
+                  if (state.exportHistory.isNotEmpty) ...[
+                    Text(
+                      'Export History',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    _ExportHistoryList(entries: state.exportHistory),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ── Period selector ─────────────────────────────────────────────────────────
+
+class _PeriodSelector extends StatelessWidget {
+  final String selected;
+  final DateTimeRange? customRange;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onPickCustom;
+
+  const _PeriodSelector({
+    required this.selected,
+    required this.customRange,
+    required this.onChanged,
+    required this.onPickCustom,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final periods = [
+      ('today', 'Today'),
+      ('this_week', 'This Week'),
+      ('this_month', 'This Month'),
+      (
+        'custom',
+        customRange != null
+            ? '${_d(customRange!.start)} – ${_d(customRange!.end)}'
+            : 'Custom Range',
+      ),
+    ];
+    return Wrap(
+      spacing: 8,
+      children: [
+        ...periods.map(
+          (p) => ChoiceChip(
+            label: Text(p.$2),
+            selected: selected == p.$1,
+            onSelected: (_) {
+              if (p.$1 == 'custom') {
+                onPickCustom();
+              } else {
+                onChanged(p.$1);
+              }
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _d(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+}
+
+// ── Wide layout (2 columns) ─────────────────────────────────────────────────
+
+class _WideLayout extends StatelessWidget {
+  final ReportExportState state;
+  final String period;
+  final (String, String) Function() resolvedRange;
+  final TextEditingController invoiceCtrl;
+  final TextEditingController customerCtrl;
+
+  const _WideLayout({
+    required this.state,
+    required this.period,
+    required this.resolvedRange,
+    required this.invoiceCtrl,
+    required this.customerCtrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            children: [
+              _SectionHeader(
+                title: 'Marketing Reports',
+                icon: Icons.campaign_outlined,
+              ),
+              const SizedBox(height: 8),
+              _ExportCard(
+                title: 'Marketing Summary',
+                description:
+                    'Visits, officer performance, plan compliance, daily reports',
+                icon: Icons.bar_chart,
+                color: Colors.teal,
+                isLoading: state.isMarketingSummaryLoading,
+                supportsExcel: true,
+                onExport: (fmt) {
+                  final r = resolvedRange();
+                  context.read<ReportExportCubit>().exportMarketingSummary(
+                    format: fmt,
+                    dateFrom: r.$1,
+                    dateTo: r.$2,
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+              _SectionHeader(
+                title: 'Customer Reports',
+                icon: Icons.people_outline,
+              ),
+              const SizedBox(height: 8),
+              _ExportCard(
+                title: 'Customer List',
+                description:
+                    'All customer profiles — business, owner, contact, address, GPS, assigned officer',
+                icon: Icons.list_alt,
+                color: Colors.indigo,
+                isLoading: state.isCustomerListLoading,
+                supportsExcel: true,
+                onExport: (fmt) => context
+                    .read<ReportExportCubit>()
+                    .exportCustomerList(format: fmt),
+              ),
+              const SizedBox(height: 8),
+              _IndividualCustomerCard(
+                ctrl: customerCtrl,
+                isLoading: state.isCustomerIndividualLoading,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            children: [
+              _SectionHeader(
+                title: 'Sales Reports',
+                icon: Icons.point_of_sale_outlined,
+              ),
+              const SizedBox(height: 8),
+              _ExportCard(
+                title: 'Sales Summary',
+                description:
+                    'Orders by status, revenue, average order value, payments',
+                icon: Icons.attach_money,
+                color: Colors.green,
+                isLoading: state.isSalesSummaryLoading,
+                supportsExcel: true,
+                onExport: (fmt) {
+                  final r = resolvedRange();
+                  context.read<ReportExportCubit>().exportSalesSummary(
+                    format: fmt,
+                    dateFrom: r.$1,
+                    dateTo: r.$2,
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+              _ExportCard(
+                title: 'Product List',
+                description:
+                    'All products with name, category, price, availability and status',
+                icon: Icons.medication_outlined,
+                color: Colors.orange,
+                isLoading: state.isProductListLoading,
+                supportsExcel: true,
+                onExport: (fmt) => context
+                    .read<ReportExportCubit>()
+                    .exportProductList(format: fmt),
+              ),
+              const SizedBox(height: 8),
+              _SectionHeader(
+                title: 'Invoice',
+                icon: Icons.receipt_long_outlined,
+              ),
+              const SizedBox(height: 8),
+              _InvoiceCard(
+                ctrl: invoiceCtrl,
+                isLoading: state.isInvoiceLoading,
+                error: state.invoiceError,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Narrow layout (single column) ──────────────────────────────────────────
+
+class _NarrowLayout extends StatelessWidget {
+  final ReportExportState state;
+  final String period;
+  final (String, String) Function() resolvedRange;
+  final TextEditingController invoiceCtrl;
+  final TextEditingController customerCtrl;
+
+  const _NarrowLayout({
+    required this.state,
+    required this.period,
+    required this.resolvedRange,
+    required this.invoiceCtrl,
+    required this.customerCtrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(
+          title: 'Marketing Reports',
+          icon: Icons.campaign_outlined,
+        ),
+        const SizedBox(height: 8),
+        _ExportCard(
+          title: 'Marketing Summary',
+          description:
+              'Visits, officer performance, plan compliance, daily reports',
+          icon: Icons.bar_chart,
+          color: Colors.teal,
+          isLoading: state.isMarketingSummaryLoading,
+          supportsExcel: true,
+          onExport: (fmt) {
+            final r = resolvedRange();
+            context.read<ReportExportCubit>().exportMarketingSummary(
+              format: fmt,
+              dateFrom: r.$1,
+              dateTo: r.$2,
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+        _SectionHeader(
+          title: 'Sales Reports',
+          icon: Icons.point_of_sale_outlined,
+        ),
+        const SizedBox(height: 8),
+        _ExportCard(
+          title: 'Sales Summary',
+          description:
+              'Orders by status, revenue, average order value, payments',
+          icon: Icons.attach_money,
+          color: Colors.green,
+          isLoading: state.isSalesSummaryLoading,
+          supportsExcel: true,
+          onExport: (fmt) {
+            final r = resolvedRange();
+            context.read<ReportExportCubit>().exportSalesSummary(
+              format: fmt,
+              dateFrom: r.$1,
+              dateTo: r.$2,
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        _ExportCard(
+          title: 'Product List',
+          description:
+              'All products with name, category, price, availability and status',
+          icon: Icons.medication_outlined,
+          color: Colors.orange,
+          isLoading: state.isProductListLoading,
+          supportsExcel: true,
+          onExport: (fmt) =>
+              context.read<ReportExportCubit>().exportProductList(format: fmt),
+        ),
+        const SizedBox(height: 16),
+        _SectionHeader(title: 'Customer Reports', icon: Icons.people_outline),
+        const SizedBox(height: 8),
+        _ExportCard(
+          title: 'Customer List',
+          description:
+              'All customer profiles — business, owner, contact, address, GPS, assigned officer',
+          icon: Icons.list_alt,
+          color: Colors.indigo,
+          isLoading: state.isCustomerListLoading,
+          supportsExcel: true,
+          onExport: (fmt) =>
+              context.read<ReportExportCubit>().exportCustomerList(format: fmt),
+        ),
+        const SizedBox(height: 8),
+        _IndividualCustomerCard(
+          ctrl: customerCtrl,
+          isLoading: state.isCustomerIndividualLoading,
+        ),
+        const SizedBox(height: 16),
+        _SectionHeader(title: 'Invoice', icon: Icons.receipt_long_outlined),
+        const SizedBox(height: 8),
+        _InvoiceCard(
+          ctrl: invoiceCtrl,
+          isLoading: state.isInvoiceLoading,
+          error: state.invoiceError,
+        ),
+      ],
+    );
+  }
+}
+
+// ── Section header ──────────────────────────────────────────────────────────
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  const _SectionHeader({required this.title, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: scheme.primary),
+        const SizedBox(width: 6),
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: scheme.primary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Export card ─────────────────────────────────────────────────────────────
+
+class _ExportCard extends StatelessWidget {
+  final String title;
+  final String description;
+  final IconData icon;
+  final Color color;
+  final bool isLoading;
+  final bool supportsExcel;
+  final void Function(String format) onExport;
+
+  const _ExportCard({
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.color,
+    required this.isLoading,
+    required this.supportsExcel,
+    required this.onExport,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, color: color, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        description,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (isLoading)
+              const Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => onExport('pdf'),
+                      icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                      label: const Text('PDF'),
+                    ),
+                  ),
+                  if (supportsExcel) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: () => onExport('excel'),
+                        icon: const Icon(Icons.table_chart_outlined, size: 16),
+                        label: const Text('Excel'),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Individual customer card ────────────────────────────────────────────────
+
+class _IndividualCustomerCard extends StatelessWidget {
+  final TextEditingController ctrl;
+  final bool isLoading;
+  const _IndividualCustomerCard({required this.ctrl, required this.isLoading});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.indigo.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.person_outline,
+                    color: Colors.indigo,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Individual Customer Profile',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        'Full profile + visit history for one customer',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              decoration: const InputDecoration(
+                labelText: 'Customer ID',
+                hintText: 'e.g. cust-001',
+                prefixIcon: Icon(Icons.search),
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (isLoading)
+              const Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: ctrl.text.trim().isEmpty
+                          ? null
+                          : () => context
+                                .read<ReportExportCubit>()
+                                .exportCustomerIndividual(
+                                  customerId: ctrl.text.trim(),
+                                  format: 'pdf',
+                                ),
+                      icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                      label: const Text('PDF'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: ctrl.text.trim().isEmpty
+                          ? null
+                          : () => context
+                                .read<ReportExportCubit>()
+                                .exportCustomerIndividual(
+                                  customerId: ctrl.text.trim(),
+                                  format: 'excel',
+                                ),
+                      icon: const Icon(Icons.table_chart_outlined, size: 16),
+                      label: const Text('Excel'),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Invoice card ─────────────────────────────────────────────────────────────
+
+class _InvoiceCard extends StatelessWidget {
+  final TextEditingController ctrl;
+  final bool isLoading;
+  final String? error;
+  const _InvoiceCard({required this.ctrl, required this.isLoading, this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.receipt_long_outlined,
+                    color: Colors.purple,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Generate Invoice',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        'PDF invoice per order — includes items, total, payment status',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              decoration: InputDecoration(
+                labelText: 'Order ID',
+                hintText: 'e.g. ord-001',
+                prefixIcon: const Icon(Icons.search),
+                isDense: true,
+                border: const OutlineInputBorder(),
+                errorText: error,
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (isLoading)
+              const Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: ctrl.text.trim().isEmpty
+                      ? null
+                      : () => context.read<ReportExportCubit>().exportInvoice(
+                          orderId: ctrl.text.trim(),
+                        ),
+                  icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                  label: const Text('Generate Invoice PDF'),
+                  style: FilledButton.styleFrom(backgroundColor: Colors.purple),
+                ),
+              ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 14,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Invoice is auto-created when an order is confirmed. '
+                      'Enter order ID to download the PDF.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Polling banner ──────────────────────────────────────────────────────────
+
+class _PollingBanner extends StatelessWidget {
+  final dynamic status;
+  const _PollingBanner({this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final progress = (status?.progress as int?) ?? 0;
+    final label = status?.status == 'processing'
+        ? 'Preparing export… $progress%'
+        : 'Export queued…';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(label)),
+          if (status?.status == 'processing')
+            SizedBox(
+              width: 80,
+              child: LinearProgressIndicator(value: progress / 100),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Export history list ─────────────────────────────────────────────────────
+
+class _ExportHistoryList extends StatelessWidget {
+  final List<ExportHistoryEntry> entries;
+  const _ExportHistoryList({required this.entries});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Column(
+        children: entries.map((e) {
+          final isReady = e.status == 'ready';
+          final isFailed = e.status == 'failed';
+          return ListTile(
+            leading: Icon(
+              isReady
+                  ? Icons.check_circle_outline
+                  : isFailed
+                  ? Icons.error_outline
+                  : Icons.hourglass_empty,
+              color: isReady
+                  ? Colors.green
+                  : isFailed
+                  ? scheme.error
+                  : scheme.onSurfaceVariant,
+            ),
+            title: Text(_labelType(e.reportType)),
+            subtitle: Text(
+              '${e.format.toUpperCase()} · ${_timeAgo(e.requestedAt)}',
+            ),
+            trailing: isReady
+                ? TextButton.icon(
+                    onPressed: () => context
+                        .read<ReportExportCubit>()
+                        .downloadExport(e.exportId),
+                    icon: const Icon(Icons.download, size: 16),
+                    label: const Text('Download'),
+                  )
+                : isFailed
+                ? Text(
+                    'Failed',
+                    style: TextStyle(color: scheme.error, fontSize: 12),
+                  )
+                : const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  String _timeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 60) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    return '${diff.inHours}h ago';
+  }
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+String _labelType(String type) {
+  switch (type) {
+    case 'marketing_summary':
+      return 'Marketing Summary';
+    case 'sales_summary':
+      return 'Sales Summary';
+    case 'customer_list':
+      return 'Customer List';
+    case 'customer_individual':
+      return 'Customer Profile';
+    case 'product_list':
+      return 'Product List';
+    case 'invoice':
+      return 'Invoice';
+    default:
+      return type;
+  }
+}
+
+
+// === FILE: lib/features/report_export/presentation/widgets/report_export_operation_card.dart ===
+import 'package:flutter/material.dart';
+
+class ReportExportOperationCard extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final bool isLoading;
+  final String? error;
+  final VoidCallback? onExecute;
+  final IconData icon;
+
+  const ReportExportOperationCard({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.isLoading = false,
+    this.error,
+    this.onExecute,
+    this.icon = Icons.sync,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: error != null
+                        ? scheme.errorContainer
+                        : scheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    error != null ? Icons.error_outline : icon,
+                    color: error != null ? scheme.error : scheme.primary,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: Theme.of(context).textTheme.titleSmall),
+                      if (subtitle != null)
+                        Text(
+                          subtitle!,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (isLoading)
+                  const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                else if (onExecute != null)
+                  IconButton(
+                    icon: const Icon(Icons.play_arrow),
+                    tooltip: 'Execute',
+                    onPressed: onExecute,
+                  ),
+              ],
+            ),
+            if (error != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: scheme.errorContainer,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  error!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onErrorContainer,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/report_export/presentation/widgets/report_export_sync_status.dart ===
+import 'package:flutter/material.dart';
+
+class ReportExportSyncStatus extends StatelessWidget {
+  final DateTime? lastSyncAt;
+  final bool isLoading;
+
+  const ReportExportSyncStatus({
+    super.key,
+    this.lastSyncAt,
+    this.isLoading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isLoading ? scheme.primaryContainer : scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isLoading ? Icons.sync : Icons.check_circle_outline,
+            size: 16,
+            color: isLoading ? scheme.primary : scheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              isLoading
+                  ? 'Syncing...'
+                  : lastSyncAt != null
+                      ? 'Last sync: ' + _formatTime(lastSyncAt!)
+                      : 'Not synced yet',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatTime(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return dt.toIso8601String().split('T').first;
+  }
+}
+
 

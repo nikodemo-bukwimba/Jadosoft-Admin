@@ -1,23 +1,13 @@
 // lib/features/product/data/datasources/product_api_datasource.dart
-//
-// FIX: Added uploadImage(String localPath) → POST /api/v1/media/upload
-//
-// Previously _imageSource (a local device file path like
-// /data/.../image_picker_abc.jpg) was passed raw as image_url in the
-// JSON body.  The server stored a local path that is meaningless on
-// any other session or device.
-//
-// Fix flow:
-//   1. _pickImage stores the local path in _imageSource (unchanged).
-//   2. Before dispatching create/update, the form calls
-//      datasource.uploadImage(_imageSource!) which multipart-POSTs the
-//      file to /api/v1/media/upload and returns a public https:// URL.
-//   3. That URL is stored as image_url in the JSON body.
-// ─────────────────────────────────────────────────────────────
 
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, TargetPlatform;
+import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../../../../core/context/org_context.dart';
 import '../../../../core/error/exceptions.dart';
@@ -32,8 +22,6 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     : _dio = dio,
       _orgContext = orgContext;
 
-  // ── Error helper ─────────────────────────────────────────────
-
   String _msg(DioException e) {
     final data = e.response?.data;
     if (data is Map<String, dynamic> && data['message'] is String) {
@@ -41,8 +29,6 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     }
     return 'An error occurred. Please try again.';
   }
-
-  // ── Response unwrapper ───────────────────────────────────────
 
   Map<String, dynamic> _unwrapProduct(dynamic raw) {
     if (raw is Map<String, dynamic>) {
@@ -55,8 +41,6 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     return {};
   }
 
-  // ── Nexora JSON → ProductModel ───────────────────────────────
-
   ProductModel _fromNexora(Map<String, dynamic> j) {
     final variants =
         (j['variants'] as List?)?.cast<Map<String, dynamic>>() ?? [];
@@ -68,17 +52,14 @@ class ProductApiDataSource implements ProductRemoteDataSource {
           );
 
     final variantId = defaultVariant?['id']?.toString();
-
     final rawPrice = defaultVariant?['base_price'];
     final price = rawPrice == null
         ? 0.0
         : double.tryParse(rawPrice.toString()) ?? 0.0;
-
     final rawEffective = defaultVariant?['effective_price'];
     final effectivePrice = rawEffective == null
         ? price
         : double.tryParse(rawEffective.toString()) ?? price;
-
     final discountPercentage = (defaultVariant?['discount_percentage'] as num?)
         ?.toDouble();
     final hasPromotion = defaultVariant?['has_promotion'] as bool? ?? false;
@@ -112,7 +93,7 @@ class ProductApiDataSource implements ProductRemoteDataSource {
       isFeatured: parseBool(meta['is_featured'], false),
       isNew: parseBool(meta['is_new'], false),
       status: _mapStatus(j['status']?.toString() ?? 'draft'),
-      imageUrl: _resolveImage(j, meta),
+      imageUrl: _resolveImage(j),
       createdAt: j['created_at'] != null
           ? DateTime.tryParse(j['created_at'].toString()) ?? DateTime.now()
           : DateTime.now(),
@@ -133,65 +114,75 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     _ => 'draft',
   };
 
-  String? _resolveImage(Map<String, dynamic> j, Map<String, dynamic> meta) {
+  String? _resolveImage(Map<String, dynamic> j) {
     final media = (j['media'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-    if (media.isNotEmpty) return media.first['url'] as String?;
-    return meta['image_url'] as String? ?? j['image_url'] as String?;
+    if (media.isEmpty) return null;
+    final primary = media.firstWhere(
+      (m) => m['is_primary'] == true,
+      orElse: () => media.first,
+    );
+    return primary['url'] as String?;
   }
 
-  // ── Nexora create body ───────────────────────────────────────
-
-  Map<String, dynamic> _createBody(Map<String, dynamic> d) => {
-    'name': d['name'] ?? '',
-    'description': d['description'],
-    'type': 'physical',
-    'seller_actor_id': d['seller_actor_id'] ?? '',
-    'track_inventory': true,
-    'requires_confirmation': false,
-    'attributes': {'category_id': d['category_id'] ?? ''},
-    'metadata': {
-      'category_id': d['category_id'] ?? '',
-      'is_available': d['is_available'] ?? true,
-      'is_featured': d['is_featured'] ?? false,
-      'is_new': d['is_new'] ?? true,
-      if (d['image_url'] != null) 'image_url': d['image_url'],
-      if (d['batch_number'] != null) 'batch_number': d['batch_number'],
-      if (d['expiry_date'] != null) 'expiry_date': d['expiry_date'],
-      if (d['pack_size'] != null) 'pack_size': d['pack_size'],
-      if (d['quantity_available'] != null)
-        'quantity_available': d['quantity_available'],
-    },
-    'variants': [
-      {
-        'base_price': d['price'] ?? 0,
-        'currency': 'TZS',
-        'name': d['name'] ?? 'Default',
-        'is_default': true,
+  Map<String, dynamic> _createBody(Map<String, dynamic> d) {
+    final imageUrl = d['image_url'] as String?;
+    return {
+      'name': d['name'] ?? '',
+      'description': d['description'],
+      'type': 'physical',
+      'seller_actor_id': d['seller_actor_id'] ?? '',
+      'track_inventory': true,
+      'requires_confirmation': false,
+      'attributes': {'category_id': d['category_id'] ?? ''},
+      if (imageUrl != null && imageUrl.isNotEmpty)
+        'media': [
+          {'url': imageUrl, 'type': 'image', 'is_primary': true},
+        ],
+      'metadata': {
+        'category_id': d['category_id'] ?? '',
+        'is_available': d['is_available'] ?? true,
+        'is_featured': d['is_featured'] ?? false,
+        'is_new': d['is_new'] ?? true,
+        if (d['batch_number'] != null) 'batch_number': d['batch_number'],
+        if (d['expiry_date'] != null) 'expiry_date': d['expiry_date'],
+        if (d['pack_size'] != null) 'pack_size': d['pack_size'],
+        if (d['quantity_available'] != null)
+          'quantity_available': d['quantity_available'],
       },
-    ],
-  };
+      'variants': [
+        {
+          'base_price': d['price'] ?? 0,
+          'currency': 'TZS',
+          'name': d['name'] ?? 'Default',
+          'is_default': true,
+        },
+      ],
+    };
+  }
 
-  // ── Nexora update body ───────────────────────────────────────
-
-  Map<String, dynamic> _updateBody(Map<String, dynamic> d) => {
-    'name': d['name'] ?? '',
-    'description': d['description'],
-    'attributes': {'category_id': d['category_id'] ?? ''},
-    'metadata': {
-      'category_id': d['category_id'] ?? '',
-      'is_available': d['is_available'] ?? true,
-      'is_featured': d['is_featured'] ?? false,
-      'is_new': d['is_new'] ?? true,
-      if (d['image_url'] != null) 'image_url': d['image_url'],
-      if (d['batch_number'] != null) 'batch_number': d['batch_number'],
-      if (d['expiry_date'] != null) 'expiry_date': d['expiry_date'],
-      if (d['pack_size'] != null) 'pack_size': d['pack_size'],
-      if (d['quantity_available'] != null)
-        'quantity_available': d['quantity_available'],
-    },
-  };
-
-  // ── ProductRemoteDataSource interface ────────────────────────
+  Map<String, dynamic> _updateBody(Map<String, dynamic> d) {
+    final imageUrl = d['image_url'] as String?;
+    return {
+      'name': d['name'] ?? '',
+      'description': d['description'],
+      'attributes': {'category_id': d['category_id'] ?? ''},
+      if (imageUrl != null && imageUrl.isNotEmpty)
+        'media': [
+          {'url': imageUrl, 'type': 'image', 'is_primary': true},
+        ],
+      'metadata': {
+        'category_id': d['category_id'] ?? '',
+        'is_available': d['is_available'] ?? true,
+        'is_featured': d['is_featured'] ?? false,
+        'is_new': d['is_new'] ?? true,
+        if (d['batch_number'] != null) 'batch_number': d['batch_number'],
+        if (d['expiry_date'] != null) 'expiry_date': d['expiry_date'],
+        if (d['pack_size'] != null) 'pack_size': d['pack_size'],
+        if (d['quantity_available'] != null)
+          'quantity_available': d['quantity_available'],
+      },
+    };
+  }
 
   @override
   Future<List<ProductModel>> getAll() async {
@@ -250,12 +241,24 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     try {
       final newStatus = data['status']?.toString();
 
+      // ── Patch product-level fields ─────────────────────────────
+      await _dio.patch('/commerce/products/$id', data: _updateBody(data));
+
+      // ── Patch variant price if provided ────────────────────────
+      final variantId = data['variant_id']?.toString();
+      final newPrice = data['price'];
+      if (variantId != null && variantId.isNotEmpty && newPrice != null) {
+        await _dio.patch(
+          '/commerce/variants/$variantId',
+          data: {'base_price': newPrice, 'currency': data['currency'] ?? 'TZS'},
+        );
+      }
+
+      // ── Status transitions ─────────────────────────────────────
       if (newStatus == 'active') {
         await _dio.post('/commerce/products/$id/publish');
       } else if (newStatus == 'archived') {
         await _dio.post('/commerce/products/$id/archive');
-      } else {
-        await _dio.patch('/commerce/products/$id', data: _updateBody(data));
       }
 
       return await getById(id);
@@ -279,26 +282,47 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     }
   }
 
-  // ── FIX: Image upload ────────────────────────────────────────
+  // ── Image upload ─────────────────────────────────────────────
   //
-  // Uploads the local file to POST /api/v1/media/upload and returns
-  // the server-generated public URL.
+  // Desktop (Windows/macOS/Linux): file_picker returns the raw uncompressed
+  // file — a typical photo can be 5–15 MB, exceeding PHP's default
+  // post_max_size of 8 MB.  We compress with the `image` package before
+  // sending: resize to fit within 1200 px, re-encode as JPEG @ 85 quality.
+  // This brings most photos under 500 KB.
   //
-  // The caller (product form widget) must call this BEFORE building
-  // the create/update payload so that image_url in the body is a
-  // real https:// URL, not a local device path.
+  // Mobile: image_picker already applies maxWidth/maxHeight/imageQuality,
+  // so no further compression is needed.
+
+  static bool get _isDesktop =>
+      defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.linux;
+
+  static const int _maxDimension = 1200;
+  static const int _jpegQuality = 85;
 
   @override
   Future<String> uploadImage(String localPath) async {
     try {
       final file = File(localPath);
-      if (!file.existsSync()) {
+      if (!await file.exists()) {
         throw ServerException('Image file not found at: $localPath');
       }
 
-      final fileName = p.basename(localPath);
+      String uploadPath = localPath;
+      String uploadName = p.basename(localPath);
+
+      // Compress on desktop before sending
+      if (_isDesktop) {
+        final compressed = await _compressForDesktop(file);
+        if (compressed != null) {
+          uploadPath = compressed.path;
+          uploadName = p.basename(compressed.path);
+        }
+      }
+
       final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(localPath, filename: fileName),
+        'file': await MultipartFile.fromFile(uploadPath, filename: uploadName),
         'type': 'product',
       });
 
@@ -321,6 +345,43 @@ class ProductApiDataSource implements ProductRemoteDataSource {
       rethrow;
     } catch (e) {
       throw ServerException('Image upload error: $e');
+    }
+  }
+
+  /// Decodes [source], resizes to fit [_maxDimension] on the longest axis,
+  /// and re-encodes as JPEG at [_jpegQuality].  Writes to a temp file.
+  /// Returns null on any error so the caller can fall back to the original.
+  Future<File?> _compressForDesktop(File source) async {
+    try {
+      final bytes = await source.readAsBytes();
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return null;
+
+      img.Image resized = decoded;
+      if (decoded.width > _maxDimension || decoded.height > _maxDimension) {
+        resized = img.copyResize(
+          decoded,
+          width: decoded.width >= decoded.height ? _maxDimension : -1,
+          height: decoded.height > decoded.width ? _maxDimension : -1,
+          interpolation: img.Interpolation.linear,
+        );
+      }
+
+      final Uint8List jpegBytes = Uint8List.fromList(
+        img.encodeJpg(resized, quality: _jpegQuality),
+      );
+
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File(
+        p.join(
+          tempDir.path,
+          'upload_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        ),
+      );
+      await tempFile.writeAsBytes(jpegBytes);
+      return tempFile;
+    } catch (_) {
+      return null; // fall back to original file
     }
   }
 }

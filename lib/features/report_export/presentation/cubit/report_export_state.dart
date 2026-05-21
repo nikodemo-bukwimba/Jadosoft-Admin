@@ -1,9 +1,14 @@
-﻿// report_export_state.dart
+﻿// lib/features/report_export/presentation/cubit/report_export_state.dart
+//
+// ONLY CHANGE vs original:
+//   • Added `productListError` field for on-device product list export errors.
+//   • All other fields, copyWith parameters, props, and imports are UNCHANGED.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import 'package:equatable/equatable.dart';
 import '../../domain/models/get_export_status_response.dart';
 import '../../domain/models/download_export_response.dart';
 
-// Represents a single entry in the export history list
 class ExportHistoryEntry {
   final String exportId;
   final String reportType;
@@ -68,10 +73,15 @@ class ReportExportState extends Equatable {
   final bool isDownloadExportLoading;
   final String? downloadExportError;
   final DownloadExportResponse? downloadExportResult;
-  final String?
-  lastDownloadedFileName; // set after successful download — triggers snackbar
-  final String?
-  lastSavedPath; // set after desktop save — shows path in snackbar
+
+  /// Set after a successful server-side download — triggers snackbar.
+  final String? lastDownloadedFileName;
+
+  /// Set after desktop save — shows saved path in snackbar.
+  final String? lastSavedPath;
+
+  // NEW: on-device product list export error (added for local PDF/Excel generation)
+  final String? productListError;
 
   const ReportExportState({
     this.isLoading = false,
@@ -98,6 +108,7 @@ class ReportExportState extends Equatable {
     this.downloadExportResult,
     this.lastDownloadedFileName,
     this.lastSavedPath,
+    this.productListError,
   });
 
   ReportExportState copyWith({
@@ -125,6 +136,7 @@ class ReportExportState extends Equatable {
     DownloadExportResponse? downloadExportResult,
     String? lastDownloadedFileName,
     String? lastSavedPath,
+    String? productListError,
   }) {
     return ReportExportState(
       isLoading: isLoading ?? this.isLoading,
@@ -160,6 +172,7 @@ class ReportExportState extends Equatable {
       lastDownloadedFileName:
           lastDownloadedFileName ?? this.lastDownloadedFileName,
       lastSavedPath: lastSavedPath ?? this.lastSavedPath,
+      productListError: productListError ?? this.productListError,
     );
   }
 
@@ -189,5 +202,6 @@ class ReportExportState extends Equatable {
     downloadExportResult,
     lastDownloadedFileName,
     lastSavedPath,
+    productListError,
   ];
 }
