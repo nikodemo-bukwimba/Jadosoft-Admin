@@ -194,6 +194,8 @@ import 'package:jadosoft_admin/features/report_export/domain/services/product_ex
 import 'package:jadosoft_admin/features/report_export/presentation/cubit/report_export_cubit.dart';
 import 'package:jadosoft_admin/features/product/domain/usecases/get_products_with_promotions_usecase.dart';
 import 'package:jadosoft_admin/features/product/domain/services/client_promotion_pricing_service.dart';
+import 'package:jadosoft_admin/features/report_export/domain/services/customer_pdf_generator.dart';
+import 'package:jadosoft_admin/features/report_export/domain/services/customer_excel_generator.dart';
 
 // Phase 9 ? Activity Logs (L1)
 import 'package:jadosoft_admin/features/activity_log/data/datasources/activity_log_remote_datasource.dart';
@@ -921,7 +923,7 @@ Future<void> initDependencies() async {
     () => SalesDashboardCubit(getProjection: sl()),
   );
 
-  // Seq 20 — Report Export
+  // Seq 20 — Report Export (Merged & Updated)
 
   sl.registerLazySingleton<ReportExportClient>(
     () => ReportExportClientImpl(dio: sl<Dio>()),
@@ -947,6 +949,14 @@ Future<void> initDependencies() async {
     () => const ProductExcelGenerator(),
   );
 
+  sl.registerLazySingleton<CustomerPdfGenerator>(
+    () => const CustomerPdfGenerator(),
+  );
+
+  sl.registerLazySingleton<CustomerExcelGenerator>(
+    () => const CustomerExcelGenerator(),
+  );
+
   sl.registerLazySingleton<ReportExportService>(
     () => ReportExportService(client: sl<ReportExportClient>()),
   );
@@ -954,9 +964,22 @@ Future<void> initDependencies() async {
   sl.registerFactory<ReportExportCubit>(
     () => ReportExportCubit(
       service: sl<ReportExportService>(),
+
+      // Product exports
       getProductsWithPromotions: sl<GetProductsWithPromotionsUseCase>(),
+
+      // Customer exports
+      getAllCustomers: sl<GetAllCustomerUseCase>(),
+      getCustomer: sl<GetCustomerUseCase>(),
+      getCustomerVisits: sl<GetCustomerVisitsUseCase>(),
+
+      // Product generators
       productPdfGenerator: sl<ProductPdfGenerator>(),
       productExcelGenerator: sl<ProductExcelGenerator>(),
+
+      // Customer generators
+      customerPdfGenerator: sl<CustomerPdfGenerator>(),
+      customerExcelGenerator: sl<CustomerExcelGenerator>(),
     ),
   );
 

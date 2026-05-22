@@ -8,14 +8,11 @@ import 'nav_item_tile.dart';
 import 'nav_rail_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Width snap helper  (mirrors HalaNavigationRail._WidthBreakpoints)
+// Width snap helper
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _WidthBreakpoints {
-  const _WidthBreakpoints({
-    required this.collapsed, // iconsOnly
-    required this.expanded, // iconsAndLabels / labelsOnly
-  });
+  const _WidthBreakpoints({required this.collapsed, required this.expanded});
 
   final double collapsed;
   final double expanded;
@@ -24,14 +21,12 @@ class _WidthBreakpoints {
 
   double clamp(double w) => w.clamp(collapsed, expanded);
 
-  /// Snaps to the nearest breakpoint when within [_snapThreshold].
   double snap(double w) {
     if ((w - collapsed).abs() < _snapThreshold) return collapsed;
     if ((w - expanded).abs() < _snapThreshold) return expanded;
     return clamp(w);
   }
 
-  /// Maps a snapped width back to the appropriate display mode.
   NavRailDisplayMode modeFor(double w) => w <= collapsed + _snapThreshold / 2
       ? NavRailDisplayMode.iconsOnly
       : NavRailDisplayMode.iconsAndLabels;
@@ -66,9 +61,8 @@ class NavRailBody extends StatefulWidget {
 class _NavRailBodyState extends State<NavRailBody> {
   final _flyoutController = NavFlyoutController();
   final Map<String, bool> _hoverStates = {};
+  final _scrollController = ScrollController();
 
-  /// True only during an active drag — suppresses the AnimatedContainer
-  /// transition so the rail tracks the pointer in real-time.
   bool _isResizing = false;
 
   @override
@@ -89,6 +83,7 @@ class _NavRailBodyState extends State<NavRailBody> {
   @override
   void dispose() {
     _flyoutController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -137,7 +132,6 @@ class _NavRailBodyState extends State<NavRailBody> {
     final snapped = bp.snap(_currentWidth(state, nt));
     final newMode = bp.modeFor(snapped);
 
-    // Update mode if it changed, keeping the snapped custom width.
     if (newMode != state.displayMode) {
       cubit.setDisplayMode(newMode, clearCustomWidth: false);
     }
@@ -168,7 +162,6 @@ class _NavRailBodyState extends State<NavRailBody> {
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<NavCubit, NavState>(
-      // Rebuild on mode OR custom-width changes.
       buildWhen: (prev, next) =>
           prev.displayMode != next.displayMode ||
           prev.customWidth != next.customWidth,
@@ -181,7 +174,6 @@ class _NavRailBodyState extends State<NavRailBody> {
         final currentWidth = _currentWidth(state, nt);
 
         final rail = AnimatedContainer(
-          // Zero duration while dragging so the rail tracks the pointer.
           duration: _isResizing
               ? Duration.zero
               : const Duration(milliseconds: 240),
@@ -198,18 +190,26 @@ class _NavRailBodyState extends State<NavRailBody> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildHeader(isIconsOnly, nt),
-                // if (!widget.isDrawerMode)
-                //  _DisplayModeToggle(navTheme: nt, isCollapsed: isIconsOnly),
                 Divider(height: 1, color: nt.dividerColor),
                 const SizedBox(height: 4),
+
+                // ── Scrollable items list ─────────────────────────────────
                 Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    itemCount: widget.items.length,
-                    itemBuilder: (_, i) =>
-                        _buildTile(widget.items[i], state.displayMode),
+                  child: Scrollbar(
+                    controller: _scrollController,
+                    thumbVisibility: false,
+                    thickness: isIconsOnly ? 3 : 4,
+                    radius: const Radius.circular(4),
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.only(bottom: 8),
+                      itemCount: widget.items.length,
+                      itemBuilder: (_, i) =>
+                          _buildTile(widget.items[i], state.displayMode),
+                    ),
                   ),
                 ),
+
                 if (widget.footer != null) ...[
                   Divider(height: 1, color: nt.dividerColor),
                   widget.footer!,
@@ -219,10 +219,8 @@ class _NavRailBodyState extends State<NavRailBody> {
           ),
         );
 
-        // In drawer mode, or when resizing is disabled, just return the rail.
         if (widget.isDrawerMode || !(nt.enableResize ?? true)) return rail;
 
-        // Wide-screen: overlay the resize handle on the right edge.
         return Stack(
           children: [
             rail,

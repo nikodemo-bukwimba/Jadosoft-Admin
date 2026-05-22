@@ -1,4 +1,8 @@
 ﻿// lib/app/shell/shell_nav_items.dart
+// ─────────────────────────────────────────────────────────────
+// Admin App — navigation items.
+// All items listed; rail is scrollable so all are reachable.
+// ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
 import '../../core/rbac/rbac_extensions.dart';
@@ -96,11 +100,6 @@ abstract class ShellNavItems {
           path: AppRouter.productList,
         ),
 
-      // ── Inventory: shown alongside Products ────────────────
-      // Gated on inventory.view permission seeded in
-      // org_permission_definitions (group: inventory).
-      // Falls back to products.view for orgs that have not yet
-      // received an explicit inventory permission assignment.
       if (auth.can('inventory.view') || auth.can('products.view'))
         NavItem(
           id: 'inventory',
@@ -139,21 +138,19 @@ abstract class ShellNavItems {
       // ┌──────────────────────────────────────────────────────
       // │ ANALYTICS & REPORTS
       // └──────────────────────────────────────────────────────
-      if (auth.can('marketing_dashboard.view'))
-        NavItem(
-          id: 'marketing_dashboard',
-          label: 'Marketing',
-          icon: Icons.insights_outlined,
-          path: AppRouter.marketingDashboard,
-        ),
+      NavItem(
+        id: 'marketing_dashboard',
+        label: 'Marketing',
+        icon: Icons.insights_outlined,
+        path: AppRouter.marketingDashboard,
+      ),
 
-      if (auth.can('sales_dashboard.view'))
-        NavItem(
-          id: 'sales_dashboard',
-          label: 'Sales',
-          icon: Icons.trending_up_outlined,
-          path: AppRouter.salesDashboard,
-        ),
+      NavItem(
+        id: 'sales_dashboard',
+        label: 'Sales',
+        icon: Icons.trending_up_outlined,
+        path: AppRouter.salesDashboard,
+      ),
 
       if (auth.can('report_export.view'))
         NavItem(

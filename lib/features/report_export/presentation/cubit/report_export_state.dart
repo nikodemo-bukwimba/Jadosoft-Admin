@@ -83,6 +83,9 @@ class ReportExportState extends Equatable {
   // NEW: on-device product list export error (added for local PDF/Excel generation)
   final String? productListError;
 
+  // NEW: on-device customer list / individual export error
+  final String? customerListError;
+
   const ReportExportState({
     this.isLoading = false,
     this.errorMessage,
@@ -109,6 +112,7 @@ class ReportExportState extends Equatable {
     this.lastDownloadedFileName,
     this.lastSavedPath,
     this.productListError,
+    this.customerListError,
   });
 
   ReportExportState copyWith({
@@ -137,6 +141,7 @@ class ReportExportState extends Equatable {
     String? lastDownloadedFileName,
     String? lastSavedPath,
     String? productListError,
+    String? customerListError,
   }) {
     return ReportExportState(
       isLoading: isLoading ?? this.isLoading,
@@ -173,6 +178,7 @@ class ReportExportState extends Equatable {
           lastDownloadedFileName ?? this.lastDownloadedFileName,
       lastSavedPath: lastSavedPath ?? this.lastSavedPath,
       productListError: productListError ?? this.productListError,
+      customerListError: customerListError ?? this.customerListError,
     );
   }
 
@@ -203,5 +209,6 @@ class ReportExportState extends Equatable {
     lastDownloadedFileName,
     lastSavedPath,
     productListError,
+    customerListError,
   ];
 }

@@ -11,6 +11,7 @@ class CustomerContactModel extends CustomerContact {
     super.isPrimary,
     super.createdAt,
   });
+
   factory CustomerContactModel.fromJson(Map<String, dynamic> j) =>
       CustomerContactModel(
         id: (j['id'] ?? '').toString(),
@@ -24,14 +25,15 @@ class CustomerContactModel extends CustomerContact {
             ? DateTime.tryParse(j['created_at'].toString())
             : null,
       );
+
   Map<String, dynamic> toJson() => {
-    'name': name,
-    if (role != null) 'role': role,
-    if (phone != null) 'phone': phone,
-    if (email != null) 'email': email,
-    if (whatsappNumber != null) 'whatsapp_number': whatsappNumber,
-    'is_primary': isPrimary,
-  };
+        'name': name,
+        if (role != null) 'role': role,
+        if (phone != null) 'phone': phone,
+        if (email != null) 'email': email,
+        if (whatsappNumber != null) 'whatsapp_number': whatsappNumber,
+        'is_primary': isPrimary,
+      };
 }
 
 class CustomerModel extends CustomerEntity {
@@ -50,6 +52,8 @@ class CustomerModel extends CustomerEntity {
     super.address,
     super.city,
     super.county,
+    super.ward,
+    super.street,
     super.country,
     super.latitude,
     super.longitude,
@@ -85,6 +89,7 @@ class CustomerModel extends CustomerEntity {
     final contacts = rawC
         .map((c) => CustomerContactModel.fromJson(c as Map<String, dynamic>))
         .toList();
+
     return CustomerModel(
       id: (j['id'] ?? '').toString(),
       orgId: (j['org_id'] ?? '').toString(),
@@ -100,6 +105,8 @@ class CustomerModel extends CustomerEntity {
       address: j['address'] as String?,
       city: j['city'] as String?,
       county: j['county'] as String?,
+      ward: j['ward'] as String?,
+      street: j['street'] as String?,
       country: j['country'] as String?,
       latitude: _toDouble(j['latitude']),
       longitude: _toDouble(j['longitude']),
@@ -122,58 +129,62 @@ class CustomerModel extends CustomerEntity {
   }
 
   Map<String, dynamic> toJson() => {
-    'name': name,
-    'customer_type': customerType,
-    'category': category,
-    'tier': tier,
-    'status': status,
-    'address': address,
-    'city': city,
-    'county': county,
-    'country': country,
-    'latitude': latitude,
-    'longitude': longitude,
-    'phone': phone,
-    'email': email,
-    'whatsapp_number': whatsappNumber,
-    'receives_whatsapp': receivesWhatsapp,
-    'receives_sms': receivesSms,
-    'receives_in_app': receivesInApp,
-    'credit_limit': creditLimit,
-    'currency': currency,
-    'notes': notes,
-  };
+        'name': name,
+        'customer_type': customerType,
+        'category': category,
+        'tier': tier,
+        'status': status,
+        'address': address,
+        'city': city,
+        'county': county,
+        'ward': ward,
+        'street': street,
+        'country': country,
+        'latitude': latitude,
+        'longitude': longitude,
+        'phone': phone,
+        'email': email,
+        'whatsapp_number': whatsappNumber,
+        'receives_whatsapp': receivesWhatsapp,
+        'receives_sms': receivesSms,
+        'receives_in_app': receivesInApp,
+        'credit_limit': creditLimit,
+        'currency': currency,
+        'notes': notes,
+      };
 
   factory CustomerModel.fromEntity(CustomerEntity e) => CustomerModel(
-    id: e.id,
-    orgId: e.orgId,
-    assignedOfficerId: e.assignedOfficerId,
-    name: e.name,
-    code: e.code,
-    customerType: e.customerType,
-    category: e.category,
-    tier: e.tier,
-    status: e.status,
-    businessRegistration: e.businessRegistration,
-    taxPin: e.taxPin,
-    address: e.address,
-    city: e.city,
-    county: e.county,
-    country: e.country,
-    latitude: e.latitude,
-    longitude: e.longitude,
-    gpsAccuracyMeters: e.gpsAccuracyMeters,
-    phone: e.phone,
-    altPhone: e.altPhone,
-    email: e.email,
-    whatsappNumber: e.whatsappNumber,
-    receivesWhatsapp: e.receivesWhatsapp,
-    receivesSms: e.receivesSms,
-    receivesInApp: e.receivesInApp,
-    creditLimit: e.creditLimit,
-    currency: e.currency,
-    notes: e.notes,
-    contacts: e.contacts,
-    createdAt: e.createdAt,
-  );
+        id: e.id,
+        orgId: e.orgId,
+        assignedOfficerId: e.assignedOfficerId,
+        name: e.name,
+        code: e.code,
+        customerType: e.customerType,
+        category: e.category,
+        tier: e.tier,
+        status: e.status,
+        businessRegistration: e.businessRegistration,
+        taxPin: e.taxPin,
+        address: e.address,
+        city: e.city,
+        county: e.county,
+        ward: e.ward,
+        street: e.street,
+        country: e.country,
+        latitude: e.latitude,
+        longitude: e.longitude,
+        gpsAccuracyMeters: e.gpsAccuracyMeters,
+        phone: e.phone,
+        altPhone: e.altPhone,
+        email: e.email,
+        whatsappNumber: e.whatsappNumber,
+        receivesWhatsapp: e.receivesWhatsapp,
+        receivesSms: e.receivesSms,
+        receivesInApp: e.receivesInApp,
+        creditLimit: e.creditLimit,
+        currency: e.currency,
+        notes: e.notes,
+        contacts: e.contacts,
+        createdAt: e.createdAt,
+      );
 }

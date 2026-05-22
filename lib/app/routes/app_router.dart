@@ -684,24 +684,24 @@ class AppRouter {
               ),
             ),
 
-GoRoute(
-  path: AppRouter.inventoryReceiveStock,
-  builder: (_, state) {
-    final extra = state.extra as Map<String, dynamic>?;
-    return BlocProvider(
-      create: (_) => sl<InventoryBloc>()
-        ..add(
-          InventoryWarehousesLoadRequested(
-            sl<OrgContext>().requireRootOrgId(),
-          ),
-        ),
-      child: InventoryFormPage(
-        mode: InventoryFormNode.receiveStock,
-        preselectedProductId: extra?['productId'] as String?,
-      ),
-    );
-  },
-),
+            GoRoute(
+              path: AppRouter.inventoryReceiveStock,
+              builder: (_, state) {
+                final extra = state.extra as Map<String, dynamic>?;
+                return BlocProvider(
+                  create: (_) => sl<InventoryBloc>()
+                    ..add(
+                      InventoryWarehousesLoadRequested(
+                        sl<OrgContext>().requireRootOrgId(),
+                      ),
+                    ),
+                  child: InventoryFormPage(
+                    mode: InventoryFormNode.receiveStock,
+                    preselectedProductId: extra?['productId'] as String?,
+                  ),
+                );
+              },
+            ),
 
             GoRoute(
               path: AppRouter.inventoryWarehouseCreate,
@@ -1181,7 +1181,7 @@ GoRoute(
         return home;
       }
 
-      if (location == splash) return home;
+      if (location == splash) return marketingDashboard;
       return null;
     }
 

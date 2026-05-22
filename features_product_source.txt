@@ -1,7 +1,7 @@
 ﻿// ================================================================
 // features_product_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-05-20 16:12:27
+// Generated    : 2026-05-21 13:57:32
 // Files        : 34
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
@@ -49,10 +49,6 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     }
     return {};
   }
-
-  // ── add here ──
-  bool _isLocalPath(String path) =>
-      !path.startsWith('http://') && !path.startsWith('https://');
 
   ProductModel _fromNexora(Map<String, dynamic> j) {
     final variants =
@@ -254,32 +250,27 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     try {
       final newStatus = data['status']?.toString();
 
-      final rawImagePath = data['image_url']?.toString();
-      if (rawImagePath != null &&
-          rawImagePath.isNotEmpty &&
-          _isLocalPath(rawImagePath)) {
-        final hostedUrl = await uploadImage(rawImagePath);
-        data = Map<String, dynamic>.from(data)..['image_url'] = hostedUrl;
-      }
-
+      // ── Patch product-level fields ─────────────────────────────
       await _dio.patch('/commerce/products/$id', data: _updateBody(data));
 
+      // ── Patch variant price if provided ────────────────────────
+      final variantId = data['variant_id']?.toString();
+      final newPrice = data['price'];
+      if (variantId != null && variantId.isNotEmpty && newPrice != null) {
+        await _dio.patch(
+          '/commerce/variants/$variantId',
+          data: {'base_price': newPrice, 'currency': data['currency'] ?? 'TZS'},
+        );
+      }
+
+      // ── Status transitions ─────────────────────────────────────
       if (newStatus == 'active') {
         await _dio.post('/commerce/products/$id/publish');
       } else if (newStatus == 'archived') {
         await _dio.post('/commerce/products/$id/archive');
       }
 
-      // ── Debug: inspect what the server returns ─────────────────
-      final res = await _dio.get(
-        '/commerce/products/$id',
-        queryParameters: {'org_id': _orgContext.effectiveOrgId},
-      );
-      final raw = _unwrapProduct(res.data);
-      print('DEBUG product media after update: ${raw['media']}');
-      // ───────────────────────────────────────────────────────────
-
-      return _fromNexora(raw);
+      return await getById(id);
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     } catch (e) {
