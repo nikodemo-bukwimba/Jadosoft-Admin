@@ -23,7 +23,7 @@
 
 import '../storage/secure_storage_service.dart';
 
-enum OrgRole { orgAdmin, branchAdmin, fieldOfficer, unknown }
+enum OrgRole { orgAdmin, branchAdmin, fieldOfficer, stockKeeper, unknown }
 
 class OrgStatuses {
   static const pendingApproval = 'pending_approval';
@@ -66,11 +66,10 @@ class OrgContext {
   bool get isOrgAdmin => _orgRole == OrgRole.orgAdmin;
   bool get isBranchAdmin => _orgRole == OrgRole.branchAdmin;
   bool get isFieldOfficer => _orgRole == OrgRole.fieldOfficer;
+  bool get isStockKeeper => _orgRole == OrgRole.stockKeeper;
 
-  // ── NEW ───────────────────────────────────────────────────────────
-  /// True when the user is always scoped to a single branch.
-  /// Field officers and branch admins never see the all-branches view.
-  bool get isBranchScopedUser => isBranchAdmin || isFieldOfficer;
+  bool get isBranchScopedUser =>
+      isBranchAdmin || isFieldOfficer || isStockKeeper;
   // ─────────────────────────────────────────────────────────────────
 
   bool get hasOrg => _rootOrgId != null && _rootOrgId!.isNotEmpty;

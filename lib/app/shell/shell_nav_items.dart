@@ -25,12 +25,10 @@ abstract class ShellNavItems {
         path: AppRouter.home,
       ),
 
-      // ── GENERATOR TABS — append only ──────────────────────
-
-      // ┌──────────────────────────────────────────────────────
-      // │ ORGANIZATION MANAGEMENT
-      // └──────────────────────────────────────────────────────
-      if (auth.can('members.view') || auth.isAdminAppRole)
+      // ── ORGANIZATION MANAGEMENT ───────────────────────────
+      if (auth.can('members.view') ||
+          auth.can('org.view') ||
+          auth.can('branches.view'))
         NavItem(
           id: 'organization',
           label: 'Organization',
@@ -38,9 +36,7 @@ abstract class ShellNavItems {
           path: AppRouter.orgHub,
         ),
 
-      // ┌──────────────────────────────────────────────────────
-      // │ FIELD OPERATIONS
-      // └──────────────────────────────────────────────────────
+      // ── FIELD OPERATIONS ──────────────────────────────────
       if (auth.can('officers.view'))
         NavItem(
           id: 'officer',
@@ -81,9 +77,7 @@ abstract class ShellNavItems {
           path: AppRouter.dailyReportList,
         ),
 
-      // ┌──────────────────────────────────────────────────────
-      // │ PRODUCTS & COMMERCE
-      // └──────────────────────────────────────────────────────
+      // ── PRODUCTS & COMMERCE ───────────────────────────────
       if (auth.can('categories.view'))
         NavItem(
           id: 'category',
@@ -124,9 +118,7 @@ abstract class ShellNavItems {
           path: AppRouter.orderList,
         ),
 
-      // ┌──────────────────────────────────────────────────────
-      // │ COMMUNICATION
-      // └──────────────────────────────────────────────────────
+      // ── COMMUNICATION ─────────────────────────────────────
       if (auth.can('conversations.view'))
         NavItem(
           id: 'conversation',
@@ -135,22 +127,22 @@ abstract class ShellNavItems {
           path: AppRouter.conversationList,
         ),
 
-      // ┌──────────────────────────────────────────────────────
-      // │ ANALYTICS & REPORTS
-      // └──────────────────────────────────────────────────────
-      NavItem(
-        id: 'marketing_dashboard',
-        label: 'Marketing',
-        icon: Icons.insights_outlined,
-        path: AppRouter.marketingDashboard,
-      ),
+      // ── ANALYTICS & REPORTS ───────────────────────────────
+      if (auth.can('marketing_dashboard.view'))
+        NavItem(
+          id: 'marketing_dashboard',
+          label: 'Marketing',
+          icon: Icons.insights_outlined,
+          path: AppRouter.marketingDashboard,
+        ),
 
-      NavItem(
-        id: 'sales_dashboard',
-        label: 'Sales',
-        icon: Icons.trending_up_outlined,
-        path: AppRouter.salesDashboard,
-      ),
+      if (auth.can('sales_dashboard.view'))
+        NavItem(
+          id: 'sales_dashboard',
+          label: 'Sales',
+          icon: Icons.trending_up_outlined,
+          path: AppRouter.salesDashboard,
+        ),
 
       if (auth.can('report_export.view'))
         NavItem(
@@ -168,9 +160,7 @@ abstract class ShellNavItems {
           path: AppRouter.activityLogList,
         ),
 
-      // ── END GENERATOR TABS ─────────────────────────────────
-
-      // ── Always visible — Profile (always last) ─────────────
+      // ── Always visible — Profile ──────────────────────────
       NavItem(
         id: 'profile',
         label: 'Profile',

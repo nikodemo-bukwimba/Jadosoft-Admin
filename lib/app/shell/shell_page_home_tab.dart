@@ -201,8 +201,10 @@ class _FeatureGrid extends StatelessWidget {
           ),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
-              // ── Organization Management ──────────────────
-              if (auth.can('members.view') || auth.isAdminAppRole)
+              // ── Organization Management ──────────────────────────
+              if (auth.can('members.view') ||
+                  auth.can('org.view') ||
+                  auth.can('branches.view'))
                 _FeatureSection(
                   title: 'Organization',
                   subtitle: 'Members, roles & org settings',
@@ -217,7 +219,9 @@ class _FeatureGrid extends StatelessWidget {
                   ],
                 ),
 
-              if (auth.can('members.view') || auth.isAdminAppRole)
+              if (auth.can('members.view') ||
+                  auth.can('org.view') ||
+                  auth.can('branches.view'))
                 const SizedBox(height: 28),
 
               // ── Field Operations ─────────────────────────
@@ -342,18 +346,22 @@ class _FeatureGrid extends StatelessWidget {
                 subtitle: 'Dashboards, exports & audit trail',
                 accentColor: const Color(0xFF4CAF50),
                 items: [
-                  const _FeatureItem(
-                    icon: Icons.insights_outlined,
-                    label: 'Marketing',
-                    path: AppRouter.marketingDashboard,
-                    accent: Color(0xFF2196F3),
-                  ),
-                  const _FeatureItem(
-                    icon: Icons.trending_up_outlined,
-                    label: 'Sales',
-                    path: AppRouter.salesDashboard,
-                    accent: Color(0xFF4CAF50),
-                  ),
+                  if (auth.can(
+                    'marketing_dashboard.view',
+                  )) // ← was always shown
+                    const _FeatureItem(
+                      icon: Icons.insights_outlined,
+                      label: 'Marketing',
+                      path: AppRouter.marketingDashboard,
+                      accent: Color(0xFF2196F3),
+                    ),
+                  if (auth.can('sales_dashboard.view')) // ← was always shown
+                    const _FeatureItem(
+                      icon: Icons.trending_up_outlined,
+                      label: 'Sales',
+                      path: AppRouter.salesDashboard,
+                      accent: Color(0xFF4CAF50),
+                    ),
                   if (auth.can('report_export.view'))
                     const _FeatureItem(
                       icon: Icons.file_download_outlined,

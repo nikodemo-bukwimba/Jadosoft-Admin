@@ -1,7 +1,7 @@
 ﻿// ================================================================
 // features_weekly_plan_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-04-18 15:35:19
+// Generated    : 2026-05-22 10:21:03
 // Files        : 25
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
@@ -152,21 +152,68 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   final Dio _dio;
   final OrgContext _orgContext;
 
+  /// actorId → display name, same pattern as VisitApiDataSource.
+  final Map<String, String> _officerNameCache = {};
+
   WeeklyPlanRemoteDataSourceImpl({
     required Dio dio,
     required OrgContext orgContext,
   }) : _dio = dio,
        _orgContext = orgContext;
 
-  String get _orgBase => '/pharma/orgs/${_orgContext.effectiveOrgId}/plans';
+  String get _orgId => _orgContext.effectiveOrgId;
+  String get _orgBase => '/pharma/orgs/$_orgId/plans';
+
+  // ── Fetch officer name map from org members ──────────────────────────
+  // Mirrors VisitApiDataSource._refreshOfficerNames()
+  Future<void> _refreshOfficerNames() async {
+    try {
+      final response = await _dio.get(
+        '/orgs/$_orgId/members',
+        queryParameters: {'per_page': 200},
+      );
+      final raw = response.data;
+      final list = (raw is Map ? (raw['data'] ?? []) : raw) as List? ?? [];
+      _officerNameCache.clear();
+      for (final item in list.whereType<Map<String, dynamic>>()) {
+        final user = item['user'] as Map<String, dynamic>?;
+        if (user == null) continue;
+        final actorId = (user['actor_id'] ?? item['actor_id'] ?? '').toString();
+        if (actorId.isEmpty) continue;
+        final name =
+            (user['username'] as String?)?.trim() ??
+            (user['name'] as String?)?.trim() ??
+            (user['email'] as String?)?.split('@').first ??
+            '';
+        if (name.isNotEmpty) _officerNameCache[actorId] = name;
+      }
+    } catch (_) {
+      // Non-fatal — plans still load, officer column shows actor ID.
+    }
+  }
+
+  // ── Inject resolved officer_name into raw plan JSON ───────────────────
+  Map<String, dynamic> _injectOfficerName(Map<String, dynamic> j) {
+    if (j['officer_name'] is String &&
+        (j['officer_name'] as String).isNotEmpty) {
+      return j; // API already sent a name — use it
+    }
+    final actorId = (j['officer_actor_id'] ?? j['officer_id'] ?? '').toString();
+    final resolved = actorId.isNotEmpty ? _officerNameCache[actorId] : null;
+    if (resolved == null) return j;
+    return {...j, 'officer_name': resolved};
+  }
 
   @override
   Future<List<WeeklyPlanModel>> getAll() async {
     try {
+      await _refreshOfficerNames();
       final response = await _dio.get(_orgBase);
-      final data = (response.data['data'] ?? response.data) as List;
+      final raw = response.data;
+      final data = (raw is Map ? (raw['data'] ?? raw) : raw) as List? ?? [];
       return data
-          .map((e) => WeeklyPlanModel.fromJson(e as Map<String, dynamic>))
+          .whereType<Map<String, dynamic>>()
+          .map((j) => WeeklyPlanModel.fromJson(_injectOfficerName(j)))
           .toList();
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
@@ -176,9 +223,13 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   @override
   Future<WeeklyPlanModel> getById(String id) async {
     try {
+      if (_officerNameCache.isEmpty) await _refreshOfficerNames();
       final response = await _dio.get('/pharma/plans/$id');
-      final data = response.data['data'] ?? response.data;
-      return WeeklyPlanModel.fromJson(data as Map<String, dynamic>);
+      final raw = response.data;
+      final data =
+          (raw is Map ? (raw['data'] ?? raw['plan'] ?? raw) : raw)
+              as Map<String, dynamic>;
+      return WeeklyPlanModel.fromJson(_injectOfficerName(data));
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -209,11 +260,12 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
           data: reviewNotes != null ? {'reason': reviewNotes} : null,
         );
       } else {
-        // No general update endpoint — re-fetch current state.
         return await getById(id);
       }
       final body = response.data['data'] ?? response.data;
-      return WeeklyPlanModel.fromJson(body as Map<String, dynamic>);
+      return WeeklyPlanModel.fromJson(
+        _injectOfficerName(body as Map<String, dynamic>),
+      );
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -232,11 +284,13 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   Future<WeeklyPlanModel> approve(String id, {String? notes}) async {
     try {
       final response = await _dio.post(
-        '$_orgBase/$id/approve',
+        '/pharma/plans/$id/approve',
         data: notes != null ? {'notes': notes} : {},
       );
       final body = response.data['data'] ?? response.data;
-      return WeeklyPlanModel.fromJson(body as Map<String, dynamic>);
+      return WeeklyPlanModel.fromJson(
+        _injectOfficerName(body as Map<String, dynamic>),
+      );
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -246,11 +300,13 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   Future<WeeklyPlanModel> reject(String id, {required String notes}) async {
     try {
       final response = await _dio.post(
-        '$_orgBase/$id/reject',
+        '/pharma/plans/$id/reject',
         data: {'notes': notes},
       );
       final body = response.data['data'] ?? response.data;
-      return WeeklyPlanModel.fromJson(body as Map<String, dynamic>);
+      return WeeklyPlanModel.fromJson(
+        _injectOfficerName(body as Map<String, dynamic>),
+      );
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -269,6 +325,36 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
 // === FILE: lib/features/weekly_plan/data/models/weekly_plan_model.dart ===
 import '../../domain/entities/weekly_plan_entity.dart';
 
+class PlanItemModel extends PlanItemEntity {
+  const PlanItemModel({
+    super.id,
+    super.customerId,
+    super.customerName,
+    super.title,
+    super.objective,
+    super.plannedDate,
+    super.plannedStartTime,
+    super.plannedEndTime,
+    super.notes,
+    super.status,
+  });
+
+  factory PlanItemModel.fromJson(Map<String, dynamic> json) => PlanItemModel(
+    id: json['id']?.toString(),
+    customerId: json['customer_id']?.toString(),
+    customerName: json['customer_name'] as String?,
+    title: json['title'] as String?,
+    objective: json['objective'] as String?,
+    plannedDate: json['planned_date'] != null
+        ? DateTime.tryParse(json['planned_date'].toString())
+        : null,
+    plannedStartTime: json['planned_start_time'] as String?,
+    plannedEndTime: json['planned_end_time'] as String?,
+    notes: json['notes'] as String?,
+    status: json['status'] as String? ?? 'planned',
+  );
+}
+
 class WeeklyPlanModel extends WeeklyPlanEntity {
   const WeeklyPlanModel({
     required super.id,
@@ -277,6 +363,7 @@ class WeeklyPlanModel extends WeeklyPlanEntity {
     required super.weekStart,
     required super.weekEnd,
     super.plannedCustomerIds,
+    super.items,
     super.plannedActivities,
     super.notes,
     required super.status,
@@ -286,28 +373,41 @@ class WeeklyPlanModel extends WeeklyPlanEntity {
     required super.createdAt,
   });
 
-  factory WeeklyPlanModel.fromJson(Map<String, dynamic> json) =>
-      WeeklyPlanModel(
-        id: json['id']?.toString() ?? '',
-        officerId: json['officer_id']?.toString() ?? '',
-        officerName: json['officer_name'] as String?,
-        weekStart: _parseDate(json['week_start_date'] ?? json['week_start']),
-        weekEnd: _parseDate(json['week_end_date'] ?? json['week_end']),
-        plannedCustomerIds: _parseCustomerIds(json),
-        plannedActivities: json['planned_activities'] as String?,
-        notes: json['notes'] as String?,
-        status: json['status'] as String? ?? 'draft',
-        submittedAt: json['submitted_at'] != null
-            ? DateTime.parse(json['submitted_at'].toString())
-            : null,
-        reviewedAt: json['reviewed_at'] != null
-            ? DateTime.parse(json['reviewed_at'].toString())
-            : null,
-        reviewNotes: json['review_notes'] as String?,
-        createdAt: json['created_at'] != null
-            ? DateTime.parse(json['created_at'].toString())
-            : DateTime.now(),
-      );
+  factory WeeklyPlanModel.fromJson(Map<String, dynamic> json) {
+    final rawItems =
+        (json['items'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .map(PlanItemModel.fromJson)
+            .toList() ??
+        [];
+    return WeeklyPlanModel(
+      id: json['id']?.toString() ?? '',
+      officerId:
+          json['officer_id']?.toString() ??
+          json['officer_actor_id']?.toString() ??
+          '',
+      officerName: _parseOfficerName(json),
+      weekStart: _parseDate(json['week_start_date'] ?? json['week_start']),
+      weekEnd: _parseDate(json['week_end_date'] ?? json['week_end']),
+      items: rawItems,
+      plannedCustomerIds: _parseCustomerIds(json, rawItems),
+      plannedActivities:
+          json['planned_activities'] as String? ??
+          json['objectives'] as String?,
+      notes: json['notes'] as String?,
+      status: json['status'] as String? ?? 'draft',
+      submittedAt: json['submitted_at'] != null
+          ? DateTime.parse(json['submitted_at'].toString())
+          : null,
+      reviewedAt: json['reviewed_at'] != null
+          ? DateTime.parse(json['reviewed_at'].toString())
+          : null,
+      reviewNotes: json['review_notes'] as String?,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'].toString())
+          : DateTime.now(),
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -330,6 +430,7 @@ class WeeklyPlanModel extends WeeklyPlanEntity {
     weekStart: e.weekStart,
     weekEnd: e.weekEnd,
     plannedCustomerIds: e.plannedCustomerIds,
+    items: e.items,
     plannedActivities: e.plannedActivities,
     notes: e.notes,
     status: e.status,
@@ -342,19 +443,33 @@ class WeeklyPlanModel extends WeeklyPlanEntity {
   static DateTime _parseDate(dynamic v) =>
       v != null ? DateTime.parse(v.toString()) : DateTime.now();
 
-  static List<String>? _parseCustomerIds(Map<String, dynamic> json) {
-    // Real API returns items array — extract customer_ids from it
-    final items = json['items'] as List?;
-    if (items != null && items.isNotEmpty) {
-      return items
-          .whereType<Map<String, dynamic>>()
-          .map((e) => e['customer_id']?.toString())
-          .whereType<String>()
-          .toList();
+  static List<String>? _parseCustomerIds(
+    Map<String, dynamic> json,
+    List<PlanItemEntity> items,
+  ) {
+    if (items.isNotEmpty) {
+      final ids = items.map((e) => e.customerId).whereType<String>().toList();
+      if (ids.isNotEmpty) return ids;
     }
-    // Mock data fallback
     final raw = json['planned_customer_ids'];
     if (raw != null) return List<String>.from(raw as List);
+    return null;
+  }
+
+  static String? _parseOfficerName(Map<String, dynamic> json) {
+    // Try flat field first
+    if (json['officer_name'] is String) return json['officer_name'] as String;
+    // Try nested officer object
+    final officer = json['officer'];
+    if (officer is Map) {
+      return (officer['display_name'] ?? officer['name'] ?? officer['username'])
+          ?.toString();
+    }
+    // Try nested actor object
+    final actor = json['actor'];
+    if (actor is Map) {
+      return (actor['display_name'] ?? actor['name'])?.toString();
+    }
     return null;
   }
 }
@@ -461,6 +576,35 @@ class WeeklyPlanRepositoryImpl implements WeeklyPlanRepository {
 // === FILE: lib/features/weekly_plan/domain/entities/weekly_plan_entity.dart ===
 import 'package:equatable/equatable.dart';
 
+class PlanItemEntity extends Equatable {
+  final String? id;
+  final String? customerId;
+  final String? customerName;
+  final String? title;
+  final String? objective;
+  final DateTime? plannedDate;
+  final String? plannedStartTime;
+  final String? plannedEndTime;
+  final String? notes;
+  final String status;
+
+  const PlanItemEntity({
+    this.id,
+    this.customerId,
+    this.customerName,
+    this.title,
+    this.objective,
+    this.plannedDate,
+    this.plannedStartTime,
+    this.plannedEndTime,
+    this.notes,
+    this.status = 'planned',
+  });
+
+  @override
+  List<Object?> get props => [id, customerId, plannedDate];
+}
+
 class WeeklyPlanEntity extends Equatable {
   final String id;
   final String officerId;
@@ -468,6 +612,7 @@ class WeeklyPlanEntity extends Equatable {
   final DateTime weekStart;
   final DateTime weekEnd;
   final List<String>? plannedCustomerIds;
+  final List<PlanItemEntity> items; // ← ADD
   final String? plannedActivities;
   final String? notes;
   final String status;
@@ -483,6 +628,7 @@ class WeeklyPlanEntity extends Equatable {
     required this.weekStart,
     required this.weekEnd,
     this.plannedCustomerIds,
+    this.items = const [], // ← ADD
     this.plannedActivities,
     this.notes,
     required this.status,
@@ -493,16 +639,26 @@ class WeeklyPlanEntity extends Equatable {
   });
 
   WeeklyPlanEntity copyWith({
-    String? id, String? officerId, DateTime? weekStart, DateTime? weekEnd,
-    List<String>? plannedCustomerIds, String? plannedActivities, String? notes,
-    String? status, DateTime? submittedAt, DateTime? reviewedAt,
-    String? reviewNotes, DateTime? createdAt,
+    String? id,
+    String? officerId,
+    DateTime? weekStart,
+    DateTime? weekEnd,
+    List<String>? plannedCustomerIds,
+    List<PlanItemEntity>? items,
+    String? plannedActivities,
+    String? notes,
+    String? status,
+    DateTime? submittedAt,
+    DateTime? reviewedAt,
+    String? reviewNotes,
+    DateTime? createdAt,
   }) => WeeklyPlanEntity(
     id: id ?? this.id,
     officerId: officerId ?? this.officerId,
     weekStart: weekStart ?? this.weekStart,
     weekEnd: weekEnd ?? this.weekEnd,
     plannedCustomerIds: plannedCustomerIds ?? this.plannedCustomerIds,
+    items: items ?? this.items, // ← ADD
     plannedActivities: plannedActivities ?? this.plannedActivities,
     notes: notes ?? this.notes,
     status: status ?? this.status,
@@ -513,8 +669,16 @@ class WeeklyPlanEntity extends Equatable {
   );
 
   @override
-  List<Object?> get props => [id, officerId, weekStart, weekEnd, status, createdAt];
+  List<Object?> get props => [
+    id,
+    officerId,
+    weekStart,
+    weekEnd,
+    status,
+    createdAt,
+  ];
 }
+
 
 // === FILE: lib/features/weekly_plan/domain/guards/weekly_plan_transition_guard.dart ===
 import 'package:dartz/dartz.dart';
@@ -1043,29 +1207,12 @@ import '../../domain/value_objects/weekly_plan_status.dart';
 import '../bloc/weekly_plan_bloc.dart';
 import '../bloc/weekly_plan_event.dart';
 import '../bloc/weekly_plan_state.dart';
-import '../../../officer/data/datasources/officer_mock_datasource.dart';
-import '../../../customer/data/datasources/customer_mock_datasource.dart';
 
 class WeeklyPlanDetailPage extends StatelessWidget {
   const WeeklyPlanDetailPage({super.key});
 
-  Future<String> _officerName(String id) async {
-    try {
-      return (await OfficerMockDataSource().getById(id)).displayName;
-    } catch (_) {
-      return id;
-    }
-  }
-
-  Future<String> _customerName(String id) async {
-    try {
-      return (await CustomerMockDataSource().getById(id)).name;
-    } catch (_) {
-      return id;
-    }
-  }
-
-  String _fmtDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
+  String _fmtDate(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
   @override
   Widget build(BuildContext context) {
@@ -1075,9 +1222,13 @@ class WeeklyPlanDetailPage extends StatelessWidget {
       body: BlocConsumer<WeeklyPlanBloc, WeeklyPlanState>(
         listener: (c, s) {
           if (s is WeeklyPlanOperationSuccess) {
-            ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message)));
+            ScaffoldMessenger.of(
+              c,
+            ).showSnackBar(SnackBar(content: Text(s.message)));
             if (s.updatedItem != null) {
-              c.read<WeeklyPlanBloc>().add(WeeklyPlanLoadOneRequested(s.updatedItem!.id));
+              c.read<WeeklyPlanBloc>().add(
+                WeeklyPlanLoadOneRequested(s.updatedItem!.id),
+              );
             } else {
               c.pop();
             }
@@ -1132,16 +1283,21 @@ class WeeklyPlanDetailPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
+            // ── Header card ───────────────────────────────────
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     CircleAvatar(
                       radius: 28,
                       backgroundColor: st.color.withValues(alpha: 0.15),
-                      child: Icon(Icons.calendar_month, color: st.color, size: 28),
+                      child: Icon(
+                        Icons.calendar_month,
+                        color: st.color,
+                        size: 28,
+                      ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -1150,30 +1306,51 @@ class WeeklyPlanDetailPage extends StatelessWidget {
                         children: [
                           Text(
                             '${_fmtDate(item.weekStart)} – ${_fmtDate(item.weekEnd)}',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
                           ),
                           const SizedBox(height: 4),
-                          FutureBuilder<String>(
-                            future: _officerName(item.officerId),
-                            builder: (_, s) => Text(
-                              s.data ?? '...',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          // Officer name — use API value, fall back to officerId
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.person_outline,
+                                size: 16,
                                 color: scheme.primary,
-                                fontWeight: FontWeight.w600,
                               ),
-                            ),
+                              const SizedBox(width: 6),
+                              Text(
+                                item.officerName?.isNotEmpty == true
+                                    ? item.officerName!
+                                    : item.officerId,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: scheme.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
                               color: st.color.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: st.color.withValues(alpha: 0.4)),
+                              border: Border.all(
+                                color: st.color.withValues(alpha: 0.4),
+                              ),
                             ),
                             child: Text(
                               st.displayName,
-                              style: TextStyle(color: st.color, fontSize: 12, fontWeight: FontWeight.w600),
+                              style: TextStyle(
+                                color: st.color,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ],
@@ -1185,11 +1362,12 @@ class WeeklyPlanDetailPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // Admin Actions
+            // ── Admin Actions ─────────────────────────────────
             _actions(context, item, st),
 
-            // Planned Activities
-            if (item.plannedActivities != null && item.plannedActivities!.isNotEmpty) ...[
+            // ── Planned Activities (text) ─────────────────────
+            if (item.plannedActivities != null &&
+                item.plannedActivities!.isNotEmpty) ...[
               const SizedBox(height: 12),
               Card(
                 child: Padding(
@@ -1207,7 +1385,9 @@ class WeeklyPlanDetailPage extends StatelessWidget {
                       const Divider(height: 20),
                       Text(
                         item.plannedActivities!,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(height: 1.5),
                       ),
                     ],
                   ),
@@ -1215,8 +1395,48 @@ class WeeklyPlanDetailPage extends StatelessWidget {
               ),
             ],
 
-            // Target Customers
-            if (item.plannedCustomerIds != null && item.plannedCustomerIds!.isNotEmpty) ...[
+            // ── Planned Visits (rich items) ───────────────────
+            if (item.items.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.event_note,
+                            size: 18,
+                            color: scheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Planned Visits (${item.items.length})',
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(
+                                  color: scheme.primary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 20),
+                      ...item.items.asMap().entries.map(
+                        (e) => _visitCard(
+                          context,
+                          e.value,
+                          e.key,
+                          item.items.length,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ] else if (item.plannedCustomerIds != null &&
+                item.plannedCustomerIds!.isNotEmpty) ...[
               const SizedBox(height: 12),
               Card(
                 child: Padding(
@@ -1235,15 +1455,19 @@ class WeeklyPlanDetailPage extends StatelessWidget {
                       ...item.plannedCustomerIds!.map(
                         (cId) => Padding(
                           padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: FutureBuilder<String>(
-                            future: _customerName(cId),
-                            builder: (_, s) => Row(
-                              children: [
-                                Icon(Icons.store, size: 18, color: scheme.onSurfaceVariant),
-                                const SizedBox(width: 10),
-                                Text(s.data ?? '...', style: Theme.of(context).textTheme.bodyMedium),
-                              ],
-                            ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.store,
+                                size: 18,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                cId,
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -1253,7 +1477,7 @@ class WeeklyPlanDetailPage extends StatelessWidget {
               ),
             ],
 
-            // Details
+            // ── Plan Details ──────────────────────────────────
             const SizedBox(height: 12),
             Card(
               child: Padding(
@@ -1272,11 +1496,34 @@ class WeeklyPlanDetailPage extends StatelessWidget {
                     if (item.notes != null && item.notes!.isNotEmpty)
                       _row(context, Icons.notes, 'Notes', item.notes!),
                     if (item.submittedAt != null)
-                      _row(context, Icons.upload, 'Submitted', _fmtDate(item.submittedAt!)),
+                      _row(
+                        context,
+                        Icons.upload,
+                        'Submitted',
+                        _fmtDate(item.submittedAt!),
+                      ),
                     if (item.reviewedAt != null)
-                      _row(context, Icons.rate_review, 'Reviewed', _fmtDate(item.reviewedAt!)),
-                    _row(context, Icons.calendar_today, 'Created', _fmtDate(item.createdAt)),
-                    _row(context, Icons.fingerprint, 'ID', item.id),
+                      _row(
+                        context,
+                        Icons.rate_review,
+                        'Reviewed',
+                        _fmtDate(item.reviewedAt!),
+                      ),
+                    if (item.reviewNotes != null &&
+                        item.reviewNotes!.isNotEmpty)
+                      _row(
+                        context,
+                        Icons.comment_outlined,
+                        'Review Notes',
+                        item.reviewNotes!,
+                      ),
+                    _row(
+                      context,
+                      Icons.calendar_today,
+                      'Created',
+                      _fmtDate(item.createdAt),
+                    ),
+                    _row(context, Icons.fingerprint, 'Plan ID', item.id),
                   ],
                 ),
               ),
@@ -1288,7 +1535,217 @@ class WeeklyPlanDetailPage extends StatelessWidget {
     );
   }
 
-  Widget _actions(BuildContext context, WeeklyPlanEntity item, WeeklyPlanStatus st) {
+  /// Rich visit item card
+  Widget _visitCard(
+    BuildContext context,
+    PlanItemEntity visit,
+    int index,
+    int total,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final isLast = index == total - 1;
+    final hasCustomer =
+        visit.customerName != null && visit.customerName!.isNotEmpty;
+    final hasDate = visit.plannedDate != null;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: isLast
+              ? BorderSide.none
+              : BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.4)),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 14,
+            backgroundColor: scheme.primaryContainer,
+            child: Text(
+              '${index + 1}',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: scheme.onPrimaryContainer,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      hasCustomer ? Icons.store_outlined : Icons.event_note,
+                      size: 16,
+                      color: scheme.primary,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        hasCustomer
+                            ? visit.customerName!
+                            : (visit.title ?? 'General Activity'),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                if (hasCustomer && visit.customerId != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'ID: ${visit.customerId}',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+
+                if (hasDate) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today,
+                        size: 14,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _fmtDate(visit.plannedDate!),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (visit.plannedStartTime != null) ...[
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.access_time,
+                          size: 14,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          visit.plannedEndTime != null
+                              ? '${visit.plannedStartTime} – ${visit.plannedEndTime}'
+                              : visit.plannedStartTime!,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+
+                if (hasCustomer &&
+                    visit.title != null &&
+                    visit.title!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    visit.title!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+
+                if (visit.objective != null && visit.objective!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.task_outlined,
+                        size: 14,
+                        color: scheme.primary,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          visit.objective!,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodySmall?.copyWith(height: 1.4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+
+                if (visit.notes != null && visit.notes!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.notes, size: 14, color: scheme.tertiary),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          visit.notes!,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                fontStyle: FontStyle.italic,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _visitStatusColor(
+                      visit.status,
+                      context,
+                    ).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    visit.status.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: _visitStatusColor(visit.status, context),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _visitStatusColor(String status, BuildContext context) {
+    return switch (status) {
+      'completed' => Colors.green,
+      'cancelled' => Colors.red,
+      'in_progress' => Colors.blue,
+      _ => Colors.grey,
+    };
+  }
+
+  Widget _actions(
+    BuildContext context,
+    WeeklyPlanEntity item,
+    WeeklyPlanStatus st,
+  ) {
     final actions = <Widget>[];
     if (st == WeeklyPlanStatus.submitted) {
       actions.add(
@@ -1297,54 +1754,50 @@ class WeeklyPlanDetailPage extends StatelessWidget {
           Icons.check_circle_outline,
           'Approve',
           Colors.green,
-          () => context.read<WeeklyPlanBloc>().add(WeeklyPlanApproveRequested(item.id)),
+          () => context.read<WeeklyPlanBloc>().add(
+            WeeklyPlanApproveRequested(item.id),
+          ),
         ),
       );
       actions.add(
-        _btn(
-          context,
-          Icons.cancel_outlined,
-          'Reject',
-          Colors.red,
-          () async {
-            final notesCtl = TextEditingController();
-            final confirmed = await showDialog<bool>(
-              context: context,
-              builder: (_) => AlertDialog(
-                title: const Text('Reject Plan'),
-                content: TextField(
-                  controller: notesCtl,
-                  decoration: const InputDecoration(
-                    labelText: 'Reason *',
-                    hintText: 'Explain why this plan is rejected',
-                  ),
-                  maxLines: 3,
-                  autofocus: true,
+        _btn(context, Icons.cancel_outlined, 'Reject', Colors.red, () async {
+          final notesCtl = TextEditingController();
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Reject Plan'),
+              content: TextField(
+                controller: notesCtl,
+                decoration: const InputDecoration(
+                  labelText: 'Reason *',
+                  hintText: 'Explain why this plan is rejected',
                 ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Cancel'),
-                  ),
-                  FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.error,
-                    ),
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Reject'),
-                  ),
-                ],
+                maxLines: 3,
+                autofocus: true,
               ),
-            );
-            if (confirmed == true && notesCtl.text.trim().isNotEmpty) {
-              if (context.mounted) {
-                context.read<WeeklyPlanBloc>().add(
-                  WeeklyPlanRejectRequested(item.id, notes: notesCtl.text.trim()),
-                );
-              }
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Reject'),
+                ),
+              ],
+            ),
+          );
+          if (confirmed == true && notesCtl.text.trim().isNotEmpty) {
+            if (context.mounted) {
+              context.read<WeeklyPlanBloc>().add(
+                WeeklyPlanRejectRequested(item.id, notes: notesCtl.text.trim()),
+              );
             }
-          },
-        ),
+          }
+        }),
       );
     }
     if (st == WeeklyPlanStatus.rejected) {
@@ -1354,11 +1807,12 @@ class WeeklyPlanDetailPage extends StatelessWidget {
           Icons.replay,
           'Resubmit',
           Colors.blue,
-          () => context.read<WeeklyPlanBloc>().add(WeeklyPlanResubmitRequested(item.id)),
+          () => context.read<WeeklyPlanBloc>().add(
+            WeeklyPlanResubmitRequested(item.id),
+          ),
         ),
       );
     }
-
     if (actions.isEmpty) return const SizedBox.shrink();
     return Card(
       child: Padding(
@@ -1381,16 +1835,21 @@ class WeeklyPlanDetailPage extends StatelessWidget {
     );
   }
 
-  Widget _btn(BuildContext c, IconData icon, String label, Color color, VoidCallback onPressed) =>
-      FilledButton.tonalIcon(
-        onPressed: onPressed,
-        icon: Icon(icon, size: 18, color: color),
-        label: Text(label),
-        style: FilledButton.styleFrom(
-          minimumSize: Size.zero,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        ),
-      );
+  Widget _btn(
+    BuildContext c,
+    IconData icon,
+    String label,
+    Color color,
+    VoidCallback onPressed,
+  ) => FilledButton.tonalIcon(
+    onPressed: onPressed,
+    icon: Icon(icon, size: 18, color: color),
+    label: Text(label),
+    style: FilledButton.styleFrom(
+      minimumSize: Size.zero,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    ),
+  );
 
   Widget _row(BuildContext c, IconData icon, String label, String value) {
     final scheme = Theme.of(c).colorScheme;
@@ -1404,13 +1863,17 @@ class WeeklyPlanDetailPage extends StatelessWidget {
             width: 100,
             child: Text(
               label,
-              style: Theme.of(c).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              style: Theme.of(
+                c,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: Theme.of(c).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+              style: Theme.of(
+                c,
+              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
             ),
           ),
         ],
@@ -1418,6 +1881,7 @@ class WeeklyPlanDetailPage extends StatelessWidget {
     );
   }
 }
+
 
 // === FILE: lib/features/weekly_plan/presentation/pages/weekly_plan_form_page.dart ===
 import 'package:flutter/material.dart';
@@ -1427,8 +1891,10 @@ import '../bloc/weekly_plan_bloc.dart';
 import '../bloc/weekly_plan_event.dart';
 import '../bloc/weekly_plan_state.dart';
 import '../../domain/usecases/create_weekly_plan_usecase.dart';
-import '../../../officer/data/datasources/officer_mock_datasource.dart';
 import '../../../officer/domain/entities/officer_entity.dart';
+import '../../../officer/presentation/bloc/officer_bloc.dart';
+import '../../../officer/presentation/bloc/officer_event.dart';
+import '../../../officer/presentation/bloc/officer_state.dart';
 
 class WeeklyPlanFormPage extends StatefulWidget {
   final WeeklyPlanFormNode mode;
@@ -1451,27 +1917,10 @@ class _WeeklyPlanFormPageState extends State<WeeklyPlanFormPage> {
   bool _isSubmitting = false, _fieldsPopulated = false;
   bool get _isEdit => widget.mode == WeeklyPlanFormNode.edit;
 
-  List<OfficerEntity> _officers = [];
-  bool _loading = true;
-
   @override
   void initState() {
     super.initState();
-    _loadOfficers();
-  }
-
-  Future<void> _loadOfficers() async {
-    try {
-      final response = await OfficerMockDataSource().getAll();
-      if (mounted) {
-        setState(() {
-          _officers = response.items;
-          _loading = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
-    }
+    context.read<OfficerBloc>().add(OfficerLoadAllRequested());
   }
 
   @override
@@ -1534,128 +1983,152 @@ class _WeeklyPlanFormPageState extends State<WeeklyPlanFormPage> {
             );
           }
         },
-        builder: (c, s) {
-          if (_isEdit && s is WeeklyPlanLoading && !_fieldsPopulated) {
+        builder: (c, weeklyPlanState) {
+          if (_isEdit &&
+              weeklyPlanState is WeeklyPlanLoading &&
+              !_fieldsPopulated) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (_loading) return const Center(child: CircularProgressIndicator());
 
-          return Form(
-            key: _formKey,
-            child: SingleChildScrollView(
-              padding: EdgeInsets.symmetric(
-                horizontal: isWide
-                    ? MediaQuery.of(context).size.width * 0.1
-                    : 16,
-                vertical: 16,
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 720),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Officer
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedOfficerId,
-                      decoration: const InputDecoration(
-                        labelText: 'Officer',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.badge_outlined),
-                      ),
-                      items: _officers
-                          .where((o) => o.effectiveStatus == 'active')
-                          .map(
-                            (o) => DropdownMenuItem(
-                              value: o.userId,
-                              child: Text(o.displayName),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) => setState(() => _selectedOfficerId = v),
-                      validator: (v) =>
-                          v == null || v.isEmpty ? 'Officer is required' : null,
-                    ),
-                    const SizedBox(height: 16),
+          return BlocBuilder<OfficerBloc, OfficerState>(
+            builder: (_, officerState) {
+              final isLoadingOfficers =
+                  officerState is OfficerInitial ||
+                  officerState is OfficerLoading;
 
-                    // Date range
-                    if (isWide)
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _dateTile(
-                              context,
-                              'Week Start',
-                              _weekStart,
-                              () => _pickDate(true),
-                            ),
+              if (isLoadingOfficers) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final officers = officerState is OfficerListLoaded
+                  ? officerState.items
+                        .where((o) => o.effectiveStatus == 'active')
+                        .toList()
+                  : <OfficerEntity>[];
+
+              return Form(
+                key: _formKey,
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isWide
+                        ? MediaQuery.of(context).size.width * 0.1
+                        : 16,
+                    vertical: 16,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 720),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Officer
+                        DropdownButtonFormField<String>(
+                          value: _selectedOfficerId,
+                          decoration: const InputDecoration(
+                            labelText: 'Officer',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.badge_outlined),
                           ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _dateTile(
-                              context,
-                              'Week End',
-                              _weekEnd,
-                              () => _pickDate(false),
-                            ),
+                          items: officers
+                              .map(
+                                (o) => DropdownMenuItem(
+                                  value: o.userId,
+                                  child: Text(o.displayName),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) =>
+                              setState(() => _selectedOfficerId = v),
+                          validator: (v) => v == null || v.isEmpty
+                              ? 'Officer is required'
+                              : null,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Date range
+                        if (isWide)
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _dateTile(
+                                  context,
+                                  'Week Start',
+                                  _weekStart,
+                                  () => _pickDate(true),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _dateTile(
+                                  context,
+                                  'Week End',
+                                  _weekEnd,
+                                  () => _pickDate(false),
+                                ),
+                              ),
+                            ],
+                          )
+                        else ...[
+                          _dateTile(
+                            context,
+                            'Week Start',
+                            _weekStart,
+                            () => _pickDate(true),
+                          ),
+                          const SizedBox(height: 16),
+                          _dateTile(
+                            context,
+                            'Week End',
+                            _weekEnd,
+                            () => _pickDate(false),
                           ),
                         ],
-                      )
-                    else ...[
-                      _dateTile(
-                        context,
-                        'Week Start',
-                        _weekStart,
-                        () => _pickDate(true),
-                      ),
-                      const SizedBox(height: 16),
-                      _dateTile(
-                        context,
-                        'Week End',
-                        _weekEnd,
-                        () => _pickDate(false),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
+                        const SizedBox(height: 16),
 
-                    TextFormField(
-                      controller: _activitiesCtl,
-                      decoration: const InputDecoration(
-                        labelText: 'Planned Activities',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.task_outlined),
-                      ),
-                      maxLines: 4,
-                      textCapitalization: TextCapitalization.sentences,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _notesCtl,
-                      decoration: const InputDecoration(
-                        labelText: 'Notes',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.notes_outlined),
-                      ),
-                      maxLines: 2,
-                      textCapitalization: TextCapitalization.sentences,
-                    ),
-                    const SizedBox(height: 32),
+                        TextFormField(
+                          controller: _activitiesCtl,
+                          decoration: const InputDecoration(
+                            labelText: 'Planned Activities',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.task_outlined),
+                          ),
+                          maxLines: 4,
+                          textCapitalization: TextCapitalization.sentences,
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _notesCtl,
+                          decoration: const InputDecoration(
+                            labelText: 'Notes',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.notes_outlined),
+                          ),
+                          maxLines: 2,
+                          textCapitalization: TextCapitalization.sentences,
+                        ),
+                        const SizedBox(height: 32),
 
-                    FilledButton.icon(
-                      onPressed: _isSubmitting ? null : _submit,
-                      icon: _isSubmitting
-                          ? const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Icon(_isEdit ? Icons.save : Icons.calendar_month),
-                      label: Text(_isEdit ? 'Save Changes' : 'Create Plan'),
+                        FilledButton.icon(
+                          onPressed: _isSubmitting ? null : _submit,
+                          icon: _isSubmitting
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Icon(
+                                  _isEdit ? Icons.save : Icons.calendar_month,
+                                ),
+                          label: Text(_isEdit ? 'Save Changes' : 'Create Plan'),
+                        ),
+                        const SizedBox(height: 32),
+                      ],
                     ),
-                    const SizedBox(height: 32),
-                  ],
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           );
         },
       ),
@@ -1752,32 +2225,84 @@ class WeeklyPlanListPage extends StatefulWidget {
 class _WeeklyPlanListPageState extends State<WeeklyPlanListPage> {
   _ViewMode _viewMode = _ViewMode.cards;
 
+  // In initState():
   @override
-  void initState() { super.initState(); context.read<WeeklyPlanBloc>().add(WeeklyPlanLoadAllRequested()); }
+  void initState() {
+    super.initState();
+    context.read<WeeklyPlanBloc>().add(WeeklyPlanLoadAllRequested());
+  }
+
   void _nav(String id) => context.push(AppRouter.weeklyPlanDetailPath(id));
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Weekly Plans'), actions: [_toggle(scheme), const SizedBox(width: 8)]),
+      appBar: AppBar(
+        title: const Text('Weekly Plans'),
+        actions: [_toggle(scheme), const SizedBox(width: 8)],
+      ),
       body: BlocConsumer<WeeklyPlanBloc, WeeklyPlanState>(
         listener: (c, s) {
-          if (s is WeeklyPlanOperationSuccess) { ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message))); c.read<WeeklyPlanBloc>().add(WeeklyPlanLoadAllRequested()); }
-          if (s is WeeklyPlanFailure) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(s.message), backgroundColor: scheme.error));
+          if (s is WeeklyPlanOperationSuccess) {
+            ScaffoldMessenger.of(
+              c,
+            ).showSnackBar(SnackBar(content: Text(s.message)));
+            c.read<WeeklyPlanBloc>().add(WeeklyPlanLoadAllRequested());
+          }
+          if (s is WeeklyPlanFailure)
+            ScaffoldMessenger.of(c).showSnackBar(
+              SnackBar(content: Text(s.message), backgroundColor: scheme.error),
+            );
         },
         builder: (c, s) {
-          if (s is WeeklyPlanLoading || s is WeeklyPlanInitial) return const Center(child: CircularProgressIndicator());
-          if (s is WeeklyPlanEmpty) return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(Icons.event_busy, size: 64, color: scheme.outlineVariant), const SizedBox(height: 16),
-            Text('No weekly plans submitted yet.', style: Theme.of(c).textTheme.titleMedium?.copyWith(color: scheme.onSurfaceVariant)),
-          ]));
-          if (s is WeeklyPlanFailure) return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(Icons.error_outline, size: 48, color: scheme.error), const SizedBox(height: 16), Text(s.message),
-            const SizedBox(height: 16), FilledButton.icon(onPressed: () => c.read<WeeklyPlanBloc>().add(WeeklyPlanLoadAllRequested()), icon: const Icon(Icons.refresh), label: const Text('Retry')),
-          ]));
-          if (s is WeeklyPlanListLoaded) return RefreshIndicator(
-            onRefresh: () async => c.read<WeeklyPlanBloc>().add(WeeklyPlanLoadAllRequested()), child: _buildView(s.items));
+          if (s is WeeklyPlanLoading || s is WeeklyPlanInitial)
+            return const Center(child: CircularProgressIndicator());
+          if (s is WeeklyPlanEmpty)
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.event_busy,
+                    size: 64,
+                    color: scheme.outlineVariant,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No weekly plans submitted yet.',
+                    style: Theme.of(c).textTheme.titleMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          if (s is WeeklyPlanFailure)
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: scheme.error),
+                  const SizedBox(height: 16),
+                  Text(s.message),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => c.read<WeeklyPlanBloc>().add(
+                      WeeklyPlanLoadAllRequested(),
+                    ),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          if (s is WeeklyPlanListLoaded)
+            return RefreshIndicator(
+              onRefresh: () async =>
+                  c.read<WeeklyPlanBloc>().add(WeeklyPlanLoadAllRequested()),
+              child: _buildView(s.items),
+            );
           return const SizedBox.shrink();
         },
       ),
@@ -1785,45 +2310,124 @@ class _WeeklyPlanListPageState extends State<WeeklyPlanListPage> {
   }
 
   Widget _toggle(ColorScheme scheme) {
-    const m = [(_ViewMode.cards, Icons.dashboard_outlined, 'Cards'), (_ViewMode.list, Icons.view_list_outlined, 'List'), (_ViewMode.details, Icons.table_rows_outlined, 'Details')];
-    return Container(decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)), padding: const EdgeInsets.all(2),
-      child: Row(mainAxisSize: MainAxisSize.min, children: m.map((e) {
-        final sel = e.$1 == _viewMode;
-        return Tooltip(message: e.$3, child: GestureDetector(onTap: () => setState(() => _viewMode = e.$1),
-          child: AnimatedContainer(duration: const Duration(milliseconds: 200), padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: sel ? scheme.primary : Colors.transparent, borderRadius: BorderRadius.circular(8)),
-            child: Icon(e.$2, size: 18, color: sel ? scheme.onPrimary : scheme.onSurfaceVariant))));
-      }).toList()));
+    const m = [
+      (_ViewMode.cards, Icons.dashboard_outlined, 'Cards'),
+      (_ViewMode.list, Icons.view_list_outlined, 'List'),
+      (_ViewMode.details, Icons.table_rows_outlined, 'Details'),
+    ];
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      padding: const EdgeInsets.all(2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: m.map((e) {
+          final sel = e.$1 == _viewMode;
+          return Tooltip(
+            message: e.$3,
+            child: GestureDetector(
+              onTap: () => setState(() => _viewMode = e.$1),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: sel ? scheme.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  e.$2,
+                  size: 18,
+                  color: sel ? scheme.onPrimary : scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
   }
 
   Widget _buildView(List<WeeklyPlanEntity> items) => switch (_viewMode) {
-    _ViewMode.cards => _cards(items), _ViewMode.list => _list(items), _ViewMode.details => _details(items),
+    _ViewMode.cards => _cards(items),
+    _ViewMode.list => _list(items),
+    _ViewMode.details => _details(items),
   };
 
   Widget _cards(List<WeeklyPlanEntity> items) {
     final w = MediaQuery.of(context).size.width;
-    if (w >= 1024) return GridView.builder(padding: const EdgeInsets.all(16),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: w >= 1200 ? 3 : 2, childAspectRatio: 2.2, crossAxisSpacing: 12, mainAxisSpacing: 0),
-      itemCount: items.length, itemBuilder: (_, i) => WeeklyPlanCardTile(item: items[i], onTap: () => _nav(items[i].id)));
-    return ListView.builder(padding: const EdgeInsets.all(16), itemCount: items.length,
-      itemBuilder: (_, i) => WeeklyPlanCardTile(item: items[i], onTap: () => _nav(items[i].id)));
+    if (w >= 1024)
+      return GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: w >= 1200 ? 3 : 2,
+          childAspectRatio: 2.2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 0,
+        ),
+        itemCount: items.length,
+        itemBuilder: (_, i) =>
+            WeeklyPlanCardTile(item: items[i], onTap: () => _nav(items[i].id)),
+      );
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: items.length,
+      itemBuilder: (_, i) =>
+          WeeklyPlanCardTile(item: items[i], onTap: () => _nav(items[i].id)),
+    );
   }
 
-  Widget _list(List<WeeklyPlanEntity> items) => ListView.builder(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-    itemCount: items.length, itemBuilder: (_, i) => WeeklyPlanListRow(item: items[i], onTap: () => _nav(items[i].id)));
+  Widget _list(List<WeeklyPlanEntity> items) => ListView.builder(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    itemCount: items.length,
+    itemBuilder: (_, i) =>
+        WeeklyPlanListRow(item: items[i], onTap: () => _nav(items[i].id)),
+  );
 
   Widget _details(List<WeeklyPlanEntity> items) {
     final scheme = Theme.of(context).colorScheme;
-    final hdr = TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: scheme.onSurfaceVariant);
-    return SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(children: [
-      Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: const BorderRadius.vertical(top: Radius.circular(12))),
-        child: Row(children: [const SizedBox(width: 40), const SizedBox(width: 12), Expanded(flex: 3, child: Text('Week', style: hdr)),
-          Expanded(flex: 1, child: Text('Targets', style: hdr)), Expanded(flex: 1, child: Text('Status', style: hdr))])),
-      ...items.asMap().entries.map((e) => WeeklyPlanTableRow(item: e.value, isLast: e.key == items.length - 1, onTap: () => _nav(e.value.id))),
-    ]));
+    final hdr = TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.5,
+      color: scheme.onSurfaceVariant,
+    );
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 40),
+                const SizedBox(width: 12),
+                Expanded(flex: 3, child: Text('Week', style: hdr)),
+                Expanded(flex: 1, child: Text('Targets', style: hdr)),
+                Expanded(flex: 1, child: Text('Status', style: hdr)),
+              ],
+            ),
+          ),
+          ...items.asMap().entries.map(
+            (e) => WeeklyPlanTableRow(
+              item: e.value,
+              isLast: e.key == items.length - 1,
+              onTap: () => _nav(e.value.id),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
+
 
 // === FILE: lib/features/weekly_plan/presentation/widgets/weekly_plan_card.dart ===
 import 'package:flutter/material.dart';
@@ -1943,9 +2547,14 @@ class WeeklyPlanStatusBadge extends StatelessWidget {
 import 'package:flutter/material.dart';
 import '../../domain/entities/weekly_plan_entity.dart';
 import '../../domain/value_objects/weekly_plan_status.dart';
-import '../../../officer/data/datasources/officer_mock_datasource.dart';
 
-String _fmtDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
+String _fmtDate(DateTime d) =>
+    '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+String _officerLabel(WeeklyPlanEntity item) =>
+    (item.officerName != null && item.officerName!.isNotEmpty)
+    ? item.officerName!
+    : 'Officer ID: ${item.officerId.length > 10 ? item.officerId.substring(0, 10) : item.officerId}...';
 
 class WeeklyPlanCardTile extends StatelessWidget {
   final WeeklyPlanEntity item;
@@ -1955,16 +2564,6 @@ class WeeklyPlanCardTile extends StatelessWidget {
     required this.item,
     required this.onTap,
   });
-
-  Future<String> _officerName() async {
-    try {
-      return (await OfficerMockDataSource().getById(
-        item.officerId,
-      )).displayName;
-    } catch (_) {
-      return item.officerId;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2001,16 +2600,29 @@ class WeeklyPlanCardTile extends StatelessWidget {
                           style: Theme.of(context).textTheme.titleSmall
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
-                        FutureBuilder<String>(
-                          future: _officerName(),
-                          builder: (_, s) => Text(
-                            s.data ?? '...',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: scheme.primary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
+                        // In WeeklyPlanCardTile, replace the officer name Row:
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.person_outline,
+                              size: 13,
+                              color: scheme.primary,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              // ← ADD Expanded
+                              child: Text(
+                                _officerLabel(item),
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: scheme.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                overflow: TextOverflow.ellipsis, // ← ADD
+                                maxLines: 1,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -2048,7 +2660,7 @@ class WeeklyPlanCardTile extends StatelessWidget {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    '${item.plannedCustomerIds?.length ?? 0} visit(s) planned',
+                    '${item.items.isNotEmpty ? item.items.length : (item.plannedCustomerIds?.length ?? 0)} visit(s) planned',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),
@@ -2110,10 +2722,10 @@ class WeeklyPlanListRow extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '${item.plannedCustomerIds?.length ?? 0} customer(s)',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
+                      _officerLabel(item),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: scheme.primary),
                     ),
                   ],
                 ),
@@ -2179,17 +2791,28 @@ class WeeklyPlanTableRow extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               flex: 3,
-              child: Text(
-                '${_fmtDate(item.weekStart)} – ${_fmtDate(item.weekEnd)}',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${_fmtDate(item.weekStart)} – ${_fmtDate(item.weekEnd)}',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    _officerLabel(item),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall?.copyWith(color: scheme.primary),
+                  ),
+                ],
               ),
             ),
             Expanded(
               flex: 1,
               child: Text(
-                '${item.plannedCustomerIds?.length ?? 0}',
+                '${item.items.isNotEmpty ? item.items.length : (item.plannedCustomerIds?.length ?? 0)}',
                 style: Theme.of(context).textTheme.bodySmall,
                 textAlign: TextAlign.center,
               ),

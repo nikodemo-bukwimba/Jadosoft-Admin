@@ -1181,7 +1181,7 @@ class AppRouter {
         return home;
       }
 
-      if (location == splash) return marketingDashboard;
+      if (location == splash) return home;
       return null;
     }
 

@@ -21,6 +21,9 @@ import '../../../../core/context/org_context.dart';
 import '../../../organization/domain/repositories/organization_repository.dart';
 import '../bloc/auth_bloc.dart';
 import '../bloc/auth_event.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../bloc/auth_state.dart';
 
 class PendingActivationPage extends StatefulWidget {
   const PendingActivationPage({super.key});
@@ -35,38 +38,52 @@ class _PendingActivationPageState extends State<PendingActivationPage> {
   // without needing a full session refresh.
   bool _justCreatedOrg = false;
 
+  // AFTER
   @override
   Widget build(BuildContext context) {
     final orgContext = sl<OrgContext>();
-
-    // Determine which state we are in.
-    // isOrgPendingApproval = orgContext already has an org but it's not active.
     final isPending = _justCreatedOrg || orgContext.isOrgPendingApproval;
 
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-              child: isPending
-                  ? _OrgPendingApprovalBody(
-                      orgName: orgContext.rootOrgName,
-                      onCheckAgain: _checkAgain,
-                      onLogout: _logout,
-                    )
-                  : _NoOrgBody(
-                      onEnterToken: () => _showAcceptDialog(context),
-                      onCreateOrg: () => _showCreateOrgDialog(context),
-                      onCheckAgain: _checkAgain,
-                      onLogout: _logout,
-                    ),
+    return BlocListener<AuthBloc, AuthState>(
+      listener: (context, state) {
+        if (state is AuthUnauthenticated) {
+          context.go(AppRouter.login);
+        } else if (state is AuthNeedsAccountPicker) {
+          context.go(AppRouter.accountPicker);
+        } else if (state is AuthAuthenticated) {
+          context.go(
+            AppRouter.home,
+          ); // ← this fires after session refresh succeeds
+        }
+      },
+      child: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 24,
+                ),
+                child: isPending
+                    ? _OrgPendingApprovalBody(
+                        orgName: orgContext.rootOrgName,
+                        onCheckAgain: _checkAgain,
+                        onLogout: _logout,
+                      )
+                    : _NoOrgBody(
+                        onEnterToken: () => _showAcceptDialog(context),
+                        onCreateOrg: () => _showCreateOrgDialog(context),
+                        onCheckAgain: _checkAgain,
+                        onLogout: _logout,
+                      ),
+              ),
             ),
           ),
         ),
       ),
-    );
+    ); // closes BlocListener
   }
 
   // ── Actions ───────────────────────────────────────────────
@@ -142,8 +159,8 @@ class _NoOrgBody extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          'Your account has been created but is not connected to an '
-          'organization yet.',
+          'Your account has been created. Ask your manager to send '
+          'you an invitation, then enter the token below to gain access.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             color: scheme.onSurfaceVariant,
@@ -382,20 +399,12 @@ class _AcceptInvitationDialogState extends State<_AcceptInvitationDialog> {
           _error = failure.message;
         }),
         (membership) {
-          final orgName =
-              membership['organization']?['name'] as String? ?? 'Organization';
           Navigator.of(context).pop();
-          widget.authBloc.add(AuthSessionRefreshRequested());
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('You have joined $orgName successfully!'),
-              backgroundColor: Colors.green.shade700,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          );
+          // Wait one frame so BlocListener on PendingActivationPage
+          // is mounted before the state change fires.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            widget.authBloc.add(AuthSessionRefreshRequested());
+          });
         },
       );
     } catch (_) {

@@ -26,12 +26,14 @@ class AuthMeResponse {
   /// org_status returned from backend:
   /// null | 'pending_approval' | 'active' | 'suspended' | 'rejected'
   final String? orgStatus;
+  final String? rootOrgId;
 
   const AuthMeResponse({
     required this.user,
     required this.roles,
     required this.permissions,
     this.resolvedOrgId,
+    this.rootOrgId,
     this.orgStatus,
   });
 }
@@ -150,6 +152,8 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       // The backend now echoes user.org_id — the membership org for this call.
       final resolvedOrgId =
           userJson['org_id']?.toString() ?? raw['org_id']?.toString() ?? orgId;
+      final rootOrgId =
+          userJson['root_org_id']?.toString() ?? raw['root_org_id']?.toString();
 
       // ── NEW: extract org status ────────────────────────────────
       final orgStatus = userJson['org_status'] as String?;
@@ -167,6 +171,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         roles: roles,
         permissions: permissions,
         resolvedOrgId: resolvedOrgId,
+        rootOrgId: rootOrgId,
         orgStatus: orgStatus,
       );
     } on DioException catch (e) {
