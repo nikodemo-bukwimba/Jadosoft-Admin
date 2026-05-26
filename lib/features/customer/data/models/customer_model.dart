@@ -1,3 +1,5 @@
+
+//admin app
 import '../../domain/entities/customer_entity.dart';
 
 class CustomerContactModel extends CustomerContact {

@@ -1,7 +1,7 @@
 ﻿// ================================================================
 // features_officer_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-05-16 03:55:20
+// Generated    : 2026-05-23 06:51:05
 // Files        : 26
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
@@ -15,6 +15,7 @@ import '../../../../core/network/api_paths.dart';
 import '../../../../core/network/base_remote_datasource.dart';
 import '../../../../core/network/paginated_response.dart';
 import '../models/officer_model.dart';
+import 'package:flutter/foundation.dart';
 
 abstract class OfficerRemoteDataSource {
   Future<PaginatedResponse<OfficerModel>> getAll({
@@ -50,6 +51,8 @@ abstract class OfficerRemoteDataSource {
     int? level,
     String? status,
     String? branchId,
+    String? name,
+    String? phone,
   });
 
   /// Problem #3 fix: safe branch transfer that never deletes root membership.
@@ -171,17 +174,24 @@ class OfficerRemoteDataSourceImpl extends BaseRemoteDataSource
     int? level,
     String? status,
     String? branchId,
+    String? name,
+    String? phone,
   }) async {
     final orgId = (branchId != null && branchId.isNotEmpty)
         ? branchId
         : _orgContext.effectiveOrgId;
 
+    debugPrint(
+      '[OFFICER UPDATE] name=$name, phone=$phone, orgId=$orgId, userId=$userId',
+    );
     return patchAndParse(
       ApiPaths.orgs.member(orgId, userId),
       {
-        if (orgRoleId != null) 'org_role_id': orgRoleId,
-        if (level != null) 'level': level,
-        if (status != null) 'status': status,
+        'org_role_id': ?orgRoleId,
+        'level': ?level,
+        'status': ?status,
+        if (name != null && name.isNotEmpty) 'name': name,
+        if (phone != null && phone.isNotEmpty) 'phone': phone,
       },
       OfficerModel.fromJson,
       dataKey: 'membership',
@@ -461,13 +471,14 @@ class OfficerRepositoryImpl implements OfficerRepository {
     ),
   );
 
-  @override
   Future<Either<Failure, OfficerEntity>> updateMembership(
     String userId, {
     String? orgRoleId,
     int? level,
     String? status,
     String? branchId,
+    String? name, 
+    String? phone, 
   }) => _guard(
     () => _remote.updateMembership(
       userId,
@@ -475,6 +486,8 @@ class OfficerRepositoryImpl implements OfficerRepository {
       level: level,
       status: status,
       branchId: branchId,
+      name: name, 
+      phone: phone, 
     ),
   );
 
@@ -695,6 +708,8 @@ abstract class OfficerRepository {
     int? level,
     String? status,
     String? branchId,
+    String? name,
+    String? phone,
   });
 
   /// Problem #3 fix: safe branch transfer via the dedicated transfer endpoint.
@@ -944,7 +959,9 @@ class UpdateOfficerUseCase
         p.entity.userId,
         orgRoleId: p.entity.orgRoleId,
         status: p.entity.membershipStatus,
-        branchId: p.entity.branchId, // use officer's actual branch
+        branchId: p.entity.branchId,
+        name: p.entity.fullName.isNotEmpty ? p.entity.fullName : null,
+        phone: p.entity.phone,
       );
 }
 

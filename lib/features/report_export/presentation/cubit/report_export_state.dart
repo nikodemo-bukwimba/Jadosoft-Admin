@@ -52,6 +52,7 @@ class ReportExportState extends Equatable {
   final bool isCustomerIndividualLoading;
   final bool isProductListLoading;
   final bool isInvoiceLoading;
+  final bool isWeeklyPlansLoading;
 
   // Active polling job
   final String? activeExportId;
@@ -86,6 +87,9 @@ class ReportExportState extends Equatable {
   // NEW: on-device customer list / individual export error
   final String? customerListError;
 
+  // NEW: on-device weekly plans export error
+  final String? weeklyPlansError;
+
   const ReportExportState({
     this.isLoading = false,
     this.errorMessage,
@@ -96,6 +100,7 @@ class ReportExportState extends Equatable {
     this.isCustomerIndividualLoading = false,
     this.isProductListLoading = false,
     this.isInvoiceLoading = false,
+    this.isWeeklyPlansLoading = false,
     this.activeExportId,
     this.pollingStatus,
     this.exportHistory = const [],
@@ -113,6 +118,7 @@ class ReportExportState extends Equatable {
     this.lastSavedPath,
     this.productListError,
     this.customerListError,
+    this.weeklyPlansError,
   });
 
   ReportExportState copyWith({
@@ -125,6 +131,7 @@ class ReportExportState extends Equatable {
     bool? isCustomerIndividualLoading,
     bool? isProductListLoading,
     bool? isInvoiceLoading,
+    bool? isWeeklyPlansLoading, // ← ADD THIS
     String? activeExportId,
     GetExportStatusResponse? pollingStatus,
     List<ExportHistoryEntry>? exportHistory,
@@ -142,6 +149,7 @@ class ReportExportState extends Equatable {
     String? lastSavedPath,
     String? productListError,
     String? customerListError,
+    String? weeklyPlansError, // ← ADD THIS
   }) {
     return ReportExportState(
       isLoading: isLoading ?? this.isLoading,
@@ -157,6 +165,8 @@ class ReportExportState extends Equatable {
           isCustomerIndividualLoading ?? this.isCustomerIndividualLoading,
       isProductListLoading: isProductListLoading ?? this.isProductListLoading,
       isInvoiceLoading: isInvoiceLoading ?? this.isInvoiceLoading,
+      isWeeklyPlansLoading:
+          isWeeklyPlansLoading ?? this.isWeeklyPlansLoading, // ← FIX THIS
       activeExportId: activeExportId ?? this.activeExportId,
       pollingStatus: pollingStatus ?? this.pollingStatus,
       exportHistory: exportHistory ?? this.exportHistory,
@@ -179,6 +189,7 @@ class ReportExportState extends Equatable {
       lastSavedPath: lastSavedPath ?? this.lastSavedPath,
       productListError: productListError ?? this.productListError,
       customerListError: customerListError ?? this.customerListError,
+      weeklyPlansError: weeklyPlansError ?? this.weeklyPlansError, // ← FIX THIS
     );
   }
 
@@ -193,6 +204,7 @@ class ReportExportState extends Equatable {
     isCustomerIndividualLoading,
     isProductListLoading,
     isInvoiceLoading,
+    isWeeklyPlansLoading,
     activeExportId,
     pollingStatus,
     exportHistory,
@@ -210,5 +222,6 @@ class ReportExportState extends Equatable {
     lastSavedPath,
     productListError,
     customerListError,
+    weeklyPlansError,
   ];
 }

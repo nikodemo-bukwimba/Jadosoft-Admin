@@ -1,4 +1,5 @@
 // lib/features/product/data/datasources/product_api_datasource.dart
+// admin app
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -32,10 +33,12 @@ class ProductApiDataSource implements ProductRemoteDataSource {
 
   Map<String, dynamic> _unwrapProduct(dynamic raw) {
     if (raw is Map<String, dynamic>) {
-      if (raw.containsKey('product'))
+      if (raw.containsKey('product')) {
         return raw['product'] as Map<String, dynamic>;
-      if (raw.containsKey('data') && raw['data'] is Map)
+      }
+      if (raw.containsKey('data') && raw['data'] is Map) {
         return raw['data'] as Map<String, dynamic>;
+      }
       return raw;
     }
     return {};
@@ -56,10 +59,19 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     final price = rawPrice == null
         ? 0.0
         : double.tryParse(rawPrice.toString()) ?? 0.0;
+
+    // effective_price: branch override → root base_price (resolved server-side)
     final rawEffective = defaultVariant?['effective_price'];
     final effectivePrice = rawEffective == null
         ? price
         : double.tryParse(rawEffective.toString()) ?? price;
+
+    // branch_price: non-null only when an override exists for the viewing org
+    final rawBranch = defaultVariant?['branch_price'];
+    final branchPrice = rawBranch != null
+        ? double.tryParse(rawBranch.toString())
+        : null;
+
     final discountPercentage = (defaultVariant?['discount_percentage'] as num?)
         ?.toDouble();
     final hasPromotion = defaultVariant?['has_promotion'] as bool? ?? false;
@@ -84,6 +96,7 @@ class ProductApiDataSource implements ProductRemoteDataSource {
       name: j['name']?.toString() ?? '',
       description: j['description']?.toString(),
       price: price,
+      branchPrice: branchPrice,
       effectivePrice: effectivePrice,
       discountPercentage: discountPercentage,
       hasPromotion: hasPromotion,
@@ -187,10 +200,16 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   @override
   Future<List<ProductModel>> getAll() async {
     try {
-      final orgId = _orgContext.requireRootOrgId();
+      // Products are always listed under the root org.
+      // org_id query param tells the server which org context to use
+      // for resolving branch price overrides on each variant.
+      final rootOrgId = _orgContext.requireRootOrgId();
       final res = await _dio.get(
-        '/commerce/orgs/$orgId/products',
-        queryParameters: {'per_page': 100},
+        '/commerce/orgs/$rootOrgId/products',
+        queryParameters: {
+          'per_page': 100,
+          'org_id': _orgContext.effectiveOrgId,
+        },
       );
       final raw = res.data;
       final List<dynamic> items = raw is Map
@@ -274,8 +293,9 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     try {
       await _dio.post('/commerce/products/$id/archive');
     } on DioException catch (e) {
-      if (e.response?.statusCode == 404 || e.response?.statusCode == 422)
+      if (e.response?.statusCode == 404 || e.response?.statusCode == 422) {
         return;
+      }
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     } catch (e) {
       throw ServerException(e.toString());
@@ -312,7 +332,6 @@ class ProductApiDataSource implements ProductRemoteDataSource {
       String uploadPath = localPath;
       String uploadName = p.basename(localPath);
 
-      // Compress on desktop before sending
       if (_isDesktop) {
         final compressed = await _compressForDesktop(file);
         if (compressed != null) {
@@ -348,9 +367,6 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     }
   }
 
-  /// Decodes [source], resizes to fit [_maxDimension] on the longest axis,
-  /// and re-encodes as JPEG at [_jpegQuality].  Writes to a temp file.
-  /// Returns null on any error so the caller can fall back to the original.
   Future<File?> _compressForDesktop(File source) async {
     try {
       final bytes = await source.readAsBytes();
@@ -381,7 +397,7 @@ class ProductApiDataSource implements ProductRemoteDataSource {
       await tempFile.writeAsBytes(jpegBytes);
       return tempFile;
     } catch (_) {
-      return null; // fall back to original file
+      return null;
     }
   }
 }

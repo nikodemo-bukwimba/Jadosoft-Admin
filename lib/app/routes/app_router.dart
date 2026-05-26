@@ -72,6 +72,8 @@ import '../../features/product/presentation/bloc/product_event.dart';
 import '../../features/product/presentation/pages/product_list_page.dart';
 import '../../features/product/presentation/pages/product_detail_page.dart';
 import '../../features/product/presentation/pages/product_form_page.dart';
+import '../../features/product/presentation/pages/branch_price_page.dart';
+import '../../features/product/presentation/bloc/branch_pricing_bloc.dart'; // ← ADD
 
 // Phase 6 — Promotions (L3)
 import '../../features/promotion/presentation/bloc/promotion_bloc.dart';
@@ -233,6 +235,10 @@ class AppRouter {
   static const String productEdit = '/products/:id/edit';
   static String productDetailPath(String id) => '/products/$id';
   static String productEditPath(String id) => '/products/$id/edit';
+
+  // Phase 5 — Branch Pricing
+  static const String branchPricing = '/products/branch-prices';
+  
 
   // Phase 6 — Promotions
   static const String promotionList = '/promotions';
@@ -663,6 +669,15 @@ class AppRouter {
                   child: ProductFormPage(mode: ProductFormNode.edit, id: id),
                 );
               },
+            ),
+
+            // --- Phase 5 — Branch Pricing (L2) -------------
+            GoRoute(
+              path: branchPricing,
+              builder: (_, _) => BlocProvider(
+                create: (_) => sl<BranchPricingBloc>(),
+                child: const BranchPricePage(),
+              ),
             ),
 
             // --- Phase 10 — Inventory (L2) -----------------

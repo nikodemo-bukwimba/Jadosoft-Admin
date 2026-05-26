@@ -1,5 +1,4 @@
 import 'package:equatable/equatable.dart';
-import '../value_objects/daily_report_status.dart';
 
 class DailyReportEntity extends Equatable {
   final String id;
@@ -105,5 +104,29 @@ class DailyReportEntity extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, officerId, officerName, officerEmail, officerPhone, officerRole, officerStatus, reportNumber, reportDate, submittedAt, reviewedAt, visitedCustomers, keyOutcomes, challengesFaced, nextDayPlan, customBody, isCustomized, reviewedByName, reviewedByRole, adminFeedback, reviewDecision, status, createdAt];
+  List<Object?> get props => [
+    id,
+    officerId,
+    officerName,
+    officerEmail,
+    officerPhone,
+    officerRole,
+    officerStatus,
+    reportNumber,
+    reportDate,
+    submittedAt,
+    reviewedAt,
+    visitedCustomers,
+    keyOutcomes,
+    challengesFaced,
+    nextDayPlan,
+    customBody,
+    isCustomized,
+    reviewedByName,
+    reviewedByRole,
+    adminFeedback,
+    reviewDecision,
+    status,
+    createdAt,
+  ];
 }

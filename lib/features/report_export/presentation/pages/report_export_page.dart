@@ -17,6 +17,7 @@ import '../widgets/report_export_period_selector.dart';
 import '../widgets/report_export_polling_banner.dart';
 import '../widgets/report_export_section_header.dart';
 import '../widgets/report_export_visit_history_toggle.dart';
+import '../widgets/report_export_weekly_plans_card.dart';
 import '../utils/report_export_label.dart';
 
 class ReportExportPage extends StatefulWidget {
@@ -31,7 +32,7 @@ class _ReportExportPageState extends State<ReportExportPage> {
   DateTimeRange? _customRange;
   bool _includeVisits = false;
 
-  final _invoiceCtrl  = TextEditingController();
+  final _invoiceCtrl = TextEditingController();
   final _customerCtrl = TextEditingController();
 
   @override
@@ -73,7 +74,8 @@ class _ReportExportPageState extends State<ReportExportPage> {
       context: context,
       firstDate: DateTime(2024),
       lastDate: DateTime.now(),
-      initialDateRange: _customRange ??
+      initialDateRange:
+          _customRange ??
           DateTimeRange(
             start: DateTime.now().subtract(const Duration(days: 30)),
             end: DateTime.now(),
@@ -91,7 +93,7 @@ class _ReportExportPageState extends State<ReportExportPage> {
 
   @override
   Widget build(BuildContext context) {
-    final width  = MediaQuery.of(context).size.width;
+    final width = MediaQuery.of(context).size.width;
     final isWide = width >= 840;
 
     return Scaffold(
@@ -144,8 +146,10 @@ class _ReportExportPageState extends State<ReportExportPage> {
                 const SizedBox(height: 24),
 
                 if (state.exportHistory.isNotEmpty) ...[
-                  Text('Export History',
-                      style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'Export History',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   const SizedBox(height: 8),
                   ReportExportHistoryList(entries: state.exportHistory),
                 ],
@@ -161,19 +165,23 @@ class _ReportExportPageState extends State<ReportExportPage> {
 
   void _onStateChange(BuildContext ctx, ReportExportState state) {
     void snack(String msg, {Color? bg, SnackBarAction? action}) =>
-        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-          content: Text(msg),
-          backgroundColor: bg,
-          behavior: SnackBarBehavior.floating,
-          action: action,
-        ));
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: bg,
+            behavior: SnackBarBehavior.floating,
+            action: action,
+          ),
+        );
 
     if (state.activeExportId != null &&
         state.exportHistory.isNotEmpty &&
         state.exportHistory.first.status == 'pending') {
-      snack('Export queued — '
-          '${reportExportLabel(state.exportHistory.first.reportType)} '
-          'will be ready shortly');
+      snack(
+        'Export queued — '
+        '${reportExportLabel(state.exportHistory.first.reportType)} '
+        'will be ready shortly',
+      );
     }
     if (state.lastDownloadedFileName != null) {
       snack('Opening ${state.lastDownloadedFileName}…');
@@ -183,23 +191,35 @@ class _ReportExportPageState extends State<ReportExportPage> {
         'Saved to ${state.lastSavedPath}',
         action: SnackBarAction(
           label: 'Open',
-          onPressed: () => ctx
-              .read<ReportExportCubit>()
-              .downloadExport(state.exportHistory.first.exportId),
+          onPressed: () => ctx.read<ReportExportCubit>().downloadExport(
+            state.exportHistory.first.exportId,
+          ),
         ),
       );
     }
     if (state.downloadExportError != null) {
-      snack('Download failed: ${state.downloadExportError}',
-          bg: Theme.of(ctx).colorScheme.error);
+      snack(
+        'Download failed: ${state.downloadExportError}',
+        bg: Theme.of(ctx).colorScheme.error,
+      );
     }
     if (state.customerListError != null) {
-      snack('Customer export failed: ${state.customerListError}',
-          bg: Theme.of(ctx).colorScheme.error);
+      snack(
+        'Customer export failed: ${state.customerListError}',
+        bg: Theme.of(ctx).colorScheme.error,
+      );
+    }
+    if (state.weeklyPlansError != null) {
+      snack(
+        'Weekly plans export failed: ${state.weeklyPlansError}',
+        bg: Theme.of(ctx).colorScheme.error,
+      );
     }
     if (state.productListError != null) {
-      snack('Product export failed: ${state.productListError}',
-          bg: Theme.of(ctx).colorScheme.error);
+      snack(
+        'Product export failed: ${state.productListError}',
+        bg: Theme.of(ctx).colorScheme.error,
+      );
     }
   }
 }
@@ -230,98 +250,126 @@ class _WideLayout extends StatelessWidget {
       children: [
         // ── Left ──────────────────────────────────────────────────
         Expanded(
-          child: Column(children: [
-            const ReportExportSectionHeader(
-                title: 'Marketing Reports', icon: Icons.campaign_outlined),
-            const SizedBox(height: 8),
-            ReportExportCard(
-              title: 'Marketing Summary',
-              description:
-                  'Visits, officer performance, plan compliance, daily reports',
-              icon: Icons.bar_chart,
-              color: Colors.teal,
-              isLoading: state.isMarketingSummaryLoading,
-              supportsExcel: true,
-              onExport: (fmt) {
-                final r = resolvedRange();
-                context.read<ReportExportCubit>().exportMarketingSummary(
-                      format: fmt, dateFrom: r.$1, dateTo: r.$2);
-              },
-            ),
-            const SizedBox(height: 8),
-            const ReportExportSectionHeader(
-                title: 'Customer Reports', icon: Icons.people_outline),
-            const SizedBox(height: 8),
-            ReportExportCard(
-              title: 'Customer List',
-              description:
-                  'All customer profiles — business, contact, address, GPS, officer',
-              icon: Icons.list_alt,
-              color: Colors.indigo,
-              isLoading: state.isCustomerListLoading,
-              supportsExcel: true,
-              extra: ReportExportVisitHistoryToggle(
-                value: includeVisits,
-                onChanged: onIncludeVisitsChanged,
+          child: Column(
+            children: [
+              const ReportExportSectionHeader(
+                title: 'Marketing Reports',
+                icon: Icons.campaign_outlined,
               ),
-              onExport: (fmt) => context
-                  .read<ReportExportCubit>()
-                  .exportCustomerList(
-                      format: fmt, includeVisits: includeVisits),
-            ),
-            const SizedBox(height: 8),
-            ReportExportIndividualCustomerCard(
-              ctrl: customerCtrl,
-              isLoading: state.isCustomerIndividualLoading,
-              includeVisits: includeVisits,
-              onIncludeVisitsChanged: onIncludeVisitsChanged,
-            ),
-          ]),
+              const SizedBox(height: 8),
+              ReportExportCard(
+                title: 'Marketing Summary',
+                description:
+                    'Visits, officer performance, plan compliance, daily reports',
+                icon: Icons.bar_chart,
+                color: Colors.teal,
+                isLoading: state.isMarketingSummaryLoading,
+                supportsExcel: true,
+                onExport: (fmt) {
+                  final r = resolvedRange();
+                  context.read<ReportExportCubit>().exportMarketingSummary(
+                    format: fmt,
+                    dateFrom: r.$1,
+                    dateTo: r.$2,
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+              const ReportExportSectionHeader(
+                title: 'Customer Reports',
+                icon: Icons.people_outline,
+              ),
+              const SizedBox(height: 8),
+              ReportExportCard(
+                title: 'Customer List',
+                description:
+                    'All customer profiles — business, contact, address, GPS, officer',
+                icon: Icons.list_alt,
+                color: Colors.indigo,
+                isLoading: state.isCustomerListLoading,
+                supportsExcel: true,
+                extra: ReportExportVisitHistoryToggle(
+                  value: includeVisits,
+                  onChanged: onIncludeVisitsChanged,
+                ),
+                onExport: (fmt) =>
+                    context.read<ReportExportCubit>().exportCustomerList(
+                      format: fmt,
+                      includeVisits: includeVisits,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              ReportExportIndividualCustomerCard(
+                ctrl: customerCtrl,
+                isLoading: state.isCustomerIndividualLoading,
+                includeVisits: includeVisits,
+                onIncludeVisitsChanged: onIncludeVisitsChanged,
+              ),
+              const SizedBox(height: 8),
+              const ReportExportSectionHeader(
+                title: 'Field Operations',
+                icon: Icons.map_outlined,
+              ),
+              const SizedBox(height: 8),
+              ReportExportWeeklyPlansCard(
+                isLoading: state.isWeeklyPlansLoading,
+              ),
+            ],
+          ),
         ),
         const SizedBox(width: 16),
         // ── Right ─────────────────────────────────────────────────
         Expanded(
-          child: Column(children: [
-            const ReportExportSectionHeader(
-                title: 'Sales Reports', icon: Icons.point_of_sale_outlined),
-            const SizedBox(height: 8),
-            ReportExportCard(
-              title: 'Sales Summary',
-              description:
-                  'Orders by status, revenue, average order value, payments',
-              icon: Icons.attach_money,
-              color: Colors.green,
-              isLoading: state.isSalesSummaryLoading,
-              supportsExcel: true,
-              onExport: (fmt) {
-                final r = resolvedRange();
-                context.read<ReportExportCubit>().exportSalesSummary(
-                      format: fmt, dateFrom: r.$1, dateTo: r.$2);
-              },
-            ),
-            const SizedBox(height: 8),
-            ReportExportCard(
-              title: 'Product List',
-              description:
-                  'All products — name, description, pack size, price, quantity',
-              icon: Icons.medication_outlined,
-              color: Colors.orange,
-              isLoading: state.isProductListLoading,
-              supportsExcel: true,
-              onExport: (fmt) => context
-                  .read<ReportExportCubit>()
-                  .exportProductList(format: fmt),
-            ),
-            const SizedBox(height: 8),
-            const ReportExportSectionHeader(
-                title: 'Invoice', icon: Icons.receipt_long_outlined),
-            const SizedBox(height: 8),
-            ReportExportInvoiceCard(
-              ctrl: invoiceCtrl,
-              isLoading: state.isInvoiceLoading,
-              error: state.invoiceError,
-            ),
-          ]),
+          child: Column(
+            children: [
+              const ReportExportSectionHeader(
+                title: 'Sales Reports',
+                icon: Icons.point_of_sale_outlined,
+              ),
+              const SizedBox(height: 8),
+              ReportExportCard(
+                title: 'Sales Summary',
+                description:
+                    'Orders by status, revenue, average order value, payments',
+                icon: Icons.attach_money,
+                color: Colors.green,
+                isLoading: state.isSalesSummaryLoading,
+                supportsExcel: true,
+                onExport: (fmt) {
+                  final r = resolvedRange();
+                  context.read<ReportExportCubit>().exportSalesSummary(
+                    format: fmt,
+                    dateFrom: r.$1,
+                    dateTo: r.$2,
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+              ReportExportCard(
+                title: 'Product List',
+                description:
+                    'All products — name, description, pack size, price, quantity',
+                icon: Icons.medication_outlined,
+                color: Colors.orange,
+                isLoading: state.isProductListLoading,
+                supportsExcel: true,
+                onExport: (fmt) => context
+                    .read<ReportExportCubit>()
+                    .exportProductList(format: fmt),
+              ),
+              const SizedBox(height: 8),
+              const ReportExportSectionHeader(
+                title: 'Invoice',
+                icon: Icons.receipt_long_outlined,
+              ),
+              const SizedBox(height: 8),
+              ReportExportInvoiceCard(
+                ctrl: invoiceCtrl,
+                isLoading: state.isInvoiceLoading,
+                error: state.invoiceError,
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -353,7 +401,9 @@ class _NarrowLayout extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const ReportExportSectionHeader(
-            title: 'Marketing Reports', icon: Icons.campaign_outlined),
+          title: 'Marketing Reports',
+          icon: Icons.campaign_outlined,
+        ),
         const SizedBox(height: 8),
         ReportExportCard(
           title: 'Marketing Summary',
@@ -366,12 +416,17 @@ class _NarrowLayout extends StatelessWidget {
           onExport: (fmt) {
             final r = resolvedRange();
             context.read<ReportExportCubit>().exportMarketingSummary(
-                  format: fmt, dateFrom: r.$1, dateTo: r.$2);
+              format: fmt,
+              dateFrom: r.$1,
+              dateTo: r.$2,
+            );
           },
         ),
         const SizedBox(height: 16),
         const ReportExportSectionHeader(
-            title: 'Sales Reports', icon: Icons.point_of_sale_outlined),
+          title: 'Sales Reports',
+          icon: Icons.point_of_sale_outlined,
+        ),
         const SizedBox(height: 8),
         ReportExportCard(
           title: 'Sales Summary',
@@ -384,7 +439,10 @@ class _NarrowLayout extends StatelessWidget {
           onExport: (fmt) {
             final r = resolvedRange();
             context.read<ReportExportCubit>().exportSalesSummary(
-                  format: fmt, dateFrom: r.$1, dateTo: r.$2);
+              format: fmt,
+              dateFrom: r.$1,
+              dateTo: r.$2,
+            );
           },
         ),
         const SizedBox(height: 8),
@@ -401,7 +459,9 @@ class _NarrowLayout extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         const ReportExportSectionHeader(
-            title: 'Customer Reports', icon: Icons.people_outline),
+          title: 'Customer Reports',
+          icon: Icons.people_outline,
+        ),
         const SizedBox(height: 8),
         ReportExportCard(
           title: 'Customer List',
@@ -428,7 +488,16 @@ class _NarrowLayout extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         const ReportExportSectionHeader(
-            title: 'Invoice', icon: Icons.receipt_long_outlined),
+          title: 'Field Operations',
+          icon: Icons.map_outlined,
+        ),
+        const SizedBox(height: 8),
+        ReportExportWeeklyPlansCard(isLoading: state.isWeeklyPlansLoading),
+        const SizedBox(height: 16),
+        const ReportExportSectionHeader(
+          title: 'Invoice',
+          icon: Icons.receipt_long_outlined,
+        ),
         const SizedBox(height: 8),
         ReportExportInvoiceCard(
           ctrl: invoiceCtrl,

@@ -1,4 +1,14 @@
 ﻿// lib/features/product/domain/entities/product_entity.dart
+//
+// CHANGE: Added branchPrice and effectiveBasePrice fields.
+//
+// branchPrice      — branch override price set via BranchPricingService.
+//                    null when the viewing org has no override (uses root base).
+// effectiveBasePrice — branchPrice ?? price.  This is the base BEFORE promotion.
+//                    Previously all callers assumed price == base; now use this.
+//
+// displayPrice and isOnPromotion are unchanged in semantics — they still reflect
+// the final price shown to the user (after branch price + promotion applied).
 
 import 'package:equatable/equatable.dart';
 
@@ -6,10 +16,25 @@ class ProductEntity extends Equatable {
   final String id;
   final String name;
   final String? description;
-  final double price; // base price — never changes
-  final double effectivePrice; // promotion price if active, else == price
-  final double? discountPercentage; // null if no active promotion
-  final String? promotionId; // null if no active promotion
+
+  /// Root catalog base price — the price set at root org level.
+  /// Never mutated by branch overrides or promotions.
+  final double price;
+
+  /// Branch-specific base price override (null = no branch override).
+  /// When set, this is the base before promotion discount is applied.
+  final double? branchPrice;
+
+  /// The effective base used for promotion calculations:
+  ///   branchPrice ?? price
+  final double effectiveBasePrice;
+
+  /// Final display price after all discounts (effectiveBasePrice × discount).
+  /// Equals effectiveBasePrice when no promotion is active.
+  final double effectivePrice;
+
+  final double? discountPercentage;
+  final String? promotionId;
   final bool hasPromotion;
   final String categoryId;
   final String? variantId;
@@ -24,11 +49,13 @@ class ProductEntity extends Equatable {
   final String? packSize;
   final int? quantityAvailable;
 
-  const ProductEntity({
+  ProductEntity({
     required this.id,
     required this.name,
     this.description,
     required this.price,
+    this.branchPrice,
+    double? effectiveBasePrice,
     double? effectivePrice,
     this.discountPercentage,
     this.promotionId,
@@ -45,19 +72,26 @@ class ProductEntity extends Equatable {
     this.expiryDate,
     this.packSize,
     this.quantityAvailable,
-  }) : effectivePrice = effectivePrice ?? price;
+  }) : effectiveBasePrice = effectiveBasePrice ?? branchPrice ?? price,
+       effectivePrice =
+           effectivePrice ?? effectiveBasePrice ?? branchPrice ?? price;
 
   /// The price to display prominently in the UI.
   double get displayPrice => effectivePrice;
 
+  /// True when a branch override is active for this org.
+  bool get hasBranchPrice => branchPrice != null && branchPrice != price;
+
   /// True when there is a live discount reducing the price.
-  bool get isOnPromotion => hasPromotion && effectivePrice < price;
+  bool get isOnPromotion => hasPromotion && effectivePrice < effectiveBasePrice;
 
   ProductEntity copyWith({
     String? id,
     String? name,
     String? description,
     double? price,
+    double? branchPrice,
+    double? effectiveBasePrice,
     double? effectivePrice,
     double? discountPercentage,
     String? promotionId,
@@ -80,6 +114,8 @@ class ProductEntity extends Equatable {
       name: name ?? this.name,
       description: description ?? this.description,
       price: price ?? this.price,
+      branchPrice: branchPrice ?? this.branchPrice,
+      effectiveBasePrice: effectiveBasePrice ?? this.effectiveBasePrice,
       effectivePrice: effectivePrice ?? this.effectivePrice,
       discountPercentage: discountPercentage ?? this.discountPercentage,
       promotionId: promotionId ?? this.promotionId,
@@ -105,6 +141,8 @@ class ProductEntity extends Equatable {
     name,
     description,
     price,
+    branchPrice,
+    effectiveBasePrice,
     effectivePrice,
     discountPercentage,
     promotionId,

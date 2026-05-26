@@ -67,6 +67,7 @@ class OrgContext {
   bool get isBranchAdmin => _orgRole == OrgRole.branchAdmin;
   bool get isFieldOfficer => _orgRole == OrgRole.fieldOfficer;
   bool get isStockKeeper => _orgRole == OrgRole.stockKeeper;
+  bool get isBranch => effectiveOrgId != rootOrgId && rootOrgId!.isNotEmpty;
 
   bool get isBranchScopedUser =>
       isBranchAdmin || isFieldOfficer || isStockKeeper;

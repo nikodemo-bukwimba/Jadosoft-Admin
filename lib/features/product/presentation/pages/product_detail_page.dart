@@ -36,6 +36,7 @@ import '../widgets/promotion_price_display.dart';
 import '../../../category/domain/usecases/get_category_usecase.dart';
 import '../../../inventory/domain/entities/inventory_entity.dart';
 import '../../../inventory/domain/usecases/get_variant_stock_usecase.dart';
+ import '../widgets/branch_price_section.dart';
 
 class ProductDetailPage extends StatelessWidget {
   const ProductDetailPage({super.key});
@@ -239,6 +240,24 @@ class _DetailViewState extends State<_DetailView> {
                 // ── Live inventory card ──────────────────────────────
                 const SizedBox(height: 12),
                 _LiveInventoryCard(item: item, scheme: scheme),
+
+                const SizedBox(height: 12),
+                Builder(
+                  builder: (context) {
+                    final orgContext = GetIt.instance<OrgContext>();
+                    if (!orgContext.isBranch) return const SizedBox.shrink();
+                    if (item.variantId == null) return const SizedBox.shrink();
+                    return Column(
+                      children: [
+                        const SizedBox(height: 12),
+                        BranchPriceSection(
+                          item: item,
+                          formatPrice: widget.formatPrice,
+                        ),
+                      ],
+                    );
+                  },
+                ),
 
                 const SizedBox(height: 80),
               ],
