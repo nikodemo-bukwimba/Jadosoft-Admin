@@ -475,9 +475,20 @@ class _OrderFormPageState extends State<OrderFormPage> {
         ..._lineItems.asMap().entries.map((entry) {
           final i = entry.key;
           final item = entry.value;
+          // Resolve live stock cap for this line item
+          final variantId = item.product.variantId;
+          final liveMax =
+              (variantId != null && _liveStock.containsKey(variantId))
+              ? _liveStock[variantId]!
+              : (item.product.quantityAvailable ?? 999);
+          final maxStock = liveMax > 0
+              ? liveMax
+              : 999; // 0 means out-of-stock, uncap stepper — submit will catch it
+
           return _LineItemRow(
             item: item,
             theme: theme,
+            maxStock: maxStock,
             onRemove: () => setState(() => _lineItems.removeAt(i)),
             onQtyChanged: (qty) => setState(() => _lineItems[i].quantity = qty),
           );
@@ -951,12 +962,14 @@ class _LineItemRow extends StatelessWidget {
   final ThemeData theme;
   final VoidCallback onRemove;
   final ValueChanged<int> onQtyChanged;
+  final int maxStock;
 
   const _LineItemRow({
     required this.item,
     required this.theme,
     required this.onRemove,
     required this.onQtyChanged,
+    this.maxStock = 999, // default = uncapped if stock unknown
   });
 
   @override
@@ -1008,7 +1021,11 @@ class _LineItemRow extends StatelessWidget {
               ],
             ),
           ),
-          _QtyStepper(value: item.quantity, onChanged: onQtyChanged),
+          _QtyStepper(
+            value: item.quantity,
+            maxValue: maxStock,
+            onChanged: onQtyChanged,
+          ),
           const SizedBox(width: 8),
           IconButton(
             icon: const Icon(Icons.close, size: 18),
@@ -1031,9 +1048,14 @@ class _LineItemRow extends StatelessWidget {
 
 class _QtyStepper extends StatelessWidget {
   final int value;
+  final int maxValue; // ← ADD
   final ValueChanged<int> onChanged;
 
-  const _QtyStepper({required this.value, required this.onChanged});
+  const _QtyStepper({
+    required this.value,
+    required this.onChanged,
+    this.maxValue = 999, // ← ADD
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1062,7 +1084,9 @@ class _QtyStepper extends StatelessWidget {
           ),
           _StepBtn(
             icon: Icons.add,
-            onTap: value < 999 ? () => onChanged(value + 1) : null,
+            onTap: value < maxValue
+                ? () => onChanged(value + 1)
+                : null, // ← FIXED
           ),
         ],
       ),
