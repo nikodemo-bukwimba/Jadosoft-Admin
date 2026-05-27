@@ -200,16 +200,14 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   @override
   Future<List<ProductModel>> getAll() async {
     try {
-      // Products are always listed under the root org.
-      // org_id query param tells the server which org context to use
-      // for resolving branch price overrides on each variant.
-      final rootOrgId = _orgContext.requireRootOrgId();
+      // Products are branch-scoped on the server.
+      // - When effectiveOrgId is a branch → server returns branch products only.
+      // - When effectiveOrgId is the root org → server returns the full tree catalog.
+      // No client-side root-forcing needed; the server handles both cases.
+      final orgId = _orgContext.effectiveOrgId;
       final res = await _dio.get(
-        '/commerce/orgs/$rootOrgId/products',
-        queryParameters: {
-          'per_page': 100,
-          'org_id': _orgContext.effectiveOrgId,
-        },
+        '/commerce/orgs/$orgId/products',
+        queryParameters: {'per_page': 100, 'org_id': orgId},
       );
       final raw = res.data;
       final List<dynamic> items = raw is Map
@@ -242,7 +240,8 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   @override
   Future<ProductModel> create(Map<String, dynamic> data) async {
     try {
-      final orgId = _orgContext.requireRootOrgId();
+      // Create under the effective org (branch or root).
+      final orgId = _orgContext.effectiveOrgId;
       final res = await _dio.post(
         '/commerce/orgs/$orgId/products',
         data: _createBody(data),

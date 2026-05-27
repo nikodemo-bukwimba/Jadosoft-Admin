@@ -493,6 +493,35 @@ class _GreetingHeader extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+
+                if (user.branchName != null &&
+                    (user.branchName as String).trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.location_on_outlined,
+                          size: 13,
+                          color: scheme.onPrimaryContainer.withOpacity(0.72),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            user.branchName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: textTheme.labelSmall?.copyWith(
+                              color: scheme.onPrimaryContainer.withOpacity(
+                                0.78,
+                              ),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),
