@@ -11,7 +11,8 @@ class AppTheme {
   AppTheme._();
 
   // Barick Pharmacy brand green
-  static const _seed = Color(0xFF2E7D32);
+  // static const _seed = Color(0xFF2E7D32);
+  static const _seed = Color(0xFF1565C0);
 
   // ── Light theme ───────────────────────────────────────────
   static ThemeData get light => ThemeData(

@@ -1,4 +1,15 @@
-﻿import '../../domain/entities/weekly_plan_entity.dart';
+﻿// lib/features/weekly_plan/data/models/weekly_plan_model.dart
+//
+// FIX: toJson() and fromEntity() both dropped officerName.
+// This meant that after any bloc state transition that called
+// fromEntity → toJson → fromJson (e.g. update, approve, reject),
+// the resolved officer name was lost and the ID showed again.
+//
+// Added:
+//   toJson()      → 'officer_name': officerName
+//   fromEntity()  → officerName: e.officerName
+
+import '../../domain/entities/weekly_plan_entity.dart';
 
 class PlanItemModel extends PlanItemEntity {
   const PlanItemModel({
@@ -87,6 +98,7 @@ class WeeklyPlanModel extends WeeklyPlanEntity {
   Map<String, dynamic> toJson() => {
     'id': id,
     'officer_id': officerId,
+    'officer_name': officerName,   // FIX: was missing
     'week_start': weekStart.toIso8601String(),
     'week_end': weekEnd.toIso8601String(),
     'planned_customer_ids': plannedCustomerIds,
@@ -102,6 +114,7 @@ class WeeklyPlanModel extends WeeklyPlanEntity {
   factory WeeklyPlanModel.fromEntity(WeeklyPlanEntity e) => WeeklyPlanModel(
     id: e.id,
     officerId: e.officerId,
+    officerName: e.officerName,    // FIX: was missing
     weekStart: e.weekStart,
     weekEnd: e.weekEnd,
     plannedCustomerIds: e.plannedCustomerIds,
@@ -132,15 +145,12 @@ class WeeklyPlanModel extends WeeklyPlanEntity {
   }
 
   static String? _parseOfficerName(Map<String, dynamic> json) {
-    // Try flat field first
     if (json['officer_name'] is String) return json['officer_name'] as String;
-    // Try nested officer object
     final officer = json['officer'];
     if (officer is Map) {
       return (officer['display_name'] ?? officer['name'] ?? officer['username'])
           ?.toString();
     }
-    // Try nested actor object
     final actor = json['actor'];
     if (actor is Map) {
       return (actor['display_name'] ?? actor['name'])?.toString();

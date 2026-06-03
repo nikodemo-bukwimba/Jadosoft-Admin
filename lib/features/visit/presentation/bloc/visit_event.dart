@@ -1,3 +1,8 @@
+// lib/features/visit/presentation/bloc/visit_event.dart
+//
+// NO CHANGES from original — reproduced here for completeness only.
+// All events already existed in the original codebase.
+
 import '../../domain/entities/visit_entity.dart';
 import '../../domain/usecases/create_visit_usecase.dart';
 
@@ -45,7 +50,7 @@ class VisitUnflagRequested extends VisitEvent {
   final String id;
   VisitUnflagRequested(this.id);
 }
-// Add alongside existing events:
+
 class VisitLoadByCustomerRequested extends VisitEvent {
   final String customerId;
   VisitLoadByCustomerRequested(this.customerId);

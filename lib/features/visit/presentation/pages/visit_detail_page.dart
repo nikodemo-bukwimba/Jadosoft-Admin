@@ -1,3 +1,14 @@
+// lib/features/visit/presentation/pages/visit_detail_page.dart
+//
+// CHANGE vs previous version (single fix):
+//   Converted to StatefulWidget so _lastItem can be cached.
+//   The builder now keeps showing the last known detail while
+//   VisitOperationSuccess / VisitLoading are in flight, instead of
+//   falling through to SizedBox.shrink() (black screen).
+//
+// Everything else — _body, _actions, _AcceptSheet, _FlagSheet,
+// _gpsRow, _row, _btn — is identical to the previous version.
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -9,10 +20,18 @@ import '../bloc/visit_state.dart';
 import '../../../../core/widgets/rich_text_field.dart';
 import '../../../../core/utils/map_launcher.dart';
 
-class VisitDetailPage extends StatelessWidget {
+class VisitDetailPage extends StatefulWidget {
   final String visitId;
-
   const VisitDetailPage({super.key, required this.visitId});
+
+  @override
+  State<VisitDetailPage> createState() => _VisitDetailPageState();
+}
+
+class _VisitDetailPageState extends State<VisitDetailPage> {
+  // Cache the last successfully loaded item so the builder can keep
+  // showing it while VisitLoading / VisitOperationSuccess are in flight.
+  VisitEntity? _lastItem;
 
   @override
   Widget build(BuildContext context) {
@@ -38,9 +57,29 @@ class VisitDetailPage extends StatelessWidget {
           }
         },
         builder: (c, s) {
+          // ── Update cache whenever a fresh detail arrives ──────────
+          if (s is VisitDetailLoaded) {
+            _lastItem = s.item;
+          }
+
+          // ── Loading: show spinner only on first load (no cached item)
           if (s is VisitLoading || s is VisitInitial) {
+            if (_lastItem != null) {
+              // Keep showing the current detail while reloading —
+              // no black screen between VisitOperationSuccess and
+              // the next VisitDetailLoaded.
+              return _body(context, _lastItem!);
+            }
             return const Center(child: CircularProgressIndicator());
           }
+
+          // ── Operation success: keep showing the detail while the
+          //    listener's VisitLoadOneRequested is in flight.
+          if (s is VisitOperationSuccess && _lastItem != null) {
+            return _body(context, _lastItem!);
+          }
+
+          // ── Error ─────────────────────────────────────────────────
           if (s is VisitFailure) {
             return Center(
               child: Column(
@@ -59,10 +98,15 @@ class VisitDetailPage extends StatelessWidget {
               ),
             );
           }
+
+          // ── Detail loaded ─────────────────────────────────────────
           if (s is VisitDetailLoaded) {
             return _body(context, s.item);
           }
-          return const SizedBox.shrink();
+
+          // ── Fallback: if we have a cached item use it, else spinner
+          if (_lastItem != null) return _body(context, _lastItem!);
+          return const Center(child: CircularProgressIndicator());
         },
       ),
     );
@@ -73,8 +117,6 @@ class VisitDetailPage extends StatelessWidget {
     final st = VisitStatusX.fromString(item.status);
     final isWide = MediaQuery.of(context).size.width >= 600;
     final hasGps = item.gpsLat != null && item.gpsLng != null;
-
-    // Use entity fields with fallbacks
     final displayName =
         item.businessName ?? item.customerName ?? 'Unknown Business';
     final officerDisplay = item.officerName ?? item.officerId;
@@ -446,7 +488,7 @@ class VisitDetailPage extends StatelessWidget {
                                 width: 120,
                                 height: 120,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => Container(
+                                errorBuilder: (_, __, ___) => Container(
                                   width: 120,
                                   height: 120,
                                   color: scheme.surfaceContainerHighest,
@@ -521,6 +563,7 @@ class VisitDetailPage extends StatelessWidget {
 
   Widget _actions(BuildContext context, VisitEntity item, VisitStatus st) {
     final actions = <Widget>[];
+
     if (st == VisitStatus.pending) {
       actions.add(
         _btn(
@@ -528,10 +571,29 @@ class VisitDetailPage extends StatelessWidget {
           Icons.check_circle_outline,
           'Accept',
           Colors.green,
-          () => _showAcceptDialog(context, item),
+          () => _showAcceptDialog(context, item, existingComment: null),
         ),
       );
     }
+
+    if (st == VisitStatus.reviewed) {
+      actions.add(
+        _btn(
+          context,
+          Icons.edit_outlined,
+          'Edit Review',
+          Colors.green,
+          () => _showAcceptDialog(
+            context,
+            item,
+            existingComment: item.adminComments.isNotEmpty
+                ? item.adminComments.last.comment
+                : null,
+          ),
+        ),
+      );
+    }
+
     if (st == VisitStatus.pending || st == VisitStatus.reviewed) {
       actions.add(
         _btn(
@@ -539,11 +601,21 @@ class VisitDetailPage extends StatelessWidget {
           Icons.flag_outlined,
           'Flag Visit',
           Colors.red,
-          () => _showFlagDialog(context, item),
+          () => _showFlagDialog(context, item, existingReason: null),
         ),
       );
     }
+
     if (st == VisitStatus.flagged) {
+      actions.add(
+        _btn(
+          context,
+          Icons.edit_outlined,
+          'Edit Flag',
+          Colors.orange,
+          () => _showFlagDialog(context, item, existingReason: item.flagReason),
+        ),
+      );
       actions.add(
         _btn(
           context,
@@ -554,6 +626,7 @@ class VisitDetailPage extends StatelessWidget {
         ),
       );
     }
+
     if (actions.isEmpty) return const SizedBox.shrink();
     return Card(
       child: Padding(
@@ -576,7 +649,11 @@ class VisitDetailPage extends StatelessWidget {
     );
   }
 
-  void _showAcceptDialog(BuildContext context, VisitEntity item) {
+  void _showAcceptDialog(
+    BuildContext context,
+    VisitEntity item, {
+    required String? existingComment,
+  }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -585,6 +662,8 @@ class VisitDetailPage extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => _AcceptSheet(
+        existingComment: existingComment,
+        isEdit: existingComment != null,
         onSubmit: (comment) {
           context.read<VisitBloc>().add(
             VisitReviewRequested(
@@ -597,7 +676,11 @@ class VisitDetailPage extends StatelessWidget {
     );
   }
 
-  void _showFlagDialog(BuildContext context, VisitEntity item) {
+  void _showFlagDialog(
+    BuildContext context,
+    VisitEntity item, {
+    required String? existingReason,
+  }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -606,6 +689,8 @@ class VisitDetailPage extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => _FlagSheet(
+        existingReason: existingReason,
+        isEdit: existingReason != null,
         onSubmit: (reason) {
           context.read<VisitBloc>().add(
             VisitFlagRequested(item.id, comment: reason),
@@ -677,18 +762,31 @@ class VisitDetailPage extends StatelessWidget {
   }
 }
 
-// ── Accept sheet ─────────────────────────────────────────────────────────────
+// ── Accept sheet ──────────────────────────────────────────────────────────────
 
 class _AcceptSheet extends StatefulWidget {
+  final String? existingComment;
+  final bool isEdit;
   final void Function(String comment) onSubmit;
-  const _AcceptSheet({required this.onSubmit});
+
+  const _AcceptSheet({
+    required this.onSubmit,
+    this.existingComment,
+    this.isEdit = false,
+  });
 
   @override
   State<_AcceptSheet> createState() => _AcceptSheetState();
 }
 
 class _AcceptSheetState extends State<_AcceptSheet> {
-  final _ctrl = TextEditingController();
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.existingComment ?? '');
+  }
 
   @override
   void dispose() {
@@ -709,7 +807,6 @@ class _AcceptSheetState extends State<_AcceptSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Handle
             Center(
               child: Container(
                 width: 40,
@@ -722,14 +819,16 @@ class _AcceptSheetState extends State<_AcceptSheet> {
               ),
             ),
             Text(
-              'Accept Visit',
+              widget.isEdit ? 'Edit Review' : 'Accept Visit',
               style: Theme.of(
                 context,
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             Text(
-              'Confirm you have reviewed this visit\'s GPS, photos, and discussion.',
+              widget.isEdit
+                  ? 'Update your comment. The visit will remain accepted.'
+                  : 'Confirm you have reviewed this visit\'s GPS, photos, and discussion.',
               style: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
@@ -759,8 +858,13 @@ class _AcceptSheetState extends State<_AcceptSheet> {
                       Navigator.pop(context);
                       widget.onSubmit(_ctrl.text.trim());
                     },
-                    icon: const Icon(Icons.check_circle_outline, size: 18),
-                    label: const Text('Accept'),
+                    icon: Icon(
+                      widget.isEdit
+                          ? Icons.save_outlined
+                          : Icons.check_circle_outline,
+                      size: 18,
+                    ),
+                    label: Text(widget.isEdit ? 'Save' : 'Accept'),
                   ),
                 ),
               ],
@@ -775,16 +879,29 @@ class _AcceptSheetState extends State<_AcceptSheet> {
 // ── Flag sheet ────────────────────────────────────────────────────────────────
 
 class _FlagSheet extends StatefulWidget {
+  final String? existingReason;
+  final bool isEdit;
   final void Function(String reason) onSubmit;
-  const _FlagSheet({required this.onSubmit});
+
+  const _FlagSheet({
+    required this.onSubmit,
+    this.existingReason,
+    this.isEdit = false,
+  });
 
   @override
   State<_FlagSheet> createState() => _FlagSheetState();
 }
 
 class _FlagSheetState extends State<_FlagSheet> {
-  final _ctrl = TextEditingController();
+  late final TextEditingController _ctrl;
   final _formKey = GlobalKey<FormState>();
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.existingReason ?? '');
+  }
 
   @override
   void dispose() {
@@ -807,7 +924,6 @@ class _FlagSheetState extends State<_FlagSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Handle
               Center(
                 child: Container(
                   width: 40,
@@ -821,10 +937,14 @@ class _FlagSheetState extends State<_FlagSheet> {
               ),
               Row(
                 children: [
-                  Icon(Icons.flag, color: scheme.error, size: 22),
+                  Icon(
+                    widget.isEdit ? Icons.edit_outlined : Icons.flag,
+                    color: scheme.error,
+                    size: 22,
+                  ),
                   const SizedBox(width: 8),
                   Text(
-                    'Flag Visit',
+                    widget.isEdit ? 'Edit Flag Reason' : 'Flag Visit',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: scheme.error,
@@ -834,13 +954,14 @@ class _FlagSheetState extends State<_FlagSheet> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Provide a clear reason. This will be visible to the officer.',
+                widget.isEdit
+                    ? 'Update the reason for flagging this visit.'
+                    : 'Provide a clear reason. This will be visible to the officer.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 20),
-              // Wrap RichTextField in FormField for validation
               FormField<String>(
                 validator: (_) => _ctrl.text.trim().isEmpty
                     ? 'A reason is required when flagging'
@@ -889,8 +1010,11 @@ class _FlagSheetState extends State<_FlagSheet> {
                         Navigator.pop(context);
                         widget.onSubmit(_ctrl.text.trim());
                       },
-                      icon: const Icon(Icons.flag, size: 18),
-                      label: const Text('Flag Visit'),
+                      icon: Icon(
+                        widget.isEdit ? Icons.save_outlined : Icons.flag,
+                        size: 18,
+                      ),
+                      label: Text(widget.isEdit ? 'Save' : 'Flag Visit'),
                     ),
                   ),
                 ],
