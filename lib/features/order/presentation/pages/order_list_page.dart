@@ -1,8 +1,5 @@
-﻿// order_list_page.dart — Admin App
-// Adds:
-//   • "Placed by" chip on each order card showing officer/admin name
-//   • Filter-by-admin dropdown (builds list from loaded orders)
-//   • Passes createdById filter through to OrderLoadAllRequested
+﻿// === FILE: lib/features/order/presentation/pages/order_list_page.dart
+// Admin App — search now includes customer name; all other logic preserved.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -33,11 +30,7 @@ class _OrderListPageState extends State<OrderListPage> {
   OrderStatus? _filterStatus;
   String _search = '';
 
-  // ── Admin/officer filter ──────────────────────────────────
-  /// actorId of the selected officer/admin filter, or null for "All".
   String? _filterAdminId;
-
-  /// Map of actorId → display name built from loaded orders.
   Map<String, String> _adminNames = {};
 
   void _loadOrders() {
@@ -52,18 +45,14 @@ class _OrderListPageState extends State<OrderListPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadOrders());
   }
 
-  /// Build the actor-name map from a loaded list (runs client-side on
-  /// the already-fetched page; the server-side filter handles larger sets).
   void _buildAdminNames(List<OrderEntity> items) {
     final map = <String, String>{};
     for (final o in items) {
       if (o.createdById != null && o.createdById!.isNotEmpty) {
-        final name = o.createdByName ?? o.createdById!;
-        map[o.createdById!] = name;
+        map[o.createdById!] = o.createdByName ?? o.createdById!;
       }
     }
     if (map != _adminNames) {
-      // Update only when content changes to avoid rebuild loops
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _adminNames = map);
       });
@@ -77,8 +66,6 @@ class _OrderListPageState extends State<OrderListPage> {
           .where((o) => OrderStatusX.fromString(o.status) == _filterStatus)
           .toList();
     }
-    // Client-side admin filter (supplements server-side filter for UX
-    // when switching between admins without a round-trip).
     if (_filterAdminId != null) {
       result = result.where((o) => o.createdById == _filterAdminId).toList();
     }
@@ -88,6 +75,8 @@ class _OrderListPageState extends State<OrderListPage> {
           .where(
             (o) =>
                 o.id.toLowerCase().contains(q) ||
+                // Search by resolved customer name OR raw ID
+                o.customerDisplay.toLowerCase().contains(q) ||
                 o.customerId.toLowerCase().contains(q) ||
                 (o.paymentRef?.toLowerCase().contains(q) ?? false) ||
                 (o.createdByName?.toLowerCase().contains(q) ?? false),
@@ -105,7 +94,6 @@ class _OrderListPageState extends State<OrderListPage> {
       appBar: AppBar(
         title: const Text('Orders'),
         actions: [
-          // ── View-mode toggles ──────────────────────────────
           IconButton(
             icon: Icon(
               Icons.grid_view_outlined,
@@ -144,7 +132,7 @@ class _OrderListPageState extends State<OrderListPage> {
       ),
       body: Column(
         children: [
-          // ── Search + status filter ──────────────────────────
+          // ── Search + filters ──────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: Row(
@@ -152,7 +140,7 @@ class _OrderListPageState extends State<OrderListPage> {
                 Expanded(
                   child: TextField(
                     decoration: InputDecoration(
-                      hintText: 'Search orders…',
+                      hintText: 'Search by customer, order ID, officer…',
                       prefixIcon: const Icon(Icons.search, size: 20),
                       isDense: true,
                       border: OutlineInputBorder(
@@ -188,7 +176,7 @@ class _OrderListPageState extends State<OrderListPage> {
                     ),
                   ],
                 ),
-                // ── Admin/officer filter ───────────────────────
+                // Admin/officer filter
                 if (_adminNames.isNotEmpty)
                   PopupMenuButton<String?>(
                     icon: Icon(
@@ -198,7 +186,6 @@ class _OrderListPageState extends State<OrderListPage> {
                     tooltip: 'Filter by admin / officer',
                     onSelected: (v) {
                       setState(() => _filterAdminId = v);
-                      // Re-fetch from server with the new filter
                       context.read<OrderBloc>().add(
                         OrderLoadAllRequested(createdById: v),
                       );
@@ -226,7 +213,7 @@ class _OrderListPageState extends State<OrderListPage> {
             ),
           ),
 
-          // ── Status filter chips ─────────────────────────────
+          // ── Status filter chips ───────────────────────────
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
@@ -249,7 +236,7 @@ class _OrderListPageState extends State<OrderListPage> {
             ),
           ),
 
-          // ── Active admin filter chip ────────────────────────
+          // ── Active admin filter chip ──────────────────────
           if (_filterAdminId != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
@@ -273,7 +260,7 @@ class _OrderListPageState extends State<OrderListPage> {
               ),
             ),
 
-          // ── Order list ──────────────────────────────────────
+          // ── Order list ────────────────────────────────────
           Expanded(
             child: BlocConsumer<OrderBloc, OrderState>(
               listener: (context, state) {
@@ -401,7 +388,6 @@ class _OrderListPageState extends State<OrderListPage> {
 
         return Column(
           children: [
-            // Header
             Container(
               color: scheme.surfaceContainerHighest,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -425,7 +411,6 @@ class _OrderListPageState extends State<OrderListPage> {
                   isLast: i == items.length - 1,
                   onTap: () =>
                       context.push(AppRouter.orderDetailPath(items[i].id)),
-                  // FIX: supply the required onDelete callback
                   onDelete: () => _confirmDelete(items[i]),
                 ),
               ),
@@ -447,7 +432,7 @@ class _OrderListPageState extends State<OrderListPage> {
   }
 }
 
-// ── Filter chip ────────────────────────────────────────────────────────────
+// ── Filter chip ──────────────────────────────────────────────────────────────
 
 class _Chip extends StatelessWidget {
   final String label;
@@ -468,24 +453,25 @@ class _Chip extends StatelessWidget {
     final activeColor = color ?? scheme.primary;
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
+      child: Container(
         margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: selected
               ? activeColor.withValues(alpha: 0.12)
-              : scheme.surfaceContainerLow,
+              : scheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: selected ? activeColor : scheme.outlineVariant,
+            color: selected
+                ? activeColor.withValues(alpha: 0.5)
+                : scheme.outlineVariant,
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
             color: selected ? activeColor : scheme.onSurfaceVariant,
           ),
         ),

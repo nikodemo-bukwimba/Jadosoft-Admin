@@ -1,3 +1,6 @@
+// === FILE: lib/features/order/presentation/widgets/order_table_row.dart
+// Admin App — shows customerDisplay instead of raw customerId.
+
 import 'package:flutter/material.dart';
 import '../../domain/entities/order_entity.dart';
 import '../../domain/value_objects/order_status.dart';
@@ -39,10 +42,11 @@ class OrderTableRow extends StatelessWidget {
         ),
         child: Row(
           children: [
+            // Order ID
             Expanded(
               flex: 2,
               child: Text(
-                '#${item.id.split('-').last.toUpperCase()}',
+                '#${item.id.length >= 8 ? item.id.substring(item.id.length - 8).toUpperCase() : item.id.toUpperCase()}',
                 style: textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -50,27 +54,48 @@ class OrderTableRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            // Customer — resolved name
             Expanded(
               flex: 2,
               child: Text(
-                item.customerId,
-                style: textTheme.bodySmall,
+                item.customerDisplay,
+                style: textTheme.bodySmall?.copyWith(
+                  fontWeight: item.customerName != null
+                      ? FontWeight.w500
+                      : FontWeight.normal,
+                  color: item.customerName != null
+                      ? null
+                      : scheme.onSurfaceVariant,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            // Placed by
             SizedBox(
-              width: 48,
+              width: 110,
               child: Text(
-                '${item.items.length} item${item.items.length != 1 ? 's' : ''}',
+                item.createdByName ?? '—',
                 style: textTheme.bodySmall?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
                 maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
+            // Items
             SizedBox(
-              width: 80,
+              width: 52,
+              child: Text(
+                '${item.items.length}',
+                style: textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            // Total
+            SizedBox(
+              width: 90,
               child: Text(
                 'TZS ${_fmt(item.total)}',
                 style: textTheme.bodySmall?.copyWith(
@@ -81,12 +106,14 @@ class OrderTableRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            // Status
             SizedBox(
-              width: 80,
+              width: 100,
               child: OrderStatusBadge(status: status, compact: true),
             ),
+            // Delete
             SizedBox(
-              width: 36,
+              width: 44,
               child: IconButton(
                 icon: Icon(Icons.delete_outline, color: scheme.error, size: 18),
                 onPressed: () async {

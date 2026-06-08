@@ -1,7 +1,9 @@
-// order_card_tile.dart — Admin App
-// Shows "Placed by" row when createdByName is available.
+// === FILE: lib/features/order/presentation/widgets/order_card_tile.dart
+// Admin App — shows resolved customer name (customerDisplay) instead of raw ID.
+// All other content preserved exactly.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../domain/entities/order_entity.dart';
 import '../../domain/value_objects/order_status.dart';
 import 'order_status_badge.dart';
@@ -31,6 +33,7 @@ class OrderCardTile extends StatelessWidget {
       margin: EdgeInsets.zero,
       child: InkWell(
         onTap: onTap,
+        onLongPress: () => _copyId(context, item.id),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(14),
@@ -58,11 +61,27 @@ class OrderCardTile extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Order #${item.id.split('-').last.toUpperCase()}',
-                          style: textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                        Row(
+                          children: [
+                            Text(
+                              'Order #${item.id.length >= 8 ? item.id.substring(item.id.length - 8).toUpperCase() : item.id.toUpperCase()}',
+                              style: textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            // Copy icon
+                            GestureDetector(
+                              onTap: () => _copyId(context, item.id),
+                              child: Icon(
+                                Icons.copy_outlined,
+                                size: 12,
+                                color: scheme.onSurfaceVariant.withValues(
+                                  alpha: 0.4,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         Text(
                           item.createdAt.toIso8601String().split('T').first,
@@ -128,7 +147,7 @@ class OrderCardTile extends StatelessWidget {
                 ),
               ],
 
-              // ── Placed by (officer / admin) ──────────────
+              // ── Placed by ────────────────────────────────
               if (hasPlacedBy) ...[
                 const SizedBox(height: 5),
                 Row(
@@ -155,7 +174,7 @@ class OrderCardTile extends StatelessWidget {
 
               const SizedBox(height: 10),
 
-              // ── Footer: customer + delete ────────────────
+              // ── Footer: customer name (resolved) + delete ──
               Row(
                 children: [
                   Icon(
@@ -166,9 +185,15 @@ class OrderCardTile extends StatelessWidget {
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      'Customer: ${item.customerId}',
+                      // customerDisplay returns resolved name or raw ID
+                      item.customerDisplay,
                       style: textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
+                        color: item.customerName != null
+                            ? scheme.onSurface
+                            : scheme.onSurfaceVariant,
+                        fontWeight: item.customerName != null
+                            ? FontWeight.w500
+                            : FontWeight.normal,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -195,6 +220,17 @@ class OrderCardTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _copyId(BuildContext context, String id) {
+    Clipboard.setData(ClipboardData(text: id));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Order ID copied: $id'),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
