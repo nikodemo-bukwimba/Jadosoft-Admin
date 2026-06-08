@@ -15,6 +15,8 @@ class CreateCustomerParams {
   final String? address;
   final String? city;
   final String? county;
+  final String? ward; // ← added
+  final String? street; // ← added
   final double? latitude;
   final double? longitude;
   final String? notes;
@@ -36,6 +38,8 @@ class CreateCustomerParams {
     this.address,
     this.city,
     this.county,
+    this.ward,
+    this.street,
     this.latitude,
     this.longitude,
     this.notes,
@@ -60,6 +64,8 @@ class CreateCustomerParams {
       if (address != null && address!.isNotEmpty) 'address': address,
       if (city != null && city!.isNotEmpty) 'city': city,
       if (county != null && county!.isNotEmpty) 'county': county,
+      if (ward != null && ward!.isNotEmpty) 'ward': ward,
+      if (street != null && street!.isNotEmpty) 'street': street,
       if (latitude != null) 'latitude': latitude,
       if (longitude != null) 'longitude': longitude,
       if (notes != null && notes!.isNotEmpty) 'notes': notes,
@@ -81,7 +87,6 @@ class CreateCustomerParams {
         },
       ];
     }
-
     return data;
   }
 }
@@ -93,14 +98,17 @@ class CreateCustomerUseCase
 
   @override
   Future<Either<Failure, CustomerEntity>> call(CreateCustomerParams p) async {
-    if (p.name.trim().isEmpty)
+    if (p.name.trim().isEmpty) {
       return const Left(ValidationFailure('Customer name is required'));
-    if (p.name.trim().length < 2)
+    }
+    if (p.name.trim().length < 2) {
       return const Left(
         ValidationFailure('Name must be at least 2 characters'),
       );
-    if (p.customerType != 'b2b' && p.customerType != 'b2c')
+    }
+    if (p.customerType != 'b2b' && p.customerType != 'b2c') {
       return const Left(ValidationFailure('Type must be b2b or b2c'));
+    }
     return repository.create(p.toJson());
   }
 }

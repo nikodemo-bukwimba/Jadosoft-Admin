@@ -1,7 +1,7 @@
 ﻿// ================================================================
 // features_conversation_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-05-14 18:10:10
+// Generated    : 2026-06-04 16:34:48
 // Files        : 26
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
@@ -1018,6 +1018,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
 
 
 // === FILE: lib/features/conversation/data/models/conversation_model.dart ===
+// === FILE: lib/features/conversation/data/models/conversation_model.dart ===
 import '../../domain/entities/conversation_entity.dart';
 
 class ConversationModel extends ConversationEntity {
@@ -1030,6 +1031,7 @@ class ConversationModel extends ConversationEntity {
     super.lastMessage,
     super.lastMessageAt,
     super.lastMessageSenderName,
+    super.lastMessageIsImage,
     required super.unreadCount,
     super.closedBy,
     super.closedAt,
@@ -1054,6 +1056,13 @@ class ConversationModel extends ConversationEntity {
       );
     }).toList();
 
+    // Detect whether the last message was a photo.
+    // Backend sends last_message_content_type = 'image' when it was a photo.
+    final lastContentType =
+        j['last_message_content_type'] as String? ??
+        j['last_message_type'] as String?;
+    final lastIsImage = lastContentType == 'image';
+
     return ConversationModel(
       id: j['id'] as String? ?? '',
       type: (j['type'] as String? ?? 'direct') == 'group'
@@ -1069,6 +1078,7 @@ class ConversationModel extends ConversationEntity {
           ? DateTime.parse(j['last_message_at'] as String)
           : null,
       lastMessageSenderName: j['last_message_sender_name'] as String?,
+      lastMessageIsImage: lastIsImage,
       unreadCount: (j['unread_count'] as num?)?.toInt() ?? 0,
       closedBy: j['closed_by'] as String?,
       closedAt: j['closed_at'] != null
@@ -1100,6 +1110,7 @@ class ConversationModel extends ConversationEntity {
     'last_message': lastMessage,
     'last_message_at': lastMessageAt?.toIso8601String(),
     'last_message_sender_name': lastMessageSenderName,
+    'last_message_is_image': lastMessageIsImage,
     'unread_count': unreadCount,
     'closed_by': closedBy,
     'closed_at': closedAt?.toIso8601String(),
@@ -1116,6 +1127,7 @@ class ConversationModel extends ConversationEntity {
         lastMessage: e.lastMessage,
         lastMessageAt: e.lastMessageAt,
         lastMessageSenderName: e.lastMessageSenderName,
+        lastMessageIsImage: e.lastMessageIsImage,
         unreadCount: e.unreadCount,
         closedBy: e.closedBy,
         closedAt: e.closedAt,
@@ -1130,6 +1142,7 @@ class ConversationModel extends ConversationEntity {
 }
 
 
+// === FILE: lib/features/conversation/data/models/message_model.dart ===
 // === FILE: lib/features/conversation/data/models/message_model.dart ===
 import '../../domain/entities/message_entity.dart';
 
@@ -1166,7 +1179,6 @@ class MessageModel extends MessageEntity {
       final m = r as Map<String, dynamic>;
       return MessageReaction(
         emoji: m['emoji'] as String? ?? '',
-        // API uses actor_id not user_id
         userId: m['actor_id'] as String? ?? m['user_id'] as String? ?? '',
         userName: m['user_name'] as String? ?? '',
       );
@@ -1184,16 +1196,14 @@ class MessageModel extends MessageEntity {
       );
     }).toList();
 
-    // API uses sender_actor_id, fallback to sender_id
+    // sender_actor_id is what the platform API sends
     final senderId =
         j['sender_actor_id'] as String? ?? j['sender_id'] as String? ?? '';
 
-    // API uses conversation_id for DMs, group_id for groups
+    // conversation_id for DMs, group_id for groups
     final conversationId =
         j['conversation_id'] as String? ?? j['group_id'] as String? ?? '';
 
-    // API uses created_at (DirectMessage has $timestamps = false),
-    // fallback to sent_at for forward compatibility
     DateTime sentAt;
     if (j['sent_at'] != null) {
       sentAt = DateTime.parse(j['sent_at'] as String);
@@ -1203,16 +1213,41 @@ class MessageModel extends MessageEntity {
       sentAt = DateTime.now();
     }
 
-    // API uses content_type, fallback to type
     final contentType = j['content_type'] as String? ?? j['type'] as String?;
-
-    // API uses status field for delivery, fallback to delivery_status
     final deliveryStr =
         j['status'] as String? ?? j['delivery_status'] as String?;
+    final senderName = j['sender_name'] as String? ?? senderId;
 
-    // sender_name may not be in the API response — use actor_id as fallback
-    final senderName =
-        j['sender_name'] as String? ?? j['sender_actor_id'] as String? ?? '';
+    // ── Reply fields ──────────────────────────────────────────────────────
+    // The backend may return the replied-to message in two ways:
+    //   A. Flat:  reply_to_sender_name, reply_to_content  (our formatMessage)
+    //   B. Nested: reply_to: { id, sender_name, content, sender_actor_id }
+    //
+    // We support both so a backend upgrade never breaks the client.
+    String? replyToId = j['reply_to_id'] as String?;
+    String? replyToSenderName = j['reply_to_sender_name'] as String?;
+    String? replyToContent = j['reply_to_content'] as String?;
+
+    final replyToObj = j['reply_to'] as Map<String, dynamic>?;
+    if (replyToObj != null) {
+      replyToId ??= replyToObj['id'] as String?;
+      replyToSenderName ??=
+          replyToObj['sender_name'] as String? ??
+          replyToObj['sender_actor_id'] as String?;
+      replyToContent ??= replyToObj['content'] as String?;
+    }
+
+    // ── Image URL ─────────────────────────────────────────────────────────
+    // Backend may return image URL in image_url, attachment.url, or
+    // attachments[0].url
+    String? imageUrl = j['image_url'] as String?;
+    if (imageUrl == null) {
+      final attachments = j['attachments'] as List<dynamic>?;
+      if (attachments != null && attachments.isNotEmpty) {
+        final first = attachments.first as Map<String, dynamic>?;
+        imageUrl = first?['url'] as String? ?? first?['file_url'] as String?;
+      }
+    }
 
     return MessageModel(
       id: j['id'] as String? ?? '',
@@ -1222,12 +1257,12 @@ class MessageModel extends MessageEntity {
       senderRole: j['sender_role'] as String? ?? 'unknown',
       type: _parseType(contentType),
       content: j['content'] as String? ?? '',
-      imageUrl: j['image_url'] as String?,
+      imageUrl: imageUrl,
       deliveryStatus: _parseDelivery(deliveryStr),
       sentAt: sentAt,
-      replyToId: j['reply_to_id'] as String?,
-      replyToSenderName: j['reply_to_sender_name'] as String?,
-      replyToContent: j['reply_to_content'] as String?,
+      replyToId: replyToId,
+      replyToSenderName: replyToSenderName,
+      replyToContent: replyToContent,
       reactions: reactions,
       isPinned: j['is_pinned'] as bool? ?? false,
       isStarred: j['is_starred'] as bool? ?? false,
@@ -1387,6 +1422,7 @@ class ConversationRepositoryImpl implements ConversationRepository {
 
 
 // === FILE: lib/features/conversation/domain/entities/conversation_entity.dart ===
+// === FILE: lib/features/conversation/domain/entities/conversation_entity.dart ===
 import 'package:equatable/equatable.dart';
 
 enum ConversationType { direct, group }
@@ -1442,6 +1478,11 @@ class ConversationEntity extends Equatable {
   final String? lastMessage;
   final DateTime? lastMessageAt;
   final String? lastMessageSenderName;
+
+  /// True when the last message was an image/photo.
+  /// Used by ConversationTile to show a 📷 Photo preview instead of empty text.
+  final bool lastMessageIsImage;
+
   final int unreadCount;
   final String? closedBy;
   final DateTime? closedAt;
@@ -1456,6 +1497,7 @@ class ConversationEntity extends Equatable {
     this.lastMessage,
     this.lastMessageAt,
     this.lastMessageSenderName,
+    this.lastMessageIsImage = false,
     required this.unreadCount,
     this.closedBy,
     this.closedAt,
@@ -1467,6 +1509,8 @@ class ConversationEntity extends Equatable {
     return participants.any((p) => p.id.toLowerCase() == lower);
   }
 
+  /// Returns the display name for this conversation from the perspective of
+  /// [currentUserId]. For DMs returns the OTHER person's name.
   String displayName(String currentUserId) {
     if (type == ConversationType.group) return title ?? 'Group Chat';
     final lower = currentUserId.toLowerCase();
@@ -1476,7 +1520,7 @@ class ConversationEntity extends Equatable {
 
   String subtitle(String currentUserId) {
     if (type == ConversationType.group) {
-      return participants.map((p) => p.name).join(', ');
+      return '${participants.length} members';
     }
     final lower = currentUserId.toLowerCase();
     final other = participants.where((p) => p.id.toLowerCase() != lower);
@@ -1503,6 +1547,7 @@ class ConversationEntity extends Equatable {
     String? lastMessage,
     DateTime? lastMessageAt,
     String? lastMessageSenderName,
+    bool? lastMessageIsImage,
     int? unreadCount,
     String? closedBy,
     DateTime? closedAt,
@@ -1518,6 +1563,7 @@ class ConversationEntity extends Equatable {
       lastMessageAt: lastMessageAt ?? this.lastMessageAt,
       lastMessageSenderName:
           lastMessageSenderName ?? this.lastMessageSenderName,
+      lastMessageIsImage: lastMessageIsImage ?? this.lastMessageIsImage,
       unreadCount: unreadCount ?? this.unreadCount,
       closedBy: closedBy ?? this.closedBy,
       closedAt: closedAt ?? this.closedAt,
@@ -1535,6 +1581,7 @@ class ConversationEntity extends Equatable {
     lastMessage,
     lastMessageAt,
     lastMessageSenderName,
+    lastMessageIsImage,
     unreadCount,
     closedBy,
     closedAt,
@@ -1911,13 +1958,12 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   final String currentUserRole;
 
   // ── Polling ───────────────────────────────────────────────
-  // Polls the active conversation every [_pollInterval] seconds.
-  // Only active when a chat is open (ConversationChatLoaded state).
-  // Pauses automatically when the bloc is not in chat state.
-  // Cancelled on bloc close.
-  static const _pollInterval = Duration(seconds: 8);
+  // Only fetches getMessages() on each tick — never getById().
+  // This avoids rebuilding the conversation widget tree so the
+  // keyboard and TextField focus are never disrupted while typing.
+  static const _pollInterval = Duration(seconds: 6);
   Timer? _pollTimer;
-  String? _activeConvId; // conversation currently open in the detail page
+  String? _activeConvId;
 
   ConversationBloc({
     required this.getAllUseCase,
@@ -1933,12 +1979,12 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
        super(ConversationInitial()) {
     _ds.registerName(currentUserId, currentUserName);
 
-    debugPrint('╔══════════════════════════════════════════════════╗');
-    debugPrint('║ ConversationBloc — Current User Identity         ║');
-    debugPrint('║ currentUserId:   $currentUserId');
-    debugPrint('║ currentUserName: $currentUserName');
-    debugPrint('║ currentUserRole: $currentUserRole');
-    debugPrint('╚══════════════════════════════════════════════════╝');
+    debugPrint('╔══════════════════════════════════╗');
+    debugPrint('║ ConversationBloc identity        ║');
+    debugPrint('║ userId:   $currentUserId');
+    debugPrint('║ userName: $currentUserName');
+    debugPrint('║ role:     $currentUserRole');
+    debugPrint('╚══════════════════════════════════╝');
 
     on<ConversationLoadAllRequested>(_onLoadAll);
     on<ConversationLoadOneRequested>(_onLoadOne);
@@ -1967,8 +2013,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     on<ConversationRemoveParticipantRequested>(_onRemoveParticipant);
     on<ConversationPrivateReplyRequested>(_onPrivateReply);
     on<ConversationStartNewRequested>(_onStartNew);
-
-    // Internal polling tick — silently refreshes messages when chat is open
     on<_ConversationPollTick>(_onPollTick);
 
     _ds.onAutoReply = (convId, _) {
@@ -1982,7 +2026,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     };
   }
 
-  // ── Polling management ────────────────────────────────────
+  // ── Polling ───────────────────────────────────────────────
 
   void _startPolling(String convId) {
     if (_activeConvId == convId && _pollTimer?.isActive == true) return;
@@ -1993,9 +2037,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
         add(_ConversationPollTick(_activeConvId!));
       }
     });
-    debugPrint(
-      '[ConvBloc] Polling started for $convId every ${_pollInterval.inSeconds}s',
-    );
+    debugPrint('[ConvBloc] polling $convId every ${_pollInterval.inSeconds}s');
   }
 
   void _stopPolling() {
@@ -2004,8 +2046,11 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     _activeConvId = null;
   }
 
-  /// Silent refresh — does NOT emit loading state so the UI doesn't flicker.
-  /// Only appends truly new messages (by checking last message ID).
+  /// Message-only silent poll.
+  ///
+  /// Calls only getMessages() — NOT getById().
+  /// Emits only when there are genuinely new message IDs.
+  /// Preserves typingUser and searchResults via copyWith.
   Future<void> _onPollTick(
     _ConversationPollTick event,
     Emitter<ConversationState> emit,
@@ -2016,18 +2061,16 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
 
     try {
       final newMsgs = await _ds.getMessages(event.convId);
-
-      // Only emit if we actually have new messages
       final currentIds = current.messages.map((m) => m.id).toSet();
       final hasNew = newMsgs.any((m) => !currentIds.contains(m.id));
       if (!hasNew) return;
 
-      // Mark as read silently
       _ds.markAsRead(event.convId).ignore();
 
+      // copyWith preserves typingUser + search — no focus disruption
       emit(current.copyWith(messages: newMsgs));
     } catch (_) {
-      // Poll failures are silent — user still sees existing messages
+      // Silent — never surfaces to user
     }
   }
 
@@ -2041,36 +2084,24 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     final msgs = await _ds.getMessages(convId);
     final pinned = _ds.getPinnedMessages(convId);
 
-    debugPrint('┌─ _reloadChat($convId) ─────────────────────');
-    debugPrint(
-      '│ type: ${conv.type.name}, participants: ${conv.participants.length}',
-    );
+    debugPrint('┌─ reloadChat($convId)');
     for (final p in conv.participants) {
-      final match = p.id.toLowerCase() == currentUserId.toLowerCase();
-      debugPrint(
-        '│  ${match ? '✓' : '✗'} id=${p.id} name=${p.name} role=${p.role}',
-      );
+      final me = p.id.toLowerCase() == currentUserId.toLowerCase();
+      debugPrint('│  ${me ? '✓' : ' '} ${p.name} (${p.id})');
     }
-    debugPrint('└────────────────────────────────────────────');
+    debugPrint('└─ ${msgs.length} messages');
 
-    final currentTyping = state is ConversationChatLoaded
-        ? (state as ConversationChatLoaded).typingUser
+    final prev = state is ConversationChatLoaded
+        ? state as ConversationChatLoaded
         : null;
-    final currentSearch = state is ConversationChatLoaded
-        ? (state as ConversationChatLoaded).searchResults
-        : null;
-    final currentQuery = state is ConversationChatLoaded
-        ? (state as ConversationChatLoaded).searchQuery
-        : null;
-
     emit(
       ConversationChatLoaded(
         conversation: conv,
         messages: msgs,
-        typingUser: currentTyping,
+        typingUser: prev?.typingUser,
         pinnedMessages: pinned,
-        searchResults: currentSearch,
-        searchQuery: currentQuery,
+        searchResults: prev?.searchResults,
+        searchQuery: prev?.searchQuery,
       ),
     );
   }
@@ -2081,26 +2112,15 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     ConversationLoadAllRequested event,
     Emitter<ConversationState> emit,
   ) async {
-    // Stop polling when returning to list
     _stopPolling();
-
     emit(ConversationLoading());
     final result = await getAllUseCase(NoParams());
-    result.fold((f) => emit(ConversationFailure(f.message)), (items) {
-      debugPrint('┌─ ConversationLoadAll ─────────────────────');
-      debugPrint('│ total=${items.length} currentUserId=$currentUserId');
-      if (items.isNotEmpty) {
-        debugPrint('│ first conv participants:');
-        for (final p in items.first.participants) {
-          debugPrint('│   id=${p.id} name=${p.name}');
-        }
-      }
-      debugPrint('└────────────────────────────────────────────');
-
-      return items.isEmpty
+    result.fold(
+      (f) => emit(ConversationFailure(f.message)),
+      (items) => items.isEmpty
           ? emit(ConversationEmpty())
-          : emit(ConversationListLoaded(items));
-    });
+          : emit(ConversationListLoaded(items)),
+    );
   }
 
   // ── CHAT ──────────────────────────────────────────────────
@@ -2112,8 +2132,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     emit(ConversationLoading());
     try {
       await _reloadChat(event.id, emit);
-      await _ds.markAsRead(event.id);
-      // Start polling now that chat is open
+      _ds.markAsRead(event.id).ignore();
       _startPolling(event.id);
     } catch (e) {
       emit(ConversationFailure(e.toString()));
@@ -2196,7 +2215,7 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     );
   }
 
-  // ── Auto reply / typing ───────────────────────────────────
+  // ── Typing ────────────────────────────────────────────────
 
   Future<void> _onAutoReply(
     ConversationAutoReplyReceived event,
@@ -2234,86 +2253,79 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   // ── Message ops ───────────────────────────────────────────
 
   Future<void> _onDeleteMessage(
-    ConversationDeleteMessageRequested event,
+    ConversationDeleteMessageRequested e,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _ds.deleteMessage(event.conversationId, event.messageId);
-      await _reloadChat(event.conversationId, emit);
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
+      await _ds.deleteMessage(e.conversationId, e.messageId);
+      await _reloadChat(e.conversationId, emit);
+    } catch (ex) {
+      emit(ConversationFailure(ex.toString()));
     }
   }
 
   Future<void> _onTogglePin(
-    ConversationTogglePinRequested event,
+    ConversationTogglePinRequested e,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _ds.togglePin(event.conversationId, event.messageId);
-      await _reloadChat(event.conversationId, emit);
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
+      await _ds.togglePin(e.conversationId, e.messageId);
+      await _reloadChat(e.conversationId, emit);
+    } catch (ex) {
+      emit(ConversationFailure(ex.toString()));
     }
   }
 
   Future<void> _onToggleStar(
-    ConversationToggleStarRequested event,
+    ConversationToggleStarRequested e,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _ds.toggleStar(event.conversationId, event.messageId);
-      await _reloadChat(event.conversationId, emit);
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
+      await _ds.toggleStar(e.conversationId, e.messageId);
+      await _reloadChat(e.conversationId, emit);
+    } catch (ex) {
+      emit(ConversationFailure(ex.toString()));
     }
   }
 
   Future<void> _onAddReaction(
-    ConversationAddReactionRequested event,
+    ConversationAddReactionRequested e,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _ds.addReaction(event.conversationId, event.messageId, event.emoji);
-      await _reloadChat(event.conversationId, emit);
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
+      await _ds.addReaction(e.conversationId, e.messageId, e.emoji);
+      await _reloadChat(e.conversationId, emit);
+    } catch (ex) {
+      emit(ConversationFailure(ex.toString()));
     }
   }
 
   Future<void> _onEditMessage(
-    ConversationEditMessageRequested event,
+    ConversationEditMessageRequested e,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _ds.editMessage(
-        event.conversationId,
-        event.messageId,
-        event.newContent,
-      );
-      await _reloadChat(event.conversationId, emit);
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
+      await _ds.editMessage(e.conversationId, e.messageId, e.newContent);
+      await _reloadChat(e.conversationId, emit);
+    } catch (ex) {
+      emit(ConversationFailure(ex.toString()));
     }
   }
 
   Future<void> _onViewReadReceipts(
-    ConversationViewReadReceipts event,
+    ConversationViewReadReceipts e,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      final receipts = await _ds.getReadReceipts(
-        event.conversationId,
-        event.messageId,
-      );
+      final receipts = await _ds.getReadReceipts(e.conversationId, e.messageId);
       emit(
         ConversationReadReceiptsLoaded(
           receipts: receipts,
-          messageId: event.messageId,
+          messageId: e.messageId,
         ),
       );
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
+    } catch (ex) {
+      emit(ConversationFailure(ex.toString()));
     }
   }
 
@@ -2340,131 +2352,121 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   }
 
   void _onClearSearch(
-    ConversationClearSearch event,
+    ConversationClearSearch e,
     Emitter<ConversationState> emit,
   ) {
     if (state is! ConversationChatLoaded) return;
     emit((state as ConversationChatLoaded).copyWith(clearSearch: true));
   }
 
-  // ── Forward / Broadcast ───────────────────────────────────
-
   Future<void> _onForwardMessage(
-    ConversationForwardMessageRequested event,
+    ConversationForwardMessageRequested e,
     Emitter<ConversationState> emit,
   ) async {
     try {
       await _ds.sendMessage(
-        convId: event.targetConversationId,
-        content: event.content,
-        forwardedFromConvId: event.originalConvId,
-        forwardedFromSenderName: event.originalSenderName,
+        convId: e.targetConversationId,
+        content: e.content,
+        forwardedFromConvId: e.originalConvId,
+        forwardedFromSenderName: e.originalSenderName,
       );
-      if (state is ConversationChatLoaded) {
-        final s = state as ConversationChatLoaded;
-        if (s.conversation.id == event.targetConversationId) {
-          await _reloadChat(event.targetConversationId, emit);
-        }
+      if (state is ConversationChatLoaded &&
+          (state as ConversationChatLoaded).conversation.id ==
+              e.targetConversationId) {
+        await _reloadChat(e.targetConversationId, emit);
       }
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
+    } catch (ex) {
+      emit(ConversationFailure(ex.toString()));
     }
   }
 
   Future<void> _onBroadcast(
-    ConversationBroadcastRequested event,
+    ConversationBroadcastRequested e,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      final sent = await _ds.broadcastMessage(
-        event.conversationIds,
-        event.content,
+      emit(
+        ConversationBroadcastSuccess(
+          await _ds.broadcastMessage(e.conversationIds, e.content),
+        ),
       );
-      emit(ConversationBroadcastSuccess(sent));
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
+    } catch (ex) {
+      emit(ConversationFailure(ex.toString()));
     }
   }
 
-  // ── Group management ──────────────────────────────────────
-
   Future<void> _onClose(
-    ConversationCloseRequested event,
+    ConversationCloseRequested e,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _ds.closeConversation(event.conversationId);
-      await _reloadChat(event.conversationId, emit);
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
+      await _ds.closeConversation(e.conversationId);
+      await _reloadChat(e.conversationId, emit);
+    } catch (ex) {
+      emit(ConversationFailure(ex.toString()));
     }
   }
 
   Future<void> _onReopen(
-    ConversationReopenRequested event,
+    ConversationReopenRequested e,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _ds.reopenConversation(event.conversationId);
-      await _reloadChat(event.conversationId, emit);
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
+      await _ds.reopenConversation(e.conversationId);
+      await _reloadChat(e.conversationId, emit);
+    } catch (ex) {
+      emit(ConversationFailure(ex.toString()));
     }
   }
 
   Future<void> _onAddParticipant(
-    ConversationAddParticipantRequested event,
+    ConversationAddParticipantRequested e,
     Emitter<ConversationState> emit,
   ) async {
     try {
       await _ds.addParticipant(
-        event.conversationId,
-        event.participantId,
-        event.name,
-        event.role,
+        e.conversationId,
+        e.participantId,
+        e.name,
+        e.role,
       );
-      await _reloadChat(event.conversationId, emit);
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
+      await _reloadChat(e.conversationId, emit);
+    } catch (ex) {
+      emit(ConversationFailure(ex.toString()));
     }
   }
 
   Future<void> _onRemoveParticipant(
-    ConversationRemoveParticipantRequested event,
+    ConversationRemoveParticipantRequested e,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      await _ds.removeParticipant(
-        event.conversationId,
-        event.participantId,
-        event.name,
-      );
-      await _reloadChat(event.conversationId, emit);
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
+      await _ds.removeParticipant(e.conversationId, e.participantId, e.name);
+      await _reloadChat(e.conversationId, emit);
+    } catch (ex) {
+      emit(ConversationFailure(ex.toString()));
     }
   }
-
-  // ── Private reply ─────────────────────────────────────────
 
   Future<void> _onPrivateReply(
-    ConversationPrivateReplyRequested event,
+    ConversationPrivateReplyRequested e,
     Emitter<ConversationState> emit,
   ) async {
     try {
-      final convId = await _ds.createPrivateFromGroup(
-        event.participantId,
-        event.participantName,
-        event.participantRole,
-        event.message,
+      emit(
+        ConversationNewCreated(
+          await _ds.createPrivateFromGroup(
+            e.participantId,
+            e.participantName,
+            e.participantRole,
+            e.message,
+          ),
+        ),
       );
-      emit(ConversationNewCreated(convId));
-    } catch (e) {
-      emit(ConversationFailure(e.toString()));
+    } catch (ex) {
+      emit(ConversationFailure(ex.toString()));
     }
   }
-
-  // ── New conversation ──────────────────────────────────────
 
   Future<void> _onStartNew(
     ConversationStartNewRequested event,
@@ -2477,13 +2479,13 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
         final name = p['name'] ?? '';
         if (id.isNotEmpty && name.isNotEmpty) _ds.registerName(id, name);
       }
-
-      final participantMaps = <Map<String, dynamic>>[
+      final now = DateTime.now().toIso8601String();
+      final pMaps = <Map<String, dynamic>>[
         {
           'id': currentUserId,
           'name': currentUserName,
           'role': currentUserRole,
-          'joined_at': DateTime.now().toIso8601String(),
+          'joined_at': now,
           'online_status': 'online',
           'last_seen_at': null,
         },
@@ -2492,40 +2494,34 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
             'id': p['id']!,
             'name': p['name']!,
             'role': p['role']!,
-            'joined_at': DateTime.now().toIso8601String(),
+            'joined_at': now,
             'online_status': 'offline',
             'last_seen_at': null,
           },
         ),
       ];
-
       final body = event.type == 'group'
           ? {
               'type': event.type,
               'title': event.title,
               '_currentUserId': currentUserId,
-              'participants': participantMaps,
+              'participants': pMaps,
             }
           : {
               'type': event.type,
               'recipient_actor_id': event.participants.first['id'],
-              'participants': participantMaps,
+              'participants': pMaps,
             };
-
       final conv = await _ds.create(body);
-
       if (event.firstMessage != null && event.firstMessage!.isNotEmpty) {
         await Future.delayed(const Duration(milliseconds: 300));
         await _ds.sendMessage(convId: conv.id, content: event.firstMessage!);
       }
-
       emit(ConversationNewCreated(conv.id));
     } catch (e) {
       emit(ConversationFailure(e.toString()));
     }
   }
-
-  // ── Dispose ───────────────────────────────────────────────
 
   @override
   Future<void> close() {
@@ -2534,7 +2530,6 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
   }
 }
 
-// ── Internal polling event (not exposed to the UI) ────────
 class _ConversationPollTick extends ConversationEvent {
   final String convId;
   _ConversationPollTick(this.convId);
@@ -3561,6 +3556,8 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
               participants: conv.participants,
               isGroup: isGroup,
               size: 36,
+              currentUserId:
+                  currentUserId, 
             ),
             const SizedBox(width: 10),
             Flexible(
@@ -5994,9 +5991,9 @@ class ConversationTile extends StatelessWidget {
         case 'copy_id':
           Clipboard.setData(ClipboardData(text: conversation.id));
           ScaffoldMessenger.of(ctx).showSnackBar(
-            SnackBar(
+            const SnackBar(
               content: Text('ID copied'),
-              duration: const Duration(seconds: 1),
+              duration: Duration(seconds: 1),
             ),
           );
         case 'delete':
@@ -6040,6 +6037,9 @@ class ConversationTile extends StatelessWidget {
     final isGroup = conv.type == ConversationType.group;
     final hasUnread = conv.unreadCount > 0;
 
+    // Detect if last message was a photo
+    final lastIsPhoto = conv.lastMessageIsImage == true;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       elevation: 0,
@@ -6057,17 +6057,19 @@ class ConversationTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: [
+                // ── Avatar — pass currentUserId so DMs show OTHER person ──
                 ParticipantAvatarStack(
                   participants: conv.participants,
                   isGroup: isGroup,
                   size: 48,
+                  currentUserId: currentUserId,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ── Row 1: name + lock/group icons ──────────────
+                      // Row 1: display name + icons
                       Row(
                         children: [
                           if (isClosed) ...[
@@ -6092,7 +6094,7 @@ class ConversationTile extends StatelessWidget {
                           ),
                         ],
                       ),
-                      // ── Row 2: subtitle (online status / member count)
+                      // Row 2: online / member count
                       if (subtitle.isNotEmpty) ...[
                         const SizedBox(height: 1),
                         Text(
@@ -6107,9 +6109,35 @@ class ConversationTile extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
-                      // ── Row 3: last message preview ─────────────────
-                      if (conv.lastMessage != null) ...[
-                        const SizedBox(height: 3),
+                      // Row 3: last message preview
+                      const SizedBox(height: 3),
+                      if (lastIsPhoto)
+                        // ── Photo preview ──────────────────────────────
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.photo,
+                              size: 13,
+                              color: hasUnread ? cs.onSurface : cs.outline,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Photo',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: hasUnread
+                                    ? cs.onSurface
+                                    : cs.onSurfaceVariant,
+                                fontWeight: hasUnread
+                                    ? FontWeight.w500
+                                    : FontWeight.w400,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        )
+                      else if (conv.lastMessage != null &&
+                          conv.lastMessage!.isNotEmpty)
                         Text.rich(
                           TextSpan(
                             children: [
@@ -6141,12 +6169,11 @@ class ConversationTile extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                      ],
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
-                // ── Right column: time + unread badge ─────────────────
+                // ── Right: time + unread badge ──────────────────
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -6181,8 +6208,8 @@ class ConversationTile extends StatelessWidget {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ),
-                    if (isGroup && !hasUnread)
+                      )
+                    else if (isGroup)
                       Text(
                         '${conv.participants.length} members',
                         style: theme.textTheme.labelSmall?.copyWith(
@@ -6949,6 +6976,7 @@ class _Receipt extends StatelessWidget {
 }
 
 // === FILE: lib/features/conversation/presentation/widgets/participant_avatar_stack.dart ===
+// === FILE: lib/features/conversation/presentation/widgets/participant_avatar_stack.dart ===
 import 'package:flutter/material.dart';
 import '../../domain/entities/conversation_entity.dart';
 
@@ -6956,31 +6984,53 @@ class ParticipantAvatarStack extends StatelessWidget {
   final List<ConversationParticipant> participants;
   final bool isGroup;
   final double size;
+
+  /// The current user's actor ID.
+  /// When provided and the conversation is a DM, the avatar shows the
+  /// OTHER participant's initials instead of always using participants.first.
+  final String? currentUserId;
+
   const ParticipantAvatarStack({
     super.key,
     required this.participants,
     required this.isGroup,
     this.size = 48,
+    this.currentUserId, // ← new optional param, backward-compatible
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    if (!isGroup || participants.length <= 1) {
-      final p = participants.isNotEmpty ? participants.first : null;
+
+    if (!isGroup) {
+      // ── DM: show the OTHER person's avatar ──────────────────
+      // Find the participant that is NOT the current user.
+      // Falls back to first if currentUserId is null or not found.
+      ConversationParticipant? other;
+      if (currentUserId != null && participants.length > 1) {
+        other = participants.firstWhere(
+          (p) => p.id.toLowerCase() != currentUserId!.toLowerCase(),
+          orElse: () => participants.first,
+        );
+      }
+      other ??= participants.isNotEmpty ? participants.first : null;
+
       return _avatarWithStatus(
         context,
-        p?.name ?? '?',
-        _roleColor(p?.role ?? 'unknown', cs),
+        other?.name ?? '?',
+        _roleColor(other?.role ?? 'unknown', cs),
         size,
-        p?.onlineStatus,
+        other?.onlineStatus,
       );
     }
+
+    // ── Group: stack up to 3 avatars ────────────────────────
     final visible = participants.take(3).toList();
     final overlap = size * 0.3;
     final smallSize = size * 0.7;
     final totalWidth =
         size + (visible.length - 1) * (smallSize - overlap * 0.5);
+
     return SizedBox(
       width: totalWidth,
       height: size,

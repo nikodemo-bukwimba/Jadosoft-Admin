@@ -8,15 +8,21 @@
 // Ward     : free-text + searchable picker when static data exists.
 // Street   : free-text + searchable picker when static data exists.
 //
-// Each level below Country is a TextFormField that the user can type into
+// Each level below Country is a TextFormField the user can type into
 // directly.  When TanzaniaLocations has a list for that level a dropdown
 // arrow icon is shown as a suffix; tapping it opens the searchable bottom-
 // sheet picker and fills the text field with the chosen value.
 // A clear (×) icon is shown whenever the field is non-empty.
 //
 // Cascade: changing a level clears all levels below it.
-// Visibility: District is shown once Region has any text, Ward once District
+// Visibility: District shown once Region has any text, Ward once District
 // has any text, Street once Ward has any text.
+//
+// FIX (blank-space): change handlers now pass the raw typed value to
+// onChanged — trimming only happens when the value is committed (i.e.
+// when the picker is used or the field loses focus).  This lets users
+// type multi-word place names (e.g. "Dar es Salaam") without spaces
+// being stripped mid-word.
 
 import 'package:flutter/material.dart';
 import '../data/tanzania_locations.dart';
@@ -53,38 +59,46 @@ class LocationValue {
     bool clearDistrict = false,
     bool clearWard = false,
     bool clearStreet = false,
-  }) =>
-      LocationValue(
-        country: country ?? this.country,
-        region: region ?? this.region,
-        district: clearDistrict ? null : (district ?? this.district),
-        ward: clearWard ? null : (ward ?? this.ward),
-        street: clearStreet ? null : (street ?? this.street),
-      );
+  }) => LocationValue(
+    country: country ?? this.country,
+    region: region ?? this.region,
+    district: clearDistrict ? null : (district ?? this.district),
+    ward: clearWard ? null : (ward ?? this.ward),
+    street: clearStreet ? null : (street ?? this.street),
+  );
 
-  /// Reconstruct from the flat city/county strings stored in the API.
-  factory LocationValue.fromApiFields({String? city, String? county}) {
-    final resolvedRegion =
-        (county != null && TanzaniaLocations.regions.contains(county))
-            ? county
-            : county; // keep even if not in static list (free-text case)
+  /// Reconstruct from the flat city/county/ward/street strings stored in
+  /// the API.  All four fields are accepted so edit-mode restoration works
+  /// correctly with the full Tanzania hierarchy.
+  factory LocationValue.fromApiFields({
+    String? city,
+    String? county,
+    String? ward,
+    String? street,
+  }) {
+    // county → region (kept even when not in static list — free-text case)
+    final resolvedRegion = county?.isNotEmpty == true ? county : null;
 
-    String? resolvedDistrict;
-    if (resolvedRegion != null && city != null) {
-      final districts = TanzaniaLocations.getDistricts(resolvedRegion);
-      resolvedDistrict =
-          (districts.isNotEmpty && districts.contains(city)) ? city : city;
-    }
+    // city → district (kept even when not in static list — free-text case)
+    final resolvedDistrict =
+        (resolvedRegion != null && city?.isNotEmpty == true) ? city : null;
+
+    // ward / street passed through directly
+    final resolvedWard = ward?.isNotEmpty == true ? ward : null;
+    final resolvedStreet = street?.isNotEmpty == true ? street : null;
 
     return LocationValue(
       region: resolvedRegion,
       district: resolvedDistrict,
+      ward: resolvedWard,
+      street: resolvedStreet,
     );
   }
 
   @override
   String toString() =>
-      'LocationValue(region: $region, district: $district, ward: $ward, street: $street)';
+      'LocationValue(region: $region, district: $district, '
+      'ward: $ward, street: $street)';
 }
 
 // ── LocationSectionWidget ─────────────────────────────────────────────────────
@@ -104,7 +118,6 @@ class LocationSectionWidget extends StatefulWidget {
 }
 
 class _LocationSectionWidgetState extends State<LocationSectionWidget> {
-  // One controller per editable level.
   final _regionCtl = TextEditingController();
   final _districtCtl = TextEditingController();
   final _wardCtl = TextEditingController();
@@ -124,7 +137,6 @@ class _LocationSectionWidgetState extends State<LocationSectionWidget> {
     }
   }
 
-  /// Push LocationValue into controllers without triggering onChanged.
   void _syncControllersFromValue(LocationValue v) {
     _set(_regionCtl, v.region ?? '');
     _set(_districtCtl, v.district ?? '');
@@ -146,36 +158,42 @@ class _LocationSectionWidgetState extends State<LocationSectionWidget> {
   }
 
   // ── Change handlers ─────────────────────────────────────────
+  //
+  // KEY FIX: pass the RAW typed string (not trimmed) to onChanged so
+  // the user can type spaces between words.  We only convert an empty /
+  // whitespace-only string to null so the cascade/visibility logic still
+  // works correctly.  Trimming happens automatically when the picker is
+  // used (picker always returns a clean string) and in _submit() on the
+  // form page via .text.trim().
 
   void _onRegionChanged(String v) {
     _districtCtl.clear();
     _wardCtl.clear();
     _streetCtl.clear();
-    widget.onChanged(LocationValue(region: v.trim().isEmpty ? null : v.trim()));
+    widget.onChanged(LocationValue(region: v.isEmpty ? null : v));
   }
 
   void _onDistrictChanged(String v) {
     _wardCtl.clear();
     _streetCtl.clear();
-    widget.onChanged(widget.value.copyWith(
-      district: v.trim().isEmpty ? null : v.trim(),
-      clearWard: true,
-      clearStreet: true,
-    ));
+    widget.onChanged(
+      widget.value.copyWith(
+        district: v.isEmpty ? null : v,
+        clearWard: true,
+        clearStreet: true,
+      ),
+    );
   }
 
   void _onWardChanged(String v) {
     _streetCtl.clear();
-    widget.onChanged(widget.value.copyWith(
-      ward: v.trim().isEmpty ? null : v.trim(),
-      clearStreet: true,
-    ));
+    widget.onChanged(
+      widget.value.copyWith(ward: v.isEmpty ? null : v, clearStreet: true),
+    );
   }
 
   void _onStreetChanged(String v) {
-    widget.onChanged(widget.value.copyWith(
-      street: v.trim().isEmpty ? null : v.trim(),
-    ));
+    widget.onChanged(widget.value.copyWith(street: v.isEmpty ? null : v));
   }
 
   // ── Build ───────────────────────────────────────────────────
@@ -184,17 +202,16 @@ class _LocationSectionWidgetState extends State<LocationSectionWidget> {
   Widget build(BuildContext context) {
     final v = widget.value;
 
-    // Suggestions are only used for the picker icon; the field is always
-    // editable regardless of whether suggestions are available.
     final regionSuggestions = TanzaniaLocations.regions;
     final districtSuggestions = v.region != null
-        ? TanzaniaLocations.getDistricts(v.region!)
+        ? TanzaniaLocations.getDistricts(v.region!.trim())
         : <String>[];
     final wardSuggestions = v.district != null
-        ? TanzaniaLocations.getWards(v.district!)
+        ? TanzaniaLocations.getWards(v.district!.trim())
         : <String>[];
-    final streetSuggestions =
-        v.ward != null ? TanzaniaLocations.getStreets(v.ward!) : <String>[];
+    final streetSuggestions = v.ward != null
+        ? TanzaniaLocations.getStreets(v.ward!.trim())
+        : <String>[];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -214,22 +231,24 @@ class _LocationSectionWidgetState extends State<LocationSectionWidget> {
           icon: Icons.map_outlined,
           suggestions: regionSuggestions,
           onChanged: _onRegionChanged,
+          onCommit: (v) => _onRegionChanged(v.trim()),
         ),
 
-        // District — visible once region has any text
-        if ((v.region ?? '').isNotEmpty) ...[
+        // District — visible once region has any non-whitespace text
+        if ((v.region ?? '').trim().isNotEmpty) ...[
           const SizedBox(height: 16),
           _ComboLevelField(
             controller: _districtCtl,
-            label: 'District / City',
+            label: 'District / Council',
             icon: Icons.location_city,
             suggestions: districtSuggestions,
             onChanged: _onDistrictChanged,
+            onCommit: (v) => _onDistrictChanged(v.trim()),
           ),
         ],
 
-        // Ward — visible once district has any text
-        if ((v.district ?? '').isNotEmpty) ...[
+        // Ward — visible once district has any non-whitespace text
+        if ((v.district ?? '').trim().isNotEmpty) ...[
           const SizedBox(height: 16),
           _ComboLevelField(
             controller: _wardCtl,
@@ -237,11 +256,12 @@ class _LocationSectionWidgetState extends State<LocationSectionWidget> {
             icon: Icons.villa_outlined,
             suggestions: wardSuggestions,
             onChanged: _onWardChanged,
+            onCommit: (v) => _onWardChanged(v.trim()),
           ),
         ],
 
-        // Street — visible once ward has any text
-        if ((v.ward ?? '').isNotEmpty) ...[
+        // Street — visible once ward has any non-whitespace text
+        if ((v.ward ?? '').trim().isNotEmpty) ...[
           const SizedBox(height: 16),
           _ComboLevelField(
             controller: _streetCtl,
@@ -249,6 +269,7 @@ class _LocationSectionWidgetState extends State<LocationSectionWidget> {
             icon: Icons.signpost_outlined,
             suggestions: streetSuggestions,
             onChanged: _onStreetChanged,
+            onCommit: (v) => _onStreetChanged(v.trim()),
           ),
         ],
       ],
@@ -262,6 +283,9 @@ class _LocationSectionWidgetState extends State<LocationSectionWidget> {
 // When [suggestions] is non-empty a dropdown-arrow suffix opens the
 // searchable bottom-sheet picker.  A clear (×) suffix is shown whenever
 // the field is non-empty.
+//
+// [onChanged] receives the raw value on every keystroke (spaces allowed).
+// [onCommit]  receives the trimmed value on focus-loss and picker selection.
 
 class _ComboLevelField extends StatefulWidget {
   final TextEditingController controller;
@@ -269,6 +293,7 @@ class _ComboLevelField extends StatefulWidget {
   final IconData icon;
   final List<String> suggestions;
   final ValueChanged<String> onChanged;
+  final ValueChanged<String> onCommit;
 
   const _ComboLevelField({
     required this.controller,
@@ -276,6 +301,7 @@ class _ComboLevelField extends StatefulWidget {
     required this.icon,
     required this.suggestions,
     required this.onChanged,
+    required this.onCommit,
   });
 
   @override
@@ -283,15 +309,26 @@ class _ComboLevelField extends StatefulWidget {
 }
 
 class _ComboLevelFieldState extends State<_ComboLevelField> {
+  late final FocusNode _focusNode;
+
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_rebuild);
+    _focusNode = FocusNode()
+      ..addListener(() {
+        // On focus loss, commit the trimmed value so the parent LocationValue
+        // is tidy even when the user typed trailing spaces.
+        if (!_focusNode.hasFocus) {
+          widget.onCommit(widget.controller.text);
+        }
+      });
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_rebuild);
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -307,12 +344,15 @@ class _ComboLevelFieldState extends State<_ComboLevelField> {
       builder: (_) => _SearchablePicker(
         label: widget.label,
         items: widget.suggestions,
-        selected: widget.controller.text.isEmpty ? null : widget.controller.text,
+        selected: widget.controller.text.isEmpty
+            ? null
+            : widget.controller.text,
       ),
     );
     if (picked != null && mounted) {
+      // Picker always provides a clean trimmed string — commit directly.
       widget.controller.text = picked;
-      widget.onChanged(picked);
+      widget.onCommit(picked);
     }
   }
 
@@ -323,6 +363,8 @@ class _ComboLevelFieldState extends State<_ComboLevelField> {
 
     return TextFormField(
       controller: widget.controller,
+      focusNode: _focusNode,
+      // Pass raw value so spaces are preserved while typing.
       onChanged: widget.onChanged,
       textCapitalization: TextCapitalization.words,
       decoration: InputDecoration(
@@ -332,7 +374,6 @@ class _ComboLevelFieldState extends State<_ComboLevelField> {
         suffixIcon: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Clear button — shown when field has content
             if (hasText)
               GestureDetector(
                 onTap: () {
@@ -344,7 +385,6 @@ class _ComboLevelFieldState extends State<_ComboLevelField> {
                   child: Icon(Icons.clear, size: 18),
                 ),
               ),
-            // Picker button — shown when static suggestions are available
             if (hasSuggestions)
               GestureDetector(
                 onTap: _openPicker,
@@ -419,9 +459,7 @@ class _SearchablePickerState extends State<_SearchablePicker> {
     setState(() {
       _filtered = q.isEmpty
           ? widget.items
-          : widget.items
-              .where((e) => e.toLowerCase().contains(q))
-              .toList();
+          : widget.items.where((e) => e.toLowerCase().contains(q)).toList();
     });
   }
 
@@ -445,7 +483,6 @@ class _SearchablePickerState extends State<_SearchablePicker> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Handle
             Container(
               width: 40,
               height: 4,
@@ -459,10 +496,9 @@ class _SearchablePickerState extends State<_SearchablePicker> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(
                 'Select ${widget.label}',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
             ),
             const SizedBox(height: 12),

@@ -1,13 +1,114 @@
 ﻿// ================================================================
 // features_product_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-05-22 23:44:11
-// Files        : 34
+// Generated    : 2026-06-04 16:23:48
+// Files        : 42
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
 
+// === FILE: lib/features/product/data/datasources/branch_pricing_remote_datasource.dart ===
+// lib/features/product/data/datasources/branch_pricing_remote_datasource.dart
+//Admin app overriding price setting...
+
+import 'package:dio/dio.dart';
+import '../../../../core/error/exceptions.dart';
+import '../models/branch_variant_price_model.dart';
+
+// ── Abstract interface ──────────────────────────────────────────────────────
+
+abstract class BranchPricingRemoteDataSource {
+  Future<List<BranchVariantPriceModel>> listOverrides(String orgId);
+
+  Future<BranchVariantPriceModel> setOverride({
+    required String orgId,
+    required String variantId,
+    required double price,
+    String currency,
+  });
+
+  Future<void> removeOverride({
+    required String orgId,
+    required String variantId,
+  });
+}
+
+// ── Dio implementation ──────────────────────────────────────────────────────
+
+class BranchPricingApiDataSource implements BranchPricingRemoteDataSource {
+  final Dio _dio;
+
+  BranchPricingApiDataSource({required Dio dio}) : _dio = dio;
+
+  String _msg(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic> && data['message'] is String) {
+      return data['message'] as String;
+    }
+    return 'An error occurred. Please try again.';
+  }
+
+  @override
+  Future<List<BranchVariantPriceModel>> listOverrides(String orgId) async {
+    try {
+      final res = await _dio.get('/commerce/orgs/$orgId/branch-prices');
+      final raw = res.data;
+      final List<dynamic> items = raw is Map
+          ? ((raw['data'] ?? raw['overrides'] ?? []) as List)
+          : (raw as List);
+      return items
+          .cast<Map<String, dynamic>>()
+          .map(BranchVariantPriceModel.fromJson)
+          .toList();
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    } catch (e) {
+      throw ServerException(e.toString());
+    }
+  }
+
+  @override
+  Future<BranchVariantPriceModel> setOverride({
+    required String orgId,
+    required String variantId,
+    required double price,
+    String currency = 'TZS',
+  }) async {
+    try {
+      final res = await _dio.put(
+        '/commerce/orgs/$orgId/variants/$variantId/price',
+        data: {'price': price, 'currency': currency},
+      );
+      final raw = res.data;
+      final json = raw is Map<String, dynamic>
+          ? (raw['override'] as Map<String, dynamic>? ?? raw)
+          : raw as Map<String, dynamic>;
+      return BranchVariantPriceModel.fromJson(json);
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    } catch (e) {
+      throw ServerException(e.toString());
+    }
+  }
+
+  @override
+  Future<void> removeOverride({
+    required String orgId,
+    required String variantId,
+  }) async {
+    try {
+      await _dio.delete('/commerce/orgs/$orgId/variants/$variantId/price');
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return;
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    } catch (e) {
+      throw ServerException(e.toString());
+    }
+  }
+}
+
 // === FILE: lib/features/product/data/datasources/product_api_datasource.dart ===
 // lib/features/product/data/datasources/product_api_datasource.dart
+// admin app
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -41,10 +142,12 @@ class ProductApiDataSource implements ProductRemoteDataSource {
 
   Map<String, dynamic> _unwrapProduct(dynamic raw) {
     if (raw is Map<String, dynamic>) {
-      if (raw.containsKey('product'))
+      if (raw.containsKey('product')) {
         return raw['product'] as Map<String, dynamic>;
-      if (raw.containsKey('data') && raw['data'] is Map)
+      }
+      if (raw.containsKey('data') && raw['data'] is Map) {
         return raw['data'] as Map<String, dynamic>;
+      }
       return raw;
     }
     return {};
@@ -65,10 +168,19 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     final price = rawPrice == null
         ? 0.0
         : double.tryParse(rawPrice.toString()) ?? 0.0;
+
+    // effective_price: branch override → root base_price (resolved server-side)
     final rawEffective = defaultVariant?['effective_price'];
     final effectivePrice = rawEffective == null
         ? price
         : double.tryParse(rawEffective.toString()) ?? price;
+
+    // branch_price: non-null only when an override exists for the viewing org
+    final rawBranch = defaultVariant?['branch_price'];
+    final branchPrice = rawBranch != null
+        ? double.tryParse(rawBranch.toString())
+        : null;
+
     final discountPercentage = (defaultVariant?['discount_percentage'] as num?)
         ?.toDouble();
     final hasPromotion = defaultVariant?['has_promotion'] as bool? ?? false;
@@ -93,6 +205,7 @@ class ProductApiDataSource implements ProductRemoteDataSource {
       name: j['name']?.toString() ?? '',
       description: j['description']?.toString(),
       price: price,
+      branchPrice: branchPrice,
       effectivePrice: effectivePrice,
       discountPercentage: discountPercentage,
       hasPromotion: hasPromotion,
@@ -196,10 +309,14 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   @override
   Future<List<ProductModel>> getAll() async {
     try {
-      final orgId = _orgContext.requireRootOrgId();
+      // Products are branch-scoped on the server.
+      // - When effectiveOrgId is a branch → server returns branch products only.
+      // - When effectiveOrgId is the root org → server returns the full tree catalog.
+      // No client-side root-forcing needed; the server handles both cases.
+      final orgId = _orgContext.effectiveOrgId;
       final res = await _dio.get(
         '/commerce/orgs/$orgId/products',
-        queryParameters: {'per_page': 100},
+        queryParameters: {'per_page': 100, 'org_id': orgId},
       );
       final raw = res.data;
       final List<dynamic> items = raw is Map
@@ -232,7 +349,8 @@ class ProductApiDataSource implements ProductRemoteDataSource {
   @override
   Future<ProductModel> create(Map<String, dynamic> data) async {
     try {
-      final orgId = _orgContext.requireRootOrgId();
+      // Create under the effective org (branch or root).
+      final orgId = _orgContext.effectiveOrgId;
       final res = await _dio.post(
         '/commerce/orgs/$orgId/products',
         data: _createBody(data),
@@ -283,8 +401,9 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     try {
       await _dio.post('/commerce/products/$id/archive');
     } on DioException catch (e) {
-      if (e.response?.statusCode == 404 || e.response?.statusCode == 422)
+      if (e.response?.statusCode == 404 || e.response?.statusCode == 422) {
         return;
+      }
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     } catch (e) {
       throw ServerException(e.toString());
@@ -321,7 +440,6 @@ class ProductApiDataSource implements ProductRemoteDataSource {
       String uploadPath = localPath;
       String uploadName = p.basename(localPath);
 
-      // Compress on desktop before sending
       if (_isDesktop) {
         final compressed = await _compressForDesktop(file);
         if (compressed != null) {
@@ -357,9 +475,6 @@ class ProductApiDataSource implements ProductRemoteDataSource {
     }
   }
 
-  /// Decodes [source], resizes to fit [_maxDimension] on the longest axis,
-  /// and re-encodes as JPEG at [_jpegQuality].  Writes to a temp file.
-  /// Returns null on any error so the caller can fall back to the original.
   Future<File?> _compressForDesktop(File source) async {
     try {
       final bytes = await source.readAsBytes();
@@ -390,7 +505,7 @@ class ProductApiDataSource implements ProductRemoteDataSource {
       await tempFile.writeAsBytes(jpegBytes);
       return tempFile;
     } catch (_) {
-      return null; // fall back to original file
+      return null;
     }
   }
 }
@@ -489,17 +604,84 @@ class ProductRemoteDataSourceImpl implements ProductRemoteDataSource {
 }
 
 
+// === FILE: lib/features/product/data/models/branch_variant_price_model.dart ===
+// lib/features/product/data/models/branch_variant_price_model.dart
+//admin app
+
+import '../../domain/entities/branch_variant_price_entity.dart';
+
+class BranchVariantPriceModel extends BranchVariantPriceEntity {
+  const BranchVariantPriceModel({
+    required super.id,
+    required super.orgId,
+    required super.variantId,
+    required super.price,
+    required super.currency,
+    super.variantBasePrice,
+    super.variantName,
+    super.productName,
+    required super.createdAt,
+    required super.updatedAt,
+  });
+
+  factory BranchVariantPriceModel.fromJson(Map<String, dynamic> json) {
+    // The override object may embed the variant object when loaded with relations.
+    final variant = json['variant'] as Map<String, dynamic>?;
+    final product = variant?['product'] as Map<String, dynamic>?;
+
+    final rawPrice =
+        json['price'] ?? json['base_price'] ?? json['override_price'] ?? 0;
+    final price = double.tryParse(rawPrice.toString()) ?? 0.0;
+
+    final rawBase = variant?['base_price'];
+    final basePrice =
+        rawBase != null ? double.tryParse(rawBase.toString()) : null;
+
+    return BranchVariantPriceModel(
+      id: json['id']?.toString() ?? '',
+      orgId: json['org_id']?.toString() ?? '',
+      variantId: json['variant_id']?.toString() ?? '',
+      price: price,
+      currency: json['currency']?.toString() ?? 'TZS',
+      variantBasePrice: basePrice,
+      variantName: variant?['name']?.toString() ?? variant?['sku']?.toString(),
+      productName: product?['name']?.toString(),
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.tryParse(json['updated_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'org_id': orgId,
+        'variant_id': variantId,
+        'price': price,
+        'currency': currency,
+        'created_at': createdAt.toIso8601String(),
+        'updated_at': updatedAt.toIso8601String(),
+      };
+}
+
 // === FILE: lib/features/product/data/models/product_model.dart ===
 // lib/features/product/data/models/product_model.dart
+//Admin app
+// CHANGE: Added branchPrice, effectiveBasePrice parsing from API variants.
+// All existing fields are untouched.
 
 import '../../domain/entities/product_entity.dart';
 
 class ProductModel extends ProductEntity {
-  const ProductModel({
+  ProductModel({
     required super.id,
     required super.name,
     super.description,
     required super.price,
+    super.branchPrice,
+    super.effectiveBasePrice,
     super.effectivePrice,
     super.discountPercentage,
     super.promotionId,
@@ -521,14 +703,30 @@ class ProductModel extends ProductEntity {
   factory ProductModel.fromJson(Map<String, dynamic> json) {
     final basePrice = (json['base_price'] as num? ?? json['price'] as num? ?? 0)
         .toDouble();
-    final effectivePrice =
-        (json['effective_price'] as num?)?.toDouble() ?? basePrice;
+
+    // branch_price is populated when the API is called with a branch org_id
+    final rawBranch = json['branch_price'];
+    final branchPrice = rawBranch != null
+        ? double.tryParse(rawBranch.toString())
+        : null;
+
+    final rawBase = json['effective_base_price'];
+    final effectiveBase = rawBase != null
+        ? double.tryParse(rawBase.toString())
+        : (branchPrice ?? basePrice);
+
+    final rawEffective = json['effective_price'];
+    final effectivePrice = rawEffective != null
+        ? double.tryParse(rawEffective.toString())
+        : effectiveBase;
 
     return ProductModel(
       id: json['id']?.toString() ?? '',
       name: json['name'] as String? ?? '',
       description: json['description'] as String?,
       price: basePrice,
+      branchPrice: branchPrice,
+      effectiveBasePrice: effectiveBase,
       effectivePrice: effectivePrice,
       discountPercentage: (json['discount_percentage'] as num?)?.toDouble(),
       promotionId: json['promotion_id'] as String?,
@@ -557,6 +755,8 @@ class ProductModel extends ProductEntity {
     'name': name,
     'description': description,
     'price': price,
+    'branch_price': branchPrice,
+    'effective_base_price': effectiveBasePrice,
     'effective_price': effectivePrice,
     'discount_percentage': discountPercentage,
     'promotion_id': promotionId,
@@ -582,6 +782,8 @@ class ProductModel extends ProductEntity {
       name: e.name,
       description: e.description,
       price: e.price,
+      branchPrice: e.branchPrice,
+      effectiveBasePrice: e.effectiveBasePrice,
       effectivePrice: e.effectivePrice,
       discountPercentage: e.discountPercentage,
       promotionId: e.promotionId,
@@ -607,6 +809,8 @@ class ProductModel extends ProductEntity {
     String? name,
     String? description,
     double? price,
+    double? branchPrice,
+    double? effectiveBasePrice,
     double? effectivePrice,
     double? discountPercentage,
     String? promotionId,
@@ -629,6 +833,8 @@ class ProductModel extends ProductEntity {
       name: name ?? this.name,
       description: description ?? this.description,
       price: price ?? this.price,
+      branchPrice: branchPrice ?? this.branchPrice,
+      effectiveBasePrice: effectiveBasePrice ?? this.effectiveBasePrice,
       effectivePrice: effectivePrice ?? this.effectivePrice,
       discountPercentage: discountPercentage ?? this.discountPercentage,
       promotionId: promotionId ?? this.promotionId,
@@ -649,6 +855,75 @@ class ProductModel extends ProductEntity {
   }
 }
 
+
+// === FILE: lib/features/product/data/repositories/branch_pricing_repository_impl.dart ===
+// lib/features/product/data/repositories/branch_pricing_repository_impl.dart
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/exceptions.dart';
+import '../../../../core/error/failures.dart';
+import '../../domain/entities/branch_variant_price_entity.dart';
+import '../../domain/repositories/branch_pricing_repository.dart';
+import '../datasources/branch_pricing_remote_datasource.dart';
+
+class BranchPricingRepositoryImpl implements BranchPricingRepository {
+  final BranchPricingRemoteDataSource _remote;
+
+  const BranchPricingRepositoryImpl({
+    required BranchPricingRemoteDataSource remote,
+  }) : _remote = remote;
+
+  @override
+  Future<Either<Failure, List<BranchVariantPriceEntity>>> listOverrides(
+    String orgId,
+  ) async {
+    try {
+      final result = await _remote.listOverrides(orgId);
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, BranchVariantPriceEntity>> setOverride({
+    required String orgId,
+    required String variantId,
+    required double price,
+    String currency = 'TZS',
+  }) async {
+    try {
+      final result = await _remote.setOverride(
+        orgId: orgId,
+        variantId: variantId,
+        price: price,
+        currency: currency,
+      );
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, void>> removeOverride({
+    required String orgId,
+    required String variantId,
+  }) async {
+    try {
+      await _remote.removeOverride(orgId: orgId, variantId: variantId);
+      return const Right(null);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+}
 
 // === FILE: lib/features/product/data/repositories/product_repository_impl.dart ===
 import 'package:dartz/dartz.dart';
@@ -732,8 +1007,85 @@ class ProductRepositoryImpl implements ProductRepository {
 }
 
 
+// === FILE: lib/features/product/domain/entities/branch_variant_price_entity.dart ===
+// lib/features/product/domain/entities/branch_variant_price_entity.dart
+
+import 'package:equatable/equatable.dart';
+
+/// Represents a branch-level price override for a single product variant.
+///
+/// When a branch sets an override, [branchPrice] is used as the base
+/// before any promotion discount is applied — instead of the root
+/// [variantBasePrice].
+class BranchVariantPriceEntity extends Equatable {
+  final String id;
+  final String orgId;
+  final String variantId;
+
+  /// The branch-specific base price (≥ variantBasePrice).
+  final double price;
+  final String currency;
+
+  /// Root-level base price — for display comparison only.
+  final double? variantBasePrice;
+
+  /// Snapshot of the product/variant name for list display.
+  final String? variantName;
+  final String? productName;
+
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const BranchVariantPriceEntity({
+    required this.id,
+    required this.orgId,
+    required this.variantId,
+    required this.price,
+    required this.currency,
+    this.variantBasePrice,
+    this.variantName,
+    this.productName,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  /// The mark-up above root base price, as a percentage.
+  double? get markupPercentage {
+    if (variantBasePrice == null || variantBasePrice == 0) return null;
+    return ((price - variantBasePrice!) / variantBasePrice!) * 100;
+  }
+
+  /// True when the branch price exceeds the root base price.
+  bool get hasMarkup =>
+      variantBasePrice != null && price > variantBasePrice!;
+
+  @override
+  List<Object?> get props => [
+        id,
+        orgId,
+        variantId,
+        price,
+        currency,
+        variantBasePrice,
+        variantName,
+        productName,
+        createdAt,
+        updatedAt,
+      ];
+}
+
 // === FILE: lib/features/product/domain/entities/product_entity.dart ===
 // lib/features/product/domain/entities/product_entity.dart
+//
+// CHANGE: Added branchPrice and effectiveBasePrice fields.
+//
+// branchPrice      — branch override price set via BranchPricingService.
+//                    null when the viewing org has no override (uses root base).
+// effectiveBasePrice — branchPrice ?? price.  This is the base BEFORE promotion.
+//                    Previously all callers assumed price == base; now use this.
+//
+// displayPrice and isOnPromotion are unchanged in semantics — they still reflect
+// the final price shown to the user (after branch price + promotion applied).
 
 import 'package:equatable/equatable.dart';
 
@@ -741,10 +1093,25 @@ class ProductEntity extends Equatable {
   final String id;
   final String name;
   final String? description;
-  final double price; // base price — never changes
-  final double effectivePrice; // promotion price if active, else == price
-  final double? discountPercentage; // null if no active promotion
-  final String? promotionId; // null if no active promotion
+
+  /// Root catalog base price — the price set at root org level.
+  /// Never mutated by branch overrides or promotions.
+  final double price;
+
+  /// Branch-specific base price override (null = no branch override).
+  /// When set, this is the base before promotion discount is applied.
+  final double? branchPrice;
+
+  /// The effective base used for promotion calculations:
+  ///   branchPrice ?? price
+  final double effectiveBasePrice;
+
+  /// Final display price after all discounts (effectiveBasePrice × discount).
+  /// Equals effectiveBasePrice when no promotion is active.
+  final double effectivePrice;
+
+  final double? discountPercentage;
+  final String? promotionId;
   final bool hasPromotion;
   final String categoryId;
   final String? variantId;
@@ -759,11 +1126,13 @@ class ProductEntity extends Equatable {
   final String? packSize;
   final int? quantityAvailable;
 
-  const ProductEntity({
+  ProductEntity({
     required this.id,
     required this.name,
     this.description,
     required this.price,
+    this.branchPrice,
+    double? effectiveBasePrice,
     double? effectivePrice,
     this.discountPercentage,
     this.promotionId,
@@ -780,19 +1149,26 @@ class ProductEntity extends Equatable {
     this.expiryDate,
     this.packSize,
     this.quantityAvailable,
-  }) : effectivePrice = effectivePrice ?? price;
+  }) : effectiveBasePrice = effectiveBasePrice ?? branchPrice ?? price,
+       effectivePrice =
+           effectivePrice ?? effectiveBasePrice ?? branchPrice ?? price;
 
   /// The price to display prominently in the UI.
   double get displayPrice => effectivePrice;
 
+  /// True when a branch override is active for this org.
+  bool get hasBranchPrice => branchPrice != null && branchPrice != price;
+
   /// True when there is a live discount reducing the price.
-  bool get isOnPromotion => hasPromotion && effectivePrice < price;
+  bool get isOnPromotion => hasPromotion && effectivePrice < effectiveBasePrice;
 
   ProductEntity copyWith({
     String? id,
     String? name,
     String? description,
     double? price,
+    double? branchPrice,
+    double? effectiveBasePrice,
     double? effectivePrice,
     double? discountPercentage,
     String? promotionId,
@@ -815,6 +1191,8 @@ class ProductEntity extends Equatable {
       name: name ?? this.name,
       description: description ?? this.description,
       price: price ?? this.price,
+      branchPrice: branchPrice ?? this.branchPrice,
+      effectiveBasePrice: effectiveBasePrice ?? this.effectiveBasePrice,
       effectivePrice: effectivePrice ?? this.effectivePrice,
       discountPercentage: discountPercentage ?? this.discountPercentage,
       promotionId: promotionId ?? this.promotionId,
@@ -840,6 +1218,8 @@ class ProductEntity extends Equatable {
     name,
     description,
     price,
+    branchPrice,
+    effectiveBasePrice,
     effectivePrice,
     discountPercentage,
     promotionId,
@@ -889,6 +1269,34 @@ class ProductTransitionGuard {
   }
 }
 
+
+// === FILE: lib/features/product/domain/repositories/branch_pricing_repository.dart ===
+// lib/features/product/domain/repositories/branch_pricing_repository.dart
+
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../entities/branch_variant_price_entity.dart';
+
+abstract class BranchPricingRepository {
+  /// List all variant price overrides set by [orgId].
+  Future<Either<Failure, List<BranchVariantPriceEntity>>> listOverrides(
+    String orgId,
+  );
+
+  /// Create or update the branch override price for [variantId] in [orgId].
+  Future<Either<Failure, BranchVariantPriceEntity>> setOverride({
+    required String orgId,
+    required String variantId,
+    required double price,
+    String currency,
+  });
+
+  /// Remove the branch override — falls back to root base_price.
+  Future<Either<Failure, void>> removeOverride({
+    required String orgId,
+    required String variantId,
+  });
+}
 
 // === FILE: lib/features/product/domain/repositories/product_repository.dart ===
 import 'package:dartz/dartz.dart';
@@ -1451,6 +1859,183 @@ extension ProductStatusX on ProductStatus {
       );
 }
 
+// === FILE: lib/features/product/presentation/bloc/branch_pricing_bloc.dart ===
+// lib/features/product/presentation/bloc/branch_pricing_bloc.dart
+
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:equatable/equatable.dart';
+import '../../domain/entities/branch_variant_price_entity.dart';
+import '../../domain/repositories/branch_pricing_repository.dart';
+
+// ── Events ───────────────────────────────────────────────────────────────────
+
+abstract class BranchPricingEvent extends Equatable {
+  const BranchPricingEvent();
+  @override
+  List<Object?> get props => [];
+}
+
+class BranchPricingLoadRequested extends BranchPricingEvent {
+  final String orgId;
+  const BranchPricingLoadRequested(this.orgId);
+  @override
+  List<Object?> get props => [orgId];
+}
+
+class BranchPricingSetRequested extends BranchPricingEvent {
+  final String orgId;
+  final String variantId;
+  final double price;
+  final String currency;
+
+  const BranchPricingSetRequested({
+    required this.orgId,
+    required this.variantId,
+    required this.price,
+    this.currency = 'TZS',
+  });
+
+  @override
+  List<Object?> get props => [orgId, variantId, price, currency];
+}
+
+class BranchPricingRemoveRequested extends BranchPricingEvent {
+  final String orgId;
+  final String variantId;
+
+  const BranchPricingRemoveRequested({
+    required this.orgId,
+    required this.variantId,
+  });
+
+  @override
+  List<Object?> get props => [orgId, variantId];
+}
+
+// ── States ────────────────────────────────────────────────────────────────────
+
+abstract class BranchPricingState extends Equatable {
+  const BranchPricingState();
+  @override
+  List<Object?> get props => [];
+}
+
+class BranchPricingInitial extends BranchPricingState {}
+
+class BranchPricingLoading extends BranchPricingState {}
+
+class BranchPricingLoaded extends BranchPricingState {
+  final List<BranchVariantPriceEntity> overrides;
+  const BranchPricingLoaded(this.overrides);
+  @override
+  List<Object?> get props => [overrides];
+}
+
+class BranchPricingOperationSuccess extends BranchPricingState {
+  final String message;
+  final List<BranchVariantPriceEntity>? updatedOverrides;
+
+  const BranchPricingOperationSuccess(
+    this.message, {
+    this.updatedOverrides,
+  });
+
+  @override
+  List<Object?> get props => [message, updatedOverrides];
+}
+
+class BranchPricingFailure extends BranchPricingState {
+  final String message;
+  const BranchPricingFailure(this.message);
+  @override
+  List<Object?> get props => [message];
+}
+
+// ── Bloc ─────────────────────────────────────────────────────────────────────
+
+class BranchPricingBloc extends Bloc<BranchPricingEvent, BranchPricingState> {
+  final BranchPricingRepository _repo;
+
+  BranchPricingBloc({required BranchPricingRepository repository})
+      : _repo = repository,
+        super(BranchPricingInitial()) {
+    on<BranchPricingLoadRequested>(_onLoad);
+    on<BranchPricingSetRequested>(_onSet);
+    on<BranchPricingRemoveRequested>(_onRemove);
+  }
+
+  Future<void> _onLoad(
+    BranchPricingLoadRequested event,
+    Emitter<BranchPricingState> emit,
+  ) async {
+    emit(BranchPricingLoading());
+    final result = await _repo.listOverrides(event.orgId);
+    result.fold(
+      (f) => emit(BranchPricingFailure(f.message)),
+      (overrides) => emit(BranchPricingLoaded(overrides)),
+    );
+  }
+
+  Future<void> _onSet(
+    BranchPricingSetRequested event,
+    Emitter<BranchPricingState> emit,
+  ) async {
+    emit(BranchPricingLoading());
+    final result = await _repo.setOverride(
+      orgId: event.orgId,
+      variantId: event.variantId,
+      price: event.price,
+      currency: event.currency,
+    );
+    await result.fold(
+      (f) async => emit(BranchPricingFailure(f.message)),
+      (_) async {
+        // Reload the full list so the UI reflects the change
+        final listResult = await _repo.listOverrides(event.orgId);
+        listResult.fold(
+          (f) => emit(
+            BranchPricingOperationSuccess('Branch price saved.'),
+          ),
+          (overrides) => emit(
+            BranchPricingOperationSuccess(
+              'Branch price saved.',
+              updatedOverrides: overrides,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _onRemove(
+    BranchPricingRemoveRequested event,
+    Emitter<BranchPricingState> emit,
+  ) async {
+    emit(BranchPricingLoading());
+    final result = await _repo.removeOverride(
+      orgId: event.orgId,
+      variantId: event.variantId,
+    );
+    await result.fold(
+      (f) async => emit(BranchPricingFailure(f.message)),
+      (_) async {
+        final listResult = await _repo.listOverrides(event.orgId);
+        listResult.fold(
+          (f) => emit(
+            BranchPricingOperationSuccess('Branch price removed.'),
+          ),
+          (overrides) => emit(
+            BranchPricingOperationSuccess(
+              'Branch price removed. Reverted to root base price.',
+              updatedOverrides: overrides,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 // === FILE: lib/features/product/presentation/bloc/product_bloc.dart ===
 // lib/features/product/presentation/bloc/product_bloc.dart
 //
@@ -1795,6 +2380,591 @@ class ProductFailure extends ProductState {
 enum ProductFormNode { create, edit }
 
 
+// === FILE: lib/features/product/presentation/pages/branch_price_page.dart ===
+// lib/features/product/presentation/pages/branch_price_page.dart
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:get_it/get_it.dart';
+
+import '../../../../core/context/org_context.dart';
+import '../../domain/entities/branch_variant_price_entity.dart';
+import '../../domain/entities/product_entity.dart';
+import '../bloc/branch_pricing_bloc.dart';
+
+// ── Entry-point page ──────────────────────────────────────────────────────────
+
+class BranchPricePage extends StatelessWidget {
+  final ProductEntity? product;
+
+  const BranchPricePage({super.key, this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocProvider(
+      create: (_) {
+        final orgContext = GetIt.instance<OrgContext>();
+        final bloc = BranchPricingBloc(repository: GetIt.instance());
+        bloc.add(BranchPricingLoadRequested(orgContext.effectiveOrgId));
+        return bloc;
+      },
+      child: _BranchPriceView(product: product),
+    );
+  }
+}
+
+// ── Main view ─────────────────────────────────────────────────────────────────
+
+class _BranchPriceView extends StatefulWidget {
+  final ProductEntity? product;
+
+  const _BranchPriceView({this.product});
+
+  @override
+  State<_BranchPriceView> createState() => _BranchPriceViewState();
+}
+
+class _BranchPriceViewState extends State<_BranchPriceView> {
+  bool _sheetOpened = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_sheetOpened && widget.product != null) {
+      _sheetOpened = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openSetSheet(context, product: widget.product);
+      });
+    }
+  }
+
+  String _formatPrice(double v) =>
+      'TZS ${v.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',')}';
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Branch Prices'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            tooltip: 'Set price for a variant',
+            onPressed: () => _openSetSheet(context),
+          ),
+        ],
+      ),
+      body: BlocConsumer<BranchPricingBloc, BranchPricingState>(
+        listener: (context, state) {
+          if (state is BranchPricingOperationSuccess) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: Colors.green,
+              ),
+            );
+            if (state.updatedOverrides == null) {
+              final orgContext = GetIt.instance<OrgContext>();
+              context.read<BranchPricingBloc>().add(
+                BranchPricingLoadRequested(orgContext.effectiveOrgId),
+              );
+            }
+          }
+          if (state is BranchPricingFailure) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: scheme.error,
+              ),
+            );
+          }
+        },
+        builder: (context, state) {
+          if (state is BranchPricingLoading || state is BranchPricingInitial) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          List<BranchVariantPriceEntity> overrides = [];
+          if (state is BranchPricingLoaded) overrides = state.overrides;
+          if (state is BranchPricingOperationSuccess &&
+              state.updatedOverrides != null) {
+            overrides = state.updatedOverrides!;
+          }
+
+          if (overrides.isEmpty) {
+            return _EmptyState(onAdd: () => _openSetSheet(context));
+          }
+
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: overrides.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
+            itemBuilder: (context, i) => _OverrideTile(
+              priceOverride: overrides[i],                          // ← fixed
+              formatPrice: _formatPrice,
+              onEdit: () => _openSetSheet(context, priceOverride: overrides[i]), // ← fixed
+              onRemove: () => _confirmRemove(context, overrides[i]),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _openSetSheet(
+    BuildContext context, {
+    BranchVariantPriceEntity? priceOverride,   // ← renamed from 'override'
+    ProductEntity? product,
+  }) {
+    final orgContext = GetIt.instance<OrgContext>();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => BlocProvider.value(
+        value: context.read<BranchPricingBloc>(),
+        child: _SetBranchPriceSheet(
+          orgId: orgContext.effectiveOrgId,
+          existingOverride: priceOverride,       // ← fixed
+          product: product,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmRemove(
+    BuildContext context,
+    BranchVariantPriceEntity priceOverride,    // ← renamed from 'override'
+  ) async {
+    final label =
+        priceOverride.productName ?? priceOverride.variantName ?? 'this variant';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove Branch Price?'),
+        content: Text(
+          'Remove the branch price for "$label"? '
+          'It will revert to the root base price.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      final orgContext = GetIt.instance<OrgContext>();
+      context.read<BranchPricingBloc>().add(
+        BranchPricingRemoveRequested(
+          orgId: orgContext.effectiveOrgId,
+          variantId: priceOverride.variantId,   // ← fixed
+        ),
+      );
+    }
+  }
+}
+
+// ── Override tile ─────────────────────────────────────────────────────────────
+
+class _OverrideTile extends StatelessWidget {
+  final BranchVariantPriceEntity priceOverride;
+  final String Function(double) formatPrice;
+  final VoidCallback onEdit;
+  final VoidCallback onRemove;
+
+  const _OverrideTile({
+    required this.priceOverride,
+    required this.formatPrice,
+    required this.onEdit,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final markup = priceOverride.markupPercentage;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                Icons.price_change_outlined,
+                color: scheme.primary,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    priceOverride.productName ??
+                        priceOverride.variantName ??
+                        'Variant ${priceOverride.variantId.substring(0, 8)}',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text(
+                        formatPrice(priceOverride.price),            // ← fixed
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (priceOverride.variantBasePrice != null) ...[  // ← fixed
+                        const SizedBox(width: 6),
+                        Text(
+                          formatPrice(priceOverride.variantBasePrice!), // ← fixed
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            decoration: TextDecoration.lineThrough,
+                          ),
+                        ),
+                      ],
+                      if (markup != null && markup > 0) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade100,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '+${markup.toStringAsFixed(1)}%',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.orange.shade800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            PopupMenuButton<String>(
+              onSelected: (v) {
+                if (v == 'edit') onEdit();
+                if (v == 'remove') onRemove();
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'edit', child: Text('Edit price')),
+                PopupMenuItem(
+                  value: 'remove',
+                  child: Text(
+                    'Remove override',
+                    style: TextStyle(color: scheme.error),
+                  ),
+                ),
+              ],
+              icon: const Icon(Icons.more_vert),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Set price bottom sheet ────────────────────────────────────────────────────
+
+class _SetBranchPriceSheet extends StatefulWidget {
+  final String orgId;
+  final BranchVariantPriceEntity? existingOverride;
+  final ProductEntity? product;
+
+  const _SetBranchPriceSheet({
+    required this.orgId,
+    this.existingOverride,
+    this.product,
+  });
+
+  @override
+  State<_SetBranchPriceSheet> createState() => _SetBranchPriceSheetState();
+}
+
+class _SetBranchPriceSheetState extends State<_SetBranchPriceSheet> {
+  final _formKey = GlobalKey<FormState>();
+  final _priceCtrl = TextEditingController();
+  bool _saving = false;
+
+  String get _variantId =>
+      widget.existingOverride?.variantId ?? widget.product?.variantId ?? '';
+
+  double get _rootBasePrice =>
+      widget.existingOverride?.variantBasePrice ?? widget.product?.price ?? 0;
+
+  String get _productLabel =>
+      widget.existingOverride?.productName ??
+      widget.existingOverride?.variantName ??
+      widget.product?.name ??
+      'Product';
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.existingOverride != null) {
+      _priceCtrl.text = widget.existingOverride!.price.toStringAsFixed(0);
+    } else if (widget.product != null) {
+      final current = widget.product!.branchPrice ?? widget.product!.price;
+      _priceCtrl.text = current.toStringAsFixed(0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _priceCtrl.dispose();
+    super.dispose();
+  }
+
+  String _formatPrice(double v) =>
+      'TZS ${v.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',')}';
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_variantId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No variant ID available.')),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+
+    final price = double.parse(_priceCtrl.text.replaceAll(',', ''));
+    context.read<BranchPricingBloc>().add(
+      BranchPricingSetRequested(
+        orgId: widget.orgId,
+        variantId: _variantId,
+        price: price,
+      ),
+    );
+
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        20,
+        20,
+        MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: scheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            Text(
+              widget.existingOverride != null
+                  ? 'Edit Branch Price'
+                  : 'Set Branch Price',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _productLabel,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            if (_rootBasePrice > 0) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 18,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Root base price: ${_formatPrice(_rootBasePrice)}. '
+                        'Branch price must be equal or higher.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            TextFormField(
+              controller: _priceCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: false),
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: InputDecoration(
+                labelText: 'Branch Price (TZS)',
+                prefixText: 'TZS ',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'Price is required.';
+                final parsed = double.tryParse(v.replaceAll(',', ''));
+                if (parsed == null || parsed <= 0) return 'Enter a valid price.';
+                if (_rootBasePrice > 0 && parsed < _rootBasePrice) {
+                  return 'Cannot be lower than root base price '
+                      '(${_rootBasePrice.toStringAsFixed(0)}).';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 24),
+
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _saving ? null : () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _saving ? null : _save,
+                    child: _saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Save'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Empty state ────────────────────────────────────────────────────────────────
+
+class _EmptyState extends StatelessWidget {
+  final VoidCallback onAdd;
+  const _EmptyState({required this.onAdd});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.price_change_outlined,
+              size: 64,
+              color: scheme.onSurfaceVariant.withValues(alpha: 0.4), // ← fixed
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No Branch Prices Set',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Set branch-specific prices for products to reflect '
+              'transport costs or regional adjustments.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add),
+              label: const Text('Set Branch Price'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // === FILE: lib/features/product/presentation/pages/product_detail_page.dart ===
 // lib/features/product/presentation/pages/product_detail_page.dart
 //
@@ -1834,6 +3004,7 @@ import '../widgets/promotion_price_display.dart';
 import '../../../category/domain/usecases/get_category_usecase.dart';
 import '../../../inventory/domain/entities/inventory_entity.dart';
 import '../../../inventory/domain/usecases/get_variant_stock_usecase.dart';
+import '../widgets/inventory_card.dart';
 
 class ProductDetailPage extends StatelessWidget {
   const ProductDetailPage({super.key});
@@ -2035,10 +3206,14 @@ class _DetailViewState extends State<_DetailView> {
                 ),
 
                 // ── Live inventory card ──────────────────────────────
-                const SizedBox(height: 12),
-                _LiveInventoryCard(item: item, scheme: scheme),
+                // const SizedBox(height: 12),
+                // _LiveInventoryCard(item: item, scheme: scheme),
+                // const SizedBox(height: 80),
 
-                const SizedBox(height: 80),
+                // ── Live Inventory card ───────────────────────────────
+                const SizedBox(height: 12),
+                AdminInventoryCard(item: item, scheme: scheme),
+                const SizedBox(height: 32),
               ],
             ),
           ),
@@ -4831,6 +6006,470 @@ class _TableHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+
+// === FILE: lib/features/product/presentation/widgets/inventory_card.dart ===
+// ─── Admin Inventory Card ─────────────────────────────────────────────────────
+// Reads live stock from GetVariantStockUseCase.
+// Falls back to product metadata when variantId is null.
+import 'package:flutter/material.dart';
+import 'package:get_it/get_it.dart';
+import '../../../../core/context/org_context.dart';
+import '../../domain/entities/product_entity.dart';
+import '../../../inventory/domain/entities/inventory_entity.dart';
+import '../../../inventory/domain/usecases/get_variant_stock_usecase.dart';
+
+class AdminInventoryCard extends StatefulWidget {
+  final ProductEntity item;
+  final ColorScheme scheme;
+
+  const AdminInventoryCard({required this.item, required this.scheme});
+
+  @override
+  State<AdminInventoryCard> createState() => AdminInventoryCardState();
+}
+
+class AdminInventoryCardState extends State<AdminInventoryCard> {
+  VariantStockEntity? _stock;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final variantId = widget.item.variantId;
+    if (variantId == null || variantId.isEmpty) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final orgId = GetIt.instance<OrgContext>().requireRootOrgId();
+      final useCase = GetIt.instance<GetVariantStockUseCase>();
+      final result = await useCase(
+        GetVariantStockParams(orgId: orgId, variantId: variantId),
+      );
+      result.fold(
+        (f) {
+          if (mounted)
+            setState(() {
+              _loading = false;
+              _error = f.message;
+            });
+        },
+        (stock) {
+          if (mounted)
+            setState(() {
+              _loading = false;
+              _stock = stock;
+            });
+        },
+      );
+    } catch (e) {
+      if (mounted)
+        setState(() {
+          _loading = false;
+          _error = e.toString();
+        });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = widget.scheme;
+    final item = widget.item;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'Stock Availability',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                if (item.variantId != null)
+                  IconButton(
+                    icon: _loading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.refresh, size: 18),
+                    tooltip: 'Refresh',
+                    onPressed: _loading ? null : _load,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+              ],
+            ),
+            const Divider(height: 24),
+
+            if (item.variantId == null || item.variantId!.isEmpty)
+              _staticFallback(context, item, scheme)
+            else if (_loading && _stock == null)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (_error != null && _stock == null) ...[
+              Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 16,
+                    color: scheme.error,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Could not load live stock.',
+                      style: TextStyle(fontSize: 12, color: scheme.error),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _staticFallback(context, item, scheme),
+            ] else if (_stock != null)
+              _liveStock(context, _stock!, scheme),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _staticFallback(
+    BuildContext context,
+    ProductEntity item,
+    ColorScheme scheme,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _row(context, 'Batch No.', item.batchNumber ?? '—', scheme),
+        _row(context, 'Pack Size', item.packSize ?? '—', scheme),
+        _row(
+          context,
+          'Available Qty',
+          item.quantityAvailable?.toString() ?? '—',
+          scheme,
+        ),
+        if (item.expiryDate != null)
+          _row(context, 'Expiry Date', _fmt(item.expiryDate!), scheme),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 14,
+                color: scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Live stock tracking will appear once this product is stocked in a warehouse.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _liveStock(
+    BuildContext context,
+    VariantStockEntity stock,
+    ColorScheme scheme,
+  ) {
+    final batches = stock.batches;
+    final active = batches
+        .where(
+          (b) => b.isActive && !b.isExpired && !b.isNearExpiry && !b.isDepleted,
+        )
+        .toList();
+    final nearExpiry = batches
+        .where((b) => b.isNearExpiry && !b.isExpired)
+        .toList();
+    final expired = batches.where((b) => b.isExpired).toList();
+    final depleted = batches
+        .where((b) => b.isDepleted && !b.isExpired)
+        .toList();
+
+    final isLow = stock.totalStock > 0 && stock.totalStock <= 10;
+    final isDepleted = stock.totalStock <= 0;
+    final stockColor = isDepleted
+        ? scheme.error
+        : isLow
+        ? Colors.orange.shade700
+        : Colors.green.shade700;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: stockColor.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: stockColor.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                isDepleted
+                    ? Icons.remove_shopping_cart_outlined
+                    : Icons.inventory_2_outlined,
+                color: stockColor,
+                size: 22,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Total Available Stock',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: stockColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      '${stock.totalStock} units',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: stockColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isDepleted)
+                _badge(
+                  'OUT OF STOCK',
+                  scheme.errorContainer,
+                  scheme.onErrorContainer,
+                )
+              else if (isLow)
+                _badge(
+                  'LOW STOCK',
+                  Colors.orange.withValues(alpha: 0.15),
+                  Colors.orange.shade800,
+                ),
+            ],
+          ),
+        ),
+        if (batches.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          if (expired.isNotEmpty) ...[
+            _groupLabel('Expired (${expired.length})', Colors.red.shade700),
+            ...expired.map((b) => _batchRow(context, b, scheme)),
+            const SizedBox(height: 10),
+          ],
+          if (nearExpiry.isNotEmpty) ...[
+            _groupLabel(
+              'Near Expiry (${nearExpiry.length})',
+              Colors.orange.shade700,
+            ),
+            ...nearExpiry.map((b) => _batchRow(context, b, scheme)),
+            const SizedBox(height: 10),
+          ],
+          if (active.isNotEmpty) ...[
+            _groupLabel('Active (${active.length})', Colors.green.shade700),
+            ...active.map((b) => _batchRow(context, b, scheme)),
+          ],
+          if (depleted.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _groupLabel('Depleted (${depleted.length})', Colors.grey.shade600),
+            ...depleted.map((b) => _batchRow(context, b, scheme)),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _badge(String label, Color bg, Color fg) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: fg),
+    ),
+  );
+
+  Widget _groupLabel(String label, Color color) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      label,
+      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+    ),
+  );
+
+  Widget _batchRow(
+    BuildContext context,
+    InventoryBatchEntity batch,
+    ColorScheme scheme,
+  ) {
+    final statusColor = batch.isExpired
+        ? Colors.red.shade700
+        : batch.isNearExpiry
+        ? Colors.orange.shade700
+        : batch.isDepleted
+        ? Colors.grey.shade600
+        : Colors.green.shade700;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  batch.batchNumber != null
+                      ? 'Batch: ${batch.batchNumber}'
+                      : 'Batch: ${batch.id.substring(0, 8)}…',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${batch.quantityAvailable} units',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (batch.warehouseName.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(
+                  Icons.warehouse_outlined,
+                  size: 12,
+                  color: scheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  batch.warehouseName,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (batch.expiresAt != null) ...[
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                Icon(
+                  Icons.event_outlined,
+                  size: 12,
+                  color: scheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Expires: ${_fmt(batch.expiresAt!)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: batch.isExpired
+                        ? Colors.red.shade700
+                        : batch.isNearExpiry
+                        ? Colors.orange.shade700
+                        : scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _row(
+    BuildContext context,
+    String label,
+    String value,
+    ColorScheme scheme,
+  ) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 120,
+          child: Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+        ),
+        Expanded(
+          child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
+        ),
+      ],
+    ),
+  );
+
+  String _fmt(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }
 
 

@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 
 class CustomerContact extends Equatable {
   final String id;
+  final String actorId;
   final String name;
   final String? role;
   final String? phone;
@@ -12,6 +13,7 @@ class CustomerContact extends Equatable {
 
   const CustomerContact({
     required this.id,
+    this.actorId = '',
     required this.name,
     this.role,
     this.phone,
@@ -22,12 +24,21 @@ class CustomerContact extends Equatable {
   });
 
   @override
-  List<Object?> get props =>
-      [id, name, role, phone, email, whatsappNumber, isPrimary];
+  List<Object?> get props => [
+    id,
+    actorId,
+    name,
+    role,
+    phone,
+    email,
+    whatsappNumber,
+    isPrimary,
+  ];
 }
 
 class CustomerEntity extends Equatable {
   final String id;
+  final String actorId; // ← added field
   final String orgId;
   final String? assignedOfficerId;
   final String name;
@@ -38,41 +49,31 @@ class CustomerEntity extends Equatable {
   final String status;
   final String? businessRegistration;
   final String? taxPin;
-
-  // ── Location — full Tanzania hierarchy ────────────────────
-  // column mapping:  county = region, city = district, ward, street
   final String? address;
-  final String? city;    // district
-  final String? county;  // region
+  final String? city;
+  final String? county;
   final String? ward;
   final String? street;
   final String? country;
-
   final double? latitude;
   final double? longitude;
   final int? gpsAccuracyMeters;
-
-  // ── Contact ────────────────────────────────────────────────
   final String? phone;
   final String? altPhone;
   final String? email;
   final String? whatsappNumber;
-
-  // ── Preferences ────────────────────────────────────────────
   final bool receivesWhatsapp;
   final bool receivesSms;
   final bool receivesInApp;
-
-  // ── Finance ────────────────────────────────────────────────
   final double? creditLimit;
   final String? currency;
-
   final String? notes;
   final List<CustomerContact> contacts;
   final DateTime? createdAt;
 
   const CustomerEntity({
     required this.id,
+    this.actorId = '', // ← added
     this.orgId = '',
     this.assignedOfficerId,
     required this.name,
@@ -111,11 +112,11 @@ class CustomerEntity extends Equatable {
   bool get isB2B => customerType == 'b2b';
 
   CustomerContact? get primaryContact =>
-      contacts.where((c) => c.isPrimary).firstOrNull ??
-      contacts.firstOrNull;
+      contacts.where((c) => c.isPrimary).firstOrNull ?? contacts.firstOrNull;
 
   CustomerEntity copyWith({
     String? id,
+    String? actorId,
     String? orgId,
     String? assignedOfficerId,
     String? name,
@@ -147,64 +148,64 @@ class CustomerEntity extends Equatable {
     String? notes,
     List<CustomerContact>? contacts,
     DateTime? createdAt,
-  }) =>
-      CustomerEntity(
-        id: id ?? this.id,
-        orgId: orgId ?? this.orgId,
-        assignedOfficerId: assignedOfficerId ?? this.assignedOfficerId,
-        name: name ?? this.name,
-        code: code ?? this.code,
-        customerType: customerType ?? this.customerType,
-        category: category ?? this.category,
-        tier: tier ?? this.tier,
-        status: status ?? this.status,
-        businessRegistration:
-            businessRegistration ?? this.businessRegistration,
-        taxPin: taxPin ?? this.taxPin,
-        address: address ?? this.address,
-        city: city ?? this.city,
-        county: county ?? this.county,
-        ward: ward ?? this.ward,
-        street: street ?? this.street,
-        country: country ?? this.country,
-        latitude: latitude ?? this.latitude,
-        longitude: longitude ?? this.longitude,
-        gpsAccuracyMeters: gpsAccuracyMeters ?? this.gpsAccuracyMeters,
-        phone: phone ?? this.phone,
-        altPhone: altPhone ?? this.altPhone,
-        email: email ?? this.email,
-        whatsappNumber: whatsappNumber ?? this.whatsappNumber,
-        receivesWhatsapp: receivesWhatsapp ?? this.receivesWhatsapp,
-        receivesSms: receivesSms ?? this.receivesSms,
-        receivesInApp: receivesInApp ?? this.receivesInApp,
-        creditLimit: creditLimit ?? this.creditLimit,
-        currency: currency ?? this.currency,
-        notes: notes ?? this.notes,
-        contacts: contacts ?? this.contacts,
-        createdAt: createdAt ?? this.createdAt,
-      );
+  }) => CustomerEntity(
+    id: id ?? this.id,
+    actorId: actorId ?? this.actorId,
+    orgId: orgId ?? this.orgId,
+    assignedOfficerId: assignedOfficerId ?? this.assignedOfficerId,
+    name: name ?? this.name,
+    code: code ?? this.code,
+    customerType: customerType ?? this.customerType,
+    category: category ?? this.category,
+    tier: tier ?? this.tier,
+    status: status ?? this.status,
+    businessRegistration: businessRegistration ?? this.businessRegistration,
+    taxPin: taxPin ?? this.taxPin,
+    address: address ?? this.address,
+    city: city ?? this.city,
+    county: county ?? this.county,
+    ward: ward ?? this.ward,
+    street: street ?? this.street,
+    country: country ?? this.country,
+    latitude: latitude ?? this.latitude,
+    longitude: longitude ?? this.longitude,
+    gpsAccuracyMeters: gpsAccuracyMeters ?? this.gpsAccuracyMeters,
+    phone: phone ?? this.phone,
+    altPhone: altPhone ?? this.altPhone,
+    email: email ?? this.email,
+    whatsappNumber: whatsappNumber ?? this.whatsappNumber,
+    receivesWhatsapp: receivesWhatsapp ?? this.receivesWhatsapp,
+    receivesSms: receivesSms ?? this.receivesSms,
+    receivesInApp: receivesInApp ?? this.receivesInApp,
+    creditLimit: creditLimit ?? this.creditLimit,
+    currency: currency ?? this.currency,
+    notes: notes ?? this.notes,
+    contacts: contacts ?? this.contacts,
+    createdAt: createdAt ?? this.createdAt,
+  );
 
   @override
   List<Object?> get props => [
-        id,
-        orgId,
-        assignedOfficerId,
-        name,
-        code,
-        customerType,
-        category,
-        tier,
-        status,
-        address,
-        city,
-        county,
-        ward,
-        street,
-        phone,
-        email,
-        latitude,
-        longitude,
-        contacts,
-        createdAt,
-      ];
+    id,
+    actorId,
+    orgId,
+    assignedOfficerId,
+    name,
+    code,
+    customerType,
+    category,
+    tier,
+    status,
+    address,
+    city,
+    county,
+    ward,
+    street,
+    phone,
+    email,
+    latitude,
+    longitude,
+    contacts,
+    createdAt,
+  ];
 }
