@@ -13,13 +13,13 @@ class WarehouseModel extends WarehouseEntity {
   });
 
   factory WarehouseModel.fromJson(Map<String, dynamic> j) => WarehouseModel(
-        id: j['id']?.toString() ?? '',
-        orgId: j['org_id']?.toString() ?? '',
-        name: j['name']?.toString() ?? '',
-        type: j['type']?.toString() ?? 'standard',
-        isActive: j['is_active'] as bool? ?? j['status'] == 'active',
-        address: j['address']?.toString(),
-      );
+    id: j['id']?.toString() ?? '',
+    orgId: j['org_id']?.toString() ?? '',
+    name: j['name']?.toString() ?? '',
+    type: j['type']?.toString() ?? 'standard',
+    isActive: j['is_active'] as bool? ?? j['status'] == 'active',
+    address: j['address']?.toString(),
+  );
 }
 
 class InventoryBatchModel extends InventoryBatchEntity {
@@ -28,7 +28,9 @@ class InventoryBatchModel extends InventoryBatchEntity {
     required super.warehouseId,
     required super.warehouseName,
     required super.productId,
+    super.productName, // ← NEW
     super.variantId,
+    super.variantName, // ← NEW
     required super.orgId,
     super.batchNumber,
     super.sku,
@@ -46,15 +48,20 @@ class InventoryBatchModel extends InventoryBatchEntity {
 
   factory InventoryBatchModel.fromJson(Map<String, dynamic> j) {
     final warehouse = j['warehouse'] as Map<String, dynamic>?;
+    final product = j['product'] as Map<String, dynamic>?;
+    final variant = j['variant'] as Map<String, dynamic>?;
+
     return InventoryBatchModel(
       id: j['id']?.toString() ?? '',
       warehouseId: j['warehouse_id']?.toString() ?? '',
       warehouseName: warehouse?['name']?.toString() ?? '',
       productId: j['product_id']?.toString() ?? '',
+      productName: product?['name']?.toString(), // ← NEW
       variantId: j['variant_id']?.toString(),
+      variantName: variant?['name']?.toString(), // ← NEW
       orgId: j['org_id']?.toString() ?? '',
       batchNumber: j['batch_number']?.toString(),
-      sku: j['sku']?.toString(),
+      sku: j['sku']?.toString() ?? variant?['sku']?.toString(),
       quantityReceived: _parseInt(j['quantity_received']),
       quantityAvailable: _parseInt(j['quantity_available']),
       quantityReserved: _parseInt(j['quantity_reserved']),

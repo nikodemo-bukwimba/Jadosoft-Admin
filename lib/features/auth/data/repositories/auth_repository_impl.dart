@@ -68,6 +68,7 @@ class AuthRepositoryImpl implements AuthRepository {
       if (meResponse.resolvedOrgId != null) {
         await _persistOrgAndBranch(
           orgId: meResponse.resolvedOrgId!,
+          rootOrgId: meResponse.rootOrgId,
           actorId: meResponse.user.actorId,
           actorName: meResponse.user.name,
           branchId: meResponse.user.branchId,
@@ -139,6 +140,7 @@ class AuthRepositoryImpl implements AuthRepository {
       if (meResponse.resolvedOrgId != null) {
         await _persistOrgAndBranch(
           orgId: meResponse.resolvedOrgId!,
+          rootOrgId: meResponse.rootOrgId,
           actorId: meResponse.user.actorId,
           actorName: meResponse.user.name,
           branchId: meResponse.user.branchId,
@@ -265,15 +267,16 @@ class AuthRepositoryImpl implements AuthRepository {
       // and branch data never came back.
       // /auth/me must always receive the ROOT org id so it finds the
       // highest-level membership and then looks up pm_officers separately.
-      final rootOrgId = _orgContext.rootOrgId;
-      // ─────────────────────────────────────────────────────────────────
-
+      await _orgContext.restore();
+      final rootOrgId = _orgContext.rootOrgId; // null for fresh acceptance
       final meResponse = await _remote.getAuthMe(orgId: rootOrgId);
+      // rootOrgId null → server picks best membership → returns root_org_id in response
 
       // ── NEW: update branch in OrgContext on every refresh ────────────
       if (meResponse.resolvedOrgId != null) {
         await _persistOrgAndBranch(
           orgId: meResponse.resolvedOrgId!,
+          rootOrgId: meResponse.rootOrgId,
           actorId: meResponse.user.actorId,
           actorName: meResponse.user.name,
           branchId: meResponse.user.branchId,
@@ -313,14 +316,17 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<void> _persistOrgAndBranch({
     required String orgId,
     required String actorName,
+    String? rootOrgId,
     String? actorId,
     String? branchId,
     String? branchName,
   }) async {
     await _orgContext.restore();
 
+    final effectiveRootId = rootOrgId ?? orgId;
+
     await _orgContext.setRootOrg(
-      id: orgId,
+      id: effectiveRootId,
       name: _orgContext.rootOrgName ?? actorName,
       role: _orgContext.orgRole != OrgRole.unknown
           ? _orgContext.orgRole

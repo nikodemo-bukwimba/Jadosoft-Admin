@@ -1,8 +1,10 @@
-// customer_detail_page.dart
-// Fixed: officer name resolution now uses the dedicated
-// GET /pharma/orgs/{orgId}/officers endpoint via OfficerRemoteDataSource.getAll()
-// which returns PmOfficer records enriched with user+actor data.
-// The previous call to org members endpoint caused parse failures.
+// customer_detail_page.dart  (jadosoft-admin)
+//
+// Changes vs previous version:
+//   • Location & Assignment card now shows the full Tanzania hierarchy:
+//     Address → Street → Ward → District → Region → Country
+//   • Each level is only rendered when non-null/non-empty (no blank rows).
+//   • All other structure (tabs, officer FutureBuilder, helpers) preserved.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -149,8 +151,6 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
               controller: _tabController,
               children: [
                 _buildContent(context, state.item),
-                // VisitBloc is provided per-route in the router.
-                // We provide a fresh one here scoped to this tab.
                 BlocProvider(
                   create: (_) => sl<VisitBloc>(),
                   child: AdminCustomerVisitHistoryTab(
@@ -181,7 +181,7 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Header Card ──
+            // ── Header Card ───────────────────────────────────
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(24),
@@ -189,9 +189,8 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
                   children: [
                     CircleAvatar(
                       radius: 32,
-                      backgroundColor: scheme.primaryContainer.withValues(
-                        alpha: 0.5,
-                      ),
+                      backgroundColor:
+                          scheme.primaryContainer.withValues(alpha: 0.5),
                       child: Icon(
                         item.isB2B ? Icons.store : Icons.person,
                         color: scheme.primary,
@@ -208,7 +207,9 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
                               Expanded(
                                 child: Text(
                                   item.name,
-                                  style: Theme.of(context).textTheme.titleLarge
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleLarge
                                       ?.copyWith(fontWeight: FontWeight.w800),
                                 ),
                               ),
@@ -227,7 +228,8 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
                                     style: Theme.of(context)
                                         .textTheme
                                         .labelSmall
-                                        ?.copyWith(fontWeight: FontWeight.w600),
+                                        ?.copyWith(
+                                            fontWeight: FontWeight.w600),
                                   ),
                                 ),
                             ],
@@ -243,16 +245,24 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
                                 scheme.primary,
                               ),
                               if (item.category != null)
-                                _chip(context, item.category!, scheme.tertiary),
-                              _chip(context, item.tier, _tierColor(item.tier)),
+                                _chip(
+                                  context,
+                                  item.category!,
+                                  scheme.tertiary,
+                                ),
+                              _chip(
+                                context,
+                                item.tier,
+                                _tierColor(item.tier),
+                              ),
                               _chip(
                                 context,
                                 item.status,
                                 item.status == 'active'
                                     ? Colors.green
                                     : item.status == 'blacklisted'
-                                    ? Colors.red
-                                    : Colors.grey,
+                                        ? Colors.red
+                                        : Colors.grey,
                               ),
                             ],
                           ),
@@ -260,7 +270,9 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
                             const SizedBox(height: 6),
                             Text(
                               'Registered ${item.createdAt!.toIso8601String().split('T').first}',
-                              style: Theme.of(context).textTheme.bodySmall
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
                                   ?.copyWith(color: scheme.onSurfaceVariant),
                             ),
                           ],
@@ -273,7 +285,7 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
             ),
             const SizedBox(height: 12),
 
-            // ── Contact & Communication Card ──
+            // ── Contact & Communication Card ──────────────────
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -283,15 +295,20 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
                     Text(
                       'Contact & Communication',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: scheme.primary,
-                        fontWeight: FontWeight.w700,
-                      ),
+                            color: scheme.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
                     ),
                     const Divider(height: 24),
                     if (item.phone != null)
                       _row(context, Icons.phone, 'Phone', item.phone!),
                     if (item.email != null)
-                      _row(context, Icons.email_outlined, 'Email', item.email!),
+                      _row(
+                        context,
+                        Icons.email_outlined,
+                        'Email',
+                        item.email!,
+                      ),
                     if (item.whatsappNumber != null)
                       _row(
                         context,
@@ -303,7 +320,9 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
                       const SizedBox(height: 8),
                       Text(
                         'Primary Contact',
-                        style: Theme.of(context).textTheme.labelMedium
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelMedium
                             ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       _row(
@@ -324,7 +343,9 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
                       const SizedBox(height: 8),
                       Text(
                         'All Contacts (${item.contacts.length})',
-                        style: Theme.of(context).textTheme.labelMedium
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelMedium
                             ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       ...item.contacts.map(
@@ -342,7 +363,10 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
             ),
             const SizedBox(height: 12),
 
-            // ── Location & Assignment Card ──
+            // ── Location & Assignment Card ────────────────────
+            // Full Tanzania hierarchy: Address → Street → Ward
+            //   → District (city) → Region (county) → Country
+            // Each level only rendered when non-null/non-empty.
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -352,25 +376,67 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
                     Text(
                       'Location & Assignment',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: scheme.primary,
-                        fontWeight: FontWeight.w700,
-                      ),
+                            color: scheme.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
                     ),
                     const Divider(height: 24),
-                    if (item.address != null)
+
+                    // Free-text address line
+                    if (item.address != null && item.address!.isNotEmpty)
                       _row(
                         context,
                         Icons.location_on_outlined,
                         'Address',
                         item.address!,
                       ),
-                    if (item.city != null)
+
+                    // Street
+                    if (item.street != null && item.street!.isNotEmpty)
+                      _row(
+                        context,
+                        Icons.signpost_outlined,
+                        'Street',
+                        item.street!,
+                      ),
+
+                    // Ward
+                    if (item.ward != null && item.ward!.isNotEmpty)
+                      _row(
+                        context,
+                        Icons.villa_outlined,
+                        'Ward',
+                        item.ward!,
+                      ),
+
+                    // District (city column)
+                    if (item.city != null && item.city!.isNotEmpty)
                       _row(
                         context,
                         Icons.location_city,
-                        'City',
-                        '${item.city}${item.county != null ? ', ${item.county}' : ''}',
+                        'District',
+                        item.city!,
                       ),
+
+                    // Region (county column)
+                    if (item.county != null && item.county!.isNotEmpty)
+                      _row(
+                        context,
+                        Icons.map_outlined,
+                        'Region',
+                        item.county!,
+                      ),
+
+                    // Country
+                    if (item.country != null && item.country!.isNotEmpty)
+                      _row(
+                        context,
+                        Icons.public,
+                        'Country',
+                        item.country!,
+                      ),
+
+                    // GPS — tappable
                     if (item.hasGps)
                       _gpsRow(context, item)
                     else
@@ -381,13 +447,11 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
                         'Not recorded',
                         muted: true,
                       ),
-                    // ── Officer name via FutureBuilder ──
-                    // Uses the pharma officers endpoint — avoids Location plugin
-                    // exception that happened when calling org members endpoint.
+
+                    // Assigned officer
                     FutureBuilder<String>(
                       future: _getOfficerName(
                         item.assignedOfficerId,
-                        // orgId comes from the customer's org_id field
                         item.orgId,
                       ),
                       builder: (_, snap) => _row(
@@ -397,6 +461,7 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
                         snap.data ?? '...',
                       ),
                     ),
+
                     _row(context, Icons.fingerprint, 'Customer ID', item.id),
                   ],
                 ),
@@ -409,25 +474,31 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
     );
   }
 
+  // ── Helpers ───────────────────────────────────────────────
+
   Widget _chip(BuildContext context, String label, Color color) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.15),
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: color.withValues(alpha: 0.4)),
-    ),
-    child: Text(
-      label,
-      style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
-    ),
-  );
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
 
   Color _tierColor(String tier) => switch (tier) {
-    'platinum' => Colors.deepPurple,
-    'gold' => Colors.amber.shade700,
-    'silver' => Colors.blueGrey,
-    _ => Colors.grey,
-  };
+        'platinum' => Colors.deepPurple,
+        'gold' => Colors.amber.shade700,
+        'silver' => Colors.blueGrey,
+        _ => Colors.grey,
+      };
 
   Widget _gpsRow(BuildContext context, CustomerEntity item) {
     final scheme = Theme.of(context).colorScheme;
@@ -453,19 +524,19 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
                 child: Text(
                   'GPS',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
+                        color: scheme.onSurfaceVariant,
+                      ),
                 ),
               ),
               Expanded(
                 child: Text(
                   coords,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: scheme.primary,
-                    decoration: TextDecoration.underline,
-                    decorationColor: scheme.primary,
-                  ),
+                        fontWeight: FontWeight.w500,
+                        color: scheme.primary,
+                        decoration: TextDecoration.underline,
+                        decorationColor: scheme.primary,
+                      ),
                 ),
               ),
               Icon(Icons.open_in_new, size: 14, color: scheme.primary),
@@ -484,9 +555,8 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
     bool muted = false,
   }) {
     final scheme = Theme.of(context).colorScheme;
-    final color = muted
-        ? scheme.onSurfaceVariant.withValues(alpha: 0.45)
-        : null;
+    final color =
+        muted ? scheme.onSurfaceVariant.withValues(alpha: 0.45) : null;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -503,18 +573,19 @@ class _CustomerDetailPageState extends State<CustomerDetailPage>
             width: 110,
             child: Text(
               label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
           Expanded(
             child: Text(
               value,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w500,
-                color: color,
-              ),
+                    fontWeight: FontWeight.w500,
+                    color: color,
+                  ),
             ),
           ),
         ],

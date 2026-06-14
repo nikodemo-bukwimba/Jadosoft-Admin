@@ -1,10 +1,9 @@
 // lib/features/customer/presentation/pages/customer_form_page.dart  (jadosoft-admin)
 //
-// Location section replaced: old _cityCtl / _countyCtl free-text fields
-// are gone. New LocationSectionWidget + LocationValue handle the full
-// Country → Region → District → Ward → Street hierarchy.
-// Dropdowns when static data exists; searchable bottom-sheet picker.
-// Free-text fields when no static data is available for a level.
+// All text inputs replaced with RichTextField.
+// Password fields kept as plain TextFormField (need obscureText).
+// Officer dropdown and _dropdown helper use initialValue: (not value:).
+// ValueListenableBuilder uses latVal/lngVal (no leading underscore).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -12,6 +11,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../config/di/injection_container.dart';
 import '../../../../core/widgets/location_section_widget.dart';
+import '../../../../core/widgets/rich_text_field.dart';
 import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
 import '../bloc/customer_state.dart';
@@ -56,7 +56,6 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
   String? _contactRole;
   String? _selectedOfficerId;
 
-  // Location hierarchy
   LocationValue _location = const LocationValue();
 
   bool _isSubmitting = false;
@@ -156,6 +155,8 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
       _location = LocationValue.fromApiFields(
         city: item.city,
         county: item.county,
+        ward: item.ward,
+        street: item.street,
       );
       final pc = item.primaryContact;
       if (pc != null) {
@@ -307,7 +308,9 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // ── Customer Information ──
+                    // ══════════════════════════════════════════════
+                    // Customer Information
+                    // ══════════════════════════════════════════════
                     _sectionLabel(context, 'Customer Information'),
                     const SizedBox(height: 8),
                     SegmentedButton<String>(
@@ -328,10 +331,9 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                           setState(() => _customerType = s.first),
                     ),
                     const SizedBox(height: 16),
-                    _field(
+                    _richField(
                       _nameCtl,
                       _customerType == 'b2b' ? 'Business Name' : 'Full Name',
-                      Icons.store,
                       required: true,
                     ),
                     const SizedBox(height: 16),
@@ -379,57 +381,32 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                     ],
                     const SizedBox(height: 24),
 
-                    // ── Communication ──
+                    // ══════════════════════════════════════════════
+                    // Communication
+                    // ══════════════════════════════════════════════
                     _sectionLabel(context, 'Communication'),
                     const SizedBox(height: 8),
                     if (isWide)
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: _field(
-                              _phoneCtl,
-                              'Phone',
-                              Icons.phone,
-                              keyboard: TextInputType.phone,
-                            ),
-                          ),
+                          Expanded(child: _richField(_phoneCtl, 'Phone')),
                           const SizedBox(width: 16),
-                          Expanded(
-                            child: _field(
-                              _emailCtl,
-                              'Email',
-                              Icons.email_outlined,
-                              keyboard: TextInputType.emailAddress,
-                            ),
-                          ),
+                          Expanded(child: _richField(_emailCtl, 'Email')),
                         ],
                       )
                     else ...[
-                      _field(
-                        _phoneCtl,
-                        'Phone',
-                        Icons.phone,
-                        keyboard: TextInputType.phone,
-                      ),
+                      _richField(_phoneCtl, 'Phone'),
                       const SizedBox(height: 16),
-                      _field(
-                        _emailCtl,
-                        'Email',
-                        Icons.email_outlined,
-                        keyboard: TextInputType.emailAddress,
-                      ),
+                      _richField(_emailCtl, 'Email'),
                     ],
                     const SizedBox(height: 16),
-                    _field(
-                      _whatsappCtl,
-                      'WhatsApp Number',
-                      Icons.chat,
-                      keyboard: TextInputType.phone,
-                    ),
+                    _richField(_whatsappCtl, 'WhatsApp Number'),
                     const SizedBox(height: 24),
 
-                    // ── Primary Contact Person ──
+                    // ══════════════════════════════════════════════
+                    // Primary Contact Person
+                    // ══════════════════════════════════════════════
                     _sectionLabel(context, 'Primary Contact Person'),
                     const SizedBox(height: 8),
                     if (isWide)
@@ -437,11 +414,7 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
-                            child: _field(
-                              _contactNameCtl,
-                              'Contact Name',
-                              Icons.person_outline,
-                            ),
+                            child: _richField(_contactNameCtl, 'Contact Name'),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
@@ -455,11 +428,7 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                         ],
                       )
                     else ...[
-                      _field(
-                        _contactNameCtl,
-                        'Contact Name',
-                        Icons.person_outline,
-                      ),
+                      _richField(_contactNameCtl, 'Contact Name'),
                       const SizedBox(height: 16),
                       _dropdown(
                         'Role',
@@ -469,15 +438,12 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                       ),
                     ],
                     const SizedBox(height: 16),
-                    _field(
-                      _contactPhoneCtl,
-                      'Contact Phone',
-                      Icons.phone_forwarded_outlined,
-                      keyboard: TextInputType.phone,
-                    ),
+                    _richField(_contactPhoneCtl, 'Contact Phone'),
                     const SizedBox(height: 24),
 
-                    // ── Location ─────────────────────────────────────────────
+                    // ══════════════════════════════════════════════
+                    // Location
+                    // ══════════════════════════════════════════════
                     _sectionLabel(context, 'Location'),
                     const SizedBox(height: 8),
                     LocationSectionWidget(
@@ -485,15 +451,15 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                       onChanged: (v) => setState(() => _location = v),
                     ),
                     const SizedBox(height: 16),
-                    _field(
+                    _richField(
                       _addressCtl,
                       'Full Address (optional)',
-                      Icons.location_on_outlined,
-                      maxLines: 2,
+                      minLines: 2,
+                      maxLines: 3,
                     ),
                     const SizedBox(height: 16),
 
-                    // GPS
+                    // GPS row
                     Row(
                       children: [
                         Text(
@@ -521,27 +487,28 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                             ),
                           ),
                         const SizedBox(width: 4),
-                        ValueListenableBuilder(
+                        ValueListenableBuilder<TextEditingValue>(
                           valueListenable: _gpsLatCtl,
-                          builder: (_, __, ___) => ValueListenableBuilder(
-                            valueListenable: _gpsLngCtl,
-                            builder: (_, __, ___) => _hasValidGps
-                                ? TextButton.icon(
-                                    onPressed: _openInMap,
-                                    icon: const Icon(
-                                      Icons.map_outlined,
-                                      size: 16,
-                                    ),
-                                    label: const Text('Open in Map'),
-                                    style: TextButton.styleFrom(
-                                      visualDensity: VisualDensity.compact,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                      ),
-                                    ),
-                                  )
-                                : const SizedBox.shrink(),
-                          ),
+                          builder: (_, latVal, child) =>
+                              ValueListenableBuilder<TextEditingValue>(
+                                valueListenable: _gpsLngCtl,
+                                builder: (_, lngVal, child) => _hasValidGps
+                                    ? TextButton.icon(
+                                        onPressed: _openInMap,
+                                        icon: const Icon(
+                                          Icons.map_outlined,
+                                          size: 16,
+                                        ),
+                                        label: const Text('Open in Map'),
+                                        style: TextButton.styleFrom(
+                                          visualDensity: VisualDensity.compact,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                          ),
+                                        ),
+                                      )
+                                    : const SizedBox.shrink(),
+                              ),
                         ),
                       ],
                     ),
@@ -550,72 +517,42 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: _field(
-                              _gpsLatCtl,
-                              'Latitude',
-                              Icons.gps_fixed,
-                              keyboard: const TextInputType.numberWithOptions(
-                                decimal: true,
-                                signed: true,
-                              ),
-                            ),
-                          ),
+                          Expanded(child: _richField(_gpsLatCtl, 'Latitude')),
                           const SizedBox(width: 16),
-                          Expanded(
-                            child: _field(
-                              _gpsLngCtl,
-                              'Longitude',
-                              Icons.gps_fixed,
-                              keyboard: const TextInputType.numberWithOptions(
-                                decimal: true,
-                                signed: true,
-                              ),
-                            ),
-                          ),
+                          Expanded(child: _richField(_gpsLngCtl, 'Longitude')),
                         ],
                       )
                     else ...[
-                      _field(
-                        _gpsLatCtl,
-                        'Latitude',
-                        Icons.gps_fixed,
-                        keyboard: const TextInputType.numberWithOptions(
-                          decimal: true,
-                          signed: true,
-                        ),
-                      ),
+                      _richField(_gpsLatCtl, 'Latitude'),
                       const SizedBox(height: 16),
-                      _field(
-                        _gpsLngCtl,
-                        'Longitude',
-                        Icons.gps_fixed,
-                        keyboard: const TextInputType.numberWithOptions(
-                          decimal: true,
-                          signed: true,
-                        ),
-                      ),
+                      _richField(_gpsLngCtl, 'Longitude'),
                     ],
                     const SizedBox(height: 24),
 
-                    // ── Officer Assignment ──
+                    // ══════════════════════════════════════════════
+                    // Officer Assignment
+                    // ══════════════════════════════════════════════
                     _sectionLabel(context, 'Officer Assignment'),
                     const SizedBox(height: 8),
                     _buildOfficerDropdown(),
                     const SizedBox(height: 24),
 
-                    // ── Notes ──
+                    // ══════════════════════════════════════════════
+                    // Notes — full rich-text with toolbar
+                    // ══════════════════════════════════════════════
                     _sectionLabel(context, 'Notes'),
                     const SizedBox(height: 8),
-                    _field(
-                      _notesCtl,
-                      'Internal notes',
-                      Icons.notes,
-                      maxLines: 3,
+                    RichTextField(
+                      controller: _notesCtl,
+                      label: 'Internal notes',
+                      minLines: 3,
+                      maxLines: 8,
                     ),
                     const SizedBox(height: 32),
 
-                    // ── App Login Credentials ──
+                    // ══════════════════════════════════════════════
+                    // Customer App Login
+                    // ══════════════════════════════════════════════
                     _sectionLabel(context, 'Customer App Login'),
                     const SizedBox(height: 8),
                     SwitchListTile(
@@ -635,6 +572,8 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                     ),
                     if (_enableAppLogin) ...[
                       const SizedBox(height: 12),
+                      // Password fields stay as plain TextFormField —
+                      // obscureText is not supported by RichTextField.
                       TextFormField(
                         controller: _passwordCtl,
                         obscureText: true,
@@ -726,7 +665,7 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
     }
 
     return DropdownButtonFormField<String>(
-      value: validSelection,
+      initialValue: validSelection,
       isExpanded: true,
       decoration: const InputDecoration(
         labelText: 'Assigned Officer',
@@ -755,7 +694,7 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
     );
   }
 
-  // ── Helpers ───────────────────────────────────────────────
+  // ── Widget helpers ────────────────────────────────────────
 
   Widget _sectionLabel(BuildContext context, String text) => Text(
     text,
@@ -765,32 +704,52 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
     ),
   );
 
-  Widget _field(
+  /// Wraps RichTextField with optional required-field validation via FormField.
+  Widget _richField(
     TextEditingController ctl,
-    String label,
-    IconData icon, {
+    String label, {
     bool required = false,
-    TextInputType? keyboard,
+    int minLines = 1,
     int maxLines = 1,
-  }) => TextFormField(
-    controller: ctl,
-    decoration: InputDecoration(
-      labelText: label,
-      border: const OutlineInputBorder(),
-      prefixIcon: Icon(icon),
-    ),
-    keyboardType: keyboard,
-    maxLines: maxLines,
-    textCapitalization: keyboard == null
-        ? TextCapitalization.words
-        : TextCapitalization.none,
-    validator: required
-        ? (v) {
-            if (v == null || v.trim().isEmpty) return '$label is required';
-            return null;
-          }
-        : null,
-  );
+  }) {
+    if (!required) {
+      return RichTextField(
+        controller: ctl,
+        label: label,
+        minLines: minLines,
+        maxLines: maxLines,
+      );
+    }
+    return FormField<String>(
+      validator: (_) {
+        if (ctl.text.trim().isEmpty) return '$label is required';
+        return null;
+      },
+      builder: (field) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          RichTextField(
+            controller: ctl,
+            label: label,
+            minLines: minLines,
+            maxLines: maxLines,
+            highlight: field.hasError,
+          ),
+          if (field.hasError)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 12),
+              child: Text(
+                field.errorText!,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
   Widget _dropdown(
     String label,
@@ -798,7 +757,7 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
     String? value,
     ValueChanged<String?> onChanged,
   ) => DropdownButtonFormField<String>(
-    value: items.contains(value) ? value : null,
+    initialValue: items.contains(value) ? value : null,
     isExpanded: true,
     decoration: InputDecoration(
       labelText: label,
@@ -841,6 +800,8 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
               address: _addressCtl.text.trim(),
               city: _location.effectiveCity,
               county: _location.effectiveCounty,
+              ward: _location.ward,
+              street: _location.street,
               country: _location.country,
               latitude: lat,
               longitude: lng,
@@ -853,7 +814,6 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
             appPasswordConfirmation: _enableAppLogin
                 ? _confirmPassCtl.text
                 : null,
-            // ── ADD: contact person fields ────────────────────────
             contactName: _contactNameCtl.text.trim().isEmpty
                 ? null
                 : _contactNameCtl.text.trim(),
@@ -861,7 +821,6 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                 ? null
                 : _contactPhoneCtl.text.trim(),
             contactRole: _contactRole,
-            // ─────────────────────────────────────────────────────
           ),
         );
       }
@@ -879,6 +838,8 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
             address: _addressCtl.text.trim(),
             city: _location.effectiveCity,
             county: _location.effectiveCounty,
+            ward: _location.ward,
+            street: _location.street,
             latitude: lat,
             longitude: lng,
             notes: _notesCtl.text.trim(),

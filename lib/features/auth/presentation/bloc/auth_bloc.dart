@@ -121,6 +121,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     final slug = session.user.primaryRole?.slug.toLowerCase() ?? '';
     final role = slug == 'branch_manager'
         ? OrgRole.branchAdmin
+        : slug == 'stock_keeper'
+        ? OrgRole
+              .stockKeeper // ← own role now
         : (slug.contains('officer') ||
               slug.contains('field') ||
               slug.contains('pharma_rep') ||

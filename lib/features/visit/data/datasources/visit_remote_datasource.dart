@@ -1,6 +1,21 @@
-﻿import 'package:dio/dio.dart';
+﻿// lib/features/visit/data/datasources/visit_remote_datasource.dart
+//
+// FIX: VisitRemoteDataSourceImpl was the class being registered in DI.
+// It hit the wrong URL (/visits instead of /pharma/orgs/{orgId}/visits)
+// and had NO OfficerNameResolver — so officer names were never resolved.
+//
+// Solution: VisitRemoteDataSourceImpl now delegates entirely to
+// VisitApiDataSource, which has the correct URL and resolver.
+// The DI container registers VisitRemoteDataSourceImpl — this keeps
+// that contract intact while routing all calls through the correct impl.
+
+import 'package:dio/dio.dart';
+import '../../../../core/context/org_context.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/visit_model.dart';
+import 'visit_api_datasource.dart';
+
+export 'visit_api_datasource.dart' show VisitApiDataSource;
 
 abstract class VisitRemoteDataSource {
   Future<List<VisitModel>> getAll();
@@ -8,93 +23,38 @@ abstract class VisitRemoteDataSource {
   Future<VisitModel> create(Map<String, dynamic> data);
   Future<VisitModel> update(String id, Map<String, dynamic> data);
   Future<void> delete(String id);
-  Future<List<VisitModel>> getByCustomer(String customerId); // ← NEW
+  Future<List<VisitModel>> getByCustomer(String customerId);
 }
 
+/// Concrete implementation — delegates to [VisitApiDataSource] which
+/// uses the correct pharma API paths and resolves officer names.
 class VisitRemoteDataSourceImpl implements VisitRemoteDataSource {
-  final Dio _dio;
-  VisitRemoteDataSourceImpl({required Dio dio}) : _dio = dio;
+  late final VisitApiDataSource _api;
 
-  @override
-  Future<List<VisitModel>> getAll() async {
-    try {
-      final response = await _dio.get('/visits');
-      final data = response.data as List;
-      return data
-          .map((e) => VisitModel.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } on DioException catch (e) {
-      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
-    }
+  VisitRemoteDataSourceImpl({
+    required Dio dio,
+    required OrgContext orgContext,
+  }) {
+    _api = VisitApiDataSource(dio: dio, orgContext: orgContext);
   }
 
   @override
-  Future<VisitModel> getById(String id) async {
-    try {
-      final response = await _dio.get('/visits/$id');
-      return VisitModel.fromJson(response.data as Map<String, dynamic>);
-    } on DioException catch (e) {
-      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
-    }
-  }
+  Future<List<VisitModel>> getAll() => _api.getAll();
 
   @override
-  Future<VisitModel> create(Map<String, dynamic> data) async {
-    try {
-      final response = await _dio.post('/visits', data: data);
-      return VisitModel.fromJson(response.data as Map<String, dynamic>);
-    } on DioException catch (e) {
-      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
-    }
-  }
+  Future<VisitModel> getById(String id) => _api.getById(id);
 
   @override
-  Future<VisitModel> update(String id, Map<String, dynamic> data) async {
-    try {
-      final response = await _dio.put('/visits/$id', data: data);
-      return VisitModel.fromJson(response.data as Map<String, dynamic>);
-    } on DioException catch (e) {
-      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
-    }
-  }
+  Future<VisitModel> create(Map<String, dynamic> data) => _api.create(data);
 
   @override
-  Future<void> delete(String id) async {
-    try {
-      await _dio.delete('/visits/$id');
-    } on DioException catch (e) {
-      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
-    }
-  }
+  Future<VisitModel> update(String id, Map<String, dynamic> data) =>
+      _api.update(id, data);
 
   @override
-  Future<List<VisitModel>> getByCustomer(String customerId) async {
-    try {
-      final response = await _dio.get(
-        '/visits',
-        queryParameters: {'customer_id': customerId, 'per_page': 100},
-      );
-      final raw = response.data;
-      final list =
-          (raw is Map
-                  ? (raw['data'] ?? raw['visits'] ?? raw['items'] ?? [])
-                  : raw)
-              as List? ??
-          [];
-      return list
-          .whereType<Map<String, dynamic>>()
-          .map((e) => VisitModel.fromJson(e))
-          .toList();
-    } on DioException catch (e) {
-      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
-    }
-  }
+  Future<void> delete(String id) => _api.delete(id);
 
-  String _msg(DioException e) {
-    final data = e.response?.data;
-    if (data is Map<String, dynamic> && data['message'] is String) {
-      return data['message'] as String;
-    }
-    return 'An error occurred. Please try again.';
-  }
+  @override
+  Future<List<VisitModel>> getByCustomer(String customerId) =>
+      _api.getByCustomer(customerId);
 }

@@ -72,6 +72,8 @@ import '../../features/product/presentation/bloc/product_event.dart';
 import '../../features/product/presentation/pages/product_list_page.dart';
 import '../../features/product/presentation/pages/product_detail_page.dart';
 import '../../features/product/presentation/pages/product_form_page.dart';
+import '../../features/product/presentation/pages/branch_price_page.dart';
+import '../../features/product/presentation/bloc/branch_pricing_bloc.dart'; // ← ADD
 
 // Phase 6 — Promotions (L3)
 import '../../features/promotion/presentation/bloc/promotion_bloc.dart';
@@ -233,6 +235,10 @@ class AppRouter {
   static const String productEdit = '/products/:id/edit';
   static String productDetailPath(String id) => '/products/$id';
   static String productEditPath(String id) => '/products/$id/edit';
+
+  // Phase 5 — Branch Pricing
+  static const String branchPricing = '/products/branch-prices';
+  
 
   // Phase 6 — Promotions
   static const String promotionList = '/promotions';
@@ -665,6 +671,15 @@ class AppRouter {
               },
             ),
 
+            // --- Phase 5 — Branch Pricing (L2) -------------
+            GoRoute(
+              path: branchPricing,
+              builder: (_, _) => BlocProvider(
+                create: (_) => sl<BranchPricingBloc>(),
+                child: const BranchPricePage(),
+              ),
+            ),
+
             // --- Phase 10 — Inventory (L2) -----------------
             GoRoute(
               path: AppRouter.inventoryList,
@@ -684,24 +699,24 @@ class AppRouter {
               ),
             ),
 
-GoRoute(
-  path: AppRouter.inventoryReceiveStock,
-  builder: (_, state) {
-    final extra = state.extra as Map<String, dynamic>?;
-    return BlocProvider(
-      create: (_) => sl<InventoryBloc>()
-        ..add(
-          InventoryWarehousesLoadRequested(
-            sl<OrgContext>().requireRootOrgId(),
-          ),
-        ),
-      child: InventoryFormPage(
-        mode: InventoryFormNode.receiveStock,
-        preselectedProductId: extra?['productId'] as String?,
-      ),
-    );
-  },
-),
+            GoRoute(
+              path: AppRouter.inventoryReceiveStock,
+              builder: (_, state) {
+                final extra = state.extra as Map<String, dynamic>?;
+                return BlocProvider(
+                  create: (_) => sl<InventoryBloc>()
+                    ..add(
+                      InventoryWarehousesLoadRequested(
+                        sl<OrgContext>().requireRootOrgId(),
+                      ),
+                    ),
+                  child: InventoryFormPage(
+                    mode: InventoryFormNode.receiveStock,
+                    preselectedProductId: extra?['productId'] as String?,
+                  ),
+                );
+              },
+            ),
 
             GoRoute(
               path: AppRouter.inventoryWarehouseCreate,

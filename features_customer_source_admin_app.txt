@@ -1,0 +1,3603 @@
+﻿// ================================================================
+// features_customer_source.txt
+// Project Type : Flutter/Dart
+// Generated    : 2026-05-19 15:24:29
+// Files        : 22
+// Usage        : Upload to Claude Project documents as reference.
+// ================================================================
+
+// === FILE: lib/features/customer/data/datasources/customer_mock_datasource.dart ===
+import '../../../../core/network/paginated_response.dart';
+import '../models/customer_model.dart';
+import 'customer_remote_datasource.dart';
+
+class CustomerMockDataSource implements CustomerRemoteDataSource {
+  static final List<Map<String, dynamic>> _store = [
+    {
+      'id': 'cust-001',
+      'org_id': 'branch-mbeya',
+      'assigned_officer_id': 'act-001',
+      'name': 'Mbeya City Pharmacy',
+      'code': 'CUST-00001',
+      'customer_type': 'b2b',
+      'category': 'pharmacy',
+      'tier': 'gold',
+      'status': 'active',
+      'address': 'Karume Road, Mbeya CBD',
+      'city': 'Mbeya',
+      'county': 'Mbeya',
+      'country': 'Tanzania',
+      'latitude': -8.9,
+      'longitude': 33.45,
+      'phone': '+255752100001',
+      'receives_whatsapp': true,
+      'receives_sms': true,
+      'receives_in_app': true,
+      'contacts': [
+        {
+          'id': 'ct-001',
+          'name': 'Hassan Mwakyembe',
+          'role': 'owner',
+          'phone': '+255752100001',
+          'is_primary': true,
+        },
+        {
+          'id': 'ct-002',
+          'name': 'Salma Abdallah',
+          'role': 'pharmacist',
+          'phone': '+255712200001',
+          'is_primary': false,
+        },
+      ],
+      'created_at': '2024-04-10T08:00:00.000Z',
+    },
+    {
+      'id': 'cust-002',
+      'org_id': 'branch-mbeya',
+      'assigned_officer_id': 'act-002',
+      'name': 'Uyole Medical Supplies',
+      'code': 'CUST-00002',
+      'customer_type': 'b2b',
+      'category': 'wholesaler',
+      'tier': 'silver',
+      'status': 'active',
+      'address': 'Uyole Junction, Mbeya',
+      'city': 'Mbeya',
+      'latitude': -8.92,
+      'longitude': 33.43,
+      'phone': '+255765300002',
+      'contacts': [
+        {
+          'id': 'ct-003',
+          'name': 'Rehema Mwambene',
+          'role': 'owner',
+          'phone': '+255765300002',
+          'is_primary': true,
+        },
+      ],
+      'created_at': '2024-05-22T09:30:00.000Z',
+    },
+    {
+      'id': 'cust-003',
+      'org_id': 'branch-dar',
+      'assigned_officer_id': 'act-003',
+      'name': 'Tukuyu Health Store',
+      'code': 'CUST-00003',
+      'customer_type': 'b2b',
+      'category': 'clinic',
+      'tier': 'standard',
+      'status': 'active',
+      'address': 'Market Street, Tukuyu',
+      'city': 'Tukuyu',
+      'county': 'Rungwe',
+      'latitude': -9.255,
+      'longitude': 33.64,
+      'phone': '+255754400003',
+      'contacts': [
+        {
+          'id': 'ct-004',
+          'name': 'Daniel Mwasambili',
+          'role': 'owner',
+          'phone': '+255754400003',
+          'is_primary': true,
+        },
+      ],
+      'created_at': '2024-07-15T10:00:00.000Z',
+    },
+    {
+      'id': 'cust-004',
+      'org_id': 'branch-mbeya',
+      'name': 'Amina Juma',
+      'code': 'CUST-00004',
+      'customer_type': 'b2c',
+      'tier': 'standard',
+      'status': 'active',
+      'phone': '+255783654004',
+      'city': 'Mbeya',
+      'contacts': [],
+      'created_at': '2025-02-01T08:00:00.000Z',
+    },
+    {
+      'id': 'cust-005',
+      'org_id': 'branch-mbeya',
+      'assigned_officer_id': 'act-001',
+      'name': 'Forest Hill Pharmacy',
+      'code': 'CUST-00005',
+      'customer_type': 'b2b',
+      'category': 'pharmacy',
+      'tier': 'platinum',
+      'status': 'active',
+      'address': 'Jacaranda Road, Mbeya',
+      'city': 'Mbeya',
+      'latitude': -8.91,
+      'longitude': 33.46,
+      'phone': '+255745600004',
+      'contacts': [
+        {
+          'id': 'ct-005',
+          'name': 'Joyce Mwakatobe',
+          'role': 'manager',
+          'phone': '+255756700004',
+          'is_primary': true,
+        },
+      ],
+      'created_at': '2024-09-01T07:00:00.000Z',
+    },
+    {
+      'id': 'cust-006',
+      'org_id': 'branch-dar',
+      'name': 'Soweto Health Point',
+      'code': 'CUST-00006',
+      'customer_type': 'b2b',
+      'category': 'clinic',
+      'tier': 'gold',
+      'status': 'inactive',
+      'address': 'Soweto Area, Mbeya',
+      'city': 'Mbeya',
+      'latitude': -8.905,
+      'longitude': 33.455,
+      'phone': '+255783900006',
+      'contacts': [
+        {
+          'id': 'ct-006',
+          'name': 'Flora Mwaipopo',
+          'role': 'procurement',
+          'phone': '+255765110006',
+          'is_primary': true,
+        },
+      ],
+      'created_at': '2024-11-10T11:00:00.000Z',
+    },
+  ];
+  static int _idC = 7;
+  Future<void> _d() => Future.delayed(const Duration(milliseconds: 300));
+
+  @override
+  Future<PaginatedResponse<CustomerModel>> getAll({
+    String? customerType,
+    String? status,
+    String? category,
+    String? tier,
+    String? officerId,
+    String? search,
+    int? perPage,
+    int? page,
+  }) async {
+    await _d();
+    var l = List<Map<String, dynamic>>.from(_store);
+    if (customerType != null)
+      l = l.where((e) => e['customer_type'] == customerType).toList();
+    if (status != null) l = l.where((e) => e['status'] == status).toList();
+    if (category != null)
+      l = l.where((e) => e['category'] == category).toList();
+    if (search != null && search.isNotEmpty) {
+      final q = search.toLowerCase();
+      l = l
+          .where(
+            (e) =>
+                (e['name'] ?? '').toString().toLowerCase().contains(q) ||
+                (e['phone'] ?? '').toString().contains(q) ||
+                (e['code'] ?? '').toString().toLowerCase().contains(q),
+          )
+          .toList();
+    }
+    final items = l.map((e) => CustomerModel.fromJson(e)).toList();
+    return PaginatedResponse(
+      items: items,
+      currentPage: page ?? 1,
+      lastPage: 1,
+      total: items.length,
+      perPage: perPage ?? 25,
+    );
+  }
+
+  @override
+  Future<CustomerModel> getById(String id) async {
+    await _d();
+    return CustomerModel.fromJson(
+      _store.firstWhere(
+        (e) => e['id'] == id,
+        orElse: () => throw Exception('Not found'),
+      ),
+    );
+  }
+
+  @override
+  Future<CustomerModel> create(Map<String, dynamic> data) async {
+    await _d();
+    final id = _idC++;
+    final item = {
+      'id': 'cust-${id.toString().padLeft(3, '0')}',
+      'code': 'CUST-${id.toString().padLeft(5, '0')}',
+      'status': 'active',
+      'tier': 'standard',
+      'created_at': DateTime.now().toIso8601String(),
+      ...data,
+    };
+    _store.add(item);
+    return CustomerModel.fromJson(item);
+  }
+
+  @override
+  Future<CustomerModel> update(String id, Map<String, dynamic> data) async {
+    await _d();
+    final i = _store.indexWhere((e) => e['id'] == id);
+    if (i == -1) throw Exception('Not found');
+    _store[i] = {..._store[i], ...data};
+    return CustomerModel.fromJson(_store[i]);
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    await _d();
+    _store.removeWhere((e) => e['id'] == id);
+  }
+
+  @override
+  Future<CustomerModel> assignOfficer(String cId, String oId) async {
+    await _d();
+    final i = _store.indexWhere((e) => e['id'] == cId);
+    if (i == -1) throw Exception('Not found');
+    _store[i]['assigned_officer_id'] = oId;
+    return CustomerModel.fromJson(_store[i]);
+  }
+
+  @override
+  Future<CustomerContactModel> addContact(
+    String cId,
+    Map<String, dynamic> data,
+  ) async {
+    await _d();
+    return CustomerContactModel.fromJson({
+      'id': 'ct-new-${DateTime.now().millisecondsSinceEpoch}',
+      ...data,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+  }
+
+  @override
+  Future<CustomerContactModel> updateContact(
+    String cId,
+    Map<String, dynamic> data,
+  ) async {
+    await _d();
+    return CustomerContactModel.fromJson({'id': cId, ...data});
+  }
+
+  @override
+  Future<void> deleteContact(String cId) async {
+    await _d();
+  }
+}
+
+
+// === FILE: lib/features/customer/data/datasources/customer_remote_datasource.dart ===
+import 'package:dio/dio.dart';
+import '../../../../core/context/org_context.dart';
+import '../../../../core/network/api_paths.dart';
+import '../../../../core/network/base_remote_datasource.dart';
+import '../../../../core/network/paginated_response.dart';
+import '../models/customer_model.dart';
+
+abstract class CustomerRemoteDataSource {
+  Future<PaginatedResponse<CustomerModel>> getAll({
+    String? customerType,
+    String? status,
+    String? category,
+    String? tier,
+    String? officerId,
+    String? search,
+    int? perPage,
+    int? page,
+  });
+  Future<CustomerModel> getById(String id);
+  Future<CustomerModel> create(Map<String, dynamic> data);
+  Future<CustomerModel> update(String id, Map<String, dynamic> data);
+  Future<void> delete(String id);
+  Future<CustomerModel> assignOfficer(String customerId, String officerActorId);
+  Future<CustomerContactModel> addContact(
+    String customerId,
+    Map<String, dynamic> data,
+  );
+  Future<CustomerContactModel> updateContact(
+    String contactId,
+    Map<String, dynamic> data,
+  );
+  Future<void> deleteContact(String contactId);
+}
+
+class CustomerRemoteDataSourceImpl extends BaseRemoteDataSource
+    implements CustomerRemoteDataSource {
+  final OrgContext _orgContext;
+  CustomerRemoteDataSourceImpl({
+    required Dio dio,
+    required OrgContext orgContext,
+  }) : _orgContext = orgContext,
+       super(dio: dio);
+
+  @override
+  Future<PaginatedResponse<CustomerModel>> getAll({
+    String? customerType,
+    String? status,
+    String? category,
+    String? tier,
+    String? officerId,
+    String? search,
+    int? perPage,
+    int? page,
+  }) {
+    final orgId = _orgContext.effectiveOrgId;
+    final p = <String, dynamic>{
+      'customer_type': ?customerType,
+      'status': ?status,
+      'category': ?category,
+      'tier': ?tier,
+      'officer_id': ?officerId,
+      'search': ?search,
+      'per_page': ?perPage,
+      'page': ?page,
+    };
+    return fetchPaginatedList(
+      ApiPaths.pharma.customers(orgId),
+      CustomerModel.fromJson,
+      queryParams: p.isNotEmpty ? p : null,
+    );
+  }
+
+  @override
+  Future<CustomerModel> getById(String id) => fetchSingle(
+    ApiPaths.pharma.customer(id),
+    CustomerModel.fromJson,
+    dataKey: 'customer',
+  );
+  @override
+  Future<CustomerModel> create(Map<String, dynamic> data) => postAndParse(
+    ApiPaths.pharma.customers(_orgContext.effectiveOrgId),
+    data,
+    CustomerModel.fromJson,
+    dataKey: 'customer',
+  );
+  @override
+  Future<CustomerModel> update(String id, Map<String, dynamic> data) =>
+      patchAndParse(
+        ApiPaths.pharma.customer(id),
+        data,
+        CustomerModel.fromJson,
+        dataKey: 'customer',
+      );
+  @override
+  Future<void> delete(String id) =>
+      deleteResource(ApiPaths.pharma.customer(id));
+  @override
+  Future<CustomerModel> assignOfficer(
+    String customerId,
+    String officerActorId,
+  ) => postAction(
+    '${ApiPaths.pharma.customer(customerId)}/assign',
+    CustomerModel.fromJson,
+    data: {'officer_actor_id': officerActorId},
+    dataKey: 'customer',
+  );
+  @override
+  Future<CustomerContactModel> addContact(
+    String customerId,
+    Map<String, dynamic> data,
+  ) => postAndParse(
+    ApiPaths.pharma.customerContacts(customerId),
+    data,
+    CustomerContactModel.fromJson,
+    dataKey: 'contact',
+  );
+  @override
+  Future<CustomerContactModel> updateContact(
+    String contactId,
+    Map<String, dynamic> data,
+  ) => patchAndParse(
+    ApiPaths.pharma.contact(contactId),
+    data,
+    CustomerContactModel.fromJson,
+    dataKey: 'contact',
+  );
+  @override
+  Future<void> deleteContact(String contactId) =>
+      deleteResource(ApiPaths.pharma.contact(contactId));
+}
+
+
+// === FILE: lib/features/customer/data/models/customer_model.dart ===
+import '../../domain/entities/customer_entity.dart';
+
+class CustomerContactModel extends CustomerContact {
+  const CustomerContactModel({
+    required super.id,
+    required super.name,
+    super.role,
+    super.phone,
+    super.email,
+    super.whatsappNumber,
+    super.isPrimary,
+    super.createdAt,
+  });
+  factory CustomerContactModel.fromJson(Map<String, dynamic> j) =>
+      CustomerContactModel(
+        id: (j['id'] ?? '').toString(),
+        name: j['name'] as String? ?? '',
+        role: j['role'] as String?,
+        phone: j['phone'] as String?,
+        email: j['email'] as String?,
+        whatsappNumber: j['whatsapp_number'] as String?,
+        isPrimary: j['is_primary'] == true,
+        createdAt: j['created_at'] != null
+            ? DateTime.tryParse(j['created_at'].toString())
+            : null,
+      );
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    if (role != null) 'role': role,
+    if (phone != null) 'phone': phone,
+    if (email != null) 'email': email,
+    if (whatsappNumber != null) 'whatsapp_number': whatsappNumber,
+    'is_primary': isPrimary,
+  };
+}
+
+class CustomerModel extends CustomerEntity {
+  const CustomerModel({
+    required super.id,
+    super.orgId,
+    super.assignedOfficerId,
+    required super.name,
+    super.code,
+    required super.customerType,
+    super.category,
+    super.tier,
+    super.status,
+    super.businessRegistration,
+    super.taxPin,
+    super.address,
+    super.city,
+    super.county,
+    super.country,
+    super.latitude,
+    super.longitude,
+    super.gpsAccuracyMeters,
+    super.phone,
+    super.altPhone,
+    super.email,
+    super.whatsappNumber,
+    super.receivesWhatsapp,
+    super.receivesSms,
+    super.receivesInApp,
+    super.creditLimit,
+    super.currency,
+    super.notes,
+    super.contacts,
+    super.createdAt,
+  });
+
+  static double? _toDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString());
+  }
+
+  static int? _toInt(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString());
+  }
+
+  factory CustomerModel.fromJson(Map<String, dynamic> j) {
+    final rawC = j['contacts'] as List<dynamic>? ?? [];
+    final contacts = rawC
+        .map((c) => CustomerContactModel.fromJson(c as Map<String, dynamic>))
+        .toList();
+    return CustomerModel(
+      id: (j['id'] ?? '').toString(),
+      orgId: (j['org_id'] ?? '').toString(),
+      assignedOfficerId: j['assigned_officer_id']?.toString(),
+      name: j['name'] as String? ?? '',
+      code: j['code'] as String?,
+      customerType: j['customer_type'] as String? ?? 'b2b',
+      category: j['category'] as String?,
+      tier: j['tier'] as String? ?? 'standard',
+      status: j['status'] as String? ?? 'active',
+      businessRegistration: j['business_registration'] as String?,
+      taxPin: j['tax_pin'] as String?,
+      address: j['address'] as String?,
+      city: j['city'] as String?,
+      county: j['county'] as String?,
+      country: j['country'] as String?,
+      latitude: _toDouble(j['latitude']),
+      longitude: _toDouble(j['longitude']),
+      gpsAccuracyMeters: _toInt(j['gps_accuracy_meters']),
+      phone: j['phone'] as String?,
+      altPhone: j['alt_phone'] as String?,
+      email: j['email'] as String?,
+      whatsappNumber: j['whatsapp_number'] as String?,
+      receivesWhatsapp: j['receives_whatsapp'] as bool? ?? true,
+      receivesSms: j['receives_sms'] as bool? ?? true,
+      receivesInApp: j['receives_in_app'] as bool? ?? true,
+      creditLimit: _toDouble(j['credit_limit']),
+      currency: j['currency'] as String?,
+      notes: j['notes'] as String?,
+      contacts: contacts,
+      createdAt: j['created_at'] != null
+          ? DateTime.tryParse(j['created_at'].toString())
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'customer_type': customerType,
+    'category': category,
+    'tier': tier,
+    'status': status,
+    'address': address,
+    'city': city,
+    'county': county,
+    'country': country,
+    'latitude': latitude,
+    'longitude': longitude,
+    'phone': phone,
+    'email': email,
+    'whatsapp_number': whatsappNumber,
+    'receives_whatsapp': receivesWhatsapp,
+    'receives_sms': receivesSms,
+    'receives_in_app': receivesInApp,
+    'credit_limit': creditLimit,
+    'currency': currency,
+    'notes': notes,
+  };
+
+  factory CustomerModel.fromEntity(CustomerEntity e) => CustomerModel(
+    id: e.id,
+    orgId: e.orgId,
+    assignedOfficerId: e.assignedOfficerId,
+    name: e.name,
+    code: e.code,
+    customerType: e.customerType,
+    category: e.category,
+    tier: e.tier,
+    status: e.status,
+    businessRegistration: e.businessRegistration,
+    taxPin: e.taxPin,
+    address: e.address,
+    city: e.city,
+    county: e.county,
+    country: e.country,
+    latitude: e.latitude,
+    longitude: e.longitude,
+    gpsAccuracyMeters: e.gpsAccuracyMeters,
+    phone: e.phone,
+    altPhone: e.altPhone,
+    email: e.email,
+    whatsappNumber: e.whatsappNumber,
+    receivesWhatsapp: e.receivesWhatsapp,
+    receivesSms: e.receivesSms,
+    receivesInApp: e.receivesInApp,
+    creditLimit: e.creditLimit,
+    currency: e.currency,
+    notes: e.notes,
+    contacts: e.contacts,
+    createdAt: e.createdAt,
+  );
+}
+
+
+// === FILE: lib/features/customer/data/repositories/customer_repository_impl.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/exceptions.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/network/paginated_response.dart';
+import '../../domain/entities/customer_entity.dart';
+import '../../domain/repositories/customer_repository.dart';
+import '../datasources/customer_remote_datasource.dart';
+
+class CustomerRepositoryImpl implements CustomerRepository {
+  final CustomerRemoteDataSource _remote;
+  CustomerRepositoryImpl({required CustomerRemoteDataSource remoteDataSource}) : _remote = remoteDataSource;
+
+  Future<Either<Failure, T>> _guard<T>(Future<T> Function() call) async {
+    try { return Right(await call());
+    } on AuthException catch (e) { return Left(AuthFailure(e.message));
+    } on ServerException catch (e) { return Left(ServerFailure(e.message));
+    } on NetworkException catch (e) { return Left(NetworkFailure(e.message));
+    } catch (e) { return Left(GenericFailure(e.toString())); }
+  }
+
+  @override Future<Either<Failure, PaginatedResponse<CustomerEntity>>> getAll({String? customerType, String? status, String? category, String? tier, String? officerId, String? search, int? perPage, int? page}) =>
+    _guard(() => _remote.getAll(customerType: customerType, status: status, category: category, tier: tier, officerId: officerId, search: search, perPage: perPage, page: page));
+  @override Future<Either<Failure, CustomerEntity>> getById(String id) => _guard(() => _remote.getById(id));
+  @override Future<Either<Failure, CustomerEntity>> create(Map<String, dynamic> data) => _guard(() => _remote.create(data));
+  @override Future<Either<Failure, CustomerEntity>> update(String id, Map<String, dynamic> data) => _guard(() => _remote.update(id, data));
+  @override Future<Either<Failure, void>> delete(String id) => _guard(() => _remote.delete(id));
+  @override Future<Either<Failure, CustomerEntity>> assignOfficer(String cId, String oId) => _guard(() => _remote.assignOfficer(cId, oId));
+  @override Future<Either<Failure, CustomerContact>> addContact(String cId, Map<String, dynamic> d) => _guard(() => _remote.addContact(cId, d));
+  @override Future<Either<Failure, CustomerContact>> updateContact(String cId, Map<String, dynamic> d) => _guard(() => _remote.updateContact(cId, d));
+  @override Future<Either<Failure, void>> deleteContact(String cId) => _guard(() => _remote.deleteContact(cId));
+}
+
+
+// === FILE: lib/features/customer/domain/entities/customer_entity.dart ===
+import 'package:equatable/equatable.dart';
+
+class CustomerContact extends Equatable {
+  final String id;
+  final String name;
+  final String? role;
+  final String? phone;
+  final String? email;
+  final String? whatsappNumber;
+  final bool isPrimary;
+  final DateTime? createdAt;
+  const CustomerContact({required this.id, required this.name, this.role, this.phone, this.email, this.whatsappNumber, this.isPrimary = false, this.createdAt});
+  @override List<Object?> get props => [id, name, role, phone, email, whatsappNumber, isPrimary];
+}
+
+class CustomerEntity extends Equatable {
+  final String id;
+  final String orgId;
+  final String? assignedOfficerId;
+  final String name;
+  final String? code;
+  final String customerType;
+  final String? category;
+  final String tier;
+  final String status;
+  final String? businessRegistration;
+  final String? taxPin;
+  final String? address;
+  final String? city;
+  final String? county;
+  final String? country;
+  final double? latitude;
+  final double? longitude;
+  final int? gpsAccuracyMeters;
+  final String? phone;
+  final String? altPhone;
+  final String? email;
+  final String? whatsappNumber;
+  final bool receivesWhatsapp;
+  final bool receivesSms;
+  final bool receivesInApp;
+  final double? creditLimit;
+  final String? currency;
+  final String? notes;
+  final List<CustomerContact> contacts;
+  final DateTime? createdAt;
+
+  const CustomerEntity({
+    required this.id, this.orgId = '', this.assignedOfficerId,
+    required this.name, this.code, required this.customerType,
+    this.category, this.tier = 'standard', this.status = 'active',
+    this.businessRegistration, this.taxPin,
+    this.address, this.city, this.county, this.country,
+    this.latitude, this.longitude, this.gpsAccuracyMeters,
+    this.phone, this.altPhone, this.email, this.whatsappNumber,
+    this.receivesWhatsapp = true, this.receivesSms = true, this.receivesInApp = true,
+    this.creditLimit, this.currency, this.notes, this.contacts = const [], this.createdAt,
+  });
+
+  String get displayName => name;
+  bool get hasGps => latitude != null && longitude != null;
+  bool get isB2B => customerType == 'b2b';
+  CustomerContact? get primaryContact => contacts.where((c) => c.isPrimary).firstOrNull ?? contacts.firstOrNull;
+
+  CustomerEntity copyWith({
+    String? id, String? orgId, String? assignedOfficerId, String? name, String? code, String? customerType,
+    String? category, String? tier, String? status, String? businessRegistration, String? taxPin,
+    String? address, String? city, String? county, String? country, double? latitude, double? longitude,
+    int? gpsAccuracyMeters, String? phone, String? altPhone, String? email, String? whatsappNumber,
+    bool? receivesWhatsapp, bool? receivesSms, bool? receivesInApp, double? creditLimit, String? currency,
+    String? notes, List<CustomerContact>? contacts, DateTime? createdAt,
+  }) => CustomerEntity(
+    id: id ?? this.id, orgId: orgId ?? this.orgId, assignedOfficerId: assignedOfficerId ?? this.assignedOfficerId,
+    name: name ?? this.name, code: code ?? this.code, customerType: customerType ?? this.customerType,
+    category: category ?? this.category, tier: tier ?? this.tier, status: status ?? this.status,
+    businessRegistration: businessRegistration ?? this.businessRegistration, taxPin: taxPin ?? this.taxPin,
+    address: address ?? this.address, city: city ?? this.city, county: county ?? this.county, country: country ?? this.country,
+    latitude: latitude ?? this.latitude, longitude: longitude ?? this.longitude, gpsAccuracyMeters: gpsAccuracyMeters ?? this.gpsAccuracyMeters,
+    phone: phone ?? this.phone, altPhone: altPhone ?? this.altPhone, email: email ?? this.email, whatsappNumber: whatsappNumber ?? this.whatsappNumber,
+    receivesWhatsapp: receivesWhatsapp ?? this.receivesWhatsapp, receivesSms: receivesSms ?? this.receivesSms, receivesInApp: receivesInApp ?? this.receivesInApp,
+    creditLimit: creditLimit ?? this.creditLimit, currency: currency ?? this.currency, notes: notes ?? this.notes,
+    contacts: contacts ?? this.contacts, createdAt: createdAt ?? this.createdAt,
+  );
+  @override List<Object?> get props => [id, orgId, assignedOfficerId, name, code, customerType, category, tier, status, address, city, phone, email, latitude, longitude, contacts, createdAt];
+}
+
+
+// === FILE: lib/features/customer/domain/repositories/customer_repository.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/network/paginated_response.dart';
+import '../entities/customer_entity.dart';
+
+abstract class CustomerRepository {
+  Future<Either<Failure, PaginatedResponse<CustomerEntity>>> getAll({String? customerType, String? status, String? category, String? tier, String? officerId, String? search, int? perPage, int? page});
+  Future<Either<Failure, CustomerEntity>> getById(String id);
+  Future<Either<Failure, CustomerEntity>> create(Map<String, dynamic> data);
+  Future<Either<Failure, CustomerEntity>> update(String id, Map<String, dynamic> data);
+  Future<Either<Failure, void>> delete(String id);
+  Future<Either<Failure, CustomerEntity>> assignOfficer(String customerId, String officerActorId);
+  Future<Either<Failure, CustomerContact>> addContact(String customerId, Map<String, dynamic> data);
+  Future<Either<Failure, CustomerContact>> updateContact(String contactId, Map<String, dynamic> data);
+  Future<Either<Failure, void>> deleteContact(String contactId);
+}
+
+
+// === FILE: lib/features/customer/domain/usecases/create_customer_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/customer_entity.dart';
+import '../repositories/customer_repository.dart';
+
+class CreateCustomerParams {
+  final String name;
+  final String customerType;
+  final String? category;
+  final String? tier;
+  final String? phone;
+  final String? email;
+  final String? whatsappNumber;
+  final String? address;
+  final String? city;
+  final String? county;
+  final double? latitude;
+  final double? longitude;
+  final String? notes;
+  final String? contactName;
+  final String? contactRole;
+  final String? contactPhone;
+  final String? assignedOfficerId;
+  final String? appPassword;
+  final String? appPasswordConfirmation;
+
+  const CreateCustomerParams({
+    required this.name,
+    required this.customerType,
+    this.category,
+    this.tier,
+    this.phone,
+    this.email,
+    this.whatsappNumber,
+    this.address,
+    this.city,
+    this.county,
+    this.latitude,
+    this.longitude,
+    this.notes,
+    this.contactName,
+    this.contactRole,
+    this.contactPhone,
+    this.assignedOfficerId,
+    this.appPassword,
+    this.appPasswordConfirmation,
+  });
+
+  Map<String, dynamic> toJson() {
+    final data = <String, dynamic>{
+      'name': name.trim(),
+      'customer_type': customerType,
+      if (category != null && category!.isNotEmpty) 'category': category,
+      if (tier != null && tier!.isNotEmpty) 'tier': tier,
+      if (phone != null && phone!.isNotEmpty) 'phone': phone,
+      if (email != null && email!.isNotEmpty) 'email': email,
+      if (whatsappNumber != null && whatsappNumber!.isNotEmpty)
+        'whatsapp_number': whatsappNumber,
+      if (address != null && address!.isNotEmpty) 'address': address,
+      if (city != null && city!.isNotEmpty) 'city': city,
+      if (county != null && county!.isNotEmpty) 'county': county,
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
+      if (notes != null && notes!.isNotEmpty) 'notes': notes,
+      if (assignedOfficerId != null && assignedOfficerId!.isNotEmpty)
+        'assigned_officer_id': assignedOfficerId,
+      if (appPassword != null && appPassword!.isNotEmpty)
+        'app_password': appPassword,
+      if (appPasswordConfirmation != null &&
+          appPasswordConfirmation!.isNotEmpty)
+        'app_password_confirmation': appPasswordConfirmation,
+    };
+    if (contactName != null && contactName!.isNotEmpty) {
+      data['contacts'] = [
+        {
+          'name': contactName,
+          if (contactRole != null) 'role': contactRole,
+          if (contactPhone != null) 'phone': contactPhone,
+          'is_primary': true,
+        },
+      ];
+    }
+
+    return data;
+  }
+}
+
+class CreateCustomerUseCase
+    implements UseCase<CustomerEntity, CreateCustomerParams> {
+  final CustomerRepository repository;
+  CreateCustomerUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, CustomerEntity>> call(CreateCustomerParams p) async {
+    if (p.name.trim().isEmpty)
+      return const Left(ValidationFailure('Customer name is required'));
+    if (p.name.trim().length < 2)
+      return const Left(
+        ValidationFailure('Name must be at least 2 characters'),
+      );
+    if (p.customerType != 'b2b' && p.customerType != 'b2c')
+      return const Left(ValidationFailure('Type must be b2b or b2c'));
+    return repository.create(p.toJson());
+  }
+}
+
+
+// === FILE: lib/features/customer/domain/usecases/delete_customer_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../repositories/customer_repository.dart';
+
+class DeleteCustomerParams { final String id; const DeleteCustomerParams({required this.id}); }
+class DeleteCustomerUseCase implements UseCase<void, DeleteCustomerParams> {
+  final CustomerRepository repository;
+  DeleteCustomerUseCase(this.repository);
+  @override Future<Either<Failure, void>> call(DeleteCustomerParams p) => repository.delete(p.id);
+}
+
+
+// === FILE: lib/features/customer/domain/usecases/get_all_customer_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/network/paginated_response.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/customer_entity.dart';
+import '../repositories/customer_repository.dart';
+
+class GetAllCustomerUseCase implements UseCase<PaginatedResponse<CustomerEntity>, NoParams> {
+  final CustomerRepository repository;
+  GetAllCustomerUseCase(this.repository);
+  @override
+  Future<Either<Failure, PaginatedResponse<CustomerEntity>>> call(NoParams _) => repository.getAll();
+}
+
+
+// === FILE: lib/features/customer/domain/usecases/get_customer_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/customer_entity.dart';
+import '../repositories/customer_repository.dart';
+
+class GetCustomerParams { final String id; const GetCustomerParams({required this.id}); }
+class GetCustomerUseCase implements UseCase<CustomerEntity, GetCustomerParams> {
+  final CustomerRepository repository;
+  GetCustomerUseCase(this.repository);
+  @override Future<Either<Failure, CustomerEntity>> call(GetCustomerParams p) => repository.getById(p.id);
+}
+
+
+// === FILE: lib/features/customer/domain/usecases/update_customer_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/customer_entity.dart';
+import '../repositories/customer_repository.dart';
+
+class UpdateCustomerParams {
+  final CustomerEntity entity;
+  final String? contactName;
+  final String? contactPhone;
+  final String? contactRole;
+
+  const UpdateCustomerParams({
+    required this.entity,
+    this.contactName,
+    this.contactPhone,
+    this.contactRole,
+  });
+}
+
+class UpdateCustomerUseCase
+    implements UseCase<CustomerEntity, UpdateCustomerParams> {
+  final CustomerRepository repository;
+  UpdateCustomerUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, CustomerEntity>> call(UpdateCustomerParams p) =>
+      repository.update(p.entity.id, {
+        'name': p.entity.name,
+        'customer_type': p.entity.customerType,
+        'category': p.entity.category,
+        'tier': p.entity.tier,
+        if (p.entity.assignedOfficerId != null &&
+            p.entity.assignedOfficerId!.isNotEmpty)
+          'assigned_officer_id': p.entity.assignedOfficerId,
+        if (p.entity.phone != null) 'phone': p.entity.phone,
+        if (p.entity.email != null) 'email': p.entity.email,
+        if (p.entity.whatsappNumber != null)
+          'whatsapp_number': p.entity.whatsappNumber,
+        if (p.entity.address != null) 'address': p.entity.address,
+        if (p.entity.city != null) 'city': p.entity.city,
+        if (p.entity.county != null) 'county': p.entity.county,
+        if (p.entity.latitude != null) 'latitude': p.entity.latitude,
+        if (p.entity.longitude != null) 'longitude': p.entity.longitude,
+        if (p.entity.notes != null) 'notes': p.entity.notes,
+        'receives_whatsapp': p.entity.receivesWhatsapp,
+        'receives_sms': p.entity.receivesSms,
+        'receives_in_app': p.entity.receivesInApp,
+        if (p.contactName != null && p.contactName!.isNotEmpty)
+          'contact_name': p.contactName,
+        if (p.contactPhone != null && p.contactPhone!.isNotEmpty)
+          'contact_phone': p.contactPhone,
+        if (p.contactRole != null && p.contactRole!.isNotEmpty)
+          'contact_role': p.contactRole,
+      });
+}
+
+
+// === FILE: lib/features/customer/presentation/bloc/customer_bloc.dart ===
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../../domain/usecases/create_customer_usecase.dart';
+import '../../domain/usecases/delete_customer_usecase.dart';
+import '../../domain/usecases/get_customer_usecase.dart';
+import '../../domain/usecases/get_all_customer_usecase.dart';
+import '../../domain/usecases/update_customer_usecase.dart';
+import 'customer_event.dart';
+import 'customer_state.dart';
+
+class CustomerBloc extends Bloc<CustomerEvent, CustomerState> {
+  final GetAllCustomerUseCase getAllUseCase;
+  final GetCustomerUseCase getUseCase;
+  final CreateCustomerUseCase createUseCase;
+  final UpdateCustomerUseCase updateUseCase;
+  final DeleteCustomerUseCase deleteUseCase;
+
+  CustomerBloc({
+    required this.getAllUseCase,
+    required this.getUseCase,
+    required this.createUseCase,
+    required this.updateUseCase,
+    required this.deleteUseCase,
+  }) : super(CustomerInitial()) {
+    on<CustomerLoadAllRequested>(_onLoadAll);
+    on<CustomerLoadOneRequested>(_onLoadOne);
+    on<CustomerCreateRequested>(_onCreate);
+    on<CustomerUpdateRequested>(_onUpdate);
+    on<CustomerDeleteRequested>(_onDelete);
+    on<CustomerFormReset>((_, emit) => emit(CustomerInitial()));
+  }
+
+  Future<void> _onLoadAll(
+    CustomerLoadAllRequested event,
+    Emitter<CustomerState> emit,
+  ) async {
+    emit(CustomerLoading());
+    final result = await getAllUseCase(NoParams());
+    result.fold(
+      (f) => emit(CustomerFailure(f.message)),
+      (paginated) => paginated.items.isEmpty
+          ? emit(CustomerEmpty())
+          : emit(CustomerListLoaded(paginated.items)),
+    );
+  }
+
+  Future<void> _onLoadOne(
+    CustomerLoadOneRequested event,
+    Emitter<CustomerState> emit,
+  ) async {
+    emit(CustomerLoading());
+    final result = await getUseCase(GetCustomerParams(id: event.id));
+    result.fold(
+      (f) => emit(CustomerFailure(f.message)),
+      (item) => emit(CustomerDetailLoaded(item)),
+    );
+  }
+
+  Future<void> _onCreate(
+    CustomerCreateRequested event,
+    Emitter<CustomerState> emit,
+  ) async {
+    emit(CustomerLoading());
+    final result = await createUseCase(event.params);
+    result.fold(
+      (f) => emit(CustomerFailure(f.message)),
+      (_) => emit(CustomerOperationSuccess('Customer created')),
+    );
+  }
+
+  Future<void> _onUpdate(
+    CustomerUpdateRequested event,
+    Emitter<CustomerState> emit,
+  ) async {
+    emit(CustomerLoading());
+    final result = await updateUseCase(
+      UpdateCustomerParams(
+        entity: event.entity,
+        contactName: event.contactName,
+        contactPhone: event.contactPhone,
+        contactRole: event.contactRole,
+      ),
+    );
+    result.fold(
+      (f) => emit(CustomerFailure(f.message)),
+      (_) => emit(CustomerOperationSuccess('Customer updated')),
+    );
+  }
+
+  Future<void> _onDelete(
+    CustomerDeleteRequested event,
+    Emitter<CustomerState> emit,
+  ) async {
+    emit(CustomerLoading());
+    final result = await deleteUseCase(DeleteCustomerParams(id: event.id));
+    result.fold(
+      (f) => emit(CustomerFailure(f.message)),
+      (_) => emit(CustomerOperationSuccess('Customer deleted')),
+    );
+  }
+}
+
+
+// === FILE: lib/features/customer/presentation/bloc/customer_event.dart ===
+import '../../domain/entities/customer_entity.dart';
+import '../../domain/usecases/create_customer_usecase.dart';
+
+abstract class CustomerEvent {}
+
+class CustomerLoadAllRequested extends CustomerEvent {}
+
+class CustomerLoadOneRequested extends CustomerEvent {
+  final String id;
+  CustomerLoadOneRequested(this.id);
+}
+
+class CustomerCreateRequested extends CustomerEvent {
+  final CreateCustomerParams params;
+  CustomerCreateRequested(this.params);
+}
+
+class CustomerUpdateRequested extends CustomerEvent {
+  final CustomerEntity entity;
+  final String? appPassword;
+  final String? appPasswordConfirmation;
+  final String? contactName;
+  final String? contactPhone;
+  final String? contactRole;
+
+  CustomerUpdateRequested(
+    this.entity, {
+    this.appPassword,
+    this.appPasswordConfirmation,
+    this.contactName,
+    this.contactPhone,
+    this.contactRole,
+  });
+}
+
+class CustomerDeleteRequested extends CustomerEvent {
+  final String id;
+  CustomerDeleteRequested(this.id);
+}
+
+class CustomerFormReset extends CustomerEvent {}
+
+
+// === FILE: lib/features/customer/presentation/bloc/customer_state.dart ===
+import '../../domain/entities/customer_entity.dart';
+
+abstract class CustomerState {}
+class CustomerInitial extends CustomerState {}
+class CustomerLoading extends CustomerState {}
+class CustomerListLoaded extends CustomerState { final List<CustomerEntity> items; CustomerListLoaded(this.items); }
+class CustomerDetailLoaded extends CustomerState { final CustomerEntity item; CustomerDetailLoaded(this.item); }
+class CustomerOperationSuccess extends CustomerState { final String message; CustomerOperationSuccess(this.message); }
+class CustomerEmpty extends CustomerState {}
+class CustomerFailure extends CustomerState { final String message; CustomerFailure(this.message); }
+
+
+// === FILE: lib/features/customer/presentation/pages/customer_detail_page.dart ===
+// customer_detail_page.dart
+// Fixed: officer name resolution now uses the dedicated
+// GET /pharma/orgs/{orgId}/officers endpoint via OfficerRemoteDataSource.getAll()
+// which returns PmOfficer records enriched with user+actor data.
+// The previous call to org members endpoint caused parse failures.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../../../../config/di/injection_container.dart';
+import '../../../../core/utils/map_launcher.dart';
+import '../../domain/entities/customer_entity.dart';
+import '../bloc/customer_bloc.dart';
+import '../bloc/customer_event.dart';
+import '../bloc/customer_state.dart';
+import '../../../officer/data/datasources/officer_remote_datasource.dart';
+import '../../../visit/presentation/bloc/visit_bloc.dart';
+import '../../../visit/presentation/widgets/admin_customer_visit_history_tab.dart';
+
+class CustomerDetailPage extends StatefulWidget {
+  const CustomerDetailPage({super.key});
+
+  @override
+  State<CustomerDetailPage> createState() => _CustomerDetailPageState();
+}
+
+class _CustomerDetailPageState extends State<CustomerDetailPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<String> _getOfficerName(String? officerId, String orgId) async {
+    if (officerId == null || officerId.isEmpty) return 'Not assigned';
+    try {
+      final ds = sl<OfficerRemoteDataSource>();
+      final result = await ds.getAll();
+      final match =
+          result.items.where((o) => o.actorId == officerId).firstOrNull ??
+          result.items.where((o) => o.userId == officerId).firstOrNull;
+      if (match != null) {
+        final role = match.orgRoleName ?? '';
+        return role.isNotEmpty
+            ? '${match.displayName} ($role)'
+            : match.displayName;
+      }
+      return officerId;
+    } catch (_) {
+      return officerId;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Customer Detail'),
+        actions: [
+          BlocBuilder<CustomerBloc, CustomerState>(
+            builder: (context, state) {
+              if (state is CustomerDetailLoaded) {
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined),
+                      tooltip: 'Edit',
+                      onPressed: () => context.push(
+                        AppRouter.customerEditPath(state.item.id),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.delete_outline, color: scheme.error),
+                      tooltip: 'Delete',
+                      onPressed: () => _confirmDelete(
+                        context,
+                        state.item.id,
+                        state.item.name,
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(icon: Icon(Icons.info_outline), text: 'Details'),
+            Tab(icon: Icon(Icons.history), text: 'Visits'),
+          ],
+        ),
+      ),
+      body: BlocConsumer<CustomerBloc, CustomerState>(
+        listener: (context, state) {
+          if (state is CustomerOperationSuccess) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+            context.pop();
+          }
+          if (state is CustomerFailure) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: scheme.error,
+              ),
+            );
+          }
+        },
+        builder: (context, state) {
+          if (state is CustomerLoading || state is CustomerInitial) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (state is CustomerFailure) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: scheme.error),
+                  const SizedBox(height: 16),
+                  Text(state.message),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => context.pop(),
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('Go Back'),
+                  ),
+                ],
+              ),
+            );
+          }
+          if (state is CustomerDetailLoaded) {
+            return TabBarView(
+              controller: _tabController,
+              children: [
+                _buildContent(context, state.item),
+                // VisitBloc is provided per-route in the router.
+                // We provide a fresh one here scoped to this tab.
+                BlocProvider(
+                  create: (_) => sl<VisitBloc>(),
+                  child: AdminCustomerVisitHistoryTab(
+                    customerId: state.item.id,
+                  ),
+                ),
+              ],
+            );
+          }
+          return const SizedBox.shrink();
+        },
+      ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, CustomerEntity item) {
+    final scheme = Theme.of(context).colorScheme;
+    final isWide = MediaQuery.of(context).size.width >= 600;
+    final contact = item.primaryContact;
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(
+        horizontal: isWide ? MediaQuery.of(context).size.width * 0.1 : 16,
+        vertical: 16,
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Header Card ──
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 32,
+                      backgroundColor: scheme.primaryContainer.withValues(
+                        alpha: 0.5,
+                      ),
+                      child: Icon(
+                        item.isB2B ? Icons.store : Icons.person,
+                        color: scheme.primary,
+                        size: 30,
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  item.name,
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+                              ),
+                              if (item.code != null)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: scheme.surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    item.code!,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: [
+                              _chip(
+                                context,
+                                item.customerType.toUpperCase(),
+                                scheme.primary,
+                              ),
+                              if (item.category != null)
+                                _chip(context, item.category!, scheme.tertiary),
+                              _chip(context, item.tier, _tierColor(item.tier)),
+                              _chip(
+                                context,
+                                item.status,
+                                item.status == 'active'
+                                    ? Colors.green
+                                    : item.status == 'blacklisted'
+                                    ? Colors.red
+                                    : Colors.grey,
+                              ),
+                            ],
+                          ),
+                          if (item.createdAt != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'Registered ${item.createdAt!.toIso8601String().split('T').first}',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // ── Contact & Communication Card ──
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Contact & Communication',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Divider(height: 24),
+                    if (item.phone != null)
+                      _row(context, Icons.phone, 'Phone', item.phone!),
+                    if (item.email != null)
+                      _row(context, Icons.email_outlined, 'Email', item.email!),
+                    if (item.whatsappNumber != null)
+                      _row(
+                        context,
+                        Icons.chat,
+                        'WhatsApp',
+                        item.whatsappNumber!,
+                      ),
+                    if (contact != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Primary Contact',
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      _row(
+                        context,
+                        Icons.person_outline,
+                        'Name',
+                        '${contact.name}${contact.role != null ? ' (${contact.role})' : ''}',
+                      ),
+                      if (contact.phone != null)
+                        _row(
+                          context,
+                          Icons.phone_forwarded_outlined,
+                          'Phone',
+                          contact.phone!,
+                        ),
+                    ],
+                    if (item.contacts.length > 1) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'All Contacts (${item.contacts.length})',
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      ...item.contacts.map(
+                        (c) => _row(
+                          context,
+                          Icons.person_pin,
+                          c.role ?? 'contact',
+                          '${c.name}${c.phone != null ? ' · ${c.phone}' : ''}',
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // ── Location & Assignment Card ──
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Location & Assignment',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Divider(height: 24),
+                    if (item.address != null)
+                      _row(
+                        context,
+                        Icons.location_on_outlined,
+                        'Address',
+                        item.address!,
+                      ),
+                    if (item.city != null)
+                      _row(
+                        context,
+                        Icons.location_city,
+                        'City',
+                        '${item.city}${item.county != null ? ', ${item.county}' : ''}',
+                      ),
+                    if (item.hasGps)
+                      _gpsRow(context, item)
+                    else
+                      _row(
+                        context,
+                        Icons.gps_not_fixed_outlined,
+                        'GPS',
+                        'Not recorded',
+                        muted: true,
+                      ),
+                    // ── Officer name via FutureBuilder ──
+                    // Uses the pharma officers endpoint — avoids Location plugin
+                    // exception that happened when calling org members endpoint.
+                    FutureBuilder<String>(
+                      future: _getOfficerName(
+                        item.assignedOfficerId,
+                        // orgId comes from the customer's org_id field
+                        item.orgId,
+                      ),
+                      builder: (_, snap) => _row(
+                        context,
+                        Icons.badge_outlined,
+                        'Assigned Officer',
+                        snap.data ?? '...',
+                      ),
+                    ),
+                    _row(context, Icons.fingerprint, 'Customer ID', item.id),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 80),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(BuildContext context, String label, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.15),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: color.withValues(alpha: 0.4)),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+    ),
+  );
+
+  Color _tierColor(String tier) => switch (tier) {
+    'platinum' => Colors.deepPurple,
+    'gold' => Colors.amber.shade700,
+    'silver' => Colors.blueGrey,
+    _ => Colors.grey,
+  };
+
+  Widget _gpsRow(BuildContext context, CustomerEntity item) {
+    final scheme = Theme.of(context).colorScheme;
+    final coords =
+        '${item.latitude!.toStringAsFixed(4)}, ${item.longitude!.toStringAsFixed(4)}';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Tooltip(
+        message: 'Open in Map',
+        child: InkWell(
+          onTap: () => MapLauncher.open(
+            lat: item.latitude!,
+            lng: item.longitude!,
+            label: item.name,
+          ),
+          borderRadius: BorderRadius.circular(6),
+          child: Row(
+            children: [
+              Icon(Icons.gps_fixed, size: 20, color: scheme.primary),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 110,
+                child: Text(
+                  'GPS',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  coords,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                    color: scheme.primary,
+                    decoration: TextDecoration.underline,
+                    decorationColor: scheme.primary,
+                  ),
+                ),
+              ),
+              Icon(Icons.open_in_new, size: 14, color: scheme.primary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _row(
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value, {
+    bool muted = false,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = muted
+        ? scheme.onSurfaceVariant.withValues(alpha: 0.45)
+        : null;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 20,
+            color: muted
+                ? scheme.onSurfaceVariant.withValues(alpha: 0.4)
+                : scheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+                color: color,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    String id,
+    String name,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dc) => AlertDialog(
+        title: const Text('Delete Customer?'),
+        content: Text('Remove "$name"? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dc, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(dc, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      context.read<CustomerBloc>().add(CustomerDeleteRequested(id));
+    }
+  }
+}
+
+
+// === FILE: lib/features/customer/presentation/pages/customer_form_page.dart ===
+// lib/features/customer/presentation/pages/customer_form_page.dart  (jadosoft-admin)
+//
+// Location section replaced: old _cityCtl / _countyCtl free-text fields
+// are gone. New LocationSectionWidget + LocationValue handle the full
+// Country → Region → District → Ward → Street hierarchy.
+// Dropdowns when static data exists; searchable bottom-sheet picker.
+// Free-text fields when no static data is available for a level.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../../../config/di/injection_container.dart';
+import '../../../../core/widgets/location_section_widget.dart';
+import '../bloc/customer_bloc.dart';
+import '../bloc/customer_event.dart';
+import '../bloc/customer_state.dart';
+import '../../domain/usecases/create_customer_usecase.dart';
+import '../../../officer/data/datasources/officer_remote_datasource.dart';
+import '../../../officer/domain/entities/officer_entity.dart';
+
+enum CustomerFormMode { create, edit }
+
+class CustomerFormPage extends StatefulWidget {
+  final CustomerFormMode mode;
+  final String? id;
+  const CustomerFormPage({
+    super.key,
+    this.mode = CustomerFormMode.create,
+    this.id,
+  });
+  @override
+  State<CustomerFormPage> createState() => _CustomerFormPageState();
+}
+
+class _CustomerFormPageState extends State<CustomerFormPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameCtl = TextEditingController();
+  final _phoneCtl = TextEditingController();
+  final _emailCtl = TextEditingController();
+  final _whatsappCtl = TextEditingController();
+  final _addressCtl = TextEditingController();
+  final _gpsLatCtl = TextEditingController();
+  final _gpsLngCtl = TextEditingController();
+  final _notesCtl = TextEditingController();
+  final _contactNameCtl = TextEditingController();
+  final _contactPhoneCtl = TextEditingController();
+  final _passwordCtl = TextEditingController();
+  final _confirmPassCtl = TextEditingController();
+
+  bool _enableAppLogin = false;
+
+  String _customerType = 'b2b';
+  String? _category;
+  String? _tier;
+  String? _contactRole;
+  String? _selectedOfficerId;
+
+  // Location hierarchy
+  LocationValue _location = const LocationValue();
+
+  bool _isSubmitting = false;
+  bool _fieldsPopulated = false;
+  bool _gpsLoading = false;
+  bool get _isEdit => widget.mode == CustomerFormMode.edit;
+  bool get _hasValidGps =>
+      double.tryParse(_gpsLatCtl.text.trim()) != null &&
+      double.tryParse(_gpsLngCtl.text.trim()) != null;
+
+  List<OfficerEntity> _officers = [];
+  bool _officersLoading = true;
+
+  static const _categories = [
+    'clinic',
+    'hospital',
+    'pharmacy',
+    'wholesaler',
+    'other',
+  ];
+  static const _tiers = ['standard', 'silver', 'gold', 'platinum'];
+  static const _contactRoles = [
+    'owner',
+    'pharmacist',
+    'doctor',
+    'nurse',
+    'procurement',
+    'manager',
+    'other',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOfficers();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _captureGps();
+    });
+  }
+
+  Future<void> _loadOfficers() async {
+    if (mounted) setState(() => _officersLoading = true);
+    try {
+      final ds = sl<OfficerRemoteDataSource>();
+      final result = await ds.getAll();
+      if (mounted) {
+        setState(() {
+          _officers = result.items;
+          _officersLoading = false;
+          if (_selectedOfficerId != null &&
+              !_officers.any((o) => o.actorId == _selectedOfficerId)) {
+            _selectedOfficerId = null;
+          }
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _officersLoading = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in [
+      _nameCtl,
+      _phoneCtl,
+      _emailCtl,
+      _whatsappCtl,
+      _addressCtl,
+      _gpsLatCtl,
+      _gpsLngCtl,
+      _notesCtl,
+      _contactNameCtl,
+      _contactPhoneCtl,
+      _passwordCtl,
+      _confirmPassCtl,
+    ]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _populateFields(CustomerState state) {
+    if (_isEdit && !_fieldsPopulated && state is CustomerDetailLoaded) {
+      final item = state.item;
+      _nameCtl.text = item.name;
+      _phoneCtl.text = item.phone ?? '';
+      _emailCtl.text = item.email ?? '';
+      _whatsappCtl.text = item.whatsappNumber ?? '';
+      _addressCtl.text = item.address ?? '';
+      _gpsLatCtl.text = item.latitude?.toString() ?? '';
+      _gpsLngCtl.text = item.longitude?.toString() ?? '';
+      _notesCtl.text = item.notes ?? '';
+      _customerType = item.customerType;
+      _category = _categories.contains(item.category) ? item.category : null;
+      _tier = _tiers.contains(item.tier) ? item.tier : null;
+      _selectedOfficerId = item.assignedOfficerId;
+      _location = LocationValue.fromApiFields(
+        city: item.city,
+        county: item.county,
+      );
+      final pc = item.primaryContact;
+      if (pc != null) {
+        _contactNameCtl.text = pc.name;
+        _contactPhoneCtl.text = pc.phone ?? '';
+        _contactRole = pc.role;
+      }
+      _fieldsPopulated = true;
+      if (_selectedOfficerId != null &&
+          _officers.isNotEmpty &&
+          !_officers.any((o) => o.actorId == _selectedOfficerId)) {
+        _selectedOfficerId = null;
+      }
+    }
+  }
+
+  // ── GPS ───────────────────────────────────────────────────
+
+  Future<void> _captureGps() async {
+    if (!mounted) return;
+    setState(() => _gpsLoading = true);
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          setState(() => _gpsLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('GPS service is disabled')),
+          );
+        }
+        return;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          setState(() => _gpsLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Location permission permanently denied. Enable it in Settings.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      if (permission != LocationPermission.always &&
+          permission != LocationPermission.whileInUse) {
+        if (mounted) setState(() => _gpsLoading = false);
+        return;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      if (mounted) {
+        setState(() {
+          _gpsLatCtl.text = position.latitude.toStringAsFixed(6);
+          _gpsLngCtl.text = position.longitude.toStringAsFixed(6);
+          _gpsLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _gpsLoading = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('GPS error: $e')));
+      }
+    }
+  }
+
+  Future<void> _openInMap() async {
+    final lat = double.tryParse(_gpsLatCtl.text.trim());
+    final lng = double.tryParse(_gpsLngCtl.text.trim());
+    if (lat == null || lng == null) return;
+    final uri = Uri.parse(
+      'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
+    );
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  // ── Build ─────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final isWide = MediaQuery.of(context).size.width >= 600;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_isEdit ? 'Edit Customer' : 'New Customer'),
+        actions: [
+          if (_isEdit)
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Reload',
+              onPressed: () {
+                if (widget.id != null) {
+                  setState(() => _fieldsPopulated = false);
+                  context.read<CustomerBloc>().add(
+                    CustomerLoadOneRequested(widget.id!),
+                  );
+                }
+                _loadOfficers();
+              },
+            ),
+        ],
+      ),
+      body: BlocConsumer<CustomerBloc, CustomerState>(
+        listener: (context, state) {
+          _populateFields(state);
+          if (state is CustomerOperationSuccess) {
+            setState(() => _isSubmitting = false);
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+            Navigator.of(context).pop(true);
+          }
+          if (state is CustomerFailure) {
+            setState(() => _isSubmitting = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: scheme.error,
+              ),
+            );
+          }
+        },
+        builder: (context, state) {
+          if (_isEdit && state is CustomerLoading && !_fieldsPopulated) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return Form(
+            key: _formKey,
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(
+                horizontal: isWide
+                    ? MediaQuery.of(context).size.width * 0.1
+                    : 16,
+                vertical: 16,
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ── Customer Information ──
+                    _sectionLabel(context, 'Customer Information'),
+                    const SizedBox(height: 8),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(
+                          value: 'b2b',
+                          label: Text('B2B'),
+                          icon: Icon(Icons.store),
+                        ),
+                        ButtonSegment(
+                          value: 'b2c',
+                          label: Text('B2C'),
+                          icon: Icon(Icons.person),
+                        ),
+                      ],
+                      selected: {_customerType},
+                      onSelectionChanged: (s) =>
+                          setState(() => _customerType = s.first),
+                    ),
+                    const SizedBox(height: 16),
+                    _field(
+                      _nameCtl,
+                      _customerType == 'b2b' ? 'Business Name' : 'Full Name',
+                      Icons.store,
+                      required: true,
+                    ),
+                    const SizedBox(height: 16),
+                    if (isWide)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (_customerType == 'b2b') ...[
+                            Expanded(
+                              child: _dropdown(
+                                'Category',
+                                _categories,
+                                _category,
+                                (v) => setState(() => _category = v),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                          ],
+                          Expanded(
+                            child: _dropdown(
+                              'Tier',
+                              _tiers,
+                              _tier,
+                              (v) => setState(() => _tier = v),
+                            ),
+                          ),
+                        ],
+                      )
+                    else ...[
+                      if (_customerType == 'b2b') ...[
+                        _dropdown(
+                          'Category',
+                          _categories,
+                          _category,
+                          (v) => setState(() => _category = v),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      _dropdown(
+                        'Tier',
+                        _tiers,
+                        _tier,
+                        (v) => setState(() => _tier = v),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+
+                    // ── Communication ──
+                    _sectionLabel(context, 'Communication'),
+                    const SizedBox(height: 8),
+                    if (isWide)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _field(
+                              _phoneCtl,
+                              'Phone',
+                              Icons.phone,
+                              keyboard: TextInputType.phone,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _field(
+                              _emailCtl,
+                              'Email',
+                              Icons.email_outlined,
+                              keyboard: TextInputType.emailAddress,
+                            ),
+                          ),
+                        ],
+                      )
+                    else ...[
+                      _field(
+                        _phoneCtl,
+                        'Phone',
+                        Icons.phone,
+                        keyboard: TextInputType.phone,
+                      ),
+                      const SizedBox(height: 16),
+                      _field(
+                        _emailCtl,
+                        'Email',
+                        Icons.email_outlined,
+                        keyboard: TextInputType.emailAddress,
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    _field(
+                      _whatsappCtl,
+                      'WhatsApp Number',
+                      Icons.chat,
+                      keyboard: TextInputType.phone,
+                    ),
+                    const SizedBox(height: 24),
+
+                    // ── Primary Contact Person ──
+                    _sectionLabel(context, 'Primary Contact Person'),
+                    const SizedBox(height: 8),
+                    if (isWide)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _field(
+                              _contactNameCtl,
+                              'Contact Name',
+                              Icons.person_outline,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _dropdown(
+                              'Role',
+                              _contactRoles,
+                              _contactRole,
+                              (v) => setState(() => _contactRole = v),
+                            ),
+                          ),
+                        ],
+                      )
+                    else ...[
+                      _field(
+                        _contactNameCtl,
+                        'Contact Name',
+                        Icons.person_outline,
+                      ),
+                      const SizedBox(height: 16),
+                      _dropdown(
+                        'Role',
+                        _contactRoles,
+                        _contactRole,
+                        (v) => setState(() => _contactRole = v),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    _field(
+                      _contactPhoneCtl,
+                      'Contact Phone',
+                      Icons.phone_forwarded_outlined,
+                      keyboard: TextInputType.phone,
+                    ),
+                    const SizedBox(height: 24),
+
+                    // ── Location ─────────────────────────────────────────────
+                    _sectionLabel(context, 'Location'),
+                    const SizedBox(height: 8),
+                    LocationSectionWidget(
+                      value: _location,
+                      onChanged: (v) => setState(() => _location = v),
+                    ),
+                    const SizedBox(height: 16),
+                    _field(
+                      _addressCtl,
+                      'Full Address (optional)',
+                      Icons.location_on_outlined,
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // GPS
+                    Row(
+                      children: [
+                        Text(
+                          'GPS Coordinates',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
+                        const Spacer(),
+                        if (_gpsLoading)
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        else
+                          TextButton.icon(
+                            onPressed: _captureGps,
+                            icon: const Icon(Icons.my_location, size: 16),
+                            label: const Text('Auto-capture'),
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                            ),
+                          ),
+                        const SizedBox(width: 4),
+                        ValueListenableBuilder(
+                          valueListenable: _gpsLatCtl,
+                          builder: (_, __, ___) => ValueListenableBuilder(
+                            valueListenable: _gpsLngCtl,
+                            builder: (_, __, ___) => _hasValidGps
+                                ? TextButton.icon(
+                                    onPressed: _openInMap,
+                                    icon: const Icon(
+                                      Icons.map_outlined,
+                                      size: 16,
+                                    ),
+                                    label: const Text('Open in Map'),
+                                    style: TextButton.styleFrom(
+                                      visualDensity: VisualDensity.compact,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                      ),
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    if (isWide)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _field(
+                              _gpsLatCtl,
+                              'Latitude',
+                              Icons.gps_fixed,
+                              keyboard: const TextInputType.numberWithOptions(
+                                decimal: true,
+                                signed: true,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _field(
+                              _gpsLngCtl,
+                              'Longitude',
+                              Icons.gps_fixed,
+                              keyboard: const TextInputType.numberWithOptions(
+                                decimal: true,
+                                signed: true,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    else ...[
+                      _field(
+                        _gpsLatCtl,
+                        'Latitude',
+                        Icons.gps_fixed,
+                        keyboard: const TextInputType.numberWithOptions(
+                          decimal: true,
+                          signed: true,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _field(
+                        _gpsLngCtl,
+                        'Longitude',
+                        Icons.gps_fixed,
+                        keyboard: const TextInputType.numberWithOptions(
+                          decimal: true,
+                          signed: true,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+
+                    // ── Officer Assignment ──
+                    _sectionLabel(context, 'Officer Assignment'),
+                    const SizedBox(height: 8),
+                    _buildOfficerDropdown(),
+                    const SizedBox(height: 24),
+
+                    // ── Notes ──
+                    _sectionLabel(context, 'Notes'),
+                    const SizedBox(height: 8),
+                    _field(
+                      _notesCtl,
+                      'Internal notes',
+                      Icons.notes,
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 32),
+
+                    // ── App Login Credentials ──
+                    _sectionLabel(context, 'Customer App Login'),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      value: _enableAppLogin,
+                      title: Text(
+                        _isEdit
+                            ? 'Change App Login Password'
+                            : 'Enable Customer App Login',
+                      ),
+                      subtitle: Text(
+                        _isEdit
+                            ? 'Set a new password for the customer app'
+                            : 'Set a password so customer can log into jadosoft-lite',
+                      ),
+                      onChanged: (v) => setState(() => _enableAppLogin = v),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    if (_enableAppLogin) ...[
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _passwordCtl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Password',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.lock_outline),
+                          helperText: 'Min 8 characters',
+                        ),
+                        validator: (v) {
+                          if (!_enableAppLogin) return null;
+                          if (v == null || v.isEmpty)
+                            return 'Password is required';
+                          if (v.length < 8) return 'At least 8 characters';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _confirmPassCtl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Confirm Password',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.lock_outline),
+                        ),
+                        validator: (v) {
+                          if (!_enableAppLogin) return null;
+                          if (v != _passwordCtl.text)
+                            return 'Passwords do not match';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _isEdit
+                            ? 'Password will be updated for the existing account.'
+                            : 'Email above will be used as the login credential.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+
+                    FilledButton.icon(
+                      onPressed: _isSubmitting ? null : _submit,
+                      icon: _isSubmitting
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Icon(_isEdit ? Icons.save : Icons.store_outlined),
+                      label: Text(_isEdit ? 'Save Changes' : 'Create Customer'),
+                    ),
+                    const SizedBox(height: 32),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ── Officer dropdown ──────────────────────────────────────
+
+  Widget _buildOfficerDropdown() {
+    if (_officersLoading) return const LinearProgressIndicator();
+
+    final eligible = _officers
+        .where(
+          (o) =>
+              o.effectiveStatus == 'active' || o.actorId == _selectedOfficerId,
+        )
+        .toList();
+
+    final validSelection =
+        eligible.where((o) => o.actorId == _selectedOfficerId).length == 1
+        ? _selectedOfficerId
+        : null;
+
+    if (validSelection != _selectedOfficerId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _selectedOfficerId = validSelection);
+      });
+    }
+
+    return DropdownButtonFormField<String>(
+      value: validSelection,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        labelText: 'Assigned Officer',
+        border: OutlineInputBorder(),
+        prefixIcon: Icon(Icons.badge_outlined),
+      ),
+      items: eligible
+          .map(
+            (o) => DropdownMenuItem(
+              value: o.actorId,
+              child: Text(
+                '${o.displayName} (${o.orgRoleName ?? ""})'
+                '${o.effectiveStatus != "active" ? " (inactive)" : ""}',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          )
+          .toList(),
+      onChanged: (v) => setState(() => _selectedOfficerId = v),
+      validator: (v) {
+        if (!_isEdit && (v == null || v.isEmpty)) {
+          return 'Assigned officer is required';
+        }
+        return null;
+      },
+    );
+  }
+
+  // ── Helpers ───────────────────────────────────────────────
+
+  Widget _sectionLabel(BuildContext context, String text) => Text(
+    text,
+    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+      color: Theme.of(context).colorScheme.primary,
+      fontWeight: FontWeight.w700,
+    ),
+  );
+
+  Widget _field(
+    TextEditingController ctl,
+    String label,
+    IconData icon, {
+    bool required = false,
+    TextInputType? keyboard,
+    int maxLines = 1,
+  }) => TextFormField(
+    controller: ctl,
+    decoration: InputDecoration(
+      labelText: label,
+      border: const OutlineInputBorder(),
+      prefixIcon: Icon(icon),
+    ),
+    keyboardType: keyboard,
+    maxLines: maxLines,
+    textCapitalization: keyboard == null
+        ? TextCapitalization.words
+        : TextCapitalization.none,
+    validator: required
+        ? (v) {
+            if (v == null || v.trim().isEmpty) return '$label is required';
+            return null;
+          }
+        : null,
+  );
+
+  Widget _dropdown(
+    String label,
+    List<String> items,
+    String? value,
+    ValueChanged<String?> onChanged,
+  ) => DropdownButtonFormField<String>(
+    value: items.contains(value) ? value : null,
+    isExpanded: true,
+    decoration: InputDecoration(
+      labelText: label,
+      border: const OutlineInputBorder(),
+      prefixIcon: const Icon(Icons.arrow_drop_down),
+    ),
+    items: items
+        .map(
+          (e) => DropdownMenuItem(
+            value: e,
+            child: Text(
+              e[0].toUpperCase() + e.substring(1),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        )
+        .toList(),
+    onChanged: onChanged,
+  );
+
+  // ── Submit ────────────────────────────────────────────────
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSubmitting = true);
+    final lat = double.tryParse(_gpsLatCtl.text.trim());
+    final lng = double.tryParse(_gpsLngCtl.text.trim());
+
+    if (_isEdit) {
+      final s = context.read<CustomerBloc>().state;
+      if (s is CustomerDetailLoaded) {
+        context.read<CustomerBloc>().add(
+          CustomerUpdateRequested(
+            s.item.copyWith(
+              name: _nameCtl.text.trim(),
+              customerType: _customerType,
+              phone: _phoneCtl.text.trim(),
+              email: _emailCtl.text.trim(),
+              whatsappNumber: _whatsappCtl.text.trim(),
+              address: _addressCtl.text.trim(),
+              city: _location.effectiveCity,
+              county: _location.effectiveCounty,
+              country: _location.country,
+              latitude: lat,
+              longitude: lng,
+              notes: _notesCtl.text.trim(),
+              category: _category,
+              tier: _tier,
+              assignedOfficerId: _selectedOfficerId,
+            ),
+            appPassword: _enableAppLogin ? _passwordCtl.text : null,
+            appPasswordConfirmation: _enableAppLogin
+                ? _confirmPassCtl.text
+                : null,
+            // ── ADD: contact person fields ────────────────────────
+            contactName: _contactNameCtl.text.trim().isEmpty
+                ? null
+                : _contactNameCtl.text.trim(),
+            contactPhone: _contactPhoneCtl.text.trim().isEmpty
+                ? null
+                : _contactPhoneCtl.text.trim(),
+            contactRole: _contactRole,
+            // ─────────────────────────────────────────────────────
+          ),
+        );
+      }
+    } else {
+      context.read<CustomerBloc>().add(
+        CustomerCreateRequested(
+          CreateCustomerParams(
+            name: _nameCtl.text.trim(),
+            customerType: _customerType,
+            category: _category,
+            tier: _tier,
+            phone: _phoneCtl.text.trim(),
+            email: _emailCtl.text.trim(),
+            whatsappNumber: _whatsappCtl.text.trim(),
+            address: _addressCtl.text.trim(),
+            city: _location.effectiveCity,
+            county: _location.effectiveCounty,
+            latitude: lat,
+            longitude: lng,
+            notes: _notesCtl.text.trim(),
+            contactName: _contactNameCtl.text.trim(),
+            contactRole: _contactRole,
+            contactPhone: _contactPhoneCtl.text.trim(),
+            assignedOfficerId: _selectedOfficerId,
+            appPassword: _enableAppLogin ? _passwordCtl.text : null,
+            appPasswordConfirmation: _enableAppLogin
+                ? _confirmPassCtl.text
+                : null,
+          ),
+        ),
+      );
+    }
+  }
+}
+
+
+// === FILE: lib/features/customer/presentation/pages/customer_list_page.dart ===
+// customer_list_page.dart
+// Changes:
+//   1. Refresh button in AppBar.
+//   2. Search bar — searches name, phone, code.
+//   3. Filter chips: Region, District, Customer Type, Status.
+//      These use the same TanzaniaLocations data.
+//   4. Filters are applied client-side on the loaded list so no
+//      additional API round-trips are needed per filter change.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../../../../core/data/tanzania_locations.dart';
+import '../../domain/entities/customer_entity.dart';
+import '../bloc/customer_bloc.dart';
+import '../bloc/customer_event.dart';
+import '../bloc/customer_state.dart';
+import '../widgets/customer_card_tile.dart';
+import '../widgets/customer_list_row.dart';
+import '../widgets/customer_table_row.dart';
+
+enum _ViewMode { cards, list, details }
+
+class CustomerListPage extends StatefulWidget {
+  const CustomerListPage({super.key});
+  @override
+  State<CustomerListPage> createState() => _CustomerListPageState();
+}
+
+class _CustomerListPageState extends State<CustomerListPage> {
+  _ViewMode _viewMode = _ViewMode.cards;
+
+  // Search & filter state
+  final _searchCtl = TextEditingController();
+  String? _filterRegion;
+  String? _filterDistrict;
+  String? _filterType; // b2b | b2c
+  String? _filterStatus; // active | inactive | blacklisted
+
+  @override
+  void initState() {
+    super.initState();
+    context.read<CustomerBloc>().add(CustomerLoadAllRequested());
+    _searchCtl.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _searchCtl.dispose();
+    super.dispose();
+  }
+
+  void _refresh() =>
+      context.read<CustomerBloc>().add(CustomerLoadAllRequested());
+
+  void _navigateToDetail(String id) =>
+      context.push(AppRouter.customerDetailPath(id));
+
+  void _deleteCustomer(String id, String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dc) => AlertDialog(
+        title: const Text('Delete Customer?'),
+        content: Text('Remove "$name"? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dc, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(dc, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      context.read<CustomerBloc>().add(CustomerDeleteRequested(id));
+    }
+  }
+
+  // ── Client-side filter ────────────────────────────────────
+
+  List<CustomerEntity> _applyFilters(List<CustomerEntity> items) {
+    var result = items;
+    final q = _searchCtl.text.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      result = result
+          .where(
+            (e) =>
+                e.name.toLowerCase().contains(q) ||
+                (e.phone ?? '').contains(q) ||
+                (e.code ?? '').toLowerCase().contains(q),
+          )
+          .toList();
+    }
+    if (_filterRegion != null) {
+      result = result
+          .where(
+            (e) =>
+                (e.county ?? '').toLowerCase() == _filterRegion!.toLowerCase(),
+          )
+          .toList();
+    }
+    if (_filterDistrict != null) {
+      result = result
+          .where(
+            (e) =>
+                (e.city ?? '').toLowerCase() == _filterDistrict!.toLowerCase(),
+          )
+          .toList();
+    }
+    if (_filterType != null) {
+      result = result.where((e) => e.customerType == _filterType).toList();
+    }
+    if (_filterStatus != null) {
+      result = result.where((e) => e.status == _filterStatus).toList();
+    }
+    return result;
+  }
+
+  bool get _hasActiveFilters =>
+      _filterRegion != null ||
+      _filterDistrict != null ||
+      _filterType != null ||
+      _filterStatus != null ||
+      _searchCtl.text.trim().isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Customers'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
+            onPressed: _refresh,
+          ),
+          _buildViewToggle(scheme),
+          const SizedBox(width: 8),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push(AppRouter.customerCreate),
+        child: const Icon(Icons.store_outlined),
+      ),
+      body: BlocConsumer<CustomerBloc, CustomerState>(
+        listener: (context, state) {
+          if (state is CustomerOperationSuccess) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+            _refresh();
+          }
+          if (state is CustomerFailure) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: scheme.error,
+              ),
+            );
+          }
+        },
+        builder: (context, state) {
+          if (state is CustomerLoading || state is CustomerInitial) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (state is CustomerEmpty) return _buildEmpty(context, scheme);
+          if (state is CustomerFailure) {
+            return _buildError(context, scheme, state.message);
+          }
+          if (state is CustomerListLoaded) {
+            final filtered = _applyFilters(state.items);
+            return Column(
+              children: [
+                _buildSearchBar(scheme),
+                _buildFilterRow(scheme),
+                Expanded(
+                  child: filtered.isEmpty
+                      ? _buildNoResults(context, scheme)
+                      : RefreshIndicator(
+                          onRefresh: () async => _refresh(),
+                          child: _buildView(filtered),
+                        ),
+                ),
+              ],
+            );
+          }
+          return const SizedBox.shrink();
+        },
+      ),
+    );
+  }
+
+  // ── Search bar ────────────────────────────────────────────
+
+  Widget _buildSearchBar(ColorScheme scheme) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+    child: TextField(
+      controller: _searchCtl,
+      decoration: InputDecoration(
+        hintText: 'Search by name, phone or code…',
+        prefixIcon: const Icon(Icons.search, size: 20),
+        suffixIcon: _searchCtl.text.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.clear, size: 18),
+                onPressed: () => _searchCtl.clear(),
+              )
+            : null,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
+      ),
+    ),
+  );
+
+  // ── Filter chips row ──────────────────────────────────────
+
+  Widget _buildFilterRow(ColorScheme scheme) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Row(
+        children: [
+          // Region filter
+          _FilterChipButton(
+            label: _filterRegion ?? 'Region',
+            isActive: _filterRegion != null,
+            onTap: () => _showRegionFilter(),
+            onClear: _filterRegion != null
+                ? () => setState(() {
+                    _filterRegion = null;
+                    _filterDistrict = null;
+                  })
+                : null,
+          ),
+          const SizedBox(width: 8),
+
+          // District filter (only when region selected)
+          if (_filterRegion != null) ...[
+            _FilterChipButton(
+              label: _filterDistrict ?? 'District',
+              isActive: _filterDistrict != null,
+              onTap: () => _showDistrictFilter(),
+              onClear: _filterDistrict != null
+                  ? () => setState(() => _filterDistrict = null)
+                  : null,
+            ),
+            const SizedBox(width: 8),
+          ],
+
+          // Type filter
+          _FilterChipButton(
+            label: _filterType == 'b2b'
+                ? 'B2B'
+                : _filterType == 'b2c'
+                ? 'B2C'
+                : 'Type',
+            isActive: _filterType != null,
+            onTap: () => _showTypeFilter(),
+            onClear: _filterType != null
+                ? () => setState(() => _filterType = null)
+                : null,
+          ),
+          const SizedBox(width: 8),
+
+          // Status filter
+          _FilterChipButton(
+            label: _filterStatus != null
+                ? _filterStatus![0].toUpperCase() + _filterStatus!.substring(1)
+                : 'Status',
+            isActive: _filterStatus != null,
+            onTap: () => _showStatusFilter(),
+            onClear: _filterStatus != null
+                ? () => setState(() => _filterStatus = null)
+                : null,
+          ),
+
+          // Clear all
+          if (_hasActiveFilters) ...[
+            const SizedBox(width: 12),
+            TextButton(
+              onPressed: () => setState(() {
+                _filterRegion = null;
+                _filterDistrict = null;
+                _filterType = null;
+                _filterStatus = null;
+                _searchCtl.clear();
+              }),
+              child: const Text('Clear all'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── Filter bottom sheets ──────────────────────────────────
+
+  Future<void> _showRegionFilter() async {
+    final picked = await _showPickerSheet(
+      title: 'Filter by Region',
+      items: TanzaniaLocations.regions,
+      selected: _filterRegion,
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _filterRegion = picked;
+        _filterDistrict = null;
+      });
+    }
+  }
+
+  Future<void> _showDistrictFilter() async {
+    if (_filterRegion == null) return;
+    final districts = TanzaniaLocations.getDistricts(_filterRegion!);
+    if (districts.isEmpty) return;
+    final picked = await _showPickerSheet(
+      title: 'Filter by District',
+      items: districts,
+      selected: _filterDistrict,
+    );
+    if (picked != null && mounted) setState(() => _filterDistrict = picked);
+  }
+
+  Future<void> _showTypeFilter() async {
+    final picked = await _showPickerSheet(
+      title: 'Customer Type',
+      items: const ['b2b', 'b2c'],
+      selected: _filterType,
+      displayMap: {'b2b': 'B2B (Business)', 'b2c': 'B2C (Individual)'},
+    );
+    if (picked != null && mounted) setState(() => _filterType = picked);
+  }
+
+  Future<void> _showStatusFilter() async {
+    final picked = await _showPickerSheet(
+      title: 'Filter by Status',
+      items: const ['active', 'inactive', 'blacklisted'],
+      selected: _filterStatus,
+      displayMap: {
+        'active': 'Active',
+        'inactive': 'Inactive',
+        'blacklisted': 'Blacklisted',
+      },
+    );
+    if (picked != null && mounted) setState(() => _filterStatus = picked);
+  }
+
+  Future<String?> _showPickerSheet({
+    required String title,
+    required List<String> items,
+    String? selected,
+    Map<String, String>? displayMap,
+  }) {
+    return showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+              child: Text(
+                title,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+            const Divider(height: 1),
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.4,
+              ),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: items.length,
+                itemBuilder: (_, i) {
+                  final val = items[i];
+                  final label =
+                      displayMap?[val] ??
+                      (val[0].toUpperCase() + val.substring(1));
+                  return RadioListTile<String>(
+                    title: Text(label),
+                    value: val,
+                    groupValue: selected,
+                    onChanged: (v) => Navigator.pop(ctx, v),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── View toggle & rendering ───────────────────────────────
+
+  Widget _buildViewToggle(ColorScheme scheme) {
+    const modes = [
+      (_ViewMode.cards, Icons.dashboard_outlined, 'Cards'),
+      (_ViewMode.list, Icons.view_list_outlined, 'List'),
+      (_ViewMode.details, Icons.table_rows_outlined, 'Details'),
+    ];
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      padding: const EdgeInsets.all(2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: modes.map((m) {
+          final sel = m.$1 == _viewMode;
+          return Tooltip(
+            message: m.$3,
+            child: GestureDetector(
+              onTap: () => setState(() => _viewMode = m.$1),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: sel ? scheme.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  m.$2,
+                  size: 18,
+                  color: sel ? scheme.onPrimary : scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildView(List<CustomerEntity> items) => switch (_viewMode) {
+    _ViewMode.cards => _buildCardsView(items),
+    _ViewMode.list => _buildListView(items),
+    _ViewMode.details => _buildDetailsView(items),
+  };
+
+  Widget _buildCardsView(List<CustomerEntity> items) {
+    final w = MediaQuery.of(context).size.width;
+    if (w >= 1024) {
+      return GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: w >= 1200 ? 3 : 2,
+          mainAxisExtent: 180,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 8,
+        ),
+        itemCount: items.length,
+        itemBuilder: (_, i) => CustomerCardTile(
+          item: items[i],
+          onTap: () => _navigateToDetail(items[i].id),
+          onDelete: () => _deleteCustomer(items[i].id, items[i].name),
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: items.length,
+      itemBuilder: (_, i) => CustomerCardTile(
+        item: items[i],
+        onTap: () => _navigateToDetail(items[i].id),
+        onDelete: () => _deleteCustomer(items[i].id, items[i].name),
+      ),
+    );
+  }
+
+  Widget _buildListView(List<CustomerEntity> items) => ListView.builder(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    itemCount: items.length,
+    itemBuilder: (_, i) => CustomerListRow(
+      item: items[i],
+      onTap: () => _navigateToDetail(items[i].id),
+      onDelete: () => _deleteCustomer(items[i].id, items[i].name),
+    ),
+  );
+
+  Widget _buildDetailsView(List<CustomerEntity> items) {
+    final scheme = Theme.of(context).colorScheme;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 44),
+                const SizedBox(width: 12),
+                Expanded(flex: 3, child: Text('Name', style: _headerStyle)),
+                Expanded(flex: 2, child: Text('Type', style: _headerStyle)),
+                Expanded(flex: 2, child: Text('Phone', style: _headerStyle)),
+                const SizedBox(width: 40),
+              ],
+            ),
+          ),
+          ...items.asMap().entries.map(
+            (e) => CustomerTableRow(
+              item: e.value,
+              isLast: e.key == items.length - 1,
+              onTap: () => _navigateToDetail(e.value.id),
+              onDelete: () => _deleteCustomer(e.value.id, e.value.name),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  TextStyle get _headerStyle => TextStyle(
+    fontSize: 11,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 0.5,
+    color: Theme.of(context).colorScheme.onSurfaceVariant,
+  );
+
+  Widget _buildEmpty(BuildContext context, ColorScheme scheme) => Center(
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.store_outlined, size: 64, color: scheme.outlineVariant),
+        const SizedBox(height: 16),
+        Text(
+          'No customers yet.',
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Tap + to add your first customer.',
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildNoResults(BuildContext context, ColorScheme scheme) => Center(
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.search_off, size: 48, color: scheme.outlineVariant),
+        const SizedBox(height: 12),
+        Text(
+          'No customers match the current filters.',
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () => setState(() {
+            _filterRegion = null;
+            _filterDistrict = null;
+            _filterType = null;
+            _filterStatus = null;
+            _searchCtl.clear();
+          }),
+          child: const Text('Clear filters'),
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildError(BuildContext context, ColorScheme scheme, String msg) =>
+      Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: scheme.error),
+            const SizedBox(height: 16),
+            Text(msg, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _refresh,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+}
+
+// ── Reusable filter chip button ───────────────────────────────
+
+class _FilterChipButton extends StatelessWidget {
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+  final VoidCallback? onClear;
+  const _FilterChipButton({
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+    this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isActive
+              ? scheme.primary.withValues(alpha: 0.12)
+              : scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isActive
+                ? scheme.primary.withValues(alpha: 0.5)
+                : scheme.outlineVariant,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                color: isActive ? scheme.primary : scheme.onSurfaceVariant,
+              ),
+            ),
+            if (onClear != null) ...[
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: onClear,
+                child: Icon(Icons.close, size: 14, color: scheme.primary),
+              ),
+            ] else ...[
+              const SizedBox(width: 2),
+              Icon(
+                Icons.arrow_drop_down,
+                size: 16,
+                color: isActive ? scheme.primary : scheme.onSurfaceVariant,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/customer/presentation/widgets/customer_card.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/entities/customer_entity.dart';
+
+class CustomerCard extends StatelessWidget {
+  final CustomerEntity item;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+  const CustomerCard({super.key, required this.item, required this.onTap, required this.onDelete});
+
+  @override Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(margin: const EdgeInsets.only(bottom: 8), child: ListTile(onTap: onTap,
+      title: Text(item.name, style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
+      subtitle: Text('${item.customerType.toUpperCase()} ${item.category != null ? "· ${item.category}" : ""} · ${item.phone ?? ""}'),
+      trailing: IconButton(icon: Icon(Icons.delete_outline, color: scheme.error), tooltip: 'Delete',
+        onPressed: () async {
+          final ok = await showDialog<bool>(context: context, builder: (_) => AlertDialog(
+            title: const Text('Delete?'), content: Text('Remove "${item.name}"?'),
+            actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+              FilledButton(style: FilledButton.styleFrom(backgroundColor: scheme.error), onPressed: () => Navigator.pop(context, true), child: const Text('Delete'))]));
+          if (ok == true) onDelete();
+        })));
+  }
+}
+
+
+// === FILE: lib/features/customer/presentation/widgets/customer_card_tile.dart ===
+import 'package:flutter/material.dart';
+import '../../../../config/di/injection_container.dart';
+import '../../../../core/utils/map_launcher.dart';
+import '../../domain/entities/customer_entity.dart';
+import '../../../officer/data/datasources/officer_remote_datasource.dart';
+
+/// Cards view tile. Tap the GPS row to open location in Maps.
+/// Shows officer name resolved via DI.
+class CustomerCardTile extends StatelessWidget {
+  final CustomerEntity item;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  const CustomerCardTile({
+    super.key,
+    required this.item,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  /// Resolve officer display name from assigned_officer_id (actorId).
+  Future<String> _getOfficerName() async {
+    final officerId = item.assignedOfficerId;
+    if (officerId == null || officerId.isEmpty) return 'Not assigned';
+    try {
+      final ds = sl<OfficerRemoteDataSource>();
+      final result = await ds.getAll();
+      final match =
+          result.items.where((o) => o.actorId == officerId).firstOrNull ??
+          result.items.where((o) => o.userId == officerId).firstOrNull;
+      if (match != null) return match.displayName;
+      return officerId;
+    } catch (_) {
+      return officerId;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final contact = item.primaryContact;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: scheme.primaryContainer.withValues(alpha: 0.5),
+                child: Icon(
+                  item.isB2B ? Icons.store : Icons.person,
+                  color: scheme.primary,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // ── Name + tier chip ──
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.name,
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        _tierChip(context, item.tier),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+
+                    // ── Type + category ──
+                    _infoRow(
+                      context,
+                      Icons.label_outlined,
+                      '${item.customerType.toUpperCase()}${item.category != null ? ' · ${item.category}' : ''}',
+                    ),
+
+                    // ── Primary contact person ──
+                    if (contact != null)
+                      _infoRow(
+                        context,
+                        Icons.person_outline,
+                        '${contact.name}${contact.role != null ? ' (${contact.role})' : ''}',
+                      ),
+
+                    // ── Phone ──
+                    if (item.phone != null)
+                      _infoRow(context, Icons.phone_outlined, item.phone!),
+
+                    // ── Address ──
+                    if (item.address != null && item.address!.isNotEmpty)
+                      _infoRow(
+                        context,
+                        Icons.location_on_outlined,
+                        item.address!,
+                      ),
+
+                    // ── GPS row — tappable when coords exist ──
+                    if (item.hasGps)
+                      _gpsRow(context)
+                    else
+                      _infoRow(
+                        context,
+                        Icons.gps_not_fixed_outlined,
+                        'No GPS',
+                        muted: true,
+                      ),
+
+                    // ── Assigned officer via FutureBuilder ──
+                    FutureBuilder<String>(
+                      future: _getOfficerName(),
+                      builder: (_, snap) => _infoRow(
+                        context,
+                        Icons.badge_outlined,
+                        snap.data ?? '...',
+                        isPrimary: true,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.delete_outline, color: scheme.error, size: 20),
+                tooltip: 'Delete',
+                onPressed: onDelete,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tierChip(BuildContext context, String tier) {
+    final color = switch (tier) {
+      'platinum' => Colors.deepPurple,
+      'gold' => Colors.amber.shade700,
+      'silver' => Colors.blueGrey,
+      _ => Colors.grey,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        tier,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _gpsRow(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Tooltip(
+        message: 'Open in Map',
+        child: InkWell(
+          onTap: () => MapLauncher.open(
+            lat: item.latitude!,
+            lng: item.longitude!,
+            label: item.name,
+          ),
+          borderRadius: BorderRadius.circular(4),
+          child: Row(
+            children: [
+              Icon(Icons.gps_fixed, size: 14, color: scheme.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '${item.latitude!.toStringAsFixed(4)}, ${item.longitude!.toStringAsFixed(4)}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w600,
+                    decoration: TextDecoration.underline,
+                    decorationColor: scheme.primary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Icon(Icons.open_in_new, size: 11, color: scheme.primary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(
+    BuildContext context,
+    IconData icon,
+    String text, {
+    bool isPrimary = false,
+    bool muted = false,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = muted
+        ? scheme.onSurfaceVariant.withValues(alpha: 0.4)
+        : isPrimary
+        ? scheme.primary
+        : scheme.onSurfaceVariant;
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: color,
+                fontWeight: isPrimary ? FontWeight.w600 : null,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/customer/presentation/widgets/customer_list_row.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/entities/customer_entity.dart';
+
+class CustomerListRow extends StatelessWidget {
+  final CustomerEntity item;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+  const CustomerListRow({super.key, required this.item, required this.onTap, required this.onDelete});
+
+  @override Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(padding: const EdgeInsets.only(bottom: 2), child: Material(color: Colors.transparent,
+      child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(10),
+        child: Padding(padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Row(children: [
+          CircleAvatar(radius: 18, backgroundColor: scheme.primaryContainer.withValues(alpha: 0.5),
+            child: Icon(item.isB2B ? Icons.store : Icons.person, color: scheme.primary, size: 18)),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(item.name, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text('${item.customerType.toUpperCase()} · ${item.phone ?? ""}',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
+          ])),
+          if (item.hasGps) Icon(Icons.gps_fixed, size: 16, color: scheme.primary.withValues(alpha: 0.5)),
+          const SizedBox(width: 4),
+          SizedBox(width: 36, child: IconButton(icon: Icon(Icons.delete_outline, color: scheme.error, size: 18),
+            onPressed: onDelete, padding: EdgeInsets.zero, constraints: const BoxConstraints())),
+        ])))));
+  }
+}
+
+
+// === FILE: lib/features/customer/presentation/widgets/customer_list_widgets.dart ===
+// Re-exports for backward compatibility.
+export 'customer_list_row.dart';
+export 'customer_table_row.dart';
+
+
+// === FILE: lib/features/customer/presentation/widgets/customer_table_row.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/entities/customer_entity.dart';
+
+class CustomerTableRow extends StatelessWidget {
+  final CustomerEntity item;
+  final bool isLast;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+  const CustomerTableRow({super.key, required this.item, required this.isLast, required this.onTap, required this.onDelete});
+
+  @override Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(onTap: onTap, child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(border: Border(bottom: isLast ? BorderSide.none : BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.3)))),
+      child: Row(children: [
+        CircleAvatar(radius: 16, backgroundColor: scheme.primaryContainer.withValues(alpha: 0.5),
+          child: Icon(item.isB2B ? Icons.store : Icons.person, color: scheme.primary, size: 16)),
+        const SizedBox(width: 12),
+        Expanded(flex: 3, child: Text(item.name, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)),
+        Expanded(flex: 2, child: Text('${item.customerType.toUpperCase()}${item.category != null ? " · ${item.category}" : ""}',
+          style: Theme.of(context).textTheme.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis)),
+        Expanded(flex: 2, child: Text(item.phone ?? '', style: Theme.of(context).textTheme.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis)),
+        SizedBox(width: 40, child: IconButton(icon: Icon(Icons.delete_outline, color: scheme.error, size: 18), onPressed: onDelete, padding: EdgeInsets.zero)),
+      ])));
+  }
+}
+
+

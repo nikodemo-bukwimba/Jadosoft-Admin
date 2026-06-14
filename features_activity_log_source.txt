@@ -1,0 +1,2548 @@
+﻿// ================================================================
+// features_activity_log_source.txt
+// Generated : 2026-04-04 12:04:47
+// Files     : 19
+// Usage     : Upload to Claude Project documents as reference.
+// ================================================================
+
+// === FILE: lib/features/activity_log/data/datasources/activity_log_api_datasource.dart ===
+
+
+// === FILE: lib/features/activity_log/data/datasources/activity_log_mock_datasource.dart ===
+import '../models/activity_log_model.dart';
+import 'activity_log_remote_datasource.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ActivityLogMockDataSource
+// Read-only audit trail. Admin can only view — backend writes all entries.
+// Covers all 21 features across all 9 phases.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class ActivityLogMockDataSource implements ActivityLogRemoteDataSource {
+  static final List<ActivityLogModel> _logs = [
+    // ── Auth ──────────────────────────────────────────────────────────────
+    ActivityLogModel(
+      id: 'log-001',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'logged_in',
+      entityType: 'session',
+      entityId: 'sess-001',
+      entitySnapshot: {'ip': '192.168.1.10', 'device': 'Chrome / Windows'},
+      ipAddress: '192.168.1.10',
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0)',
+      occurredAt: DateTime.now().subtract(const Duration(minutes: 5)),
+    ),
+    // ── Officers ──────────────────────────────────────────────────────────
+    ActivityLogModel(
+      id: 'log-002',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'created',
+      entityType: 'officer',
+      entityId: 'off-004',
+      entitySnapshot: {
+        'name': 'James Mwangi',
+        'email': 'james@barick.co.tz',
+        'role': 'marketing_officer',
+        'status': 'active',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 1)),
+    ),
+    ActivityLogModel(
+      id: 'log-003',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'transitioned',
+      entityType: 'officer',
+      entityId: 'off-002',
+      entitySnapshot: {
+        'from_status': 'active',
+        'to_status': 'suspended',
+        'reason': 'Disciplinary review',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 2)),
+    ),
+    // ── Customers ─────────────────────────────────────────────────────────
+    ActivityLogModel(
+      id: 'log-004',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'created',
+      entityType: 'customer',
+      entityId: 'cust-005',
+      entitySnapshot: {
+        'business_name': 'Songea Pharmacy',
+        'owner_name': 'Grace Mwenda',
+        'phone': '+255 754 800 005',
+        'address': 'Main Street, Songea',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 3)),
+    ),
+    ActivityLogModel(
+      id: 'log-005',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'updated',
+      entityType: 'customer',
+      entityId: 'cust-002',
+      entitySnapshot: {
+        'field': 'assigned_officer_id',
+        'old_value': 'off-001',
+        'new_value': 'off-003',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 4)),
+    ),
+    // ── Products ──────────────────────────────────────────────────────────
+    ActivityLogModel(
+      id: 'log-006',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'transitioned',
+      entityType: 'product',
+      entityId: 'prod-003',
+      entitySnapshot: {
+        'product_name': 'Vitamin C 1000mg',
+        'from_status': 'draft',
+        'to_status': 'active',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 5)),
+    ),
+    ActivityLogModel(
+      id: 'log-007',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'transitioned',
+      entityType: 'product',
+      entityId: 'prod-002',
+      entitySnapshot: {
+        'product_name': 'Amoxicillin 250mg',
+        'from_status': 'active',
+        'to_status': 'featured',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 6)),
+    ),
+    // ── Promotions ────────────────────────────────────────────────────────
+    ActivityLogModel(
+      id: 'log-008',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'transitioned',
+      entityType: 'promotion',
+      entityId: 'promo-001',
+      entitySnapshot: {
+        'title': 'Flu Season Bundle',
+        'from_status': 'draft',
+        'to_status': 'active',
+        'channels': ['sms', 'whatsapp'],
+        'target_count': 47,
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 8)),
+    ),
+    // ── Visits ────────────────────────────────────────────────────────────
+    ActivityLogModel(
+      id: 'log-009',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'transitioned',
+      entityType: 'visit',
+      entityId: 'visit-012',
+      entitySnapshot: {
+        'customer': 'Mbeya City Pharmacy',
+        'officer': 'Peter Mwakasege',
+        'from_status': 'pending',
+        'to_status': 'reviewed',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 9)),
+    ),
+    ActivityLogModel(
+      id: 'log-010',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'transitioned',
+      entityType: 'visit',
+      entityId: 'visit-008',
+      entitySnapshot: {
+        'customer': 'Tukuyu Health Store',
+        'officer': 'Amina Hassan',
+        'from_status': 'reviewed',
+        'to_status': 'flagged',
+        'reason': 'GPS coordinates do not match customer address',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 10)),
+    ),
+    // ── Weekly Plans ──────────────────────────────────────────────────────
+    ActivityLogModel(
+      id: 'log-011',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'transitioned',
+      entityType: 'weekly_plan',
+      entityId: 'plan-003',
+      entitySnapshot: {
+        'officer': 'James Mwangi',
+        'week': '2026-W11',
+        'from_status': 'submitted',
+        'to_status': 'approved',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 11)),
+    ),
+    // ── Daily Reports ─────────────────────────────────────────────────────
+    ActivityLogModel(
+      id: 'log-012',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'transitioned',
+      entityType: 'daily_report',
+      entityId: 'rep-005',
+      entitySnapshot: {
+        'officer': 'Peter Mwakasege',
+        'date': '2026-03-10',
+        'from_status': 'submitted',
+        'to_status': 'approved',
+        'feedback': 'Excellent coverage. 8 visits recorded.',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 12)),
+    ),
+    ActivityLogModel(
+      id: 'log-013',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'transitioned',
+      entityType: 'daily_report',
+      entityId: 'rep-004',
+      entitySnapshot: {
+        'officer': 'Amina Hassan',
+        'date': '2026-03-10',
+        'from_status': 'submitted',
+        'to_status': 'rejected',
+        'feedback': 'Only 2 visits logged. Minimum is 5 per day.',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 13)),
+    ),
+    // ── Orders ────────────────────────────────────────────────────────────
+    ActivityLogModel(
+      id: 'log-014',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'transitioned',
+      entityType: 'order',
+      entityId: 'ord-003',
+      entitySnapshot: {
+        'customer': 'Mbeya City Pharmacy',
+        'total': 45000.0,
+        'from_status': 'draft',
+        'to_status': 'confirmed',
+        'payment_ref': 'MPESA-2026-044',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 14)),
+    ),
+    ActivityLogModel(
+      id: 'log-015',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'transitioned',
+      entityType: 'order',
+      entityId: 'ord-001',
+      entitySnapshot: {
+        'customer': 'Uyole Medical Supplies',
+        'total': 31000.0,
+        'from_status': 'shipped',
+        'to_status': 'delivered',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 15)),
+    ),
+    ActivityLogModel(
+      id: 'log-016',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'created',
+      entityType: 'order',
+      entityId: 'ord-007',
+      entitySnapshot: {
+        'customer_id': 'cust-003',
+        'items_count': 3,
+        'total': 18500.0,
+        'source': 'manual_entry',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 16)),
+    ),
+    // ── Notifications ─────────────────────────────────────────────────────
+    ActivityLogModel(
+      id: 'log-017',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'transitioned',
+      entityType: 'notification',
+      entityId: 'notif-009',
+      entitySnapshot: {
+        'recipient': 'Hassan Mwakyembe',
+        'channel': 'sms',
+        'from_status': 'failed',
+        'to_status': 'queued',
+        'action': 'retry',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(hours: 17)),
+    ),
+    // ── Categories ────────────────────────────────────────────────────────
+    ActivityLogModel(
+      id: 'log-018',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'created',
+      entityType: 'category',
+      entityId: 'cat-005',
+      entitySnapshot: {
+        'name': 'Dermatology',
+        'description': 'Skin care and treatment products',
+        'is_active': true,
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(days: 1)),
+    ),
+    // ── Logout ────────────────────────────────────────────────────────────
+    ActivityLogModel(
+      id: 'log-019',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'logged_out',
+      entityType: 'session',
+      entityId: 'sess-000',
+      entitySnapshot: {'duration_minutes': 142},
+      ipAddress: '192.168.1.10',
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0)',
+      occurredAt: DateTime.now().subtract(const Duration(days: 1, hours: 2)),
+    ),
+    // ── Delete ────────────────────────────────────────────────────────────
+    ActivityLogModel(
+      id: 'log-020',
+      actorId: 'usr-001',
+      actorName: 'Admin User',
+      actorRole: 'admin',
+      action: 'deleted',
+      entityType: 'order',
+      entityId: 'ord-006',
+      entitySnapshot: {
+        'customer': 'Forest Hill Pharmacy',
+        'total': 7500.0,
+        'status': 'draft',
+        'reason': 'Duplicate entry',
+      },
+      ipAddress: '192.168.1.10',
+      occurredAt: DateTime.now().subtract(const Duration(days: 1, hours: 4)),
+    ),
+  ];
+
+  @override
+  Future<List<ActivityLogModel>> getAll() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final sorted = List<ActivityLogModel>.from(_logs)
+      ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
+    return sorted;
+  }
+
+  @override
+  Future<ActivityLogModel> getById(String id) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    return _logs.firstWhere(
+      (e) => e.id == id,
+      orElse: () => throw Exception('Activity log not found'),
+    );
+  }
+}
+
+// === FILE: lib/features/activity_log/data/datasources/activity_log_remote_datasource.dart ===
+import 'package:dio/dio.dart';
+import '../../../../core/error/exceptions.dart';
+import '../../../../core/context/org_context.dart';
+import '../models/activity_log_model.dart';
+
+abstract class ActivityLogRemoteDataSource {
+  Future<List<ActivityLogModel>> getAll();
+  Future<ActivityLogModel> getById(String id);
+  // create/update/delete intentionally omitted — backend writes only
+}
+
+class ActivityLogRemoteDataSourceImpl implements ActivityLogRemoteDataSource {
+  final Dio _dio;
+  final OrgContext _orgContext;
+
+  ActivityLogRemoteDataSourceImpl({
+    required Dio dio,
+    required OrgContext orgContext,
+  }) : _dio = dio,
+       _orgContext = orgContext;
+
+  String get _base => '/pharma/${_orgContext.effectiveOrgId}/activity-logs';
+
+  @override
+  Future<List<ActivityLogModel>> getAll() async {
+    try {
+      final response = await _dio.get(_base);
+      final data = (response.data['data'] ?? response.data) as List;
+      return data
+          .map((e) => ActivityLogModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<ActivityLogModel> getById(String id) async {
+    try {
+      final response = await _dio.get('$_base/$id');
+      final data = response.data['data'] ?? response.data;
+      return ActivityLogModel.fromJson(data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  String _msg(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic> && data['message'] is String) {
+      return data['message'] as String;
+    }
+    return 'An error occurred. Please try again.';
+  }
+}
+
+
+// === FILE: lib/features/activity_log/data/models/activity_log_model.dart ===
+import '../../domain/entities/activity_log_entity.dart';
+
+class ActivityLogModel extends ActivityLogEntity {
+  const ActivityLogModel({
+    required super.id,
+    required super.actorId,
+    required super.actorName,
+    required super.actorRole,
+    required super.action,
+    required super.entityType,
+    required super.entityId,
+    super.entitySnapshot,
+    super.ipAddress,
+    super.userAgent,
+    required super.occurredAt,
+  });
+
+  factory ActivityLogModel.fromJson(Map<String, dynamic> json) {
+    return ActivityLogModel(
+      id: json['id'] as String,
+      actorId: json['actor_id'] as String,
+      actorName: json['actor_name'] as String,
+      actorRole: json['actor_role'] as String,
+      action: json['action'] as String,
+      entityType: json['entity_type'] as String,
+      entityId: json['entity_id'] as String,
+      entitySnapshot: json['entity_snapshot'] as Map<String, dynamic>?,
+      ipAddress: json['ip_address'] as String?,
+      userAgent: json['user_agent'] as String?,
+      occurredAt: DateTime.parse(json['occurred_at'] as String),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'actor_id': actorId,
+        'actor_name': actorName,
+        'actor_role': actorRole,
+        'action': action,
+        'entity_type': entityType,
+        'entity_id': entityId,
+        'entity_snapshot': entitySnapshot,
+        'ip_address': ipAddress,
+        'user_agent': userAgent,
+        'occurred_at': occurredAt.toIso8601String(),
+      };
+
+  factory ActivityLogModel.fromEntity(ActivityLogEntity entity) {
+    return ActivityLogModel(
+      id: entity.id,
+      actorId: entity.actorId,
+      actorName: entity.actorName,
+      actorRole: entity.actorRole,
+      action: entity.action,
+      entityType: entity.entityType,
+      entityId: entity.entityId,
+      entitySnapshot: entity.entitySnapshot,
+      ipAddress: entity.ipAddress,
+      userAgent: entity.userAgent,
+      occurredAt: entity.occurredAt,
+    );
+  }
+}
+
+// === FILE: lib/features/activity_log/data/repositories/activity_log_repository_impl.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/exceptions.dart';
+import '../../../../core/error/failures.dart';
+import '../../domain/entities/activity_log_entity.dart';
+import '../../domain/repositories/activity_log_repository.dart';
+import '../datasources/activity_log_remote_datasource.dart';
+
+class ActivityLogRepositoryImpl implements ActivityLogRepository {
+  final ActivityLogRemoteDataSource _remoteDataSource;
+
+  ActivityLogRepositoryImpl({
+    required ActivityLogRemoteDataSource remoteDataSource,
+  }) : _remoteDataSource = remoteDataSource;
+
+  @override
+  Future<Either<Failure, List<ActivityLogEntity>>> getAll() async {
+    try {
+      final result = await _remoteDataSource.getAll();
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, ActivityLogEntity>> getById(String id) async {
+    try {
+      final result = await _remoteDataSource.getById(id);
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(GenericFailure(e.toString()));
+    }
+  }
+
+  // Activity logs are written by the backend only — these are no-ops
+  @override
+  Future<Either<Failure, ActivityLogEntity>> create(ActivityLogEntity entity) async =>
+      const Left(ValidationFailure('Activity logs are written by the backend only'));
+
+  @override
+  Future<Either<Failure, ActivityLogEntity>> update(ActivityLogEntity entity) async =>
+      const Left(ValidationFailure('Activity logs are immutable'));
+
+  @override
+  Future<Either<Failure, void>> delete(String id) async =>
+      const Left(ValidationFailure('Activity logs cannot be deleted'));
+}
+
+// === FILE: lib/features/activity_log/domain/entities/activity_log_entity.dart ===
+import 'package:equatable/equatable.dart';
+
+class ActivityLogEntity extends Equatable {
+  final String id;
+  final String actorId;
+  final String actorName;
+  final String actorRole;
+  final String action;
+  final String entityType;
+  final String entityId;
+  final Map<String, dynamic>? entitySnapshot;
+  final String? ipAddress;
+  final String? userAgent;
+  final DateTime occurredAt;
+
+  const ActivityLogEntity({
+    required this.id,
+    required this.actorId,
+    required this.actorName,
+    required this.actorRole,
+    required this.action,
+    required this.entityType,
+    required this.entityId,
+    this.entitySnapshot,
+    this.ipAddress,
+    this.userAgent,
+    required this.occurredAt,
+  });
+
+  ActivityLogEntity copyWith({
+    String? id,
+    String? actorId,
+    String? actorName,
+    String? actorRole,
+    String? action,
+    String? entityType,
+    String? entityId,
+    Map<String, dynamic>? entitySnapshot,
+    String? ipAddress,
+    String? userAgent,
+    DateTime? occurredAt,
+  }) {
+    return ActivityLogEntity(
+      id: id ?? this.id,
+      actorId: actorId ?? this.actorId,
+      actorName: actorName ?? this.actorName,
+      actorRole: actorRole ?? this.actorRole,
+      action: action ?? this.action,
+      entityType: entityType ?? this.entityType,
+      entityId: entityId ?? this.entityId,
+      entitySnapshot: entitySnapshot ?? this.entitySnapshot,
+      ipAddress: ipAddress ?? this.ipAddress,
+      userAgent: userAgent ?? this.userAgent,
+      occurredAt: occurredAt ?? this.occurredAt,
+    );
+  }
+
+  @override
+  List<Object?> get props => [];
+}
+
+
+// === FILE: lib/features/activity_log/domain/repositories/activity_log_repository.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../entities/activity_log_entity.dart';
+
+abstract class ActivityLogRepository {
+  Future<Either<Failure, List<ActivityLogEntity>>> getAll();
+  Future<Either<Failure, ActivityLogEntity>>       getById(String id);
+  Future<Either<Failure, ActivityLogEntity>>       create(ActivityLogEntity entity);
+  Future<Either<Failure, ActivityLogEntity>>       update(ActivityLogEntity entity);
+  Future<Either<Failure, void>>                 delete(String id);
+}
+
+
+// === FILE: lib/features/activity_log/domain/usecases/create_activity_log_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/activity_log_entity.dart';
+import '../repositories/activity_log_repository.dart';
+
+class CreateActivityLogParams {
+  const CreateActivityLogParams();
+}
+
+class CreateActivityLogUseCase
+    implements UseCase<ActivityLogEntity, CreateActivityLogParams> {
+  final ActivityLogRepository repository;
+  CreateActivityLogUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, ActivityLogEntity>> call(
+    CreateActivityLogParams p,
+  ) async {
+    return repository.create(
+      ActivityLogEntity(
+        id: '',
+        actorId: '',
+        actorName: '',
+        actorRole: '',
+        action: '',
+        entityType: '',
+        entityId: '',
+        entitySnapshot: null,
+        ipAddress: '',
+        userAgent: '',
+        occurredAt: DateTime.now(),
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/activity_log/domain/usecases/delete_activity_log_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../repositories/activity_log_repository.dart';
+
+class DeleteActivityLogParams {
+  final String id;
+  const DeleteActivityLogParams({required this.id});
+}
+
+class DeleteActivityLogUseCase implements UseCase<void, DeleteActivityLogParams> {
+  final ActivityLogRepository repository;
+  DeleteActivityLogUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, void>> call(DeleteActivityLogParams p) =>
+      repository.delete(p.id);
+}
+
+
+// === FILE: lib/features/activity_log/domain/usecases/get_activity_log_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/activity_log_entity.dart';
+import '../repositories/activity_log_repository.dart';
+
+class GetActivityLogParams {
+  final String id;
+  const GetActivityLogParams({required this.id});
+}
+
+class GetActivityLogUseCase implements UseCase<ActivityLogEntity, GetActivityLogParams> {
+  final ActivityLogRepository repository;
+  GetActivityLogUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, ActivityLogEntity>> call(GetActivityLogParams p) =>
+      repository.getById(p.id);
+}
+
+
+// === FILE: lib/features/activity_log/domain/usecases/get_all_activity_log_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/activity_log_entity.dart';
+import '../repositories/activity_log_repository.dart';
+
+class GetAllActivityLogUseCase implements UseCase<List<ActivityLogEntity>, NoParams> {
+  final ActivityLogRepository repository;
+  GetAllActivityLogUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, List<ActivityLogEntity>>> call(NoParams _) =>
+      repository.getAll();
+}
+
+
+// === FILE: lib/features/activity_log/domain/usecases/update_activity_log_usecase.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../entities/activity_log_entity.dart';
+import '../repositories/activity_log_repository.dart';
+
+class UpdateActivityLogParams {
+  final ActivityLogEntity entity;
+  const UpdateActivityLogParams({required this.entity});
+}
+
+class UpdateActivityLogUseCase implements UseCase<ActivityLogEntity, UpdateActivityLogParams> {
+  final ActivityLogRepository repository;
+  UpdateActivityLogUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, ActivityLogEntity>> call(UpdateActivityLogParams p) async {
+    return repository.update(p.entity);
+  }
+}
+
+
+// === FILE: lib/features/activity_log/presentation/bloc/activity_log_bloc.dart ===
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/usecase/usecase.dart';
+import '../../domain/usecases/create_activity_log_usecase.dart';
+import '../../domain/usecases/delete_activity_log_usecase.dart';
+import '../../domain/usecases/get_activity_log_usecase.dart';
+import '../../domain/usecases/get_all_activity_log_usecase.dart';
+import '../../domain/usecases/update_activity_log_usecase.dart';
+import 'activity_log_event.dart';
+import 'activity_log_state.dart';
+
+class ActivityLogBloc extends Bloc<ActivityLogEvent, ActivityLogState> {
+  final GetAllActivityLogUseCase  getAllUseCase;
+  final GetActivityLogUseCase     getUseCase;
+  final CreateActivityLogUseCase  createUseCase;
+  final UpdateActivityLogUseCase  updateUseCase;
+  final DeleteActivityLogUseCase  deleteUseCase;
+
+  ActivityLogBloc({
+    required this.getAllUseCase,
+    required this.getUseCase,
+    required this.createUseCase,
+    required this.updateUseCase,
+    required this.deleteUseCase,
+  }) : super(ActivityLogInitial()) {
+    on<ActivityLogLoadAllRequested>(_onLoadAll);
+    on<ActivityLogLoadOneRequested>(_onLoadOne);
+    on<ActivityLogCreateRequested>(_onCreate);
+    on<ActivityLogUpdateRequested>(_onUpdate);
+    on<ActivityLogDeleteRequested>(_onDelete);
+    on<ActivityLogFormReset>((_, emit) => emit(ActivityLogInitial()));
+  }
+
+  Future<void> _onLoadAll(
+      ActivityLogLoadAllRequested event, Emitter<ActivityLogState> emit) async {
+    emit(ActivityLogLoading());
+    final result = await getAllUseCase(NoParams());
+    result.fold(
+      (f) => emit(ActivityLogFailure(f.message)),
+      (items) => items.isEmpty
+          ? emit(ActivityLogEmpty())
+          : emit(ActivityLogListLoaded(items)),
+    );
+  }
+
+  Future<void> _onLoadOne(
+      ActivityLogLoadOneRequested event, Emitter<ActivityLogState> emit) async {
+    emit(ActivityLogLoading());
+    final result = await getUseCase(GetActivityLogParams(id: event.id));
+    result.fold(
+      (f) => emit(ActivityLogFailure(f.message)),
+      (item) => emit(ActivityLogDetailLoaded(item)),
+    );
+  }
+
+  Future<void> _onCreate(
+      ActivityLogCreateRequested event, Emitter<ActivityLogState> emit) async {
+    emit(ActivityLogLoading());
+    final result = await createUseCase(event.params);
+    result.fold(
+      (f) => emit(ActivityLogFailure(f.message)),
+      (_) => emit(ActivityLogOperationSuccess('ActivityLog created successfully')),
+    );
+  }
+
+  Future<void> _onUpdate(
+      ActivityLogUpdateRequested event, Emitter<ActivityLogState> emit) async {
+    emit(ActivityLogLoading());
+    final result = await updateUseCase(UpdateActivityLogParams(entity: event.entity));
+    result.fold(
+      (f) => emit(ActivityLogFailure(f.message)),
+      (_) => emit(ActivityLogOperationSuccess('ActivityLog updated successfully')),
+    );
+  }
+
+  Future<void> _onDelete(
+      ActivityLogDeleteRequested event, Emitter<ActivityLogState> emit) async {
+    emit(ActivityLogLoading());
+    final result = await deleteUseCase(DeleteActivityLogParams(id: event.id));
+    result.fold(
+      (f) => emit(ActivityLogFailure(f.message)),
+      (_) => emit(ActivityLogOperationSuccess('ActivityLog deleted successfully')),
+    );
+  }
+}
+
+
+// === FILE: lib/features/activity_log/presentation/bloc/activity_log_event.dart ===
+import '../../domain/entities/activity_log_entity.dart';
+import '../../domain/usecases/create_activity_log_usecase.dart';
+
+abstract class ActivityLogEvent {}
+
+class ActivityLogLoadAllRequested extends ActivityLogEvent {}
+
+class ActivityLogLoadOneRequested extends ActivityLogEvent {
+  final String id;
+  ActivityLogLoadOneRequested(this.id);
+}
+
+class ActivityLogCreateRequested extends ActivityLogEvent {
+  final CreateActivityLogParams params;
+  ActivityLogCreateRequested(this.params);
+}
+
+class ActivityLogUpdateRequested extends ActivityLogEvent {
+  final ActivityLogEntity entity;
+  ActivityLogUpdateRequested(this.entity);
+}
+
+class ActivityLogDeleteRequested extends ActivityLogEvent {
+  final String id;
+  ActivityLogDeleteRequested(this.id);
+}
+
+class ActivityLogFormReset extends ActivityLogEvent {}
+
+
+// === FILE: lib/features/activity_log/presentation/bloc/activity_log_state.dart ===
+import '../../domain/entities/activity_log_entity.dart';
+
+abstract class ActivityLogState {}
+
+class ActivityLogInitial          extends ActivityLogState {}
+class ActivityLogLoading           extends ActivityLogState {}
+
+class ActivityLogListLoaded extends ActivityLogState {
+  final List<ActivityLogEntity> items;
+  ActivityLogListLoaded(this.items);
+}
+
+class ActivityLogDetailLoaded extends ActivityLogState {
+  final ActivityLogEntity item;
+  ActivityLogDetailLoaded(this.item);
+}
+
+class ActivityLogOperationSuccess extends ActivityLogState {
+  final String message;
+  ActivityLogOperationSuccess(this.message);
+}
+
+class ActivityLogEmpty extends ActivityLogState {}
+
+class ActivityLogFailure extends ActivityLogState {
+  final String message;
+  ActivityLogFailure(this.message);
+}
+
+
+// === FILE: lib/features/activity_log/presentation/pages/activity_log_detail_page.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../../data/datasources/activity_log_mock_datasource.dart';
+import '../../domain/entities/activity_log_entity.dart';
+import '../bloc/activity_log_bloc.dart';
+import '../bloc/activity_log_event.dart';
+import '../bloc/activity_log_state.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ActivityLogDetailPage — Full audit entry view
+// Read-only. Shows actor, action, entity, smart snapshot, actor history.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class ActivityLogDetailPage extends StatelessWidget {
+  final String id;
+  const ActivityLogDetailPage({super.key, required this.id});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<ActivityLogBloc, ActivityLogState>(
+      builder: (context, state) {
+        if (state is ActivityLogLoading || state is ActivityLogInitial) {
+          context.read<ActivityLogBloc>().add(ActivityLogLoadOneRequested(id));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (state is ActivityLogFailure) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Activity Log')),
+            body: Center(child: Text(state.message)),
+          );
+        }
+        if (state is ActivityLogDetailLoaded) {
+          return _DetailScaffold(log: state.item);
+        }
+        return const Scaffold(body: SizedBox.shrink());
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Detail scaffold
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DetailScaffold extends StatelessWidget {
+  final ActivityLogEntity log;
+  const _DetailScaffold({required this.log});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Activity Log'), centerTitle: false),
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ── Action banner ────────────────────────────────────────
+                _ActionBanner(log: log),
+                const SizedBox(height: 20),
+
+                // ── Actor info ───────────────────────────────────────────
+                _Section(
+                  title: 'Actor',
+                  icon: Icons.person_outline,
+                  children: [
+                    _Field('Name', log.actorName),
+                    _Field('Role', log.actorRole),
+                    _Field('Actor ID', log.actorId),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // ── Event info ───────────────────────────────────────────
+                _Section(
+                  title: 'Event',
+                  icon: Icons.bolt_outlined,
+                  children: [
+                    _Field('Action', _labelAction(log.action)),
+                    _Field('Entity Type', _labelEntity(log.entityType)),
+                    _Field('Entity ID', '#${log.entityId}'),
+                    _Field('Occurred At', _formatFull(log.occurredAt)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // ── Entity snapshot — smart rendering ────────────────────
+                if (log.entitySnapshot != null &&
+                    log.entitySnapshot!.isNotEmpty) ...[
+                  _SmartSnapshotCard(
+                    snapshot: log.entitySnapshot!,
+                    action: log.action,
+                    entityType: log.entityType,
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // ── Technical info ───────────────────────────────────────
+                if (log.ipAddress != null || log.userAgent != null)
+                  _Section(
+                    title: 'Technical',
+                    icon: Icons.dns_outlined,
+                    children: [
+                      if (log.ipAddress != null)
+                        _Field('IP Address', log.ipAddress!),
+                      if (log.userAgent != null)
+                        _Field('User Agent', log.userAgent!),
+                    ],
+                  ),
+
+                const SizedBox(height: 24),
+
+                // ── Other activities by the same actor ───────────────────
+                _ActorActivitiesPanel(currentLog: log),
+
+                const SizedBox(height: 32),
+
+                // ── Log ID footer ────────────────────────────────────────
+                Center(
+                  child: Text(
+                    'Log ID: ${log.id}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Action banner
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ActionBanner extends StatelessWidget {
+  final ActivityLogEntity log;
+  const _ActionBanner({required this.log});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final (color, icon) = _resolveAction(log.action);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${log.actorName} ${_labelAction(log.action).toLowerCase()} '
+                  'a ${_labelEntity(log.entityType).toLowerCase()}',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _formatFull(log.occurredAt),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  (Color, IconData) _resolveAction(String action) {
+    switch (action) {
+      case 'created':
+        return (Colors.green, Icons.add_circle_outline);
+      case 'updated':
+        return (Colors.blue, Icons.edit_outlined);
+      case 'deleted':
+        return (Colors.red, Icons.delete_outline);
+      case 'transitioned':
+        return (Colors.orange, Icons.swap_horiz);
+      case 'logged_in':
+        return (Colors.teal, Icons.login);
+      case 'logged_out':
+        return (Colors.grey, Icons.logout);
+      default:
+        return (Colors.purple, Icons.history);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Smart Snapshot Card
+// Renders the entity_snapshot with semantic context instead of raw JSON.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SmartSnapshotCard extends StatefulWidget {
+  final Map<String, dynamic> snapshot;
+  final String action;
+  final String entityType;
+  const _SmartSnapshotCard({
+    required this.snapshot,
+    required this.action,
+    required this.entityType,
+  });
+  @override
+  State<_SmartSnapshotCard> createState() => _SmartSnapshotCardState();
+}
+
+class _SmartSnapshotCardState extends State<_SmartSnapshotCard> {
+  bool _showRaw = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header row
+            Row(
+              children: [
+                Icon(Icons.data_object, size: 16, color: scheme.primary),
+                const SizedBox(width: 6),
+                Text(
+                  'Entity Snapshot',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                // Toggle raw/pretty
+                TextButton.icon(
+                  onPressed: () => setState(() => _showRaw = !_showRaw),
+                  icon: Icon(
+                    _showRaw ? Icons.table_rows_outlined : Icons.code,
+                    size: 14,
+                  ),
+                  label: Text(_showRaw ? 'Pretty' : 'Raw'),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.copy_outlined, size: 16),
+                  tooltip: 'Copy snapshot',
+                  onPressed: () {
+                    final text = _prettyJson(widget.snapshot);
+                    Clipboard.setData(ClipboardData(text: text));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Snapshot copied to clipboard'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(32, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (_showRaw)
+              _RawSnapshotView(snapshot: widget.snapshot)
+            else
+              _PrettySnapshotView(
+                snapshot: widget.snapshot,
+                action: widget.action,
+                entityType: widget.entityType,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _prettyJson(Map<String, dynamic> m) {
+    final buf = StringBuffer('{\n');
+    for (final e in m.entries) {
+      buf.write('  "${e.key}": ${_valStr(e.value)}\n');
+    }
+    buf.write('}');
+    return buf.toString();
+  }
+
+  String _valStr(dynamic v) {
+    if (v == null) return 'null';
+    if (v is String) return '"$v"';
+    if (v is List) return '[${v.map(_valStr).join(', ')}]';
+    if (v is Map) return '{...}';
+    return v.toString();
+  }
+}
+
+// ── Pretty view ───────────────────────────────────────────────────────────────
+
+class _PrettySnapshotView extends StatelessWidget {
+  final Map<String, dynamic> snapshot;
+  final String action;
+  final String entityType;
+  const _PrettySnapshotView({
+    required this.snapshot,
+    required this.action,
+    required this.entityType,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    // ── Transition: from_status → to_status ──────────────────────────────
+    if (snapshot.containsKey('from_status') &&
+        snapshot.containsKey('to_status')) {
+      return _buildTransitionView(context, theme, scheme);
+    }
+
+    // ── Field update: field + old_value + new_value ──────────────────────
+    if (snapshot.containsKey('field') &&
+        snapshot.containsKey('old_value') &&
+        snapshot.containsKey('new_value')) {
+      return _buildFieldUpdateView(context, theme, scheme);
+    }
+
+    // ── Auth/session ─────────────────────────────────────────────────────
+    if (entityType == 'session') {
+      return _buildSessionView(context, theme, scheme);
+    }
+
+    // ── Default: rich key-value with contextual icons ────────────────────
+    return _buildKeyValueView(context, theme, scheme);
+  }
+
+  Widget _buildTransitionView(
+    BuildContext context,
+    ThemeData theme,
+    ColorScheme scheme,
+  ) {
+    final from = snapshot['from_status']?.toString() ?? '';
+    final to = snapshot['to_status']?.toString() ?? '';
+    final extra = Map<String, dynamic>.from(snapshot)
+      ..remove('from_status')
+      ..remove('to_status');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Status flow pill row
+        Row(
+          children: [
+            _StatusChip(label: from, isNew: false),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Icon(
+                Icons.arrow_forward,
+                size: 18,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            _StatusChip(label: to, isNew: true),
+          ],
+        ),
+        if (extra.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          const SizedBox(height: 10),
+          ...extra.entries.map(
+            (e) => _KvRow(
+              label: _humanKey(e.key),
+              value: e.value,
+              icon: _iconForKey(e.key),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildFieldUpdateView(
+    BuildContext context,
+    ThemeData theme,
+    ColorScheme scheme,
+  ) {
+    final field = snapshot['field']?.toString() ?? '';
+    final oldVal = snapshot['old_value']?.toString() ?? '';
+    final newVal = snapshot['new_value']?.toString() ?? '';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.edit_outlined, size: 15, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(
+              'Field updated: ',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            Text(
+              _humanKey(field),
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _ValueBox(
+                label: 'Before',
+                value: oldVal,
+                color: Colors.red,
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.arrow_forward, size: 16),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _ValueBox(
+                label: 'After',
+                value: newVal,
+                color: Colors.green,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSessionView(
+    BuildContext context,
+    ThemeData theme,
+    ColorScheme scheme,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: snapshot.entries.map((e) {
+        return _KvRow(
+          label: _humanKey(e.key),
+          value: e.value,
+          icon: e.key == 'ip'
+              ? Icons.wifi
+              : e.key == 'device'
+              ? Icons.devices
+              : e.key == 'duration_minutes'
+              ? Icons.timer_outlined
+              : Icons.info_outline,
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildKeyValueView(
+    BuildContext context,
+    ThemeData theme,
+    ColorScheme scheme,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: snapshot.entries
+          .map(
+            (e) => _KvRow(
+              label: _humanKey(e.key),
+              value: e.value,
+              icon: _iconForKey(e.key),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  String _humanKey(String key) => key
+      .replaceAll('_', ' ')
+      .split(' ')
+      .map((w) => w.isEmpty ? '' : w[0].toUpperCase() + w.substring(1))
+      .join(' ');
+
+  IconData _iconForKey(String key) {
+    switch (key) {
+      case 'name':
+      case 'officer':
+      case 'recipient':
+        return Icons.person_outline;
+      case 'email':
+        return Icons.email_outlined;
+      case 'phone':
+        return Icons.phone_outlined;
+      case 'status':
+        return Icons.circle_outlined;
+      case 'role':
+        return Icons.badge_outlined;
+      case 'customer':
+      case 'business_name':
+      case 'customer_id':
+        return Icons.store_outlined;
+      case 'address':
+        return Icons.location_on_outlined;
+      case 'total':
+        return Icons.payments_outlined;
+      case 'channels':
+        return Icons.campaign_outlined;
+      case 'feedback':
+      case 'reason':
+        return Icons.comment_outlined;
+      case 'date':
+      case 'week':
+        return Icons.calendar_today_outlined;
+      case 'title':
+        return Icons.title;
+      case 'channel':
+        return Icons.send_outlined;
+      case 'items_count':
+        return Icons.list_alt_outlined;
+      case 'source':
+        return Icons.input_outlined;
+      case 'target_count':
+        return Icons.people_outline;
+      default:
+        return Icons.label_outline;
+    }
+  }
+}
+
+// ── Raw view ──────────────────────────────────────────────────────────────────
+
+class _RawSnapshotView extends StatelessWidget {
+  final Map<String, dynamic> snapshot;
+  const _RawSnapshotView({required this.snapshot});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        _prettyJson(snapshot),
+        style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+      ),
+    );
+  }
+
+  String _prettyJson(Map<String, dynamic> m) {
+    final buf = StringBuffer('{\n');
+    for (final e in m.entries) {
+      buf.write('  "${e.key}": ${_valStr(e.value)}\n');
+    }
+    buf.write('}');
+    return buf.toString();
+  }
+
+  String _valStr(dynamic v) {
+    if (v == null) return 'null';
+    if (v is String) return '"$v"';
+    if (v is List) return '[${v.map(_valStr).join(', ')}]';
+    if (v is Map) return '{...}';
+    return v.toString();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Actor Activities Panel — loads all logs, filters by actorId, excludes self
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ActorActivitiesPanel extends StatefulWidget {
+  final ActivityLogEntity currentLog;
+  const _ActorActivitiesPanel({required this.currentLog});
+  @override
+  State<_ActorActivitiesPanel> createState() => _ActorActivitiesPanelState();
+}
+
+class _ActorActivitiesPanelState extends State<_ActorActivitiesPanel> {
+  late Future<List<ActivityLogEntity>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<List<ActivityLogEntity>> _load() async {
+    final all = await ActivityLogMockDataSource().getAll();
+    return all
+        .where(
+          (e) =>
+              e.actorId == widget.currentLog.actorId &&
+              e.id != widget.currentLog.id,
+        )
+        .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return FutureBuilder<List<ActivityLogEntity>>(
+      future: _future,
+      builder: (context, snap) {
+        if (!snap.hasData) return const SizedBox.shrink();
+        final others = snap.data!;
+        if (others.isEmpty) return const SizedBox.shrink();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.history, size: 16, color: scheme.primary),
+                const SizedBox(width: 6),
+                Text(
+                  'Other activities by ${widget.currentLog.actorName}',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '${others.length} entries',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ...others.map((log) => _ActorActivityTile(log: log)),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ActorActivityTile extends StatelessWidget {
+  final ActivityLogEntity log;
+  const _ActorActivityTile({required this.log});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final (color, icon) = _resolveAction(log.action);
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 6),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.4)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () =>
+            context.pushReplacement(AppRouter.activityLogDetailPath(log.id)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: color, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          _labelAction(log.action),
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: scheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            _labelEntity(log.entityType),
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '#${log.entityId} · ${_formatRelative(log.occurredAt)}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: scheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  (Color, IconData) _resolveAction(String action) {
+    switch (action) {
+      case 'created':
+        return (Colors.green, Icons.add_circle_outline);
+      case 'updated':
+        return (Colors.blue, Icons.edit_outlined);
+      case 'deleted':
+        return (Colors.red, Icons.delete_outline);
+      case 'transitioned':
+        return (Colors.orange, Icons.swap_horiz);
+      case 'logged_in':
+        return (Colors.teal, Icons.login);
+      case 'logged_out':
+        return (Colors.grey, Icons.logout);
+      default:
+        return (Colors.purple, Icons.history);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-widgets
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _StatusChip extends StatelessWidget {
+  final String label;
+  final bool isNew;
+  const _StatusChip({required this.label, required this.isNew});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isNew ? _colorForStatus(label) : Colors.grey;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        label.replaceAll('_', ' ').toUpperCase(),
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  Color _colorForStatus(String s) {
+    switch (s) {
+      case 'active':
+      case 'approved':
+      case 'delivered':
+      case 'reviewed':
+      case 'featured':
+        return Colors.green;
+      case 'suspended':
+      case 'rejected':
+      case 'failed':
+      case 'flagged':
+        return Colors.red;
+      case 'pending':
+      case 'draft':
+      case 'submitted':
+      case 'queued':
+        return Colors.orange;
+      case 'shipped':
+      case 'confirmed':
+        return Colors.blue;
+      default:
+        return Colors.blueGrey;
+    }
+  }
+}
+
+class _ValueBox extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  const _ValueBox({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _KvRow extends StatelessWidget {
+  final String label;
+  final dynamic value;
+  final IconData icon;
+  const _KvRow({required this.label, required this.value, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final display = _display(value);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 15, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              display,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _display(dynamic v) {
+    if (v == null) return '—';
+    if (v is List) return v.join(', ');
+    if (v is double) return v.toStringAsFixed(2);
+    return v.toString();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Section card
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _Section extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final List<Widget> children;
+
+  const _Section({
+    required this.title,
+    required this.icon,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 16, color: scheme.primary),
+                const SizedBox(width: 6),
+                Text(
+                  title,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Field row
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _Field extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _Field(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+String _formatFull(DateTime dt) {
+  const months = [
+    '',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  final h = dt.hour.toString().padLeft(2, '0');
+  final m = dt.minute.toString().padLeft(2, '0');
+  return '${dt.day} ${months[dt.month]} ${dt.year} at $h:$m';
+}
+
+String _formatRelative(DateTime dt) {
+  final diff = DateTime.now().difference(dt);
+  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+  if (diff.inHours < 24) return '${diff.inHours}h ago';
+  return '${diff.inDays}d ago';
+}
+
+String _labelAction(String a) {
+  const map = {
+    'created': 'Created',
+    'updated': 'Updated',
+    'deleted': 'Deleted',
+    'transitioned': 'Transitioned',
+    'logged_in': 'Logged In',
+    'logged_out': 'Logged Out',
+  };
+  return map[a] ?? a;
+}
+
+String _labelEntity(String e) {
+  const map = {
+    'session': 'Session',
+    'officer': 'Officer',
+    'customer': 'Customer',
+    'product': 'Product',
+    'category': 'Category',
+    'promotion': 'Promotion',
+    'visit': 'Visit',
+    'weekly_plan': 'Weekly Plan',
+    'daily_report': 'Daily Report',
+    'order': 'Order',
+    'notification': 'Notification',
+  };
+  return map[e] ?? e;
+}
+
+
+// === FILE: lib/features/activity_log/presentation/pages/activity_log_form_page.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../bloc/activity_log_bloc.dart';
+import '../bloc/activity_log_event.dart';
+import '../bloc/activity_log_state.dart';
+import '../../domain/usecases/create_activity_log_usecase.dart';
+
+enum ActivityLogFormMode { create, edit }
+
+class ActivityLogFormPage extends StatefulWidget {
+  final ActivityLogFormMode mode;
+  final String? id;
+
+  const ActivityLogFormPage({
+    super.key,
+    this.mode = ActivityLogFormMode.create,
+    this.id,
+  });
+
+  @override
+  State<ActivityLogFormPage> createState() => _ActivityLogFormPageState();
+}
+
+class _ActivityLogFormPageState extends State<ActivityLogFormPage> {
+  final _formKey = GlobalKey<FormState>();
+
+
+
+  bool _isSubmitting = false;
+
+  @override
+  void dispose() {
+
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isCreate = widget.mode == ActivityLogFormMode.create;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(isCreate ? 'New Activity Logs' : 'Edit Activity Logs'),
+      ),
+      body: BlocListener<ActivityLogBloc, ActivityLogState>(
+        listener: (context, state) {
+          if (state is ActivityLogOperationSuccess) {
+            setState(() => _isSubmitting = false);
+            Navigator.of(context).pop(true);
+          }
+          if (state is ActivityLogFailure) {
+            setState(() => _isSubmitting = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+            );
+          }
+        },
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+
+                const SizedBox(height: 24),
+                FilledButton(
+                  onPressed: _isSubmitting ? null : _submit,
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          height: 20, width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(isCreate ? 'Create Activity Logs' : 'Save Changes'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSubmitting = true);
+
+    context.read<ActivityLogBloc>().add(
+      ActivityLogCreateRequested(
+        CreateActivityLogParams(
+
+        ),
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/activity_log/presentation/pages/activity_log_list_page.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/routes/app_router.dart';
+import '../../domain/entities/activity_log_entity.dart';
+import '../bloc/activity_log_bloc.dart';
+import '../bloc/activity_log_event.dart';
+import '../bloc/activity_log_state.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ActivityLogListPage — Read-only audit trail
+// Filters: search, action type, entity type, date range
+// ─────────────────────────────────────────────────────────────────────────────
+
+class ActivityLogListPage extends StatefulWidget {
+  const ActivityLogListPage({super.key});
+
+  @override
+  State<ActivityLogListPage> createState() => _ActivityLogListPageState();
+}
+
+class _ActivityLogListPageState extends State<ActivityLogListPage> {
+  String _search = '';
+  String? _filterAction;
+  String? _filterEntity;
+
+  static const _actions = [
+    'logged_in', 'logged_out', 'created', 'updated',
+    'deleted', 'transitioned',
+  ];
+
+  static const _entities = [
+    'session', 'officer', 'customer', 'product', 'category',
+    'promotion', 'visit', 'weekly_plan', 'daily_report',
+    'order', 'notification',
+  ];
+
+  List<ActivityLogEntity> _apply(List<ActivityLogEntity> all) {
+    var result = all;
+    if (_filterAction != null) {
+      result = result.where((e) => e.action == _filterAction).toList();
+    }
+    if (_filterEntity != null) {
+      result = result.where((e) => e.entityType == _filterEntity).toList();
+    }
+    if (_search.isNotEmpty) {
+      final q = _search.toLowerCase();
+      result = result.where((e) =>
+        e.actorName.toLowerCase().contains(q) ||
+        e.action.toLowerCase().contains(q) ||
+        e.entityType.toLowerCase().contains(q) ||
+        e.entityId.toLowerCase().contains(q) ||
+        (e.ipAddress?.toLowerCase().contains(q) ?? false),
+      ).toList();
+    }
+    return result;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Activity Logs'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_outlined),
+            tooltip: 'Refresh',
+            onPressed: () => context
+                .read<ActivityLogBloc>()
+                .add(ActivityLogLoadAllRequested()),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // ── Search + filters ──────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Search actor, action, entity...',
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        vertical: 10, horizontal: 12,
+                      ),
+                    ),
+                    onChanged: (v) => setState(() => _search = v),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Action filter
+                PopupMenuButton<String?>(
+                  icon: Icon(
+                    Icons.bolt_outlined,
+                    color: _filterAction != null ? scheme.primary : null,
+                  ),
+                  tooltip: 'Filter by action',
+                  onSelected: (v) => setState(() => _filterAction = v),
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(value: null, child: Text('All actions')),
+                    ..._actions.map((a) => PopupMenuItem(
+                      value: a,
+                      child: Row(children: [
+                        _ActionIcon(action: a, size: 16),
+                        const SizedBox(width: 8),
+                        Text(_labelAction(a)),
+                      ]),
+                    )),
+                  ],
+                ),
+                // Entity filter
+                PopupMenuButton<String?>(
+                  icon: Icon(
+                    Icons.category_outlined,
+                    color: _filterEntity != null ? scheme.primary : null,
+                  ),
+                  tooltip: 'Filter by entity',
+                  onSelected: (v) => setState(() => _filterEntity = v),
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(value: null, child: Text('All entities')),
+                    ..._entities.map((e) => PopupMenuItem(
+                      value: e,
+                      child: Text(_labelEntity(e)),
+                    )),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // ── Active filter chips ───────────────────────────────────────
+          if (_filterAction != null || _filterEntity != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: Row(
+                children: [
+                  if (_filterAction != null)
+                    _FilterChip(
+                      label: _labelAction(_filterAction!),
+                      onRemove: () => setState(() => _filterAction = null),
+                    ),
+                  if (_filterEntity != null)
+                    _FilterChip(
+                      label: _labelEntity(_filterEntity!),
+                      onRemove: () => setState(() => _filterEntity = null),
+                    ),
+                ],
+              ),
+            ),
+
+          // ── List ──────────────────────────────────────────────────────
+          Expanded(
+            child: BlocBuilder<ActivityLogBloc, ActivityLogState>(
+              builder: (context, state) {
+                if (state is ActivityLogLoading || state is ActivityLogInitial) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (state is ActivityLogFailure) {
+                  return Center(child: Text(state.message));
+                }
+                if (state is ActivityLogEmpty) {
+                  return const Center(child: Text('No activity logs found.'));
+                }
+
+                List<ActivityLogEntity> items = [];
+                if (state is ActivityLogListLoaded) items = state.items;
+
+                final filtered = _apply(items);
+                if (filtered.isEmpty) {
+                  return const Center(
+                    child: Text('No logs match the filter.'),
+                  );
+                }
+
+                return ListView.separated(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 8,
+                  ),
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, indent: 56),
+                  itemBuilder: (_, i) => _LogRow(
+                    log: filtered[i],
+                    onTap: () => context.push(
+                      AppRouter.activityLogDetailPath(filtered[i].id),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Log row
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _LogRow extends StatelessWidget {
+  final ActivityLogEntity log;
+  final VoidCallback onTap;
+
+  const _LogRow({required this.log, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final time = _formatTime(log.occurredAt);
+
+    return ListTile(
+      leading: _ActionIcon(action: log.action),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${log.actorName} ${_labelAction(log.action)} '
+              '${_labelEntity(log.entityType)}',
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w500),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Text(
+            time,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+      subtitle: Text(
+        '${_labelEntity(log.entityType)} · #${log.entityId.split('-').last.toUpperCase()}'
+        '${log.ipAddress != null ? ' · ${log.ipAddress}' : ''}',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      onTap: onTap,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+    );
+  }
+
+  String _formatTime(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Action icon with colour coding
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ActionIcon extends StatelessWidget {
+  final String action;
+  final double size;
+
+  const _ActionIcon({required this.action, this.size = 20});
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, color) = _resolve(action, Theme.of(context).colorScheme);
+    return Container(
+      width: size + 16,
+      height: size + 16,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(icon, size: size, color: color),
+    );
+  }
+
+  (IconData, Color) _resolve(String action, ColorScheme s) {
+    switch (action) {
+      case 'created':     return (Icons.add_circle_outline, Colors.green);
+      case 'updated':     return (Icons.edit_outlined, Colors.blue);
+      case 'deleted':     return (Icons.delete_outline, Colors.red);
+      case 'transitioned':return (Icons.swap_horiz, Colors.orange);
+      case 'logged_in':   return (Icons.login, Colors.teal);
+      case 'logged_out':  return (Icons.logout, Colors.grey);
+      default:            return (Icons.history, s.primary);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Active filter chip
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onRemove;
+
+  const _FilterChip({required this.label, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: Chip(
+        label: Text(label, style: const TextStyle(fontSize: 12)),
+        deleteIcon: const Icon(Icons.close, size: 14),
+        onDeleted: onRemove,
+        backgroundColor: scheme.primaryContainer.withValues(alpha: 0.4),
+        padding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Label helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+String _labelAction(String a) {
+  const map = {
+    'created': 'Created', 'updated': 'Updated', 'deleted': 'Deleted',
+    'transitioned': 'Transitioned', 'logged_in': 'Logged In',
+    'logged_out': 'Logged Out',
+  };
+  return map[a] ?? a;
+}
+
+String _labelEntity(String e) {
+  const map = {
+    'session': 'Session', 'officer': 'Officer', 'customer': 'Customer',
+    'product': 'Product', 'category': 'Category', 'promotion': 'Promotion',
+    'visit': 'Visit', 'weekly_plan': 'Weekly Plan',
+    'daily_report': 'Daily Report', 'order': 'Order',
+    'notification': 'Notification',
+  };
+  return map[e] ?? e;
+}
+
+// === FILE: lib/features/activity_log/presentation/widgets/activity_log_card.dart ===
+import 'package:flutter/material.dart';
+import '../../domain/entities/activity_log_entity.dart';
+
+class ActivityLogCard extends StatelessWidget {
+  final ActivityLogEntity item;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  const ActivityLogCard({
+    super.key,
+    required this.item,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        onTap: onTap,
+        title: Text(
+          item.action,
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: Text(item.actorName.toString()),        trailing: IconButton(
+          icon: Icon(Icons.delete_outline, color: scheme.error),
+          tooltip: 'Delete',
+          onPressed: () => _confirmDelete(context),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete?'),
+        content: Text('Remove "\"? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) onDelete();
+  }
+}
+
+

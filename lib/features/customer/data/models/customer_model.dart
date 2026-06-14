@@ -1,3 +1,4 @@
+//admin app
 import '../../domain/entities/customer_entity.dart';
 
 class CustomerContactModel extends CustomerContact {
@@ -11,6 +12,7 @@ class CustomerContactModel extends CustomerContact {
     super.isPrimary,
     super.createdAt,
   });
+
   factory CustomerContactModel.fromJson(Map<String, dynamic> j) =>
       CustomerContactModel(
         id: (j['id'] ?? '').toString(),
@@ -24,6 +26,7 @@ class CustomerContactModel extends CustomerContact {
             ? DateTime.tryParse(j['created_at'].toString())
             : null,
       );
+
   Map<String, dynamic> toJson() => {
     'name': name,
     if (role != null) 'role': role,
@@ -37,6 +40,7 @@ class CustomerContactModel extends CustomerContact {
 class CustomerModel extends CustomerEntity {
   const CustomerModel({
     required super.id,
+    super.actorId,
     super.orgId,
     super.assignedOfficerId,
     required super.name,
@@ -50,6 +54,8 @@ class CustomerModel extends CustomerEntity {
     super.address,
     super.city,
     super.county,
+    super.ward,
+    super.street,
     super.country,
     super.latitude,
     super.longitude,
@@ -85,8 +91,10 @@ class CustomerModel extends CustomerEntity {
     final contacts = rawC
         .map((c) => CustomerContactModel.fromJson(c as Map<String, dynamic>))
         .toList();
+
     return CustomerModel(
       id: (j['id'] ?? '').toString(),
+      actorId: (j['actor_id'] ?? '').toString(),
       orgId: (j['org_id'] ?? '').toString(),
       assignedOfficerId: j['assigned_officer_id']?.toString(),
       name: j['name'] as String? ?? '',
@@ -100,6 +108,8 @@ class CustomerModel extends CustomerEntity {
       address: j['address'] as String?,
       city: j['city'] as String?,
       county: j['county'] as String?,
+      ward: j['ward'] as String?,
+      street: j['street'] as String?,
       country: j['country'] as String?,
       latitude: _toDouble(j['latitude']),
       longitude: _toDouble(j['longitude']),
@@ -130,6 +140,8 @@ class CustomerModel extends CustomerEntity {
     'address': address,
     'city': city,
     'county': county,
+    'ward': ward,
+    'street': street,
     'country': country,
     'latitude': latitude,
     'longitude': longitude,
@@ -146,6 +158,7 @@ class CustomerModel extends CustomerEntity {
 
   factory CustomerModel.fromEntity(CustomerEntity e) => CustomerModel(
     id: e.id,
+    actorId: e.actorId,
     orgId: e.orgId,
     assignedOfficerId: e.assignedOfficerId,
     name: e.name,
@@ -159,6 +172,8 @@ class CustomerModel extends CustomerEntity {
     address: e.address,
     city: e.city,
     county: e.county,
+    ward: e.ward,
+    street: e.street,
     country: e.country,
     latitude: e.latitude,
     longitude: e.longitude,

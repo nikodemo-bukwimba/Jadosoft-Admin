@@ -1,11 +1,13 @@
+// lib/features/customer/presentation/widgets/customer_card_tile.dart
+// (jadosoft-officer)
+// Cards view tile.  Location info row now shows Street · Ward · District · Region.
+
 import 'package:flutter/material.dart';
 import '../../../../config/di/injection_container.dart';
 import '../../../../core/utils/map_launcher.dart';
 import '../../domain/entities/customer_entity.dart';
 import '../../../officer/data/datasources/officer_remote_datasource.dart';
 
-/// Cards view tile. Tap the GPS row to open location in Maps.
-/// Shows officer name resolved via DI.
 class CustomerCardTile extends StatelessWidget {
   final CustomerEntity item;
   final VoidCallback onTap;
@@ -18,7 +20,6 @@ class CustomerCardTile extends StatelessWidget {
     required this.onDelete,
   });
 
-  /// Resolve officer display name from assigned_officer_id (actorId).
   Future<String> _getOfficerName() async {
     final officerId = item.assignedOfficerId;
     if (officerId == null || officerId.isEmpty) return 'Not assigned';
@@ -35,10 +36,22 @@ class CustomerCardTile extends StatelessWidget {
     }
   }
 
+  /// Concise location summary — most specific first.
+  String _locationSummary() {
+    final parts = <String>[
+      if (item.street != null && item.street!.isNotEmpty) item.street!,
+      if (item.ward != null && item.ward!.isNotEmpty) item.ward!,
+      if (item.city != null && item.city!.isNotEmpty) item.city!,
+      if (item.county != null && item.county!.isNotEmpty) item.county!,
+    ];
+    return parts.isEmpty ? (item.address ?? '') : parts.join(' · ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final contact = item.primaryContact;
+    final location = _locationSummary();
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -52,7 +65,8 @@ class CustomerCardTile extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 24,
-                backgroundColor: scheme.primaryContainer.withValues(alpha: 0.5),
+                backgroundColor:
+                    scheme.primaryContainer.withValues(alpha: 0.5),
                 child: Icon(
                   item.isB2B ? Icons.store : Icons.person,
                   color: scheme.primary,
@@ -65,13 +79,15 @@ class CustomerCardTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // ── Name + tier chip ──
+                    // Name + tier chip
                     Row(
                       children: [
                         Expanded(
                           child: Text(
                             item.name,
-                            style: Theme.of(context).textTheme.titleSmall
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
                                 ?.copyWith(fontWeight: FontWeight.w700),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -82,34 +98,36 @@ class CustomerCardTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
 
-                    // ── Type + category ──
+                    // Type + category
                     _infoRow(
                       context,
                       Icons.label_outlined,
-                      '${item.customerType.toUpperCase()}${item.category != null ? ' · ${item.category}' : ''}',
+                      '${item.customerType.toUpperCase()}'
+                      '${item.category != null ? ' · ${item.category}' : ''}',
                     ),
 
-                    // ── Primary contact person ──
+                    // Primary contact person
                     if (contact != null)
                       _infoRow(
                         context,
                         Icons.person_outline,
-                        '${contact.name}${contact.role != null ? ' (${contact.role})' : ''}',
+                        '${contact.name}'
+                        '${contact.role != null ? ' (${contact.role})' : ''}',
                       ),
 
-                    // ── Phone ──
+                    // Phone
                     if (item.phone != null)
                       _infoRow(context, Icons.phone_outlined, item.phone!),
 
-                    // ── Address ──
-                    if (item.address != null && item.address!.isNotEmpty)
+                    // Location summary — Street · Ward · District · Region
+                    if (location.isNotEmpty)
                       _infoRow(
                         context,
                         Icons.location_on_outlined,
-                        item.address!,
+                        location,
                       ),
 
-                    // ── GPS row — tappable when coords exist ──
+                    // GPS row — tappable when coords exist
                     if (item.hasGps)
                       _gpsRow(context)
                     else
@@ -120,7 +138,7 @@ class CustomerCardTile extends StatelessWidget {
                         muted: true,
                       ),
 
-                    // ── Assigned officer via FutureBuilder ──
+                    // Assigned officer via FutureBuilder
                     FutureBuilder<String>(
                       future: _getOfficerName(),
                       builder: (_, snap) => _infoRow(
@@ -134,11 +152,16 @@ class CustomerCardTile extends StatelessWidget {
                 ),
               ),
               IconButton(
-                icon: Icon(Icons.delete_outline, color: scheme.error, size: 20),
+                icon: Icon(
+                  Icons.delete_outline,
+                  color: scheme.error,
+                  size: 20,
+                ),
                 tooltip: 'Delete',
                 onPressed: onDelete,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                constraints:
+                    const BoxConstraints(minWidth: 32, minHeight: 32),
               ),
             ],
           ),
@@ -190,13 +213,14 @@ class CustomerCardTile extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  '${item.latitude!.toStringAsFixed(4)}, ${item.longitude!.toStringAsFixed(4)}',
+                  '${item.latitude!.toStringAsFixed(4)}, '
+                  '${item.longitude!.toStringAsFixed(4)}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scheme.primary,
-                    fontWeight: FontWeight.w600,
-                    decoration: TextDecoration.underline,
-                    decorationColor: scheme.primary,
-                  ),
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.underline,
+                        decorationColor: scheme.primary,
+                      ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -220,8 +244,8 @@ class CustomerCardTile extends StatelessWidget {
     final color = muted
         ? scheme.onSurfaceVariant.withValues(alpha: 0.4)
         : isPrimary
-        ? scheme.primary
-        : scheme.onSurfaceVariant;
+            ? scheme.primary
+            : scheme.onSurfaceVariant;
     return Padding(
       padding: const EdgeInsets.only(top: 3),
       child: Row(
@@ -232,9 +256,9 @@ class CustomerCardTile extends StatelessWidget {
             child: Text(
               text,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: color,
-                fontWeight: isPrimary ? FontWeight.w600 : null,
-              ),
+                    color: color,
+                    fontWeight: isPrimary ? FontWeight.w600 : null,
+                  ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),

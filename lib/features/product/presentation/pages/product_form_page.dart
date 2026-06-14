@@ -1,6 +1,11 @@
-﻿import 'package:flutter/material.dart';
+﻿// lib/features/product/presentation/pages/product_form_page.dart
+
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import '../enums/product_form_node.dart';
 import '../bloc/product_bloc.dart';
 import '../bloc/product_event.dart';
@@ -13,6 +18,18 @@ import '../../../category/domain/entities/category_entity.dart';
 import '../../../../core/widgets/searchable_picker_sheet.dart';
 import '../widgets/product_image.dart';
 import '../../data/datasources/product_remote_datasource.dart';
+
+// ── Platform helpers ─────────────────────────────────────────────────────────
+
+/// True when running on a desktop OS (Windows, macOS, Linux).
+/// image_picker does not support desktop — file_picker is used instead.
+bool get _isDesktop {
+  return defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.linux;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 class ProductFormPage extends StatefulWidget {
   final ProductFormNode mode;
@@ -30,6 +47,8 @@ class ProductFormPage extends StatefulWidget {
 
 class _ProductFormPageState extends State<ProductFormPage> {
   final _formKey = GlobalKey<FormState>();
+
+  // image_picker — used on mobile/web only
   final _imagePicker = ImagePicker();
 
   final _nameController = TextEditingController();
@@ -40,7 +59,8 @@ class _ProductFormPageState extends State<ProductFormPage> {
   final _quantityController = TextEditingController();
   DateTime? _expiryDate;
 
-  /// Holds either a network URL (from existing product) or local file path (from picker).
+  /// Holds either a network URL (from existing product) or a local file path
+  /// (picked by image_picker on mobile, or file_picker on desktop).
   String? _imageSource;
   String? _selectedCategoryId;
   bool _isAvailableValue = true;
@@ -113,9 +133,54 @@ class _ProductFormPageState extends State<ProductFormPage> {
     }
   }
 
-  // ─── Image Picker ──────────────────────────────────────────
+  // ─── Image picking ──────────────────────────────────────────────────────────
 
+  /// Entry point for all platforms.
+  /// On desktop → file_picker (fully supported on Windows/macOS/Linux).
+  /// On mobile/web → image_picker (camera + gallery).
   Future<void> _pickImage(ImageSource source) async {
+    if (_isDesktop) {
+      await _pickImageDesktop();
+    } else {
+      await _pickImageMobile(source);
+    }
+  }
+
+  /// Desktop: uses file_picker which natively opens the OS file dialog.
+  Future<void> _pickImageDesktop() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        // withData: false keeps memory low — we only need the path
+        withData: false,
+      );
+
+      if (result == null || result.files.isEmpty) return; // user cancelled
+
+      final path = result.files.single.path;
+      if (path == null || path.isEmpty) {
+        // Shouldn't happen when withData:false on desktop, but guard anyway
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not read file path.')),
+          );
+        }
+        return;
+      }
+
+      if (mounted) setState(() => _imageSource = path);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not pick image: $e')));
+      }
+    }
+  }
+
+  /// Mobile / Web: original image_picker flow (unchanged).
+  Future<void> _pickImageMobile(ImageSource source) async {
     try {
       final picked = await _imagePicker.pickImage(
         source: source,
@@ -135,7 +200,16 @@ class _ProductFormPageState extends State<ProductFormPage> {
     }
   }
 
+  // ─── Bottom sheet ───────────────────────────────────────────────────────────
+
   void _showImagePickerSheet() {
+    // On desktop, skip the sheet and go straight to file_picker.
+    if (_isDesktop) {
+      _pickImageDesktop();
+      return;
+    }
+
+    // Mobile / Web: show the camera / gallery / remove sheet.
     showModalBottomSheet(
       context: context,
       builder: (sheetContext) => SafeArea(
@@ -209,7 +283,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
     );
   }
 
-  // ─── Build ─────────────────────────────────────────────────
+  // ─── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -331,7 +405,9 @@ class _ProductFormPageState extends State<ProductFormPage> {
                       leading: const Icon(Icons.calendar_month_outlined),
                       title: Text(
                         _expiryDate != null
-                            ? 'Expiry: ${_expiryDate!.year}-${_expiryDate!.month.toString().padLeft(2, '0')}-${_expiryDate!.day.toString().padLeft(2, '0')}'
+                            ? 'Expiry: ${_expiryDate!.year}-'
+                                  '${_expiryDate!.month.toString().padLeft(2, '0')}-'
+                                  '${_expiryDate!.day.toString().padLeft(2, '0')}'
                             : 'Set Expiry Date',
                       ),
                       trailing: _expiryDate != null
@@ -402,7 +478,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
     );
   }
 
-  // ─── Form Sections ─────────────────────────────────────────
+  // ─── Form sections ──────────────────────────────────────────────────────────
 
   Widget _buildImagePicker(ColorScheme scheme) {
     return Center(
@@ -416,7 +492,6 @@ class _ProductFormPageState extends State<ProductFormPage> {
               height: 160,
               borderRadius: 16,
             ),
-            // Camera overlay icon
             Positioned(
               bottom: 0,
               right: 0,
@@ -434,6 +509,21 @@ class _ProductFormPageState extends State<ProductFormPage> {
                 ),
               ),
             ),
+            // Desktop hint label
+            if (_isDesktop && _imageSource == null)
+              Positioned(
+                bottom: 10,
+                left: 0,
+                right: 0,
+                child: Text(
+                  'Click to browse',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -579,13 +669,13 @@ class _ProductFormPageState extends State<ProductFormPage> {
     );
   }
 
-  // ─── Submit ────────────────────────────────────────────────
+  // ─── Submit ─────────────────────────────────────────────────────────────────
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSubmitting = true);
 
-    // ── Upload local image first if needed ──────────────────
+    // ── Upload local image first if needed ──────────────────────────────────
     String? resolvedImageUrl = _imageSource;
 
     final isLocalFile =
@@ -619,7 +709,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
 
     if (!mounted) return;
 
-    // ── Dispatch bloc event with resolved URL ───────────────
+    // ── Dispatch BLoC event with resolved URL ───────────────────────────────
     if (_isEdit) {
       final currentState = context.read<ProductBloc>().state;
       if (currentState is ProductDetailLoaded) {
@@ -632,7 +722,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
               categoryId: _selectedCategoryId ?? '',
               isAvailable: _isAvailableValue,
               isNew: _isNewValue,
-              imageUrl: resolvedImageUrl, // ← resolved URL, not local path
+              imageUrl: resolvedImageUrl,
               batchNumber: _batchNumberController.text.trim().isEmpty
                   ? null
                   : _batchNumberController.text.trim(),
@@ -656,7 +746,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
             isAvailable: _isAvailableValue,
             isFeatured: false,
             isNew: _isNewValue,
-            imageUrl: resolvedImageUrl, // ← resolved URL, not local path
+            imageUrl: resolvedImageUrl,
             batchNumber: _batchNumberController.text.trim().isEmpty
                 ? null
                 : _batchNumberController.text.trim(),

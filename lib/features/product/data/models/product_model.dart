@@ -1,13 +1,18 @@
 ﻿// lib/features/product/data/models/product_model.dart
+//Admin app
+// CHANGE: Added branchPrice, effectiveBasePrice parsing from API variants.
+// All existing fields are untouched.
 
 import '../../domain/entities/product_entity.dart';
 
 class ProductModel extends ProductEntity {
-  const ProductModel({
+  ProductModel({
     required super.id,
     required super.name,
     super.description,
     required super.price,
+    super.branchPrice,
+    super.effectiveBasePrice,
     super.effectivePrice,
     super.discountPercentage,
     super.promotionId,
@@ -29,14 +34,30 @@ class ProductModel extends ProductEntity {
   factory ProductModel.fromJson(Map<String, dynamic> json) {
     final basePrice = (json['base_price'] as num? ?? json['price'] as num? ?? 0)
         .toDouble();
-    final effectivePrice =
-        (json['effective_price'] as num?)?.toDouble() ?? basePrice;
+
+    // branch_price is populated when the API is called with a branch org_id
+    final rawBranch = json['branch_price'];
+    final branchPrice = rawBranch != null
+        ? double.tryParse(rawBranch.toString())
+        : null;
+
+    final rawBase = json['effective_base_price'];
+    final effectiveBase = rawBase != null
+        ? double.tryParse(rawBase.toString())
+        : (branchPrice ?? basePrice);
+
+    final rawEffective = json['effective_price'];
+    final effectivePrice = rawEffective != null
+        ? double.tryParse(rawEffective.toString())
+        : effectiveBase;
 
     return ProductModel(
       id: json['id']?.toString() ?? '',
       name: json['name'] as String? ?? '',
       description: json['description'] as String?,
       price: basePrice,
+      branchPrice: branchPrice,
+      effectiveBasePrice: effectiveBase,
       effectivePrice: effectivePrice,
       discountPercentage: (json['discount_percentage'] as num?)?.toDouble(),
       promotionId: json['promotion_id'] as String?,
@@ -65,6 +86,8 @@ class ProductModel extends ProductEntity {
     'name': name,
     'description': description,
     'price': price,
+    'branch_price': branchPrice,
+    'effective_base_price': effectiveBasePrice,
     'effective_price': effectivePrice,
     'discount_percentage': discountPercentage,
     'promotion_id': promotionId,
@@ -90,6 +113,8 @@ class ProductModel extends ProductEntity {
       name: e.name,
       description: e.description,
       price: e.price,
+      branchPrice: e.branchPrice,
+      effectiveBasePrice: e.effectiveBasePrice,
       effectivePrice: e.effectivePrice,
       discountPercentage: e.discountPercentage,
       promotionId: e.promotionId,
@@ -115,6 +140,8 @@ class ProductModel extends ProductEntity {
     String? name,
     String? description,
     double? price,
+    double? branchPrice,
+    double? effectiveBasePrice,
     double? effectivePrice,
     double? discountPercentage,
     String? promotionId,
@@ -137,6 +164,8 @@ class ProductModel extends ProductEntity {
       name: name ?? this.name,
       description: description ?? this.description,
       price: price ?? this.price,
+      branchPrice: branchPrice ?? this.branchPrice,
+      effectiveBasePrice: effectiveBasePrice ?? this.effectiveBasePrice,
       effectivePrice: effectivePrice ?? this.effectivePrice,
       discountPercentage: discountPercentage ?? this.discountPercentage,
       promotionId: promotionId ?? this.promotionId,

@@ -1,4 +1,7 @@
-﻿// order_model.dart — Admin App
+﻿// === FILE: lib/features/order/data/models/order_model.dart
+// Admin App — reads customer_name injected by CustomerNameResolver.
+// All other fields preserved exactly.
+
 import 'dart:convert';
 import '../../domain/entities/order_entity.dart';
 
@@ -6,6 +9,7 @@ class OrderModel extends OrderEntity {
   const OrderModel({
     required super.id,
     required super.customerId,
+    super.customerName,
     required super.items,
     required super.total,
     super.paymentRef,
@@ -28,6 +32,8 @@ class OrderModel extends OrderEntity {
                   json['customer_id'])
               ?.toString() ??
           '',
+      // Injected by CustomerNameResolver before parsing.
+      customerName: json['customer_name'] as String?,
       items: _parseItems(json['items']),
       total:
           double.tryParse(
@@ -54,7 +60,6 @@ class OrderModel extends OrderEntity {
                   .toString(),
             )
           : null,
-      // ── Order source ────────────────────────────────────
       createdByName:
           meta['created_by_name']?.toString() ??
           json['created_by_name']?.toString(),
@@ -100,6 +105,7 @@ class OrderModel extends OrderEntity {
   Map<String, dynamic> toJson() => {
     'id': id,
     'customer_id': customerId,
+    if (customerName != null) 'customer_name': customerName,
     'items': items,
     'total': total,
     'payment_ref': paymentRef,
@@ -117,6 +123,7 @@ class OrderModel extends OrderEntity {
     return OrderModel(
       id: entity.id,
       customerId: entity.customerId,
+      customerName: entity.customerName,
       items: entity.items,
       total: entity.total,
       paymentRef: entity.paymentRef,

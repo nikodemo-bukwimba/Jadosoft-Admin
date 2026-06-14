@@ -87,8 +87,13 @@ class _ConversationFormPageState extends State<ConversationFormPage>
     final customerState = context.read<CustomerBloc>().state;
     if (customerState is CustomerListLoaded) {
       for (final c in customerState.items) {
-        if (_isSelf(c.id)) continue;
-        contacts.add({'id': c.id, 'name': c.name, 'role': 'customer'});
+        if (c.actorId.isEmpty) continue; // ← skip if no actor_id
+        if (_isSelf(c.actorId)) continue; // ← was c.id
+        contacts.add({
+          'id': c.actorId, // ← was c.id
+          'name': c.name,
+          'role': 'customer',
+        });
       }
     }
 

@@ -75,8 +75,8 @@ class UserEntity {
     this.orgStatus,
     this.orgId,
     this.orgName,
-    this.branchId, // ── NEW ──
-    this.branchName, // ── NEW ──
+    this.branchId,
+    this.branchName,
   });
 
   String get displayName => name.isNotEmpty ? name : email;

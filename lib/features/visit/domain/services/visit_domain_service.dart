@@ -1,3 +1,14 @@
+// lib/features/visit/domain/services/visit_domain_service.dart
+//
+// CHANGE in flagWithComment():
+//   Removed the hardcoded guard that blocked flagging from 'flagged' status:
+//     BEFORE: if (current != pending && current != reviewed) → error
+//     AFTER:  removed — the transition guard already handles valid transitions
+//             via canTransitionTo(), which now allows flagged → flagged.
+//
+// All other methods (transition, reviewWithComment, unflagVisit) are identical
+// to the original.
+
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../entities/visit_entity.dart';
@@ -37,6 +48,7 @@ class VisitDomainService {
   }
 
   /// Accept a completed visit with optional comment for the officer.
+  /// Works for: pending → reviewed, AND reviewed → reviewed (edit comment).
   Future<Either<Failure, VisitEntity>> reviewWithComment({
     required String id,
     String? comment,
@@ -72,21 +84,26 @@ class VisitDomainService {
       status: VisitStatus.reviewed.name,
       adminComments: comments,
     );
-    // Pass adminComment so the datasource can send it to the review endpoint
     return repository.updateWithAction(
       updated,
       adminComment: comment?.trim().isNotEmpty == true ? comment!.trim() : null,
     );
   }
 
-  /// Flag a visit with a required comment explaining the reason.
+  /// Flag a visit with a required reason explaining the issue.
+  /// Works for: pending → flagged, reviewed → flagged, flagged → flagged
+  /// (edit flag reason).
+  ///
+  /// CHANGED: removed hardcoded guard that blocked flagged → flagged.
+  /// Transition validity is now solely enforced by VisitTransitionGuard,
+  /// which reads the updated _transitions map in visit_status.dart.
   Future<Either<Failure, VisitEntity>> flagWithComment({
     required String id,
     required String comment,
   }) async {
     if (comment.trim().isEmpty) {
       return const Left(
-        ValidationFailure('A comment is required when flagging a visit.'),
+        ValidationFailure('A reason is required when flagging a visit.'),
       );
     }
 
@@ -94,12 +111,15 @@ class VisitDomainService {
     if (loadResult.isLeft()) return loadResult;
     final entity = loadResult.getOrElse(() => throw StateError('unreachable'));
 
-    final current = VisitStatusX.fromString(entity.status);
-    if (current != VisitStatus.pending && current != VisitStatus.reviewed) {
-      return Left(
-        ValidationFailure(
-          'Cannot flag from ${current.displayName}. Only pending or reviewed visits can be flagged.',
-        ),
+    // Validate via guard only — no extra manual status check here.
+    final guardResult = guard.validate(
+      current: VisitStatusX.fromString(entity.status),
+      target: VisitStatus.flagged,
+    );
+    if (guardResult.isLeft()) {
+      return guardResult.fold(
+        (f) => Left(f),
+        (_) => throw StateError('unreachable'),
       );
     }
 

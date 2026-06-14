@@ -218,11 +218,7 @@ class MemberTab extends StatelessWidget {
   }
 }
 
-<<<<<<< HEAD
-// ── Branch scope bar ──────────────────────────────────────────
-=======
 // ── Branch scope bar ──────────────────────────────────────────────
->>>>>>> promotion_and_bulk_sms
 class _BranchScopeBar extends StatelessWidget {
   final VoidCallback? onBack;
   const _BranchScopeBar({this.onBack});
@@ -254,15 +250,9 @@ class _BranchScopeBar extends StatelessWidget {
   }
 }
 
-<<<<<<< HEAD
-// ═══════════════════════════════════════════════════════════
-// Invite Dialog — email + branch + role → emits MemberInvitedWithToken
-// ═══════════════════════════════════════════════════════════
-=======
 // ═══════════════════════════════════════════════════════════════════
 // Invite Dialog
 // ═══════════════════════════════════════════════════════════════════
->>>>>>> promotion_and_bulk_sms
 class _InviteDialog extends StatefulWidget {
   final OrganizationBloc bloc;
   final ScaffoldMessengerState messenger;
@@ -279,17 +269,17 @@ class _InviteDialogState extends State<_InviteDialog> {
   List<BranchEntity> branches = [];
   List<OrgRoleEntity> roles = [];
   bool loading = true;
-<<<<<<< HEAD
-  // FIX: These start null; the dropdown value: binding controls them correctly.
-=======
 
   // FIX: Use value: (controlled) not initialValue: (uncontrolled).
   // initialValue is read-only on first render — it NEVER reflects
+  // async setState() changes, so selectedBranchId/selectedRoleId
+  // stayed null even after the user visually picked an item.
   String? selectedBranchId;
   String? selectedRoleId;
 
   @override
   void initState() {
+    super.initState();
     _load();
   }
 
@@ -385,20 +375,20 @@ class _InviteDialogState extends State<_InviteDialog> {
                     keyboardType: TextInputType.emailAddress,
                   ),
                   const SizedBox(height: 12),
-<<<<<<< HEAD
-                  // FIX: Use `value:` not `initialValue:`.
-                  // `initialValue` is read-only on first render and does NOT
-                  // reflect state changes after async load. `value:` is the
-                  // controlled prop that keeps the dropdown in sync with state.
-                  DropdownButtonFormField<String>(
-                    value: selectedBranchId,
-=======
 
                   // ── Branch — value: (controlled) ─────────────
+                  DropdownButtonFormField<String>(
+                    value: selectedBranchId, // ← FIX
+                    decoration: const InputDecoration(
+                      labelText: 'Target Branch *',
+                      hintText: 'Select the branch they will join',
+                      prefixIcon: Icon(Icons.store_outlined),
+                      border: OutlineInputBorder(),
                     ),
                     items: [
                       DropdownMenuItem(
                         value: widget.bloc.orgContext.rootOrgId,
+                        child: const Text('HQ (Root Organization)'),
                       ),
                       ...branches.map(
                         (b) => DropdownMenuItem(
@@ -410,16 +400,10 @@ class _InviteDialogState extends State<_InviteDialog> {
                     onChanged: (v) => setState(() => selectedBranchId = v),
                   ),
                   const SizedBox(height: 12),
-<<<<<<< HEAD
-                  // FIX: Use `value:` not `initialValue:`.
-                  DropdownButtonFormField<String>(
-                    value: selectedRoleId,
-=======
 
                   // ── Role — value: (controlled) ───────────────
                   DropdownButtonFormField<String>(
                     value: selectedRoleId, // ← FIX
->>>>>>> promotion_and_bulk_sms
                     decoration: const InputDecoration(
                       labelText: 'Role *',
                       prefixIcon: Icon(Icons.admin_panel_settings_outlined),
@@ -429,10 +413,16 @@ class _InviteDialogState extends State<_InviteDialog> {
                         .map(
                           (r) => DropdownMenuItem(
                             value: r.id,
+                            child: Text(
+                              r.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                         )
                         .toList(),
                     onChanged: (v) => setState(() => selectedRoleId = v),
                   ),
+                  const SizedBox(height: 12),
 
                   // ── Level ────────────────────────────────────
                   TextField(
@@ -462,15 +452,9 @@ class _InviteDialogState extends State<_InviteDialog> {
   }
 }
 
-<<<<<<< HEAD
-// ═══════════════════════════════════════════════════════════
-// Invitation Token Bottom Sheet
-// ═══════════════════════════════════════════════════════════
-=======
 // ═══════════════════════════════════════════════════════════════════
 // Invitation Token Sheet — called from OrganizationHubPage listener
 // ═══════════════════════════════════════════════════════════════════
->>>>>>> promotion_and_bulk_sms
 class InvitationTokenSheet extends StatelessWidget {
   final String email;
   final String token;
@@ -483,7 +467,6 @@ class InvitationTokenSheet extends StatelessWidget {
     required this.orgName,
   });
 
-  /// Call this from OrganizationHubPage's BlocConsumer listener.
   static void show(
     BuildContext context, {
     required String email,
@@ -720,14 +703,8 @@ class _AssignDialogState extends State<_AssignDialog> {
   List<OrgMemberEntity> rootMembers = [];
   List<OrgRoleEntity> roles = [];
   bool loading = true;
-<<<<<<< HEAD
-  // FIX: Use value: binding — starts null, controlled by setState.
-  String? selectedUserId;
-  String? selectedRoleId;
-=======
   String? selectedUserId; // ← controlled with value:
   String? selectedRoleId; // ← controlled with value:
->>>>>>> promotion_and_bulk_sms
   String? error;
 
   @override
@@ -766,10 +743,6 @@ class _AssignDialogState extends State<_AssignDialog> {
     });
   }
 
-  void _snack(BuildContext context, String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-  }
-
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -793,13 +766,8 @@ class _AssignDialogState extends State<_AssignDialog> {
                         'with a specific role.',
                   ),
                   const SizedBox(height: 16),
-                  // FIX: value: instead of initialValue:
                   DropdownButtonFormField<String>(
-<<<<<<< HEAD
-                    value: selectedUserId,
-=======
                     value: selectedUserId, // ← FIX
->>>>>>> promotion_and_bulk_sms
                     decoration: const InputDecoration(
                       labelText: 'Member *',
                       prefixIcon: Icon(Icons.person_outlined),
@@ -822,13 +790,8 @@ class _AssignDialogState extends State<_AssignDialog> {
                     onChanged: (v) => setState(() => selectedUserId = v),
                   ),
                   const SizedBox(height: 12),
-                  // FIX: value: instead of initialValue:
                   DropdownButtonFormField<String>(
-<<<<<<< HEAD
-                    value: selectedRoleId,
-=======
                     value: selectedRoleId, // ← FIX
->>>>>>> promotion_and_bulk_sms
                     decoration: const InputDecoration(
                       labelText: 'Branch Role *',
                       prefixIcon: Icon(Icons.admin_panel_settings_outlined),
@@ -1123,11 +1086,6 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
     );
   }
 }
-<<<<<<< HEAD
-
-// ── Shared helpers ────────────────────────────────────────────
-=======
->>>>>>> promotion_and_bulk_sms
 
 // ── Shared helpers ─────────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {

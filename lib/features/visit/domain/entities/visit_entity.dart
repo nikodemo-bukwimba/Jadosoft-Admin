@@ -85,4 +85,8 @@ class VisitEntity extends Equatable {
 
   @override
   List<Object?> get props => [id, customerId, officerId, visitDate, businessName, status, createdAt, adminComments, flagReason];
+
+  get scheduledDate => null;
+
+  String? get purpose => null;
 }

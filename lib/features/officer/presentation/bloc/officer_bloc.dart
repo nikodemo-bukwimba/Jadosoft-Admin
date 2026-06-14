@@ -54,7 +54,6 @@ class OfficerBloc extends Bloc<OfficerEvent, OfficerState> {
     );
   }
 
-  // FIX 1: forward branchId so getById uses the correct org URL.
   Future<void> _onLoadOne(
     OfficerLoadOneRequested event,
     Emitter<OfficerState> emit,
@@ -117,8 +116,6 @@ class OfficerBloc extends Bloc<OfficerEvent, OfficerState> {
     );
   }
 
-  // FIX 1: Load the officer first (with branchId) so domainService.transition
-  // can use the correct org URL for activate/suspend PATCH calls.
   Future<void> _onActivate(
     OfficerActivateRequested event,
     Emitter<OfficerState> emit,

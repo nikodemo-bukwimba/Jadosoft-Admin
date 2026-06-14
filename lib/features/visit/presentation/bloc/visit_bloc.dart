@@ -1,3 +1,23 @@
+// lib/features/visit/presentation/bloc/visit_bloc.dart
+//
+// CHANGE in _onReview and _onFlag:
+//   REMOVED: add(VisitLoadAllRequested()) after emitting VisitOperationSuccess.
+//
+//   WHY it caused the black screen:
+//     1. VisitOperationSuccess is emitted → BlocConsumer listener fires
+//        → adds VisitLoadOneRequested(id) to reload the detail.
+//     2. But add(VisitLoadAllRequested()) was also fired immediately after,
+//        emitting VisitLoading() then VisitListLoaded() — which the detail
+//        page builder had no case for, so it fell to the last `return
+//        const SizedBox.shrink()` branch → black screen.
+//
+//   FIX: remove the redundant add(VisitLoadAllRequested()). The listener
+//   in visit_detail_page.dart already adds VisitLoadOneRequested on success,
+//   which correctly reloads the detail and emits VisitDetailLoaded.
+//   The list page will refresh naturally when the user navigates back.
+//
+// Everything else is identical to the original.
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../../domain/services/visit_domain_service.dart';
@@ -17,7 +37,7 @@ class VisitBloc extends Bloc<VisitEvent, VisitState> {
   final UpdateVisitUseCase updateUseCase;
   final DeleteVisitUseCase deleteUseCase;
   final VisitDomainService domainService;
-  final GetCustomerVisitsUseCase getCustomerVisitsUseCase; // ← NEW
+  final GetCustomerVisitsUseCase getCustomerVisitsUseCase;
 
   VisitBloc({
     required this.getAllUseCase,
@@ -26,7 +46,7 @@ class VisitBloc extends Bloc<VisitEvent, VisitState> {
     required this.updateUseCase,
     required this.deleteUseCase,
     required this.domainService,
-    required this.getCustomerVisitsUseCase, // ← NEW
+    required this.getCustomerVisitsUseCase,
   }) : super(VisitInitial()) {
     on<VisitLoadAllRequested>(_onLoadAll);
     on<VisitLoadOneRequested>(_onLoadOne);
@@ -37,7 +57,7 @@ class VisitBloc extends Bloc<VisitEvent, VisitState> {
     on<VisitReviewRequested>(_onReview);
     on<VisitFlagRequested>(_onFlag);
     on<VisitUnflagRequested>(_onUnflag);
-    on<VisitLoadByCustomerRequested>(_onLoadByCustomer); // ← NEW
+    on<VisitLoadByCustomerRequested>(_onLoadByCustomer);
   }
 
   Future<void> _onLoadAll(
@@ -101,7 +121,6 @@ class VisitBloc extends Bloc<VisitEvent, VisitState> {
     );
   }
 
-  // In _onReview:
   Future<void> _onReview(
     VisitReviewRequested event,
     Emitter<VisitState> emit,
@@ -111,13 +130,17 @@ class VisitBloc extends Bloc<VisitEvent, VisitState> {
       id: event.id,
       comment: event.comment,
     );
-    result.fold((f) => emit(VisitFailure(f.message)), (entity) {
-      emit(VisitOperationSuccess('Visit accepted', updatedItem: entity));
-      add(VisitLoadAllRequested()); // ← reload list
-    });
+    result.fold(
+      (f) => emit(VisitFailure(f.message)),
+      // CHANGED: removed add(VisitLoadAllRequested()) — it was overwriting
+      // VisitOperationSuccess with VisitLoading/VisitListLoaded, causing the
+      // black screen. The detail page listener handles reload via
+      // VisitLoadOneRequested.
+      (entity) =>
+          emit(VisitOperationSuccess('Visit accepted', updatedItem: entity)),
+    );
   }
 
-  // In _onFlag:
   Future<void> _onFlag(
     VisitFlagRequested event,
     Emitter<VisitState> emit,
@@ -127,10 +150,12 @@ class VisitBloc extends Bloc<VisitEvent, VisitState> {
       id: event.id,
       comment: event.comment,
     );
-    result.fold((f) => emit(VisitFailure(f.message)), (entity) {
-      emit(VisitOperationSuccess('Visit flagged', updatedItem: entity));
-      add(VisitLoadAllRequested()); // ← reload list
-    });
+    result.fold(
+      (f) => emit(VisitFailure(f.message)),
+      // CHANGED: same fix as _onReview — removed add(VisitLoadAllRequested()).
+      (entity) =>
+          emit(VisitOperationSuccess('Visit flagged', updatedItem: entity)),
+    );
   }
 
   Future<void> _onUnflag(

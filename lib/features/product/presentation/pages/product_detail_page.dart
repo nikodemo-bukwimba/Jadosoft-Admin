@@ -36,6 +36,7 @@ import '../widgets/promotion_price_display.dart';
 import '../../../category/domain/usecases/get_category_usecase.dart';
 import '../../../inventory/domain/entities/inventory_entity.dart';
 import '../../../inventory/domain/usecases/get_variant_stock_usecase.dart';
+import '../widgets/inventory_card.dart';
 
 class ProductDetailPage extends StatelessWidget {
   const ProductDetailPage({super.key});
@@ -237,10 +238,14 @@ class _DetailViewState extends State<_DetailView> {
                 ),
 
                 // ── Live inventory card ──────────────────────────────
-                const SizedBox(height: 12),
-                _LiveInventoryCard(item: item, scheme: scheme),
+                // const SizedBox(height: 12),
+                // _LiveInventoryCard(item: item, scheme: scheme),
+                // const SizedBox(height: 80),
 
-                const SizedBox(height: 80),
+                // ── Live Inventory card ───────────────────────────────
+                const SizedBox(height: 12),
+                AdminInventoryCard(item: item, scheme: scheme),
+                const SizedBox(height: 32),
               ],
             ),
           ),
@@ -536,24 +541,45 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
     final variantId = widget.item.variantId;
     if (variantId == null) return;
 
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
     try {
-      final orgId   = GetIt.instance<OrgContext>().requireRootOrgId();
+      final orgContext = GetIt.instance<OrgContext>();
+      final orgId =
+          orgContext.effectiveOrgId; // ← replace requireRootOrgId() with this
+
       final useCase = GetIt.instance<GetVariantStockUseCase>();
-      final result  = await useCase(
+      final result = await useCase(
         GetVariantStockParams(orgId: orgId, variantId: variantId),
       );
       result.fold(
         (f) {
-          if (mounted) setState(() { _loading = false; _error = f.message; });
+          if (mounted) {
+            setState(() {
+              _loading = false;
+              _error = f.message;
+            });
+          }
         },
         (stock) {
-          if (mounted) setState(() { _loading = false; _stock = stock; });
+          if (mounted) {
+            setState(() {
+              _loading = false;
+              _stock = stock;
+            });
+          }
         },
       );
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = e.toString();
+        });
+      }
     }
   }
 
@@ -570,7 +596,7 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
   @override
   Widget build(BuildContext context) {
     final scheme = widget.scheme;
-    final item   = widget.item;
+    final item = widget.item;
 
     return Card(
       child: Padding(
@@ -612,7 +638,6 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
             if (item.variantId == null) ...[
               _staticFallback(context, item, scheme),
             ]
-
             // ── Loading ────────────────────────────────────────────
             else if (_loading && _stock == null) ...[
               const Center(
@@ -622,13 +647,15 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
                 ),
               ),
             ]
-
             // ── Error ──────────────────────────────────────────────
             else if (_error != null && _stock == null) ...[
               Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded,
-                      size: 18, color: scheme.error),
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 18,
+                    color: scheme.error,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -641,7 +668,6 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
               const SizedBox(height: 12),
               _staticFallback(context, item, scheme),
             ]
-
             // ── Live data ──────────────────────────────────────────
             else if (_stock != null) ...[
               _liveStock(context, _stock!, scheme),
@@ -692,12 +718,19 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
           ),
           child: Row(
             children: [
-              Icon(Icons.info_outline, size: 16, color: scheme.onSurfaceVariant),
+              Icon(
+                Icons.info_outline,
+                size: 16,
+                color: scheme.onSurfaceVariant,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Live stock tracking starts once stock is received into a warehouse.',
-                  style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ],
@@ -713,20 +746,28 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
     VariantStockEntity stock,
     ColorScheme scheme,
   ) {
-    final batches     = stock.batches;
-    final active      = batches.where((b) => b.isActive && !b.isExpired && !b.isNearExpiry && !b.isDepleted).toList();
-    final nearExpiry  = batches.where((b) => b.isNearExpiry && !b.isExpired).toList();
-    final expired     = batches.where((b) => b.isExpired).toList();
-    final depleted    = batches.where((b) => b.isDepleted && !b.isExpired).toList();
+    final batches = stock.batches;
+    final active = batches
+        .where(
+          (b) => b.isActive && !b.isExpired && !b.isNearExpiry && !b.isDepleted,
+        )
+        .toList();
+    final nearExpiry = batches
+        .where((b) => b.isNearExpiry && !b.isExpired)
+        .toList();
+    final expired = batches.where((b) => b.isExpired).toList();
+    final depleted = batches
+        .where((b) => b.isDepleted && !b.isExpired)
+        .toList();
 
     // Total stock colour
-    final isLow      = stock.totalStock > 0 && stock.totalStock <= 10;
+    final isLow = stock.totalStock > 0 && stock.totalStock <= 10;
     final isDepleted = stock.totalStock <= 0;
     final stockColor = isDepleted
         ? scheme.error
         : isLow
-            ? Colors.orange.shade700
-            : Colors.green.shade700;
+        ? Colors.orange.shade700
+        : Colors.green.shade700;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -775,7 +816,9 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
               if (isDepleted)
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: scheme.errorContainer,
                     borderRadius: BorderRadius.circular(20),
@@ -792,7 +835,9 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
               else if (isLow)
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.orange.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
@@ -821,26 +866,34 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
 
           // ── Batch groups ──────────────────────────────────────
           if (expired.isNotEmpty) ...[
-            _batchGroupHeader('Expired (${expired.length})',
-                Colors.red.shade700),
+            _batchGroupHeader(
+              'Expired (${expired.length})',
+              Colors.red.shade700,
+            ),
             ...expired.map((b) => _batchRow(context, b, scheme)),
             const SizedBox(height: 10),
           ],
           if (nearExpiry.isNotEmpty) ...[
-            _batchGroupHeader('Near Expiry (${nearExpiry.length})',
-                Colors.orange.shade700),
+            _batchGroupHeader(
+              'Near Expiry (${nearExpiry.length})',
+              Colors.orange.shade700,
+            ),
             ...nearExpiry.map((b) => _batchRow(context, b, scheme)),
             const SizedBox(height: 10),
           ],
           if (active.isNotEmpty) ...[
-            _batchGroupHeader('Active (${active.length})',
-                Colors.green.shade700),
+            _batchGroupHeader(
+              'Active (${active.length})',
+              Colors.green.shade700,
+            ),
             ...active.map((b) => _batchRow(context, b, scheme)),
             const SizedBox(height: 10),
           ],
           if (depleted.isNotEmpty) ...[
-            _batchGroupHeader('Depleted (${depleted.length})',
-                Colors.grey.shade600),
+            _batchGroupHeader(
+              'Depleted (${depleted.length})',
+              Colors.grey.shade600,
+            ),
             ...depleted.map((b) => _batchRow(context, b, scheme)),
           ],
         ],
@@ -871,10 +924,10 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
     final statusColor = batch.isExpired
         ? Colors.red.shade700
         : batch.isNearExpiry
-            ? Colors.orange.shade700
-            : batch.isDepleted
-                ? Colors.grey.shade600
-                : Colors.green.shade700;
+        ? Colors.orange.shade700
+        : batch.isDepleted
+        ? Colors.grey.shade600
+        : Colors.green.shade700;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
@@ -901,8 +954,7 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
                 ),
               ),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: statusColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
@@ -922,8 +974,11 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
             const SizedBox(height: 4),
             Row(
               children: [
-                Icon(Icons.warehouse_outlined,
-                    size: 13, color: scheme.onSurfaceVariant),
+                Icon(
+                  Icons.warehouse_outlined,
+                  size: 13,
+                  color: scheme.onSurfaceVariant,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   batch.warehouseName,
@@ -939,8 +994,11 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
             const SizedBox(height: 2),
             Row(
               children: [
-                Icon(Icons.event_outlined,
-                    size: 13, color: scheme.onSurfaceVariant),
+                Icon(
+                  Icons.event_outlined,
+                  size: 13,
+                  color: scheme.onSurfaceVariant,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   'Expires: ${_fmtDate(batch.expiresAt!)}',
@@ -949,8 +1007,8 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
                     color: batch.isExpired
                         ? Colors.red.shade700
                         : batch.isNearExpiry
-                            ? Colors.orange.shade700
-                            : scheme.onSurfaceVariant,
+                        ? Colors.orange.shade700
+                        : scheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -972,8 +1030,8 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
   ) {
     final label = expiryDate != null
         ? '${expiryDate.year}-'
-            '${expiryDate.month.toString().padLeft(2, '0')}-'
-            '${expiryDate.day.toString().padLeft(2, '0')}'
+              '${expiryDate.month.toString().padLeft(2, '0')}-'
+              '${expiryDate.day.toString().padLeft(2, '0')}'
         : '—';
 
     return Column(
@@ -982,39 +1040,43 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
         _field(context, 'Expiry Date', label, scheme),
         if (expiryDate != null) ...[
           const SizedBox(height: 4),
-          Builder(builder: (context) {
-            final daysLeft = expiryDate.difference(DateTime.now()).inDays;
-            final isExpiringSoon = daysLeft <= 180;
-            final isExpired = daysLeft < 0;
-            return Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: isExpired
-                    ? scheme.errorContainer
-                    : isExpiringSoon
-                        ? Colors.orange.withValues(alpha: 0.15)
-                        : Colors.green.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                isExpired
-                    ? 'Expired ${daysLeft.abs()} days ago'
-                    : isExpiringSoon
-                        ? 'Expires in $daysLeft days — check stock'
-                        : 'Expires in $daysLeft days',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: isExpired
-                      ? scheme.onErrorContainer
-                      : isExpiringSoon
-                          ? Colors.orange.shade800
-                          : Colors.green.shade800,
+          Builder(
+            builder: (context) {
+              final daysLeft = expiryDate.difference(DateTime.now()).inDays;
+              final isExpiringSoon = daysLeft <= 180;
+              final isExpired = daysLeft < 0;
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
                 ),
-              ),
-            );
-          }),
+                decoration: BoxDecoration(
+                  color: isExpired
+                      ? scheme.errorContainer
+                      : isExpiringSoon
+                      ? Colors.orange.withValues(alpha: 0.15)
+                      : Colors.green.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  isExpired
+                      ? 'Expired ${daysLeft.abs()} days ago'
+                      : isExpiringSoon
+                      ? 'Expires in $daysLeft days — check stock'
+                      : 'Expires in $daysLeft days',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isExpired
+                        ? scheme.onErrorContainer
+                        : isExpiringSoon
+                        ? Colors.orange.shade800
+                        : Colors.green.shade800,
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ],
     );
@@ -1035,17 +1097,13 @@ class _LiveInventoryCardState extends State<_LiveInventoryCard> {
             width: 120,
             child: Text(
               label,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
           ),
         ],
       ),

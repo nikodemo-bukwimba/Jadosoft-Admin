@@ -33,7 +33,7 @@ import '../pages/invitations_tab.dart';
 import '../pages/delegation_tab.dart';
 import '../pages/permission_request_tab.dart';
 import '../pages/create_organization_page.dart';
-import 'accept_invitation_dialog.dart';
+// import 'accept_invitation_dialog.dart';
 import '../widgets/org_header_card.dart';
 import '../../domain/entities/organization_entity.dart';
 
@@ -59,8 +59,8 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
     Tab(icon: Icon(Icons.admin_panel_settings_outlined), text: 'Roles'),
     Tab(icon: Icon(Icons.people_outlined), text: 'Members'),
     Tab(icon: Icon(Icons.mail_outlined), text: 'Invitations'),
-    Tab(icon: Icon(Icons.swap_horiz_outlined), text: 'Delegations'),
-    Tab(icon: Icon(Icons.lock_open_outlined), text: 'Requests'),
+    // Tab(icon: Icon(Icons.swap_horiz_outlined), text: 'Delegations'),
+    // Tab(icon: Icon(Icons.lock_open_outlined), text: 'Requests'),
   ];
 
   static const int _kBranches = 0;
@@ -85,12 +85,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
         bloc.add(BranchesLoadRequested());
       case _kRoles:
         bloc.add(RolesLoadRequested());
-<<<<<<< HEAD
-        break;
-      case 2:
-=======
       case _kMembers:
->>>>>>> promotion_and_bulk_sms
         if (_skipNextMemberLoad) {
           _skipNextMemberLoad = false;
           return;
@@ -113,11 +108,11 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
   }
 
   List<Widget> _appBarActions(BuildContext context) => [
-    IconButton(
-      icon: const Icon(Icons.mail_outlined),
-      tooltip: 'Accept Invitation',
-      onPressed: () => AcceptInvitationDialog.show(context),
-    ),
+    // IconButton(
+    //   icon: const Icon(Icons.mail_outlined),
+    //   tooltip: 'Accept Invitation',
+    //   onPressed: () => AcceptInvitationDialog.show(context),
+    // ),
   ];
 
   @override
@@ -161,34 +156,8 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
           c.read<OrganizationBloc>().add(OrgLoadRequested());
         }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-        // FIX: Handle MemberInvitedWithToken HERE at the hub level.
-        //
-        // Previously this was handled inside MemberTab's BlocListener.
-        // That approach failed because:
-        //   1. The dialog pops before the event fires, and the resulting
-        //      OrganizationLoading state can cause the tab to rebuild,
-        //      leaving the inner listener context in an unstable state.
-        //   2. showModalBottomSheet requires a Scaffold ancestor — the hub
-        //      page's Scaffold is always present and reliable.
-        //
-        // This context `c` always has a Scaffold above it from _buildActiveHub
-        // (or the loading/pending scaffolds), so the sheet always opens safely.
-        if (s is MemberInvitedWithToken) {
-          // Use addPostFrameCallback so we're never calling showModalBottomSheet
-          // in the middle of a build/setState cycle.
-=======
-        // ── Token sheet — hub-level Scaffold, always stable ─────────
-        // addPostFrameCallback prevents calling showModalBottomSheet
-        // during a build/emit cycle (OrganizationLoading fires first,
-        // causing inner builders to rebuild before MemberInvitedWithToken
-        // arrives — handling it here avoids the stale-context issue).
-=======
         // ── Token sheet — handled here at hub level (stable Scaffold) ──
->>>>>>> promotion_and_bulk_sms
         if (s is MemberInvitedWithToken) {
->>>>>>> promotion_and_bulk_sms
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             InvitationTokenSheet.show(
@@ -197,20 +166,9 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
               token: s.token,
               orgName: s.orgName,
             );
-<<<<<<< HEAD
-<<<<<<< HEAD
-            // Reload members so the newly invited member appears in the list.
-            context.read<OrganizationBloc>().add(
-              MembersLoadRequested(orgId: _viewingBranchMembers),
-            );
-=======
-            // Refresh members list and invitations tab automatically
-=======
->>>>>>> promotion_and_bulk_sms
             context.read<OrganizationBloc>()
               ..add(MembersLoadRequested(orgId: _viewingBranchMembers))
               ..add(InvitationsLoadRequested());
->>>>>>> promotion_and_bulk_sms
           });
         }
       },
@@ -410,25 +368,13 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
                           size: 20,
                         ),
                         const SizedBox(width: 10),
-<<<<<<< HEAD
-                        Expanded(
-                          child: Text(
-                            org.rejectionReason!,
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                        ),
-=======
                         Expanded(child: Text(org.rejectionReason!)),
->>>>>>> promotion_and_bulk_sms
                       ],
                     ),
                   ),
                 ),
               ],
-<<<<<<< HEAD
-=======
               const SizedBox(height: 16),
->>>>>>> promotion_and_bulk_sms
               OutlinedButton.icon(
                 onPressed: () =>
                     c.read<OrganizationBloc>().add(OrgLoadRequested()),

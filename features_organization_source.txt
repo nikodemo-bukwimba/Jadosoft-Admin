@@ -1,12 +1,8 @@
 ﻿// ================================================================
 // features_organization_source.txt
 // Project Type : Flutter/Dart
-<<<<<<< HEAD
-// Generated    : 2026-04-28 12:55:35
-=======
-// Generated    : 2026-04-29 01:59:10
->>>>>>> promotion_and_bulk_sms
-// Files        : 34
+// Generated    : 2026-05-22 11:52:15
+// Files        : 37
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
 
@@ -19,18 +15,21 @@ import '../../../../core/network/base_remote_datasource.dart';
 import '../models/organization_model.dart';
 import '../models/branch_model.dart';
 import '../models/org_role_model.dart';
+import '../models/org_invitation_model.dart';
 import '../models/org_member_model.dart';
 import '../models/delegation_model.dart';
 import '../models/permission_request_model.dart';
 import '../models/org_tree_model.dart';
 
 class OrganizationRemoteDataSource extends BaseRemoteDataSource {
-  final OrgContext _orgContext;
+  // FIX: _orgContext was unused — removed to clear the warning.
+  // If you need org context in future datasource methods, re-add it then.
 
   OrganizationRemoteDataSource({
     required super.dio,
-    required OrgContext orgContext,
-  }) : _orgContext = orgContext;
+    OrgContext?
+    orgContext, // kept in constructor signature for DI compatibility
+  });
 
   // ── Organization ──────────────────────────────────────────
 
@@ -136,8 +135,6 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
   }
 
   // ── Members ───────────────────────────────────────────────
-  // FIX: requests per_page=200 to get all members (root org tree query).
-  // The backend fix includes branch members when querying root org.
 
   Future<List<OrgMemberModel>> getMembers(String orgId) async {
     try {
@@ -146,7 +143,6 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
         queryParameters: {'per_page': 200},
       );
       final data = response.data;
-      // Paginated response: { data: [...], ... } or flat list
       final List<dynamic> items = data is Map<String, dynamic>
           ? (data['data'] as List<dynamic>? ??
                 data['members'] as List<dynamic>? ??
@@ -160,7 +156,7 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
     }
   }
 
-  /// Invite by email to a SPECIFIC org/branch (orgId = target branch).
+  /// Invite a member by email to a specific org/branch.
   Future<Map<String, dynamic>> inviteMember(
     String orgId,
     Map<String, dynamic> data,
@@ -180,6 +176,49 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
       throw mapDioException(e);
     }
   }
+
+  // ── Invitations ───────────────────────────────────────────
+
+  /// GET /api/v1/orgs/{orgId}/invitations?status=pending
+  ///
+  /// FIX: was using ApiPaths.orgs.base(orgId) which doesn't exist on
+  /// _OrgPaths. Replaced with the literal '/orgs/$orgId' path string.
+  Future<List<OrgInvitationModel>> getInvitations(
+    String orgId, {
+    String status = 'pending',
+  }) async {
+    try {
+      final response = await dio.get(
+        '/orgs/$orgId/invitations', // ← FIX: literal path, not .base()
+        queryParameters: {'status': status, 'per_page': 100},
+      );
+      final data = response.data;
+      final List<dynamic> items = data is Map<String, dynamic>
+          ? (data['data'] as List<dynamic>? ?? [])
+          : (data as List<dynamic>? ?? []);
+      return items
+          .map((e) => OrgInvitationModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
+  /// DELETE /api/v1/orgs/{orgId}/invitations/{invitationId}/cancel
+  ///
+  /// FIX: was using ApiPaths.orgs.base(orgId) which doesn't exist on
+  /// _OrgPaths. Replaced with the literal '/orgs/$orgId' path string.
+  Future<void> cancelInvitation(String orgId, String invitationId) async {
+    try {
+      await dio.delete(
+        '/orgs/$orgId/invitations/$invitationId/cancel', // ← FIX: literal path
+      );
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+  }
+
+  // ── Member mutations ──────────────────────────────────────
 
   Future<OrgMemberModel> updateMember(
     String orgId,
@@ -207,19 +246,12 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
   }
 
   // ── User Account Management ───────────────────────────────
-  // These call platform admin endpoints to update user info.
 
-  /// Update user's display name (actor.display_name) via profile endpoint.
-  /// The platform exposes PATCH /admin/users/{id}/status for status changes.
-  /// For name/email we use a workaround via the actor endpoint if available,
-  /// or fall back to the member update endpoint.
   Future<void> updateUserInfo(String userId, Map<String, dynamic> data) async {
     try {
-      // Try admin endpoint first
       await dio.patch('/admin/users/$userId/info', data: data);
     } on DioException catch (e) {
       if (e.response?.statusCode == 404 || e.response?.statusCode == 405) {
-        // Fallback: update via org membership actor name (best effort)
         try {
           await dio.patch(
             '/actors/${data['actor_id'] ?? userId}',
@@ -232,7 +264,6 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
     }
   }
 
-  /// Change user account status: active | suspended | banned.
   Future<void> updateUserStatus(String userId, String status) async {
     try {
       await dio.patch(
@@ -244,12 +275,10 @@ class OrganizationRemoteDataSource extends BaseRemoteDataSource {
     }
   }
 
-  /// Trigger password reset email (uses Fortify's forgot-password endpoint).
   Future<void> sendPasswordResetEmail(String email) async {
     try {
       await dio.post('/forgot-password', data: {'email': email});
     } on DioException catch (e) {
-      // 422 = email not found; surface that clearly
       throw mapDioException(e);
     }
   }
@@ -412,6 +441,58 @@ class DelegationModel extends DelegationEntity {
       createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'].toString()) : DateTime.now(),
     );
   }
+}
+
+
+// === FILE: lib/features/organization/data/models/org_invitation_model.dart ===
+// lib/features/organization/data/models/org_invitation_model.dart
+import '../../domain/entities/org_invitation_entity.dart';
+
+class OrgInvitationModel extends OrgInvitationEntity {
+  const OrgInvitationModel({
+    required super.id,
+    required super.orgId,
+    required super.orgName,
+    required super.email,
+    required super.token,
+    required super.roleName,
+    super.roleSlug,
+    required super.level,
+    required super.status,
+    required super.expiresAt,
+    required super.createdAt,
+  });
+
+  factory OrgInvitationModel.fromJson(Map<String, dynamic> json) {
+    final role = json['role'] as Map<String, dynamic>?;
+    final org = json['organization'] as Map<String, dynamic>?;
+
+    return OrgInvitationModel(
+      id: json['id']?.toString() ?? '',
+      orgId: json['org_id']?.toString() ?? org?['id']?.toString() ?? '',
+      orgName: org?['name'] as String? ?? json['org_name'] as String? ?? '',
+      email: json['email'] as String? ?? '',
+      token: json['token'] as String? ?? '',
+      roleName:
+          role?['name'] as String? ?? json['role_name'] as String? ?? 'Member',
+      roleSlug: role?['slug'] as String? ?? json['role_slug'] as String?,
+      level: json['level'] as int? ?? 0,
+      status: _parseStatus(json['status'] as String?),
+      expiresAt: json['expires_at'] != null
+          ? DateTime.parse(json['expires_at'].toString())
+          : DateTime.now().add(const Duration(days: 7)),
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'].toString())
+          : DateTime.now(),
+    );
+  }
+
+  static InvitationStatus _parseStatus(String? s) => switch (s) {
+    'accepted' => InvitationStatus.accepted,
+    'expired' => InvitationStatus.expired,
+    'cancelled' => InvitationStatus.cancelled,
+    _ => InvitationStatus.pending,
+  };
 }
 
 
@@ -699,6 +780,7 @@ class PermissionRequestModel extends PermissionRequestEntity {
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
+import '../../domain/entities/org_invitation_entity.dart';
 import '../../domain/entities/organization_entity.dart';
 import '../../domain/entities/branch_entity.dart';
 import '../../domain/entities/org_role_entity.dart';
@@ -837,6 +919,17 @@ class OrganizationRepositoryImpl implements OrganizationRepository {
   Future<Either<Failure, List<OrgPermissionEntity>>> getPermissions(
     String orgId,
   ) => _guard(() async => await _remote.getPermissions(orgId));
+  @override
+  Future<Either<Failure, List<OrgInvitationEntity>>> getInvitations(
+    String orgId, {
+    String status = 'pending',
+  }) => _guard(() => _remote.getInvitations(orgId, status: status));
+
+  @override
+  Future<Either<Failure, void>> cancelInvitation(
+    String orgId,
+    String invitationId,
+  ) => _guard(() => _remote.cancelInvitation(orgId, invitationId));
 }
 
 
@@ -893,6 +986,50 @@ class DelegationEntity extends Equatable {
 
   @override
   List<Object?> get props => [id, parentOrgId, childOrgId, createdAt];
+}
+
+
+// === FILE: lib/features/organization/domain/entities/org_invitation_entity.dart ===
+// lib/features/organization/domain/entities/org_invitation_entity.dart
+import 'package:equatable/equatable.dart';
+
+enum InvitationStatus { pending, accepted, expired, cancelled }
+
+class OrgInvitationEntity extends Equatable {
+  final String id;
+  final String orgId;
+  final String orgName;
+  final String email;
+  final String token;
+  final String roleName;
+  final String? roleSlug;
+  final int level;
+  final InvitationStatus status;
+  final DateTime expiresAt;
+  final DateTime createdAt;
+
+  const OrgInvitationEntity({
+    required this.id,
+    required this.orgId,
+    required this.orgName,
+    required this.email,
+    required this.token,
+    required this.roleName,
+    this.roleSlug,
+    required this.level,
+    required this.status,
+    required this.expiresAt,
+    required this.createdAt,
+  });
+
+  bool get isPending => status == InvitationStatus.pending;
+  bool get isExpired =>
+      status == InvitationStatus.expired || expiresAt.isBefore(DateTime.now());
+  bool get isAccepted => status == InvitationStatus.accepted;
+  bool get isCancelled => status == InvitationStatus.cancelled;
+
+  @override
+  List<Object?> get props => [id, email, status, expiresAt];
 }
 
 
@@ -1119,6 +1256,7 @@ class PermissionRequestEntity extends Equatable {
 // organization_repository.dart
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
+import '../entities/org_invitation_entity.dart';
 import '../entities/organization_entity.dart';
 import '../entities/branch_entity.dart';
 import '../entities/org_role_entity.dart';
@@ -1171,6 +1309,16 @@ abstract class OrganizationRepository {
   Future<Either<Failure, void>> assignMemberToBranch(
     String branchId,
     Map<String, dynamic> data,
+  );
+
+  // ── Invitations ───────────────────────────────────────────
+  Future<Either<Failure, List<OrgInvitationEntity>>> getInvitations(
+    String orgId, {
+    String status = 'pending',
+  });
+  Future<Either<Failure, void>> cancelInvitation(
+    String orgId,
+    String invitationId,
   );
 
   // ── User Account Management ───────────────────────────────
@@ -1301,6 +1449,8 @@ class OrganizationBloc extends Bloc<OrganizationEvent, OrganizationState> {
     on<PermissionRequestsLoadRequested>(_onLoadPermRequests);
     on<PermissionRequestApproveRequested>(_onApprovePermRequest);
     on<PermissionRequestDenyRequested>(_onDenyPermRequest);
+    on<InvitationsLoadRequested>(_onLoadInvitations);
+    on<InvitationCancelRequested>(_onCancelInvitation);
   }
 
   String? get _orgIdOrNull => orgContext.rootOrgId;
@@ -1365,6 +1515,38 @@ class OrganizationBloc extends Bloc<OrganizationEvent, OrganizationState> {
       (f) => emit(OrganizationFailure(f.message)),
       (tree) => emit(OrgTreeLoaded(tree)),
     );
+  }
+
+  Future<void> _onLoadInvitations(
+    InvitationsLoadRequested e,
+    Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit);
+    if (id == null) return;
+    emit(OrganizationLoading());
+    final result = await repository.getInvitations(
+      id,
+      status: e.status ?? 'pending',
+    );
+    result.fold(
+      (f) => emit(OrganizationFailure(f.message)),
+      (invitations) => emit(InvitationsLoaded(invitations)),
+    );
+  }
+
+  Future<void> _onCancelInvitation(
+    InvitationCancelRequested e,
+    Emitter<OrganizationState> emit,
+  ) async {
+    final id = _requireOrg(emit);
+    if (id == null) return;
+    emit(OrganizationLoading());
+    final result = await repository.cancelInvitation(id, e.invitationId);
+    result.fold((f) => emit(OrganizationFailure(f.message)), (_) {
+      emit(OrganizationOperationSuccess('Invitation cancelled'));
+      // Reload so list refreshes
+      add(InvitationsLoadRequested());
+    });
   }
 
   // ── Branches ──────────────────────────────────────────────
@@ -1708,14 +1890,17 @@ abstract class OrganizationEvent {}
 
 // ── Organization ────────────────────────────────────────────
 class OrgLoadRequested extends OrganizationEvent {}
+
 class OrgCreateRequested extends OrganizationEvent {
   final Map<String, dynamic> data;
   OrgCreateRequested(this.data);
 }
+
 class OrgTreeLoadRequested extends OrganizationEvent {}
 
 // ── Branches ────────────────────────────────────────────────
 class BranchesLoadRequested extends OrganizationEvent {}
+
 class BranchCreateRequested extends OrganizationEvent {
   final Map<String, dynamic> data;
   BranchCreateRequested(this.data);
@@ -1723,18 +1908,24 @@ class BranchCreateRequested extends OrganizationEvent {
 
 // ── Roles ───────────────────────────────────────────────────
 class RolesLoadRequested extends OrganizationEvent {}
+
 class RoleCreateRequested extends OrganizationEvent {
   final Map<String, dynamic> data;
   RoleCreateRequested(this.data);
 }
+
 class RoleDeleteRequested extends OrganizationEvent {
   final String roleId;
   RoleDeleteRequested(this.roleId);
 }
+
 class RolePermissionsSyncRequested extends OrganizationEvent {
   final String roleId;
   final List<String> permissionIds;
-  RolePermissionsSyncRequested({required this.roleId, required this.permissionIds});
+  RolePermissionsSyncRequested({
+    required this.roleId,
+    required this.permissionIds,
+  });
 }
 
 // ── Members ─────────────────────────────────────────────────
@@ -1746,7 +1937,7 @@ class MembersLoadRequested extends OrganizationEvent {
 /// Invite a user by email to a SPECIFIC branch with a role.
 /// [orgId] = target branch/org to invite into (required).
 class MemberInviteRequested extends OrganizationEvent {
-  final String orgId;   // ← required: which branch they're invited to
+  final String orgId; // ← required: which branch they're invited to
   final Map<String, dynamic> data; // { email, org_role_id, level }
   MemberInviteRequested({required this.orgId, required this.data});
 }
@@ -1825,17 +2016,31 @@ class DelegationRevokeRequested extends OrganizationEvent {
 
 // ── Permission Requests ─────────────────────────────────────
 class PermissionRequestsLoadRequested extends OrganizationEvent {}
+
 class PermissionRequestApproveRequested extends OrganizationEvent {
   final String requestId;
   PermissionRequestApproveRequested(this.requestId);
 }
+
 class PermissionRequestDenyRequested extends OrganizationEvent {
   final String requestId;
   PermissionRequestDenyRequested(this.requestId);
 }
 
+class InvitationsLoadRequested extends OrganizationEvent {
+  final String? status; // null = 'pending'
+  InvitationsLoadRequested({this.status});
+}
+
+class InvitationCancelRequested extends OrganizationEvent {
+  final String invitationId;
+  InvitationCancelRequested(this.invitationId);
+}
+
+
 // === FILE: lib/features/organization/presentation/bloc/organization_state.dart ===
 // organization_state.dart
+import '../../domain/entities/org_invitation_entity.dart';
 import '../../domain/entities/organization_entity.dart';
 import '../../domain/entities/branch_entity.dart';
 import '../../domain/entities/org_role_entity.dart';
@@ -1911,6 +2116,11 @@ class OrgLoaded extends OrganizationState {
 class OrgTreeLoaded extends OrganizationState {
   final OrgTreeNode tree;
   OrgTreeLoaded(this.tree);
+}
+
+class InvitationsLoaded extends OrganizationState {
+  final List<OrgInvitationEntity> invitations;
+  InvitationsLoaded(this.invitations);
 }
 
 // ── Branches ────────────────────────────────────────────────
@@ -3337,12 +3547,468 @@ class _EmptyDelegations extends StatelessWidget {
 }
 
 
-// === FILE: lib/features/organization/presentation/pages/member_tab.dart ===
-// member_tab.dart
+// === FILE: lib/features/organization/presentation/pages/invitations_tab.dart ===
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // FIX: Clipboard
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:url_launcher/url_launcher.dart'; // FIX: canLaunchUrl / launchUrl
+import 'package:url_launcher/url_launcher.dart';
+import '../../domain/entities/org_invitation_entity.dart';
+import '../bloc/organization_bloc.dart';
+import '../bloc/organization_event.dart';
+import '../bloc/organization_state.dart';
+
+class InvitationsTab extends StatelessWidget {
+  const InvitationsTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocListener<OrganizationBloc, OrganizationState>(
+      listener: (context, state) {
+        if (state is OrganizationOperationSuccess) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        if (state is OrganizationFailure) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      },
+      child: const _InvitationsBody(),
+    );
+  }
+}
+
+// ── Body is its own StatefulWidget — isolated from BlocListener ────
+class _InvitationsBody extends StatefulWidget {
+  const _InvitationsBody();
+
+  @override
+  State<_InvitationsBody> createState() => _InvitationsBodyState();
+}
+
+class _InvitationsBodyState extends State<_InvitationsBody>
+    with AutomaticKeepAliveClientMixin {
+  String _statusFilter = 'pending';
+
+  @override
+  bool get wantKeepAlive => true;
+
+  static const _statusOptions = [
+    ('pending', 'Pending'),
+    ('accepted', 'Accepted'),
+    ('expired', 'Expired'),
+    ('cancelled', 'Cancelled'),
+    ('all', 'All'),
+  ];
+
+  void _selectFilter(String value) {
+    debugPrint('>>> TAPPED: $value  current: $_statusFilter');
+    setState(() => _statusFilter = value);
+    debugPrint('>>> AFTER setState: $_statusFilter');
+    context.read<OrganizationBloc>().add(
+      InvitationsLoadRequested(status: value),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return Column(
+      children: [
+        // ── Filter bar ───────────────────────────────────────
+        SizedBox(
+          height: 48,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemCount: _statusOptions.length,
+            itemBuilder: (_, i) {
+              final (value, label) = _statusOptions[i];
+              final isSelected = value == _statusFilter;
+              return GestureDetector(
+                onTap: () => _selectFilter(value),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Theme.of(context).colorScheme.primaryContainer
+                        : Theme.of(context).colorScheme.surfaceVariant,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.transparent,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isSelected) ...[
+                        Icon(
+                          Icons.check,
+                          size: 14,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+
+        // ── List ─────────────────────────────────────────────
+        Expanded(
+          child: BlocBuilder<OrganizationBloc, OrganizationState>(
+            builder: (context, state) {
+              if (state is OrganizationLoading) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (state is InvitationsLoaded) {
+                if (state.invitations.isEmpty) {
+                  return _EmptyState(status: _statusFilter);
+                }
+                return RefreshIndicator(
+                  onRefresh: () async => context.read<OrganizationBloc>().add(
+                    InvitationsLoadRequested(status: _statusFilter),
+                  ),
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    itemCount: state.invitations.length,
+                    itemBuilder: (_, i) => _InvitationCard(
+                      invitation: state.invitations[i],
+                      onCancel: state.invitations[i].isPending
+                          ? () => _confirmCancel(context, state.invitations[i])
+                          : null,
+                    ),
+                  ),
+                );
+              }
+              return Center(
+                child: FilledButton.icon(
+                  onPressed: () => context.read<OrganizationBloc>().add(
+                    InvitationsLoadRequested(status: _statusFilter),
+                  ),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Load Invitations'),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _confirmCancel(BuildContext context, OrgInvitationEntity inv) {
+    final bloc = context.read<OrganizationBloc>();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel Invitation'),
+        content: Text('Cancel invitation for ${inv.email}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              bloc.add(InvitationCancelRequested(inv.id));
+            },
+            child: const Text('Cancel Invitation'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Individual invitation card ─────────────────────────────────────
+class _InvitationCard extends StatelessWidget {
+  final OrgInvitationEntity invitation;
+  final VoidCallback? onCancel;
+
+  const _InvitationCard({required this.invitation, this.onCancel});
+
+  Color _statusColor(BuildContext context) => switch (invitation.status) {
+    InvitationStatus.pending => Colors.blue,
+    InvitationStatus.accepted => Colors.green,
+    InvitationStatus.expired => Colors.orange,
+    InvitationStatus.cancelled => Colors.grey,
+  };
+
+  String _statusLabel() => switch (invitation.status) {
+    InvitationStatus.pending => 'Pending',
+    InvitationStatus.accepted => 'Accepted',
+    InvitationStatus.expired => 'Expired',
+    InvitationStatus.cancelled => 'Cancelled',
+  };
+
+  String get _whatsAppMessage =>
+      'You have been invited to join *${invitation.orgName}* on Barick Pharma.\n\n'
+      'To accept your invitation:\n'
+      '1. Open the *Barick Officer* app\n'
+      '2. Register or log in with this email: *${invitation.email}*\n'
+      '3. On the pending activation screen, tap *Enter Invitation Token*\n'
+      '4. Paste this token:\n\n'
+      '${invitation.token}\n\n'
+      'The invitation expires on ${_formatDate(invitation.expiresAt)}.';
+
+  String _formatDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
+
+  Future<void> _copyToken(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: invitation.token));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Token copied.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _shareWhatsApp(BuildContext context) async {
+    final uri = Uri.parse(
+      'whatsapp://send?text=${Uri.encodeComponent(_whatsAppMessage)}',
+    );
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('WhatsApp not installed.')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = _statusColor(context);
+    final isPending = invitation.isPending;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: isPending
+              ? color.withOpacity(0.3)
+              : scheme.outlineVariant.withOpacity(0.4),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        invitation.email,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${invitation.orgName}  ·  ${invitation.roleName}  ·  Level ${invitation.level}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    _statusLabel(),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: color,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (isPending) ...[
+              const SizedBox(height: 6),
+              Text(
+                invitation.isExpired
+                    ? '⚠ Expired ${_formatDate(invitation.expiresAt)}'
+                    : 'Expires ${_formatDate(invitation.expiresAt)}',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: invitation.isExpired
+                      ? Colors.orange
+                      : scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            if (isPending && invitation.token.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: SelectableText(
+                  invitation.token,
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurface,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _copyToken(context),
+                      icon: const Icon(Icons.copy, size: 14),
+                      label: const Text('Copy Token'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        textStyle: const TextStyle(fontSize: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => _shareWhatsApp(context),
+                      icon: const Icon(Icons.share, size: 14),
+                      label: const Text('WhatsApp'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF25D366),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        textStyle: const TextStyle(fontSize: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (onCancel != null) ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: onCancel,
+                      icon: const Icon(Icons.cancel_outlined),
+                      color: scheme.error,
+                      tooltip: 'Cancel invitation',
+                      style: IconButton.styleFrom(
+                        backgroundColor: scheme.errorContainer.withOpacity(0.2),
+                        padding: const EdgeInsets.all(6),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Empty state ────────────────────────────────────────────────────
+class _EmptyState extends StatelessWidget {
+  final String status;
+  const _EmptyState({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            status == 'accepted'
+                ? Icons.check_circle_outline
+                : Icons.mail_outline,
+            size: 56,
+            color: Colors.grey.shade400,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            status == 'pending'
+                ? 'No pending invitations'
+                : 'No $status invitations',
+            style: TextStyle(color: Colors.grey.shade600),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/organization/presentation/pages/member_tab.dart ===
+// lib/features/organization/presentation/pages/member_tab.dart
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../domain/entities/org_member_entity.dart';
 import '../../domain/entities/org_role_entity.dart';
 import '../../domain/entities/branch_entity.dart';
@@ -3352,26 +4018,32 @@ import '../bloc/organization_state.dart';
 import '../widgets/member_card_tile.dart';
 
 class MemberTab extends StatelessWidget {
-  final String? viewingBranchId; // FIX: removed stray 'F'
+  final String? viewingBranchId;
   final VoidCallback? onBackToRootMembers;
 
   const MemberTab({super.key, this.viewingBranchId, this.onBackToRootMembers});
 
+  static const _staffCategories = {'owner', 'manager', 'officer'};
+
+  List<OrgMemberEntity> _toStaffList(List<OrgMemberEntity> raw) {
+    final Map<String, OrgMemberEntity> seen = {};
+    for (final m in raw) {
+      if (!_staffCategories.contains(m.roleCategory)) continue;
+      final existing = seen[m.userId];
+      if (existing == null || m.authorityLevel > existing.authorityLevel) {
+        seen[m.userId] = m;
+      }
+    }
+    return seen.values.toList()
+      ..sort((a, b) => b.authorityLevel.compareTo(a.authorityLevel));
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocListener<OrganizationBloc, OrganizationState>(
-      // FIX: BlocListener wrapping the whole tab — listens for invite token
-      // and operation results. BlocBuilder is nested inside for UI rebuilds.
+      // MemberInvitedWithToken is handled at OrganizationHubPage level —
+      // do NOT handle it here to avoid stale-context sheet failures.
       listener: (context, state) {
-        if (state is MemberInvitedWithToken) {
-          // Show token bottom sheet so admin can share via WhatsApp
-          _InvitationTokenSheet.show(
-            context,
-            email: state.email,
-            token: state.token,
-            orgName: state.orgName,
-          );
-        }
         if (state is OrganizationOperationSuccess) {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
@@ -3403,14 +4075,14 @@ class MemberTab extends StatelessWidget {
           if (s is OrganizationLoading) {
             return const Center(child: CircularProgressIndicator());
           }
-
           if (s is MembersLoaded) {
+            final staffMembers = _toStaffList(s.members);
             return Column(
               children: [
                 if (viewingBranchId != null)
                   _BranchScopeBar(onBack: onBackToRootMembers),
                 Expanded(
-                  child: s.members.isEmpty
+                  child: staffMembers.isEmpty
                       ? _EmptyState(
                           isBranch: viewingBranchId != null,
                           onInvite: () => _showInviteDialog(c),
@@ -3434,9 +4106,9 @@ class MemberTab extends StatelessWidget {
                                   16,
                                   80,
                                 ),
-                                itemCount: s.members.length,
+                                itemCount: staffMembers.length,
                                 itemBuilder: (_, i) => MemberCardTile(
-                                  member: s.members[i],
+                                  member: staffMembers[i],
                                   onSuspend: (uid) =>
                                       c.read<OrganizationBloc>().add(
                                         MemberUpdateRequested(
@@ -3482,7 +4154,6 @@ class MemberTab extends StatelessWidget {
               ],
             );
           }
-
           return Center(
             child: FilledButton(
               onPressed: () =>
@@ -3495,7 +4166,6 @@ class MemberTab extends StatelessWidget {
     );
   }
 
-  // ── Invite Dialog ─────────────────────────────────────────
   void _showInviteDialog(BuildContext context) {
     final bloc = context.read<OrganizationBloc>();
     final messenger = ScaffoldMessenger.of(context);
@@ -3505,7 +4175,6 @@ class MemberTab extends StatelessWidget {
     );
   }
 
-  // ── Assign Dialog ─────────────────────────────────────────
   void _showAssignDialog(BuildContext context, String branchId) {
     final bloc = context.read<OrganizationBloc>();
     showDialog(
@@ -3555,9 +4224,41 @@ class MemberTab extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Invite Dialog — email + branch + role → emits MemberInvitedWithToken
-// ═══════════════════════════════════════════════════════════
+// ── Branch scope bar ──────────────────────────────────────────────
+class _BranchScopeBar extends StatelessWidget {
+  final VoidCallback? onBack;
+  const _BranchScopeBar({this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      color: scheme.primaryContainer.withOpacity(0.3),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Icon(Icons.store_outlined, size: 16, color: scheme.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Viewing branch members',
+              style: TextStyle(
+                fontSize: 13,
+                color: scheme.onPrimaryContainer,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          TextButton(onPressed: onBack, child: const Text('Back to all')),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Invite Dialog
+// ═══════════════════════════════════════════════════════════════════
 class _InviteDialog extends StatefulWidget {
   final OrganizationBloc bloc;
   final ScaffoldMessengerState messenger;
@@ -3570,9 +4271,15 @@ class _InviteDialog extends StatefulWidget {
 class _InviteDialogState extends State<_InviteDialog> {
   final _emailCtrl = TextEditingController();
   final _levelCtrl = TextEditingController(text: '50');
+
   List<BranchEntity> branches = [];
   List<OrgRoleEntity> roles = [];
   bool loading = true;
+
+  // FIX: Use value: (controlled) not initialValue: (uncontrolled).
+  // initialValue is read-only on first render — it NEVER reflects
+  // async setState() changes, so selectedBranchId/selectedRoleId
+  // stayed null even after the user visually picked an item.
   String? selectedBranchId;
   String? selectedRoleId;
 
@@ -3613,7 +4320,7 @@ class _InviteDialogState extends State<_InviteDialog> {
       return;
     }
     if (selectedBranchId == null) {
-      _snack('Select a target branch');
+      _snack('Select a target branch or HQ');
       return;
     }
     if (selectedRoleId == null) {
@@ -3658,9 +4365,11 @@ class _InviteDialogState extends State<_InviteDialog> {
                     color: Colors.blue,
                     text:
                         'An invitation email will be sent. You will also '
-                        'receive a token you can share via WhatsApp.',
+                        'receive a token to share via WhatsApp.',
                   ),
                   const SizedBox(height: 16),
+
+                  // ── Email ────────────────────────────────────
                   TextField(
                     controller: _emailCtrl,
                     decoration: const InputDecoration(
@@ -3672,8 +4381,10 @@ class _InviteDialogState extends State<_InviteDialog> {
                     keyboardType: TextInputType.emailAddress,
                   ),
                   const SizedBox(height: 12),
+
+                  // ── Branch — value: (controlled) ─────────────
                   DropdownButtonFormField<String>(
-                    initialValue: selectedBranchId, // FIX: value→initialValue
+                    value: selectedBranchId, // ← FIX
                     decoration: const InputDecoration(
                       labelText: 'Target Branch *',
                       hintText: 'Select the branch they will join',
@@ -3695,8 +4406,10 @@ class _InviteDialogState extends State<_InviteDialog> {
                     onChanged: (v) => setState(() => selectedBranchId = v),
                   ),
                   const SizedBox(height: 12),
+
+                  // ── Role — value: (controlled) ───────────────
                   DropdownButtonFormField<String>(
-                    initialValue: selectedRoleId, // FIX: value→initialValue
+                    value: selectedRoleId, // ← FIX
                     decoration: const InputDecoration(
                       labelText: 'Role *',
                       prefixIcon: Icon(Icons.admin_panel_settings_outlined),
@@ -3716,6 +4429,8 @@ class _InviteDialogState extends State<_InviteDialog> {
                     onChanged: (v) => setState(() => selectedRoleId = v),
                   ),
                   const SizedBox(height: 12),
+
+                  // ── Level ────────────────────────────────────
                   TextField(
                     controller: _levelCtrl,
                     decoration: const InputDecoration(
@@ -3743,15 +4458,16 @@ class _InviteDialogState extends State<_InviteDialog> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Invitation Token Bottom Sheet
-// ═══════════════════════════════════════════════════════════
-class _InvitationTokenSheet extends StatelessWidget {
+// ═══════════════════════════════════════════════════════════════════
+// Invitation Token Sheet — called from OrganizationHubPage listener
+// ═══════════════════════════════════════════════════════════════════
+class InvitationTokenSheet extends StatelessWidget {
   final String email;
   final String token;
   final String orgName;
 
-  const _InvitationTokenSheet({
+  const InvitationTokenSheet({
+    super.key,
     required this.email,
     required this.token,
     required this.orgName,
@@ -3771,31 +4487,29 @@ class _InvitationTokenSheet extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (_) =>
-          _InvitationTokenSheet(email: email, token: token, orgName: orgName),
+          InvitationTokenSheet(email: email, token: token, orgName: orgName),
     );
   }
 
   String get _whatsAppMessage =>
       'You have been invited to join *$orgName* on Barick Pharma.\n\n'
-      'To accept your invitation:\n'
+      'To accept:\n'
       '1. Open the *Barick Officer* app\n'
-      '2. Register or log in with this email: *$email*\n'
-      '3. On the pending activation screen, tap *Enter Invitation Token*\n'
-      '4. Paste this token:\n\n'
+      '2. Register/login with: *$email*\n'
+      '3. Tap *Enter Invitation Token* and paste:\n\n'
       '$token\n\n'
-      'The invitation expires in 7 days.';
+      'Token expires in 7 days.';
 
-  Future<void> _shareViaWhatsApp(BuildContext context) async {
-    final encoded = Uri.encodeComponent(_whatsAppMessage);
-    final uri = Uri.parse('whatsapp://send?text=$encoded');
+  Future<void> _shareWhatsApp(BuildContext context) async {
+    final uri = Uri.parse(
+      'whatsapp://send?text=${Uri.encodeComponent(_whatsAppMessage)}',
+    );
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
-    } else {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('WhatsApp not found on this device.')),
-        );
-      }
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('WhatsApp not found on this device.')),
+      );
     }
   }
 
@@ -3804,14 +4518,14 @@ class _InvitationTokenSheet extends StatelessWidget {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Token copied to clipboard.'),
+          content: Text('Token copied.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
     }
   }
 
-  Future<void> _copyFullMessage(BuildContext context) async {
+  Future<void> _copyMessage(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: _whatsAppMessage));
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3826,7 +4540,6 @@ class _InvitationTokenSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
       child: Column(
@@ -3846,7 +4559,7 @@ class _InvitationTokenSheet extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
-          // Title row
+          // Title
           Row(
             children: [
               Container(
@@ -3883,11 +4596,11 @@ class _InvitationTokenSheet extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-
+          const SizedBox(height: 12),
           Text(
             'An email has been sent. Share the token below via WhatsApp '
-            'so the user can accept immediately.',
+            'so the user can accept immediately.\n'
+            'You can also view this token later in the Invitations tab.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: scheme.onSurfaceVariant,
               height: 1.4,
@@ -3916,11 +4629,12 @@ class _InvitationTokenSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 SelectableText(
-                  token,
+                  token.isNotEmpty ? token : '(token not returned by server)',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontFamily: 'monospace',
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.3,
+                    color: token.isNotEmpty ? null : scheme.error,
                   ),
                 ),
               ],
@@ -3928,9 +4642,8 @@ class _InvitationTokenSheet extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // Copy token
           OutlinedButton.icon(
-            onPressed: () => _copyToken(context),
+            onPressed: token.isNotEmpty ? () => _copyToken(context) : null,
             icon: const Icon(Icons.copy, size: 16),
             label: const Text('Copy Token Only'),
             style: OutlinedButton.styleFrom(
@@ -3942,9 +4655,8 @@ class _InvitationTokenSheet extends StatelessWidget {
           ),
           const SizedBox(height: 8),
 
-          // WhatsApp share
           FilledButton.icon(
-            onPressed: () => _shareViaWhatsApp(context),
+            onPressed: () => _shareWhatsApp(context),
             icon: const Icon(Icons.share, size: 18),
             label: const Text('Share via WhatsApp'),
             style: FilledButton.styleFrom(
@@ -3958,9 +4670,8 @@ class _InvitationTokenSheet extends StatelessWidget {
           ),
           const SizedBox(height: 8),
 
-          // Copy full message
           TextButton.icon(
-            onPressed: () => _copyFullMessage(context),
+            onPressed: () => _copyMessage(context),
             icon: const Icon(Icons.message_outlined, size: 16),
             label: const Text('Copy Full Message'),
             style: TextButton.styleFrom(
@@ -3969,7 +4680,6 @@ class _InvitationTokenSheet extends StatelessWidget {
           ),
           const SizedBox(height: 4),
 
-          // Done
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             style: TextButton.styleFrom(
@@ -3983,9 +4693,9 @@ class _InvitationTokenSheet extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 // Assign Dialog
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 class _AssignDialog extends StatefulWidget {
   final OrganizationBloc bloc;
   final String branchId;
@@ -3999,8 +4709,8 @@ class _AssignDialogState extends State<_AssignDialog> {
   List<OrgMemberEntity> rootMembers = [];
   List<OrgRoleEntity> roles = [];
   bool loading = true;
-  String? selectedUserId;
-  String? selectedRoleId;
+  String? selectedUserId; // ← controlled with value:
+  String? selectedRoleId; // ← controlled with value:
   String? error;
 
   @override
@@ -4058,12 +4768,12 @@ class _AssignDialogState extends State<_AssignDialog> {
                     icon: Icons.info_outline,
                     color: Colors.green,
                     text:
-                        'Assign an existing organization member to this '
-                        'branch with a specific role.',
+                        'Assign an existing org member to this branch '
+                        'with a specific role.',
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    initialValue: selectedUserId, // FIX: value→initialValue
+                    value: selectedUserId, // ← FIX
                     decoration: const InputDecoration(
                       labelText: 'Member *',
                       prefixIcon: Icon(Icons.person_outlined),
@@ -4087,7 +4797,7 @@ class _AssignDialogState extends State<_AssignDialog> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    initialValue: selectedRoleId, // FIX: value→initialValue
+                    value: selectedRoleId, // ← FIX
                     decoration: const InputDecoration(
                       labelText: 'Branch Role *',
                       prefixIcon: Icon(Icons.admin_panel_settings_outlined),
@@ -4120,7 +4830,11 @@ class _AssignDialogState extends State<_AssignDialog> {
               ? null
               : () {
                   if (selectedUserId == null || selectedRoleId == null) {
-                    _snack(context, 'Select both a member and a role');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Select both a member and a role'),
+                      ),
+                    );
                     return;
                   }
                   Navigator.pop(context);
@@ -4141,9 +4855,9 @@ class _AssignDialogState extends State<_AssignDialog> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 // Manage Account Sheet
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 class _ManageAccountSheet extends StatefulWidget {
   final OrganizationBloc bloc;
   final OrgMemberEntity member;
@@ -4155,7 +4869,6 @@ class _ManageAccountSheet extends StatefulWidget {
 
 class _ManageAccountSheetState extends State<_ManageAccountSheet> {
   late final TextEditingController _nameCtrl;
-  late final TextEditingController _emailCtrl;
   bool _saving = false;
   String? _saveError;
 
@@ -4163,13 +4876,11 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
   void initState() {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.member.name);
-    _emailCtrl = TextEditingController(text: widget.member.email);
   }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _emailCtrl.dispose();
     super.dispose();
   }
 
@@ -4278,12 +4989,13 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
                         border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    if (_saveError != null)
+                    if (_saveError != null) ...[
+                      const SizedBox(height: 6),
                       Text(
                         _saveError!,
                         style: TextStyle(color: scheme.error, fontSize: 12),
                       ),
+                    ],
                     const SizedBox(height: 8),
                     SizedBox(
                       width: double.infinity,
@@ -4312,69 +5024,37 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Text('Update Name'),
+                            : const Text('Save Name'),
                       ),
                     ),
-                  ],
-                ),
-              ),
-              const Divider(height: 28),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                    const SizedBox(height: 24),
+                    const Divider(),
+                    const SizedBox(height: 12),
                     Text(
-                      'Security',
+                      'Account Actions',
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 12),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.lock_reset_outlined),
-                      title: const Text('Reset Password'),
-                      subtitle: Text(
-                        'Send a password reset email to ${member.email}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      trailing: SizedBox(
-                        width: 90,
-                        child: TextButton(
-                          onPressed: () => _confirmPasswordReset(context),
-                          child: const Text(
-                            'Send Email',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      ),
+                    _StatusActionTile(
+                      icon: Icons.lock_reset,
+                      color: Colors.orange,
+                      label: 'Reset Password',
+                      description: 'Send a password reset email',
+                      onTap: () {
+                        Navigator.pop(context);
+                        widget.bloc.add(
+                          UserPasswordResetRequested(member.email),
+                        );
+                      },
                     ),
-                  ],
-                ),
-              ),
-              const Divider(height: 28),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Account Status',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
                     if (member.isActive)
                       _StatusActionTile(
                         icon: Icons.pause_circle_outline,
-                        color: Colors.orange,
+                        color: Colors.red,
                         label: 'Suspend Account',
-                        description: 'User cannot log in while suspended',
+                        description: 'Prevent login temporarily',
                         onTap: () {
                           Navigator.pop(context);
                           widget.bloc.add(
@@ -4387,10 +5067,10 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
                       ),
                     if (member.isSuspended)
                       _StatusActionTile(
-                        icon: Icons.check_circle_outline,
+                        icon: Icons.play_circle_outline,
                         color: Colors.green,
                         label: 'Reactivate Account',
-                        description: 'Allow user to log in again',
+                        description: 'Restore login access',
                         onTap: () {
                           Navigator.pop(context);
                           widget.bloc.add(
@@ -4401,86 +5081,19 @@ class _ManageAccountSheetState extends State<_ManageAccountSheet> {
                           );
                         },
                       ),
+                    const SizedBox(height: 20),
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
             ],
           ),
         ),
       ),
     );
   }
-
-  void _confirmPasswordReset(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Send Password Reset?'),
-        content: Text(
-          'A password reset link will be emailed to ${widget.member.email}.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              widget.bloc.add(UserPasswordResetRequested(widget.member.email));
-            },
-            child: const Text('Send'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Shared helpers
-// ═══════════════════════════════════════════════════════════
-
-class _BranchScopeBar extends StatelessWidget {
-  final VoidCallback? onBack;
-  const _BranchScopeBar({this.onBack});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: scheme.primaryContainer.withValues(alpha: 0.3), // FIX: withValues
-      child: Row(
-        children: [
-          Icon(Icons.store, size: 16, color: scheme.primary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Branch members',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: scheme.primary,
-              ),
-            ),
-          ),
-          TextButton.icon(
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back, size: 14),
-            label: const Text('All Members', style: TextStyle(fontSize: 12)),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: Size.zero,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
+// ── Shared helpers ─────────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {
   final bool isBranch;
   final VoidCallback? onInvite;
@@ -4530,7 +5143,7 @@ class _InfoBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08), // FIX: withValues
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -4543,7 +5156,7 @@ class _InfoBanner extends StatelessWidget {
               text,
               style: TextStyle(
                 fontSize: 12,
-                color: color.withValues(alpha: 0.9), // FIX: withValues
+                color: color.withValues(alpha: 0.9),
               ),
             ),
           ),
@@ -4592,24 +5205,44 @@ class _StatusActionTile extends StatelessWidget {
   }
 }
 
-void _snack(BuildContext context, String msg) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-}
-
 
 // === FILE: lib/features/organization/presentation/pages/organization_hub_page.dart ===
+// lib/features/organization/presentation/pages/organization_hub_page.dart
+//
+// FIX 1 — Invitation filter indicator stuck on "Pending"
+// ─────────────────────────────────────────────────────────────────────
+// Root cause:
+//   The outer BlocConsumer.builder returned a *brand-new* loading Scaffold
+//   every time OrganizationLoading was emitted — even for sub-tab loads
+//   (InvitationsLoadRequested, MembersLoadRequested, etc.).
+//   This destroyed and recreated the TabBarView on every filter tap, which
+//   reset _InvitationsBodyState._statusFilter back to 'pending'.
+//
+// Fix:
+//   Add `_orgLoaded` bool to the State.  Once the active hub has been shown
+//   at least once, OrganizationLoading/OrganizationInitial no longer replace
+//   the hub Scaffold with a bare spinner.  The individual tab BlocBuilders
+//   (which already check for OrganizationLoading) show their own local
+//   spinners — which is the correct, intended behaviour.
+//
+//   `_orgLoaded` is reset to false when an org-level transition occurs
+//   (NoOrg, pending, rejected, suspended) so the initial-load screen still
+//   appears correctly on first open or after a hard reset.
+// ─────────────────────────────────────────────────────────────────────
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/organization_bloc.dart';
 import '../bloc/organization_event.dart';
 import '../bloc/organization_state.dart';
-import 'branch_tab.dart';
-import 'role_tab.dart';
-import 'member_tab.dart';
-import 'delegation_tab.dart';
-import 'permission_request_tab.dart';
-import 'create_organization_page.dart';
-import 'accept_invitation_dialog.dart';
+import '../pages/branch_tab.dart';
+import '../pages/role_tab.dart';
+import '../pages/member_tab.dart';
+import '../pages/invitations_tab.dart';
+import '../pages/delegation_tab.dart';
+import '../pages/permission_request_tab.dart';
+import '../pages/create_organization_page.dart';
+// import 'accept_invitation_dialog.dart';
 import '../widgets/org_header_card.dart';
 import '../../domain/entities/organization_entity.dart';
 
@@ -4622,22 +5255,29 @@ class OrganizationHubPage extends StatefulWidget {
 class _OrganizationHubPageState extends State<OrganizationHubPage>
     with TickerProviderStateMixin {
   TabController? _tabController;
-
-  /// Tracks if we're viewing members for a specific branch.
-  /// null = root org, non-null = branch ID.
   String? _viewingBranchMembers;
-
-  /// Prevents _onTabChanged from overwriting a branch-scoped member load
-  /// when the tab switch is triggered programmatically from branch view.
   bool _skipNextMemberLoad = false;
+
+  // ── FIX: track whether the active hub scaffold has been rendered ───
+  // Once true, OrganizationLoading no longer tears down the TabBarView.
+  // Each individual tab handles its own per-tab loading indicator.
+  bool _orgLoaded = false;
 
   static const _tabs = [
     Tab(icon: Icon(Icons.account_tree_outlined), text: 'Branches'),
     Tab(icon: Icon(Icons.admin_panel_settings_outlined), text: 'Roles'),
     Tab(icon: Icon(Icons.people_outlined), text: 'Members'),
-    Tab(icon: Icon(Icons.swap_horiz_outlined), text: 'Delegations'),
-    Tab(icon: Icon(Icons.lock_open_outlined), text: 'Requests'),
+    Tab(icon: Icon(Icons.mail_outlined), text: 'Invitations'),
+    // Tab(icon: Icon(Icons.swap_horiz_outlined), text: 'Delegations'),
+    // Tab(icon: Icon(Icons.lock_open_outlined), text: 'Requests'),
   ];
+
+  static const int _kBranches = 0;
+  static const int _kRoles = 1;
+  static const int _kMembers = 2;
+  static const int _kInvitations = 3;
+  static const int _kDelegations = 4;
+  static const int _kRequests = 5;
 
   @override
   void initState() {
@@ -4650,28 +5290,23 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
     if (_tabController == null || !_tabController!.indexIsChanging) return;
     final bloc = context.read<OrganizationBloc>();
     switch (_tabController!.index) {
-      case 0:
+      case _kBranches:
         bloc.add(BranchesLoadRequested());
-        break;
-      case 1:
+      case _kRoles:
         bloc.add(RolesLoadRequested());
-        break;
-      case 2:
-        // If switching to Members tab from branch view, skip reload
+      case _kMembers:
         if (_skipNextMemberLoad) {
           _skipNextMemberLoad = false;
           return;
         }
-        // Normal tab switch — load root org members, clear branch context
         _viewingBranchMembers = null;
         bloc.add(MembersLoadRequested());
-        break;
-      case 3:
+      case _kInvitations:
+        bloc.add(InvitationsLoadRequested());
+      case _kDelegations:
         bloc.add(DelegationsLoadRequested());
-        break;
-      case 4:
+      case _kRequests:
         bloc.add(PermissionRequestsLoadRequested());
-        break;
     }
   }
 
@@ -4681,15 +5316,13 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
     super.dispose();
   }
 
-  List<Widget> _appBarActions(BuildContext context) {
-    return [
-      IconButton(
-        icon: const Icon(Icons.mail_outlined),
-        tooltip: 'Accept Invitation',
-        onPressed: () => AcceptInvitationDialog.show(context),
-      ),
-    ];
-  }
+  List<Widget> _appBarActions(BuildContext context) => [
+    // IconButton(
+    //   icon: const Icon(Icons.mail_outlined),
+    //   tooltip: 'Accept Invitation',
+    //   onPressed: () => AcceptInvitationDialog.show(context),
+    // ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -4700,21 +5333,20 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
           ScaffoldMessenger.of(
             c,
           ).showSnackBar(SnackBar(content: Text(s.message)));
-          if (_viewingBranchMembers != null) {
+          if (_tabController?.index == _kMembers) {
             c.read<OrganizationBloc>().add(
               MembersLoadRequested(orgId: _viewingBranchMembers),
             );
-          } else {
-            _onTabChanged();
           }
-          // Always refresh branches so member counts update
           c.read<OrganizationBloc>().add(BranchesLoadRequested());
         }
+
         if (s is OrganizationFailure) {
           ScaffoldMessenger.of(c).showSnackBar(
             SnackBar(content: Text(s.message), backgroundColor: scheme.error),
           );
         }
+
         if (s is OrgCreatedSuccess) {
           ScaffoldMessenger.of(c).showSnackBar(
             const SnackBar(
@@ -4725,17 +5357,40 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
           );
           c.read<OrganizationBloc>().add(OrgLoadRequested());
         }
+
         if (s is InvitationAccepted) {
           ScaffoldMessenger.of(c).showSnackBar(
             SnackBar(content: Text(s.message), backgroundColor: Colors.green),
           );
           c.read<OrganizationBloc>().add(OrgLoadRequested());
         }
-        // Do NOT auto-switch to Members tab on MembersLoaded anymore.
-        // The switch is handled by the branch callback directly.
+
+        // ── Token sheet — handled here at hub level (stable Scaffold) ──
+        if (s is MemberInvitedWithToken) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            InvitationTokenSheet.show(
+              context,
+              email: s.email,
+              token: s.token,
+              orgName: s.orgName,
+            );
+            context.read<OrganizationBloc>()
+              ..add(MembersLoadRequested(orgId: _viewingBranchMembers))
+              ..add(InvitationsLoadRequested());
+          });
+        }
       },
+
+      // ── FIX: builder ────────────────────────────────────────────────
+      // Once the active hub has been shown (_orgLoaded == true),
+      // OrganizationLoading/OrganizationInitial must NOT replace the hub
+      // with a bare-spinner Scaffold.  Sub-tab operations emit these states
+      // and the per-tab BlocBuilders handle the local spinners themselves.
       builder: (c, s) {
+        // ── Org-level states that need a dedicated top-level screen ───
         if (s is NoOrganizationState) {
+          _orgLoaded = false;
           return Scaffold(
             appBar: AppBar(
               title: const Text('Organization'),
@@ -4744,12 +5399,25 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
             body: const CreateOrganizationPage(),
           );
         }
-        if (s is OrgLoaded && s.org.isPending)
+
+        if (s is OrgLoaded && s.org.isPending) {
+          _orgLoaded = false;
           return _pendingApprovalView(c, s.org);
-        if (s is OrgLoaded && s.org.isRejected) return _rejectedView(c, s.org);
-        if (s is OrgLoaded && s.org.isSuspended)
+        }
+
+        if (s is OrgLoaded && s.org.isRejected) {
+          _orgLoaded = false;
+          return _rejectedView(c, s.org);
+        }
+
+        if (s is OrgLoaded && s.org.isSuspended) {
+          _orgLoaded = false;
           return _suspendedView(c, s.org);
-        if (s is OrganizationLoading || s is OrganizationInitial) {
+        }
+
+        // ── Initial loading — only show bare spinner before first load ─
+        if ((s is OrganizationLoading || s is OrganizationInitial) &&
+            !_orgLoaded) {
           return Scaffold(
             appBar: AppBar(
               title: const Text('Organization'),
@@ -4758,6 +5426,10 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
             body: const Center(child: CircularProgressIndicator()),
           );
         }
+
+        // ── Active hub — any other state (including OrganizationLoading
+        //   for sub-tab ops) keeps the hub alive so tab state is preserved.
+        _orgLoaded = true;
         return _buildActiveHub(c, s);
       },
     );
@@ -4790,13 +5462,12 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
               children: [
                 BranchTab(
                   onSwitchToMembers: (branchId) {
-                    // Load branch-scoped members
                     _viewingBranchMembers = branchId;
                     _skipNextMemberLoad = true;
                     c.read<OrganizationBloc>().add(
                       MembersLoadRequested(orgId: branchId),
                     );
-                    _tabController!.animateTo(2);
+                    _tabController!.animateTo(_kMembers);
                   },
                 ),
                 const RoleTab(),
@@ -4807,6 +5478,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
                     c.read<OrganizationBloc>().add(MembersLoadRequested());
                   },
                 ),
+                const InvitationsTab(),
                 const DelegationTab(),
                 const PermissionRequestTab(),
               ],
@@ -4844,7 +5516,8 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
               ),
               const SizedBox(height: 12),
               Text(
-                'Your organization "${org.name}" has been submitted and is waiting for platform admin approval.',
+                'Your organization "${org.name}" has been submitted and is '
+                'waiting for platform admin approval.',
                 textAlign: TextAlign.center,
                 style: Theme.of(c).textTheme.bodyMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
@@ -4865,7 +5538,6 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
   }
 
   Widget _rejectedView(BuildContext c, OrganizationEntity org) {
-    final scheme = Theme.of(c).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Organization'),
@@ -4890,8 +5562,8 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
                   color: Colors.red,
                 ),
               ),
-              const SizedBox(height: 12),
               if (org.rejectionReason != null) ...[
+                const SizedBox(height: 12),
                 Card(
                   color: Colors.red.withOpacity(0.06),
                   child: Padding(
@@ -4905,24 +5577,18 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
                           size: 20,
                         ),
                         const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            org.rejectionReason!,
-                            style: Theme.of(c).textTheme.bodyMedium,
-                          ),
-                        ),
+                        Expanded(child: Text(org.rejectionReason!)),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
               ],
-              Text(
-                'Please contact platform support or create a new organization.',
-                textAlign: TextAlign.center,
-                style: Theme.of(c).textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () =>
+                    c.read<OrganizationBloc>().add(OrgLoadRequested()),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh'),
               ),
             ],
           ),
@@ -4932,6 +5598,7 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
   }
 
   Widget _suspendedView(BuildContext c, OrganizationEntity org) {
+    final scheme = Theme.of(c).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Organization'),
@@ -4943,23 +5610,30 @@ class _OrganizationHubPageState extends State<OrganizationHubPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.pause_circle_outline,
-                size: 72,
-                color: Colors.orange.withOpacity(0.6),
-              ),
+              Icon(Icons.block, size: 72, color: scheme.error.withOpacity(0.6)),
               const SizedBox(height: 24),
               Text(
                 'Organization Suspended',
                 style: Theme.of(c).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w700,
+                  color: scheme.error,
                 ),
               ),
               const SizedBox(height: 12),
               Text(
-                'Your organization "${org.name}" has been suspended by the platform admin. Please contact support.',
+                'Your organization "${org.name}" has been suspended. '
+                'Contact platform support.',
                 textAlign: TextAlign.center,
-                style: Theme.of(c).textTheme.bodyMedium,
+                style: Theme.of(c).textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 24),
+              OutlinedButton.icon(
+                onPressed: () =>
+                    c.read<OrganizationBloc>().add(OrgLoadRequested()),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh'),
               ),
             ],
           ),

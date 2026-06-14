@@ -1,6 +1,12 @@
-﻿import 'package:dio/dio.dart';
+﻿// lib/features/daily_report/data/datasources/daily_report_remote_datasource.dart
+//
+// FIX: same root org fix applied — resolver must fetch from rootOrgId
+// so all officers across the tree are in the name cache.
+
+import 'package:dio/dio.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/context/org_context.dart';
+import '../../../../core/utils/officer_name_resolver.dart';
 import '../models/daily_report_model.dart';
 
 abstract class DailyReportRemoteDataSource {
@@ -9,30 +15,41 @@ abstract class DailyReportRemoteDataSource {
   Future<DailyReportModel> create(Map<String, dynamic> data);
   Future<DailyReportModel> update(String id, Map<String, dynamic> data);
   Future<void> delete(String id);
-  Future<DailyReportModel> approve(String id, {required String feedback});
+  Future<DailyReportModel> approve(String id, {String? feedback});
   Future<DailyReportModel> reject(String id, {required String feedback});
 }
 
 class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   final Dio _dio;
   final OrgContext _orgContext;
+  late final OfficerNameResolver _nameResolver;
 
   DailyReportRemoteDataSourceImpl({
     required Dio dio,
     required OrgContext orgContext,
   }) : _dio = dio,
-       _orgContext = orgContext;
+       _orgContext = orgContext {
+    _nameResolver = OfficerNameResolver(
+      dio: dio,
+      // FIX: use root org so all officers in the tree are in the cache.
+      orgId: () => orgContext.rootOrgId ?? orgContext.effectiveOrgId,
+    );
+  }
 
   String get _base => '/pharma/orgs/${_orgContext.effectiveOrgId}/reports';
 
   @override
   Future<List<DailyReportModel>> getAll() async {
     try {
+      await _nameResolver.warmUp();
       final response = await _dio.get(_base);
-      final data = (response.data['data'] ?? response.data) as List;
-      return data
-          .map((e) => DailyReportModel.fromJson(e as Map<String, dynamic>))
-          .toList();
+      final raw = response.data;
+      final list = (raw is Map ? (raw['data'] ?? []) : raw) as List? ?? [];
+      return Future.wait(
+        list.whereType<Map<String, dynamic>>().map(
+          (e) async => DailyReportModel.fromJson(await _nameResolver.inject(e)),
+        ),
+      );
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -41,10 +58,13 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   @override
   Future<DailyReportModel> getById(String id) async {
     try {
-      // Correct route: /pharma/reports/{id} not /pharma/orgs/{orgId}/reports/{id}
+      await _nameResolver.warmUp();
       final response = await _dio.get('/pharma/reports/$id');
-      final data = response.data['data'] ?? response.data;
-      return DailyReportModel.fromJson(data as Map<String, dynamic>);
+      final raw = response.data;
+      final data =
+          (raw is Map ? (raw['data'] ?? raw['report'] ?? raw) : raw)
+              as Map<String, dynamic>;
+      return DailyReportModel.fromJson(await _nameResolver.inject(data));
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -54,8 +74,9 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   Future<DailyReportModel> create(Map<String, dynamic> data) async {
     try {
       final response = await _dio.post(_base, data: data);
-      final body = response.data['data'] ?? response.data;
-      return DailyReportModel.fromJson(body as Map<String, dynamic>);
+      final body =
+          (response.data['data'] ?? response.data) as Map<String, dynamic>;
+      return DailyReportModel.fromJson(await _nameResolver.inject(body));
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -65,8 +86,9 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   Future<DailyReportModel> update(String id, Map<String, dynamic> data) async {
     try {
       final response = await _dio.put('$_base/$id', data: data);
-      final body = response.data['data'] ?? response.data;
-      return DailyReportModel.fromJson(body as Map<String, dynamic>);
+      final body =
+          (response.data['data'] ?? response.data) as Map<String, dynamic>;
+      return DailyReportModel.fromJson(await _nameResolver.inject(body));
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -84,14 +106,15 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   @override
   Future<DailyReportModel> approve(String id, {String? feedback}) async {
     try {
-      // BEFORE (wrong): final response = await _dio.post('$_base/$id/approve', ...);
-      // AFTER (correct):
       final response = await _dio.post(
         '/pharma/reports/$id/approve',
-        data: {'notes': feedback},
+        data: (feedback != null && feedback.trim().isNotEmpty)
+            ? {'notes': feedback.trim()}
+            : null,
       );
-      final body = response.data['data'] ?? response.data;
-      return DailyReportModel.fromJson(body as Map<String, dynamic>);
+      final body =
+          (response.data['data'] ?? response.data) as Map<String, dynamic>;
+      return DailyReportModel.fromJson(await _nameResolver.inject(body));
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -100,14 +123,13 @@ class DailyReportRemoteDataSourceImpl implements DailyReportRemoteDataSource {
   @override
   Future<DailyReportModel> reject(String id, {required String feedback}) async {
     try {
-      // BEFORE (wrong): final response = await _dio.post('$_base/$id/reject', ...);
-      // AFTER (correct):
       final response = await _dio.post(
         '/pharma/reports/$id/reject',
         data: {'notes': feedback},
       );
-      final body = response.data['data'] ?? response.data;
-      return DailyReportModel.fromJson(body as Map<String, dynamic>);
+      final body =
+          (response.data['data'] ?? response.data) as Map<String, dynamic>;
+      return DailyReportModel.fromJson(await _nameResolver.inject(body));
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }

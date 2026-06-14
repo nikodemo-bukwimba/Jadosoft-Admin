@@ -1,6 +1,16 @@
-﻿import 'package:dio/dio.dart';
+﻿// lib/features/weekly_plan/data/datasources/weekly_plan_remote_datasource.dart
+//
+// FIX: OfficerNameResolver was constructed with orgContext.effectiveOrgId
+// which is the branch org ID. Officers are members of the ROOT org, so the
+// /orgs/{id}/members fetch was returning only branch members (often empty),
+// causing an empty cache and no name resolution.
+//
+// Fix: pass orgContext.rootOrgId ?? orgContext.effectiveOrgId to the resolver.
+
+import 'package:dio/dio.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/context/org_context.dart';
+import '../../../../core/utils/officer_name_resolver.dart';
 import '../models/weekly_plan_model.dart';
 
 abstract class WeeklyPlanRemoteDataSource {
@@ -16,70 +26,36 @@ abstract class WeeklyPlanRemoteDataSource {
 class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   final Dio _dio;
   final OrgContext _orgContext;
-
-  /// actorId → display name, same pattern as VisitApiDataSource.
-  final Map<String, String> _officerNameCache = {};
+  late final OfficerNameResolver _nameResolver;
 
   WeeklyPlanRemoteDataSourceImpl({
     required Dio dio,
     required OrgContext orgContext,
-  }) : _dio = dio,
-       _orgContext = orgContext;
+  })  : _dio = dio,
+        _orgContext = orgContext {
+    _nameResolver = OfficerNameResolver(
+      dio: dio,
+      // FIX: use root org so all officers in the tree are in the cache.
+      orgId: () => orgContext.rootOrgId ?? orgContext.effectiveOrgId,
+    );
+  }
 
   String get _orgId => _orgContext.effectiveOrgId;
   String get _orgBase => '/pharma/orgs/$_orgId/plans';
 
-  // ── Fetch officer name map from org members ──────────────────────────
-  // Mirrors VisitApiDataSource._refreshOfficerNames()
-  Future<void> _refreshOfficerNames() async {
-    try {
-      final response = await _dio.get(
-        '/orgs/$_orgId/members',
-        queryParameters: {'per_page': 200},
-      );
-      final raw = response.data;
-      final list = (raw is Map ? (raw['data'] ?? []) : raw) as List? ?? [];
-      _officerNameCache.clear();
-      for (final item in list.whereType<Map<String, dynamic>>()) {
-        final user = item['user'] as Map<String, dynamic>?;
-        if (user == null) continue;
-        final actorId = (user['actor_id'] ?? item['actor_id'] ?? '').toString();
-        if (actorId.isEmpty) continue;
-        final name =
-            (user['username'] as String?)?.trim() ??
-            (user['name'] as String?)?.trim() ??
-            (user['email'] as String?)?.split('@').first ??
-            '';
-        if (name.isNotEmpty) _officerNameCache[actorId] = name;
-      }
-    } catch (_) {
-      // Non-fatal — plans still load, officer column shows actor ID.
-    }
-  }
-
-  // ── Inject resolved officer_name into raw plan JSON ───────────────────
-  Map<String, dynamic> _injectOfficerName(Map<String, dynamic> j) {
-    if (j['officer_name'] is String &&
-        (j['officer_name'] as String).isNotEmpty) {
-      return j; // API already sent a name — use it
-    }
-    final actorId = (j['officer_actor_id'] ?? j['officer_id'] ?? '').toString();
-    final resolved = actorId.isNotEmpty ? _officerNameCache[actorId] : null;
-    if (resolved == null) return j;
-    return {...j, 'officer_name': resolved};
-  }
-
   @override
   Future<List<WeeklyPlanModel>> getAll() async {
     try {
-      await _refreshOfficerNames();
+      await _nameResolver.warmUp();
       final response = await _dio.get(_orgBase);
       final raw = response.data;
-      final data = (raw is Map ? (raw['data'] ?? raw) : raw) as List? ?? [];
-      return data
-          .whereType<Map<String, dynamic>>()
-          .map((j) => WeeklyPlanModel.fromJson(_injectOfficerName(j)))
-          .toList();
+      final data = (raw is Map ? (raw['data'] ?? []) : raw) as List? ?? [];
+      return Future.wait(
+        data.whereType<Map<String, dynamic>>().map(
+              (j) async =>
+                  WeeklyPlanModel.fromJson(await _nameResolver.inject(j)),
+            ),
+      );
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -88,13 +64,12 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   @override
   Future<WeeklyPlanModel> getById(String id) async {
     try {
-      if (_officerNameCache.isEmpty) await _refreshOfficerNames();
+      await _nameResolver.warmUp();
       final response = await _dio.get('/pharma/plans/$id');
       final raw = response.data;
-      final data =
-          (raw is Map ? (raw['data'] ?? raw['plan'] ?? raw) : raw)
-              as Map<String, dynamic>;
-      return WeeklyPlanModel.fromJson(_injectOfficerName(data));
+      final data = (raw is Map ? (raw['data'] ?? raw['plan'] ?? raw) : raw)
+          as Map<String, dynamic>;
+      return WeeklyPlanModel.fromJson(await _nameResolver.inject(data));
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -104,8 +79,9 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
   Future<WeeklyPlanModel> create(Map<String, dynamic> data) async {
     try {
       final response = await _dio.post(_orgBase, data: data);
-      final body = response.data['data'] ?? response.data;
-      return WeeklyPlanModel.fromJson(body as Map<String, dynamic>);
+      final body =
+          (response.data['data'] ?? response.data) as Map<String, dynamic>;
+      return WeeklyPlanModel.fromJson(await _nameResolver.inject(body));
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -127,10 +103,9 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
       } else {
         return await getById(id);
       }
-      final body = response.data['data'] ?? response.data;
-      return WeeklyPlanModel.fromJson(
-        _injectOfficerName(body as Map<String, dynamic>),
-      );
+      final body =
+          (response.data['data'] ?? response.data) as Map<String, dynamic>;
+      return WeeklyPlanModel.fromJson(await _nameResolver.inject(body));
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -152,10 +127,9 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
         '/pharma/plans/$id/approve',
         data: notes != null ? {'notes': notes} : {},
       );
-      final body = response.data['data'] ?? response.data;
-      return WeeklyPlanModel.fromJson(
-        _injectOfficerName(body as Map<String, dynamic>),
-      );
+      final body =
+          (response.data['data'] ?? response.data) as Map<String, dynamic>;
+      return WeeklyPlanModel.fromJson(await _nameResolver.inject(body));
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
@@ -168,10 +142,9 @@ class WeeklyPlanRemoteDataSourceImpl implements WeeklyPlanRemoteDataSource {
         '/pharma/plans/$id/reject',
         data: {'notes': notes},
       );
-      final body = response.data['data'] ?? response.data;
-      return WeeklyPlanModel.fromJson(
-        _injectOfficerName(body as Map<String, dynamic>),
-      );
+      final body =
+          (response.data['data'] ?? response.data) as Map<String, dynamic>;
+      return WeeklyPlanModel.fromJson(await _nameResolver.inject(body));
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }

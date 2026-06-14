@@ -1,14 +1,15 @@
 // shell_page_home_tab.dart
 // ─────────────────────────────────────────────────────────────
 // Admin command centre — authenticated landing page.
-// Responsive: mobile (bottom nav) + desktop (side rail).
+// Mirrors ALL nav items grouped by section.
+// Responsive: mobile (grid) + desktop (side panel + grid).
 // AdaptiveNavShell owns the Scaffold & SafeArea — no nesting here.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-
+import '../../core/rbac/rbac_extensions.dart';
 import '../../core/extensions/string_extensions.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/bloc/auth_state.dart';
@@ -55,7 +56,7 @@ class _HomeContent extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Desktop: left panel with greeting + quick stats
+// Desktop: left panel with greeting
 // ─────────────────────────────────────────────────────────────
 
 class _SidePanel extends StatelessWidget {
@@ -81,7 +82,6 @@ class _SidePanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Avatar
           Container(
             width: 64,
             height: 64,
@@ -139,7 +139,6 @@ class _SidePanel extends StatelessWidget {
             ),
           ],
           const Spacer(),
-          // Pharmacy brand
           Row(
             children: [
               Icon(
@@ -183,7 +182,6 @@ class _FeatureGrid extends StatelessWidget {
 
     return CustomScrollView(
       slivers: [
-        // ── Greeting header (mobile only — desktop uses side panel) ──
         if (!isWide)
           SliverToBoxAdapter(
             child: _GreetingHeader(
@@ -203,94 +201,135 @@ class _FeatureGrid extends StatelessWidget {
           ),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
+              // ── Organization Management ──────────────────────────
+              if (auth.can('members.view') ||
+                  auth.can('org.view') ||
+                  auth.can('branches.view'))
+                _FeatureSection(
+                  title: 'Organization',
+                  subtitle: 'Members, roles & org settings',
+                  accentColor: const Color(0xFF5C6BC0),
+                  items: const [
+                    _FeatureItem(
+                      icon: Icons.business_outlined,
+                      label: 'Organization',
+                      path: AppRouter.orgHub,
+                      accent: Color(0xFF5C6BC0),
+                    ),
+                  ],
+                ),
+
+              if (auth.can('members.view') ||
+                  auth.can('org.view') ||
+                  auth.can('branches.view'))
+                const SizedBox(height: 28),
+
+              // ── Field Operations ─────────────────────────
               _FeatureSection(
                 title: 'Field Operations',
                 subtitle: 'Officers, customers, visits & reporting',
                 accentColor: scheme.primary,
-                items: const [
-                  _FeatureItem(
-                    icon: Icons.badge_outlined,
-                    label: 'Officers',
-                    path: AppRouter.officerList,
-                    accent: Color(0xFF2196F3),
-                  ),
-                  _FeatureItem(
-                    icon: Icons.store_outlined,
-                    label: 'Customers',
-                    path: AppRouter.customerList,
-                    accent: Color(0xFF4CAF50),
-                  ),
-                  _FeatureItem(
-                    icon: Icons.place_outlined,
-                    label: 'Visits',
-                    path: AppRouter.visitList,
-                    accent: Color(0xFFFF9800),
-                  ),
-                  _FeatureItem(
-                    icon: Icons.calendar_month_outlined,
-                    label: 'Weekly Plans',
-                    path: AppRouter.weeklyPlanList,
-                    accent: Color(0xFF9C27B0),
-                  ),
-                  _FeatureItem(
-                    icon: Icons.summarize_outlined,
-                    label: 'Daily Reports',
-                    path: AppRouter.dailyReportList,
-                    accent: Color(0xFF00BCD4),
-                  ),
+                items: [
+                  if (auth.can('officers.view'))
+                    const _FeatureItem(
+                      icon: Icons.badge_outlined,
+                      label: 'Officers',
+                      path: AppRouter.officerList,
+                      accent: Color(0xFF2196F3),
+                    ),
+                  if (auth.can('customers.view'))
+                    const _FeatureItem(
+                      icon: Icons.store_outlined,
+                      label: 'Customers',
+                      path: AppRouter.customerList,
+                      accent: Color(0xFF4CAF50),
+                    ),
+                  if (auth.can('visits.view'))
+                    const _FeatureItem(
+                      icon: Icons.place_outlined,
+                      label: 'Visits',
+                      path: AppRouter.visitList,
+                      accent: Color(0xFFFF9800),
+                    ),
+                  if (auth.can('weeklyplans.view'))
+                    const _FeatureItem(
+                      icon: Icons.calendar_month_outlined,
+                      label: 'Weekly Plans',
+                      path: AppRouter.weeklyPlanList,
+                      accent: Color(0xFF9C27B0),
+                    ),
+                  if (auth.can('reports.view'))
+                    const _FeatureItem(
+                      icon: Icons.summarize_outlined,
+                      label: 'Daily Reports',
+                      path: AppRouter.dailyReportList,
+                      accent: Color(0xFF00BCD4),
+                    ),
                 ],
               ),
+
               const SizedBox(height: 28),
+
+              // ── Products & Commerce ──────────────────────
               _FeatureSection(
                 title: 'Products & Commerce',
-                subtitle: 'Catalog, promotions & orders ',
+                subtitle: 'Catalog, inventory, promotions & orders',
                 accentColor: const Color(0xFFFF9800),
-                items: const [
-                  _FeatureItem(
-                    icon: Icons.category_outlined,
-                    label: 'Categories',
-                    path: AppRouter.categoryList,
-                    accent: Color(0xFF607D8B),
-                  ),
-                  _FeatureItem(
-                    icon: Icons.inventory_2_outlined,
-                    label: 'Products',
-                    path: AppRouter.productList,
-                    accent: Color(0xFF3F51B5),
-                  ),
-                  _FeatureItem(
-                    icon: Icons.campaign_outlined,
-                    label: 'Promotions',
-                    path: AppRouter.promotionList,
-                    accent: Color(0xFFE91E63),
-                  ),
-                  _FeatureItem(
-                    icon: Icons.receipt_long_outlined,
-                    label: 'Orders',
-                    path: AppRouter.orderList,
-                    accent: Color(0xFF009688),
-                  ),
-                  // _FeatureItem(
-                  //   icon: Icons.payments_outlined,
-                  //   label: 'Payments',
-                  //   path: AppRouter.paymentList,
-                  //   accent: Color(0xFF4CAF50),
-                  // ),
+                items: [
+                  if (auth.can('categories.view'))
+                    const _FeatureItem(
+                      icon: Icons.category_outlined,
+                      label: 'Categories',
+                      path: AppRouter.categoryList,
+                      accent: Color(0xFF607D8B),
+                    ),
+                  if (auth.can('products.view'))
+                    const _FeatureItem(
+                      icon: Icons.medication_outlined,
+                      label: 'Products',
+                      path: AppRouter.productList,
+                      accent: Color(0xFF3F51B5),
+                    ),
+                  if (auth.can('inventory.view') || auth.can('products.view'))
+                    const _FeatureItem(
+                      icon: Icons.inventory_2_outlined,
+                      label: 'Inventory',
+                      path: AppRouter.inventoryList,
+                      accent: Color(0xFF00897B),
+                    ),
+                  if (auth.can('promotions.view'))
+                    const _FeatureItem(
+                      icon: Icons.campaign_outlined,
+                      label: 'Promotions',
+                      path: AppRouter.promotionList,
+                      accent: Color(0xFFE91E63),
+                    ),
+                  if (auth.can('orders.view'))
+                    const _FeatureItem(
+                      icon: Icons.receipt_long_outlined,
+                      label: 'Orders',
+                      path: AppRouter.orderList,
+                      accent: Color(0xFF009688),
+                    ),
                 ],
               ),
+
               const SizedBox(height: 28),
+
+              // ── Communication ────────────────────────────
               _FeatureSection(
                 title: 'Communication',
-                subtitle: 'Messages',
+                subtitle: 'Messages and notifications',
                 accentColor: const Color(0xFF9C27B0),
-                items: const [
-                  _FeatureItem(
-                    icon: Icons.forum_outlined,
-                    label: 'Messages',
-                    path: AppRouter.conversationList,
-                    accent: Color(0xFF2196F3),
-                  ),
-                  _FeatureItem(
+                items: [
+                  if (auth.can('conversations.view'))
+                    const _FeatureItem(
+                      icon: Icons.forum_outlined,
+                      label: 'Messages',
+                      path: AppRouter.conversationList,
+                      accent: Color(0xFF2196F3),
+                    ),
+                  const _FeatureItem(
                     icon: Icons.notifications_outlined,
                     label: 'Notifications',
                     path: AppRouter.notificationList,
@@ -298,39 +337,51 @@ class _FeatureGrid extends StatelessWidget {
                   ),
                 ],
               ),
+
               const SizedBox(height: 28),
+
+              // ── Analytics & Reports ──────────────────────
               _FeatureSection(
                 title: 'Analytics & Reports',
                 subtitle: 'Dashboards, exports & audit trail',
                 accentColor: const Color(0xFF4CAF50),
-                items: const [
-                  _FeatureItem(
-                    icon: Icons.insights_outlined,
-                    label: 'Marketing',
-                    path: AppRouter.marketingDashboard,
-                    accent: Color(0xFF2196F3),
-                  ),
-                  _FeatureItem(
-                    icon: Icons.trending_up_outlined,
-                    label: 'Sales',
-                    path: AppRouter.salesDashboard,
-                    accent: Color(0xFF4CAF50),
-                  ),
-                  _FeatureItem(
-                    icon: Icons.file_download_outlined,
-                    label: 'Export',
-                    path: AppRouter.reportExport,
-                    accent: Color(0xFF607D8B),
-                  ),
-                  _FeatureItem(
-                    icon: Icons.history_outlined,
-                    label: 'Activity Logs',
-                    path: AppRouter.activityLogList,
-                    accent: Color(0xFF795548),
-                  ),
+                items: [
+                  if (auth.can(
+                    'marketing_dashboard.view',
+                  )) // ← was always shown
+                    const _FeatureItem(
+                      icon: Icons.insights_outlined,
+                      label: 'Marketing',
+                      path: AppRouter.marketingDashboard,
+                      accent: Color(0xFF2196F3),
+                    ),
+                  if (auth.can('sales_dashboard.view')) // ← was always shown
+                    const _FeatureItem(
+                      icon: Icons.trending_up_outlined,
+                      label: 'Sales',
+                      path: AppRouter.salesDashboard,
+                      accent: Color(0xFF4CAF50),
+                    ),
+                  if (auth.can('report_export.view'))
+                    const _FeatureItem(
+                      icon: Icons.file_download_outlined,
+                      label: 'Export',
+                      path: AppRouter.reportExport,
+                      accent: Color(0xFF607D8B),
+                    ),
+                  if (auth.can('activity_logs.view'))
+                    const _FeatureItem(
+                      icon: Icons.history_outlined,
+                      label: 'Activity Logs',
+                      path: AppRouter.activityLogList,
+                      accent: Color(0xFF795548),
+                    ),
                 ],
               ),
+
               const SizedBox(height: 28),
+
+              // ── Integrations ─────────────────────────────
               _FeatureSection(
                 title: 'Integrations',
                 subtitle: 'SMS, WhatsApp & mobile money status',
@@ -399,7 +450,6 @@ class _GreetingHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Avatar
           Container(
             width: 48,
             height: 48,
@@ -443,6 +493,35 @@ class _GreetingHeader extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+
+                if (user.branchName != null &&
+                    (user.branchName as String).trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.location_on_outlined,
+                          size: 13,
+                          color: scheme.onPrimaryContainer.withOpacity(0.72),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            user.branchName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: textTheme.labelSmall?.copyWith(
+                              color: scheme.onPrimaryContainer.withOpacity(
+                                0.78,
+                              ),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),
@@ -474,6 +553,9 @@ class _FeatureSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
+
+    // Don't render sections where all items were filtered out by RBAC.
+    if (items.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -605,6 +687,7 @@ class _FeatureItem {
   final String label;
   final String path;
   final Color accent;
+
   const _FeatureItem({
     required this.icon,
     required this.label,

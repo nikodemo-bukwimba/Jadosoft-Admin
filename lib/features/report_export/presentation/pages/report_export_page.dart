@@ -1,8 +1,24 @@
-﻿// report_export_page.dart
+﻿// lib/features/report_export/presentation/pages/report_export_page.dart
+//
+// Page is now a pure composition layer.
+// All widget logic lives in presentation/widgets/.
+// ─────────────────────────────────────────────────────────────────
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+
 import '../cubit/report_export_cubit.dart';
 import '../cubit/report_export_state.dart';
+import '../widgets/report_export_card.dart';
+import '../widgets/report_export_history_list.dart';
+import '../widgets/report_export_individual_customer_card.dart';
+import '../widgets/report_export_invoice_card.dart';
+import '../widgets/report_export_period_selector.dart';
+import '../widgets/report_export_polling_banner.dart';
+import '../widgets/report_export_section_header.dart';
+import '../widgets/report_export_visit_history_toggle.dart';
+import '../widgets/report_export_weekly_plans_card.dart';
+import '../utils/report_export_label.dart';
 
 class ReportExportPage extends StatefulWidget {
   const ReportExportPage({super.key});
@@ -12,14 +28,11 @@ class ReportExportPage extends StatefulWidget {
 }
 
 class _ReportExportPageState extends State<ReportExportPage> {
-  // Date range
   String _period = 'this_month';
   DateTimeRange? _customRange;
+  bool _includeVisits = false;
 
-  // Invoice order ID controller
   final _invoiceCtrl = TextEditingController();
-
-  // Customer individual ID controller
   final _customerCtrl = TextEditingController();
 
   @override
@@ -29,7 +42,7 @@ class _ReportExportPageState extends State<ReportExportPage> {
     super.dispose();
   }
 
-  // ── Date helpers ────────────────────────────────────────────────────────
+  // ── Date helpers ───────────────────────────────────────────────────────────
 
   (String, String) _resolvedDateRange() {
     final now = DateTime.now();
@@ -53,7 +66,8 @@ class _ReportExportPageState extends State<ReportExportPage> {
   }
 
   String _fmt(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 
   Future<void> _pickCustomRange() async {
     final picked = await showDateRangePicker(
@@ -75,201 +89,158 @@ class _ReportExportPageState extends State<ReportExportPage> {
     }
   }
 
-  // ── Build ───────────────────────────────────────────────────────────────
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final width = MediaQuery.of(context).size.width;
     final isWide = width >= 840;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Report Export'), centerTitle: false),
       body: BlocConsumer<ReportExportCubit, ReportExportState>(
-        listener: (ctx, state) {
-          // New export queued
-          if (state.activeExportId != null &&
-              state.exportHistory.isNotEmpty &&
-              state.exportHistory.first.status == 'pending') {
-            ScaffoldMessenger.of(ctx).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Export queued — ${_labelType(state.exportHistory.first.reportType)} will be ready shortly',
+        listener: _onStateChange,
+        builder: (ctx, state) => SingleChildScrollView(
+          padding: EdgeInsets.symmetric(
+            horizontal: isWide ? (width - 960) / 2 : 16,
+            vertical: 16,
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 960),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ReportExportPeriodSelector(
+                  selected: _period,
+                  customRange: _customRange,
+                  onChanged: (v) => setState(() => _period = v),
+                  onPickCustom: _pickCustomRange,
                 ),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-          // Download completed
-          if (state.lastDownloadedFileName != null) {
-            ScaffoldMessenger.of(ctx).showSnackBar(
-              SnackBar(
-                content: Text('Opening ${state.lastDownloadedFileName}…'),
-                behavior: SnackBarBehavior.floating,
-                duration: const Duration(seconds: 2),
-              ),
-            );
-          }
-          // Desktop save completed — show exact path
-          if (state.lastSavedPath != null) {
-            ScaffoldMessenger.of(ctx).showSnackBar(
-              SnackBar(
-                content: Text('Saved to ${state.lastSavedPath}'),
-                behavior: SnackBarBehavior.floating,
-                duration: const Duration(seconds: 4),
-                action: SnackBarAction(
-                  label: 'Open',
-                  onPressed: () => context
-                      .read<ReportExportCubit>()
-                      .downloadExport(state.exportHistory.first.exportId),
-                ),
-              ),
-            );
-          }
-          // Download error
-          if (state.downloadExportError != null) {
-            ScaffoldMessenger.of(ctx).showSnackBar(
-              SnackBar(
-                content: Text('Download failed: ${state.downloadExportError}'),
-                backgroundColor: Theme.of(ctx).colorScheme.error,
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-        },
-        builder: (ctx, state) {
-          return SingleChildScrollView(
-            padding: EdgeInsets.symmetric(
-              horizontal: isWide ? (width - 960) / 2 : 16,
-              vertical: 16,
-            ),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 960),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Period filter ──────────────────────────────────────
-                  _PeriodSelector(
-                    selected: _period,
-                    customRange: _customRange,
-                    onChanged: (v) => setState(() => _period = v),
-                    onPickCustom: _pickCustomRange,
-                  ),
-                  const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-                  // ── Polling banner ─────────────────────────────────────
-                  if (state.activeExportId != null) ...[
-                    _PollingBanner(status: state.pollingStatus),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // ── Main grid ─────────────────────────────────────────
-                  if (isWide)
-                    _WideLayout(
-                      state: state,
-                      period: _period,
-                      resolvedRange: _resolvedDateRange,
-                      invoiceCtrl: _invoiceCtrl,
-                      customerCtrl: _customerCtrl,
-                    )
-                  else
-                    _NarrowLayout(
-                      state: state,
-                      period: _period,
-                      resolvedRange: _resolvedDateRange,
-                      invoiceCtrl: _invoiceCtrl,
-                      customerCtrl: _customerCtrl,
-                    ),
-
-                  const SizedBox(height: 24),
-
-                  // ── Export history ─────────────────────────────────────
-                  if (state.exportHistory.isNotEmpty) ...[
-                    Text(
-                      'Export History',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    _ExportHistoryList(entries: state.exportHistory),
-                  ],
+                if (state.activeExportId != null) ...[
+                  ReportExportPollingBanner(status: state.pollingStatus),
+                  const SizedBox(height: 16),
                 ],
-              ),
+
+                isWide
+                    ? _WideLayout(
+                        state: state,
+                        resolvedRange: _resolvedDateRange,
+                        invoiceCtrl: _invoiceCtrl,
+                        customerCtrl: _customerCtrl,
+                        includeVisits: _includeVisits,
+                        onIncludeVisitsChanged: (v) =>
+                            setState(() => _includeVisits = v),
+                      )
+                    : _NarrowLayout(
+                        state: state,
+                        resolvedRange: _resolvedDateRange,
+                        invoiceCtrl: _invoiceCtrl,
+                        customerCtrl: _customerCtrl,
+                        includeVisits: _includeVisits,
+                        onIncludeVisitsChanged: (v) =>
+                            setState(() => _includeVisits = v),
+                      ),
+
+                const SizedBox(height: 24),
+
+                if (state.exportHistory.isNotEmpty) ...[
+                  Text(
+                    'Export History',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  ReportExportHistoryList(entries: state.exportHistory),
+                ],
+              ],
             ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// ── Period selector ─────────────────────────────────────────────────────────
-
-class _PeriodSelector extends StatelessWidget {
-  final String selected;
-  final DateTimeRange? customRange;
-  final ValueChanged<String> onChanged;
-  final VoidCallback onPickCustom;
-
-  const _PeriodSelector({
-    required this.selected,
-    required this.customRange,
-    required this.onChanged,
-    required this.onPickCustom,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final periods = [
-      ('today', 'Today'),
-      ('this_week', 'This Week'),
-      ('this_month', 'This Month'),
-      (
-        'custom',
-        customRange != null
-            ? '${_d(customRange!.start)} – ${_d(customRange!.end)}'
-            : 'Custom Range',
-      ),
-    ];
-    return Wrap(
-      spacing: 8,
-      children: [
-        ...periods.map(
-          (p) => ChoiceChip(
-            label: Text(p.$2),
-            selected: selected == p.$1,
-            onSelected: (_) {
-              if (p.$1 == 'custom') {
-                onPickCustom();
-              } else {
-                onChanged(p.$1);
-              }
-            },
           ),
         ),
-      ],
+      ),
     );
   }
 
-  String _d(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+  // ── Listener ───────────────────────────────────────────────────────────────
+
+  void _onStateChange(BuildContext ctx, ReportExportState state) {
+    void snack(String msg, {Color? bg, SnackBarAction? action}) =>
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: bg,
+            behavior: SnackBarBehavior.floating,
+            action: action,
+          ),
+        );
+
+    if (state.activeExportId != null &&
+        state.exportHistory.isNotEmpty &&
+        state.exportHistory.first.status == 'pending') {
+      snack(
+        'Export queued — '
+        '${reportExportLabel(state.exportHistory.first.reportType)} '
+        'will be ready shortly',
+      );
+    }
+    if (state.lastDownloadedFileName != null) {
+      snack('Opening ${state.lastDownloadedFileName}…');
+    }
+    if (state.lastSavedPath != null) {
+      snack(
+        'Saved to ${state.lastSavedPath}',
+        action: SnackBarAction(
+          label: 'Open',
+          onPressed: () => ctx.read<ReportExportCubit>().downloadExport(
+            state.exportHistory.first.exportId,
+          ),
+        ),
+      );
+    }
+    if (state.downloadExportError != null) {
+      snack(
+        'Download failed: ${state.downloadExportError}',
+        bg: Theme.of(ctx).colorScheme.error,
+      );
+    }
+    if (state.customerListError != null) {
+      snack(
+        'Customer export failed: ${state.customerListError}',
+        bg: Theme.of(ctx).colorScheme.error,
+      );
+    }
+    if (state.weeklyPlansError != null) {
+      snack(
+        'Weekly plans export failed: ${state.weeklyPlansError}',
+        bg: Theme.of(ctx).colorScheme.error,
+      );
+    }
+    if (state.productListError != null) {
+      snack(
+        'Product export failed: ${state.productListError}',
+        bg: Theme.of(ctx).colorScheme.error,
+      );
+    }
+  }
 }
 
-// ── Wide layout (2 columns) ─────────────────────────────────────────────────
+// ── Wide layout (≥840 px) ──────────────────────────────────────────────────
 
 class _WideLayout extends StatelessWidget {
   final ReportExportState state;
-  final String period;
   final (String, String) Function() resolvedRange;
   final TextEditingController invoiceCtrl;
   final TextEditingController customerCtrl;
+  final bool includeVisits;
+  final ValueChanged<bool> onIncludeVisitsChanged;
 
   const _WideLayout({
     required this.state,
-    required this.period,
     required this.resolvedRange,
     required this.invoiceCtrl,
     required this.customerCtrl,
+    required this.includeVisits,
+    required this.onIncludeVisitsChanged,
   });
 
   @override
@@ -277,15 +248,16 @@ class _WideLayout extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // ── Left ──────────────────────────────────────────────────
         Expanded(
           child: Column(
             children: [
-              _SectionHeader(
+              const ReportExportSectionHeader(
                 title: 'Marketing Reports',
                 icon: Icons.campaign_outlined,
               ),
               const SizedBox(height: 8),
-              _ExportCard(
+              ReportExportCard(
                 title: 'Marketing Summary',
                 description:
                     'Visits, officer performance, plan compliance, daily reports',
@@ -303,41 +275,59 @@ class _WideLayout extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 8),
-              _SectionHeader(
+              const ReportExportSectionHeader(
                 title: 'Customer Reports',
                 icon: Icons.people_outline,
               ),
               const SizedBox(height: 8),
-              _ExportCard(
+              ReportExportCard(
                 title: 'Customer List',
                 description:
-                    'All customer profiles — business, owner, contact, address, GPS, assigned officer',
+                    'All customer profiles — business, contact, address, GPS, officer',
                 icon: Icons.list_alt,
                 color: Colors.indigo,
                 isLoading: state.isCustomerListLoading,
                 supportsExcel: true,
-                onExport: (fmt) => context
-                    .read<ReportExportCubit>()
-                    .exportCustomerList(format: fmt),
+                extra: ReportExportVisitHistoryToggle(
+                  value: includeVisits,
+                  onChanged: onIncludeVisitsChanged,
+                ),
+                onExport: (fmt) =>
+                    context.read<ReportExportCubit>().exportCustomerList(
+                      format: fmt,
+                      includeVisits: includeVisits,
+                    ),
               ),
               const SizedBox(height: 8),
-              _IndividualCustomerCard(
+              ReportExportIndividualCustomerCard(
                 ctrl: customerCtrl,
                 isLoading: state.isCustomerIndividualLoading,
+                includeVisits: includeVisits,
+                onIncludeVisitsChanged: onIncludeVisitsChanged,
+              ),
+              const SizedBox(height: 8),
+              const ReportExportSectionHeader(
+                title: 'Field Operations',
+                icon: Icons.map_outlined,
+              ),
+              const SizedBox(height: 8),
+              ReportExportWeeklyPlansCard(
+                isLoading: state.isWeeklyPlansLoading,
               ),
             ],
           ),
         ),
         const SizedBox(width: 16),
+        // ── Right ─────────────────────────────────────────────────
         Expanded(
           child: Column(
             children: [
-              _SectionHeader(
+              const ReportExportSectionHeader(
                 title: 'Sales Reports',
                 icon: Icons.point_of_sale_outlined,
               ),
               const SizedBox(height: 8),
-              _ExportCard(
+              ReportExportCard(
                 title: 'Sales Summary',
                 description:
                     'Orders by status, revenue, average order value, payments',
@@ -355,10 +345,10 @@ class _WideLayout extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 8),
-              _ExportCard(
+              ReportExportCard(
                 title: 'Product List',
                 description:
-                    'All products with name, category, price, availability and status',
+                    'All products — name, description, pack size, price, quantity',
                 icon: Icons.medication_outlined,
                 color: Colors.orange,
                 isLoading: state.isProductListLoading,
@@ -368,12 +358,12 @@ class _WideLayout extends StatelessWidget {
                     .exportProductList(format: fmt),
               ),
               const SizedBox(height: 8),
-              _SectionHeader(
+              const ReportExportSectionHeader(
                 title: 'Invoice',
                 icon: Icons.receipt_long_outlined,
               ),
               const SizedBox(height: 8),
-              _InvoiceCard(
+              ReportExportInvoiceCard(
                 ctrl: invoiceCtrl,
                 isLoading: state.isInvoiceLoading,
                 error: state.invoiceError,
@@ -386,21 +376,23 @@ class _WideLayout extends StatelessWidget {
   }
 }
 
-// ── Narrow layout (single column) ──────────────────────────────────────────
+// ── Narrow layout (<840 px) ────────────────────────────────────────────────
 
 class _NarrowLayout extends StatelessWidget {
   final ReportExportState state;
-  final String period;
   final (String, String) Function() resolvedRange;
   final TextEditingController invoiceCtrl;
   final TextEditingController customerCtrl;
+  final bool includeVisits;
+  final ValueChanged<bool> onIncludeVisitsChanged;
 
   const _NarrowLayout({
     required this.state,
-    required this.period,
     required this.resolvedRange,
     required this.invoiceCtrl,
     required this.customerCtrl,
+    required this.includeVisits,
+    required this.onIncludeVisitsChanged,
   });
 
   @override
@@ -408,12 +400,12 @@ class _NarrowLayout extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SectionHeader(
+        const ReportExportSectionHeader(
           title: 'Marketing Reports',
           icon: Icons.campaign_outlined,
         ),
         const SizedBox(height: 8),
-        _ExportCard(
+        ReportExportCard(
           title: 'Marketing Summary',
           description:
               'Visits, officer performance, plan compliance, daily reports',
@@ -431,12 +423,12 @@ class _NarrowLayout extends StatelessWidget {
           },
         ),
         const SizedBox(height: 16),
-        _SectionHeader(
+        const ReportExportSectionHeader(
           title: 'Sales Reports',
           icon: Icons.point_of_sale_outlined,
         ),
         const SizedBox(height: 8),
-        _ExportCard(
+        ReportExportCard(
           title: 'Sales Summary',
           description:
               'Orders by status, revenue, average order value, payments',
@@ -454,10 +446,10 @@ class _NarrowLayout extends StatelessWidget {
           },
         ),
         const SizedBox(height: 8),
-        _ExportCard(
+        ReportExportCard(
           title: 'Product List',
           description:
-              'All products with name, category, price, availability and status',
+              'All products — name, description, pack size, price, quantity',
           icon: Icons.medication_outlined,
           color: Colors.orange,
           isLoading: state.isProductListLoading,
@@ -466,518 +458,53 @@ class _NarrowLayout extends StatelessWidget {
               context.read<ReportExportCubit>().exportProductList(format: fmt),
         ),
         const SizedBox(height: 16),
-        _SectionHeader(title: 'Customer Reports', icon: Icons.people_outline),
+        const ReportExportSectionHeader(
+          title: 'Customer Reports',
+          icon: Icons.people_outline,
+        ),
         const SizedBox(height: 8),
-        _ExportCard(
+        ReportExportCard(
           title: 'Customer List',
           description:
-              'All customer profiles — business, owner, contact, address, GPS, assigned officer',
+              'All customer profiles — business, contact, address, GPS, officer',
           icon: Icons.list_alt,
           color: Colors.indigo,
           isLoading: state.isCustomerListLoading,
           supportsExcel: true,
-          onExport: (fmt) =>
-              context.read<ReportExportCubit>().exportCustomerList(format: fmt),
+          extra: ReportExportVisitHistoryToggle(
+            value: includeVisits,
+            onChanged: onIncludeVisitsChanged,
+          ),
+          onExport: (fmt) => context
+              .read<ReportExportCubit>()
+              .exportCustomerList(format: fmt, includeVisits: includeVisits),
         ),
         const SizedBox(height: 8),
-        _IndividualCustomerCard(
+        ReportExportIndividualCustomerCard(
           ctrl: customerCtrl,
           isLoading: state.isCustomerIndividualLoading,
+          includeVisits: includeVisits,
+          onIncludeVisitsChanged: onIncludeVisitsChanged,
         ),
         const SizedBox(height: 16),
-        _SectionHeader(title: 'Invoice', icon: Icons.receipt_long_outlined),
+        const ReportExportSectionHeader(
+          title: 'Field Operations',
+          icon: Icons.map_outlined,
+        ),
         const SizedBox(height: 8),
-        _InvoiceCard(
+        ReportExportWeeklyPlansCard(isLoading: state.isWeeklyPlansLoading),
+        const SizedBox(height: 16),
+        const ReportExportSectionHeader(
+          title: 'Invoice',
+          icon: Icons.receipt_long_outlined,
+        ),
+        const SizedBox(height: 8),
+        ReportExportInvoiceCard(
           ctrl: invoiceCtrl,
           isLoading: state.isInvoiceLoading,
           error: state.invoiceError,
         ),
       ],
     );
-  }
-}
-
-// ── Section header ──────────────────────────────────────────────────────────
-
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  const _SectionHeader({required this.title, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: scheme.primary),
-        const SizedBox(width: 6),
-        Text(
-          title,
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            color: scheme.primary,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ── Export card ─────────────────────────────────────────────────────────────
-
-class _ExportCard extends StatelessWidget {
-  final String title;
-  final String description;
-  final IconData icon;
-  final Color color;
-  final bool isLoading;
-  final bool supportsExcel;
-  final void Function(String format) onExport;
-
-  const _ExportCard({
-    required this.title,
-    required this.description,
-    required this.icon,
-    required this.color,
-    required this.isLoading,
-    required this.supportsExcel,
-    required this.onExport,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: color, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        description,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            if (isLoading)
-              const Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            else
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => onExport('pdf'),
-                      icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
-                      label: const Text('PDF'),
-                    ),
-                  ),
-                  if (supportsExcel) ...[
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FilledButton.tonalIcon(
-                        onPressed: () => onExport('excel'),
-                        icon: const Icon(Icons.table_chart_outlined, size: 16),
-                        label: const Text('Excel'),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Individual customer card ────────────────────────────────────────────────
-
-class _IndividualCustomerCard extends StatelessWidget {
-  final TextEditingController ctrl;
-  final bool isLoading;
-  const _IndividualCustomerCard({required this.ctrl, required this.isLoading});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.indigo.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.person_outline,
-                    color: Colors.indigo,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Individual Customer Profile',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        'Full profile + visit history for one customer',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ctrl,
-              decoration: const InputDecoration(
-                labelText: 'Customer ID',
-                hintText: 'e.g. cust-001',
-                prefixIcon: Icon(Icons.search),
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            if (isLoading)
-              const Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            else
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: ctrl.text.trim().isEmpty
-                          ? null
-                          : () => context
-                                .read<ReportExportCubit>()
-                                .exportCustomerIndividual(
-                                  customerId: ctrl.text.trim(),
-                                  format: 'pdf',
-                                ),
-                      icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
-                      label: const Text('PDF'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton.tonalIcon(
-                      onPressed: ctrl.text.trim().isEmpty
-                          ? null
-                          : () => context
-                                .read<ReportExportCubit>()
-                                .exportCustomerIndividual(
-                                  customerId: ctrl.text.trim(),
-                                  format: 'excel',
-                                ),
-                      icon: const Icon(Icons.table_chart_outlined, size: 16),
-                      label: const Text('Excel'),
-                    ),
-                  ),
-                ],
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Invoice card ─────────────────────────────────────────────────────────────
-
-class _InvoiceCard extends StatelessWidget {
-  final TextEditingController ctrl;
-  final bool isLoading;
-  final String? error;
-  const _InvoiceCard({required this.ctrl, required this.isLoading, this.error});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.purple.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.receipt_long_outlined,
-                    color: Colors.purple,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Generate Invoice',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        'PDF invoice per order — includes items, total, payment status',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ctrl,
-              decoration: InputDecoration(
-                labelText: 'Order ID',
-                hintText: 'e.g. ord-001',
-                prefixIcon: const Icon(Icons.search),
-                isDense: true,
-                border: const OutlineInputBorder(),
-                errorText: error,
-              ),
-            ),
-            const SizedBox(height: 10),
-            if (isLoading)
-              const Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            else
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: ctrl.text.trim().isEmpty
-                      ? null
-                      : () => context.read<ReportExportCubit>().exportInvoice(
-                          orderId: ctrl.text.trim(),
-                        ),
-                  icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
-                  label: const Text('Generate Invoice PDF'),
-                  style: FilledButton.styleFrom(backgroundColor: Colors.purple),
-                ),
-              ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline,
-                    size: 14,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Invoice is auto-created when an order is confirmed. '
-                      'Enter order ID to download the PDF.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Polling banner ──────────────────────────────────────────────────────────
-
-class _PollingBanner extends StatelessWidget {
-  final dynamic status;
-  const _PollingBanner({this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final progress = (status?.progress as int?) ?? 0;
-    final label = status?.status == 'processing'
-        ? 'Preparing export… $progress%'
-        : 'Export queued…';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: scheme.primaryContainer,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-          const SizedBox(width: 12),
-          Expanded(child: Text(label)),
-          if (status?.status == 'processing')
-            SizedBox(
-              width: 80,
-              child: LinearProgressIndicator(value: progress / 100),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Export history list ─────────────────────────────────────────────────────
-
-class _ExportHistoryList extends StatelessWidget {
-  final List<ExportHistoryEntry> entries;
-  const _ExportHistoryList({required this.entries});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      child: Column(
-        children: entries.map((e) {
-          final isReady = e.status == 'ready';
-          final isFailed = e.status == 'failed';
-          return ListTile(
-            leading: Icon(
-              isReady
-                  ? Icons.check_circle_outline
-                  : isFailed
-                  ? Icons.error_outline
-                  : Icons.hourglass_empty,
-              color: isReady
-                  ? Colors.green
-                  : isFailed
-                  ? scheme.error
-                  : scheme.onSurfaceVariant,
-            ),
-            title: Text(_labelType(e.reportType)),
-            subtitle: Text(
-              '${e.format.toUpperCase()} · ${_timeAgo(e.requestedAt)}',
-            ),
-            trailing: isReady
-                ? TextButton.icon(
-                    onPressed: () => context
-                        .read<ReportExportCubit>()
-                        .downloadExport(e.exportId),
-                    icon: const Icon(Icons.download, size: 16),
-                    label: const Text('Download'),
-                  )
-                : isFailed
-                ? Text(
-                    'Failed',
-                    style: TextStyle(color: scheme.error, fontSize: 12),
-                  )
-                : const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  String _timeAgo(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
-    if (diff.inSeconds < 60) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    return '${diff.inHours}h ago';
-  }
-}
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-String _labelType(String type) {
-  switch (type) {
-    case 'marketing_summary':
-      return 'Marketing Summary';
-    case 'sales_summary':
-      return 'Sales Summary';
-    case 'customer_list':
-      return 'Customer List';
-    case 'customer_individual':
-      return 'Customer Profile';
-    case 'product_list':
-      return 'Product List';
-    case 'invoice':
-      return 'Invoice';
-    default:
-      return type;
   }
 }

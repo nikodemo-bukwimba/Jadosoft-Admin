@@ -8,7 +8,7 @@ class AppConstants {
   AppConstants._();
 
   // ── API ────────────────────────────────────────────────────
-  // static const String baseUrl = 'https://jadosoft.online/api/v1';
+  // static const String baseUrl = 'https://jadosoft.online/api/v1/';
   // static const String baseUrl = 'http://localhost:8000/api/v1/';
   static const String baseUrl = 'http://192.168.100.188:8000/api/v1/';
 

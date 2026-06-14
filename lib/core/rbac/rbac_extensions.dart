@@ -46,6 +46,7 @@ extension RbacExtensions on AuthAuthenticated {
       _primarySlug == 'staff' ||
       _primarySlug == 'viewer' ||
       _primarySlug == 'branch_manager' ||
+      _primarySlug == 'stock_keeper' ||
       // Platform staff role exact matches
       _primarySlug == 'super_admin' ||
       _primarySlug == 'support_agent' ||

@@ -1,7 +1,19 @@
-﻿import 'package:flutter/material.dart';
+﻿// lib/features/weekly_plan/presentation/widgets/weekly_plan_card.dart
+//
+// FIX: was showing item.officerId (raw actor UUID) in the title and
+// in the delete-confirm dialog. Now uses item.officerName with a
+// graceful fallback — same pattern as weekly_plan_tiles.dart.
+
+import 'package:flutter/material.dart';
 import '../../domain/entities/weekly_plan_entity.dart';
 import '../../domain/value_objects/weekly_plan_status.dart';
 import 'weekly_plan_status_badge.dart';
+
+// Reuse the same label helper that the tiles widget already uses.
+String _officerLabel(WeeklyPlanEntity item) =>
+    (item.officerName != null && item.officerName!.isNotEmpty)
+    ? item.officerName!
+    : 'Officer ID: ${item.officerId.length > 10 ? item.officerId.substring(0, 10) : item.officerId}...';
 
 class WeeklyPlanCard extends StatelessWidget {
   final WeeklyPlanEntity item;
@@ -24,15 +36,20 @@ class WeeklyPlanCard extends StatelessWidget {
       child: ListTile(
         onTap: onTap,
         title: Text(
-          item.officerId,
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+          // ← FIXED: was item.officerId
+          _officerLabel(item),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
-        subtitle: Text(item.weekStart.toString()),        trailing: Row(
+        subtitle: Text(item.weekStart.toString()),
+        trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-           WeeklyPlanStatusBadge(status: WeeklyPlanStatusX.fromString(item.status), compact: true),
+            WeeklyPlanStatusBadge(
+              status: WeeklyPlanStatusX.fromString(item.status),
+              compact: true,
+            ),
             const SizedBox(width: 8),
             IconButton(
               icon: Icon(Icons.delete_outline, color: scheme.error),
@@ -50,7 +67,10 @@ class WeeklyPlanCard extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Delete?'),
-        content: Text('Remove "${item.officerId}"? This cannot be undone.'),
+        content: Text(
+          // ← FIXED: was item.officerId
+          'Remove plan by "${_officerLabel(item)}"? This cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),

@@ -1,0 +1,1393 @@
+﻿// ================================================================
+// features_whatsapp_source.txt
+// Generated : 2026-03-25 11:36:26
+// Files     : 19
+// Usage     : Upload to Claude Project documents as reference.
+// ================================================================
+
+// === FILE: lib/features/whatsapp/data/client/whatsapp_client.dart ===
+import '../../domain/models/send_template_request.dart';
+import '../../domain/models/send_template_response.dart';
+import '../../domain/models/send_media_request.dart';
+import '../../domain/models/send_media_response.dart';
+import '../../domain/models/get_message_status_response.dart';
+
+abstract class WhatsappClient {
+  Future<SendTemplateResponse> sendTemplate(
+      String phoneNumberId, SendTemplateRequest request);
+  Future<SendMediaResponse> sendMedia(
+      String phoneNumberId, SendMediaRequest request);
+  Future<GetMessageStatusResponse> getMessageStatus(String messageId);
+}
+
+// === FILE: lib/features/whatsapp/data/client/whatsapp_client_impl.dart ===
+import 'package:dio/dio.dart';
+import '../../domain/models/send_template_request.dart';
+import '../../domain/models/send_template_response.dart';
+import '../../domain/models/send_media_request.dart';
+import '../../domain/models/send_media_response.dart';
+import '../../domain/models/get_message_status_response.dart';
+import 'whatsapp_client.dart';
+
+/// Real implementation — calls WhatsApp Business API via Laravel proxy.
+/// Swap in DI when backend is ready:
+///   sl.registerLazySingleton<WhatsappClient>(() => WhatsappClientImpl(dio: sl()));
+class WhatsappClientImpl implements WhatsappClient {
+  final Dio _dio;
+  static const int _maxRetries = 3;
+  static const int _backoffMs = 1000;
+
+  WhatsappClientImpl({required Dio dio}) : _dio = dio {
+    _dio.options.connectTimeout = const Duration(seconds: 30);
+    _dio.options.receiveTimeout = const Duration(seconds: 30);
+  }
+
+  Future<Response> _requestWithRetry(
+    Future<Response> Function() request,
+  ) async {
+    int attempt = 0;
+    while (true) {
+      try {
+        attempt++;
+        return await request();
+      } on DioException catch (e) {
+        final status = e.response?.statusCode;
+        final isRetryable = e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.receiveTimeout ||
+            e.type == DioExceptionType.connectionError ||
+            (status != null && status >= 500);
+
+        if (!isRetryable || attempt >= _maxRetries) rethrow;
+
+        final delay = _backoffMs * (1 << (attempt - 1));
+        await Future.delayed(Duration(milliseconds: delay));
+      }
+    }
+  }
+
+  @override
+  Future<SendTemplateResponse> sendTemplate(
+      String phoneNumberId, SendTemplateRequest request) async {
+    final response = await _requestWithRetry(
+      () => _dio.post('/api/whatsapp/$phoneNumberId/messages',
+          data: request.toJson()),
+    );
+    return SendTemplateResponse.fromJson(
+        response.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<SendMediaResponse> sendMedia(
+      String phoneNumberId, SendMediaRequest request) async {
+    final response = await _requestWithRetry(
+      () => _dio.post('/api/whatsapp/$phoneNumberId/media',
+          data: request.toJson()),
+    );
+    return SendMediaResponse.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<GetMessageStatusResponse> getMessageStatus(String messageId) async {
+    final response = await _requestWithRetry(
+      () => _dio.get('/api/whatsapp/messages/$messageId'),
+    );
+    return GetMessageStatusResponse.fromJson(
+        response.data as Map<String, dynamic>);
+  }
+}
+
+// === FILE: lib/features/whatsapp/data/client/whatsapp_mock_client.dart ===
+import '../../domain/models/send_template_request.dart';
+import '../../domain/models/send_template_response.dart';
+import '../../domain/models/send_media_request.dart';
+import '../../domain/models/send_media_response.dart';
+import '../../domain/models/get_message_status_response.dart';
+import 'whatsapp_client.dart';
+
+/// Mock implementation — returns realistic fake data.
+/// Active in DI during development. No network calls made.
+/// To go live: replace with WhatsappClientImpl in injection_container.dart.
+class WhatsappMockClient implements WhatsappClient {
+  @override
+  Future<SendTemplateResponse> sendTemplate(
+      String phoneNumberId, SendTemplateRequest request) async {
+    await Future.delayed(const Duration(milliseconds: 700));
+    return SendTemplateResponse(
+      messageId: 'mock-wa-tpl-${DateTime.now().millisecondsSinceEpoch}',
+      status: 'sent',
+    );
+  }
+
+  @override
+  Future<SendMediaResponse> sendMedia(
+      String phoneNumberId, SendMediaRequest request) async {
+    await Future.delayed(const Duration(milliseconds: 800));
+    return SendMediaResponse(
+      messageId: 'mock-wa-media-${DateTime.now().millisecondsSinceEpoch}',
+      status: 'sent',
+    );
+  }
+
+  @override
+  Future<GetMessageStatusResponse> getMessageStatus(String messageId) async {
+    await Future.delayed(const Duration(milliseconds: 400));
+    return GetMessageStatusResponse(
+      messageId: messageId,
+      status: 'delivered',
+      timestamp: DateTime.now().subtract(const Duration(seconds: 20)),
+    );
+  }
+}
+
+// === FILE: lib/features/whatsapp/domain/models/get_message_status_response.dart ===
+class GetMessageStatusResponse {
+  final String messageId;
+  final String status;
+  final DateTime timestamp;
+
+  const GetMessageStatusResponse({
+    required this.messageId,
+    required this.status,
+    required this.timestamp,
+  });
+
+  factory GetMessageStatusResponse.fromJson(Map<String, dynamic> json) {
+    return GetMessageStatusResponse(
+      messageId: json['message_id'] as String,
+      status: json['status'] as String,
+      timestamp: DateTime.parse(json['timestamp'] as String),
+    );
+  }
+}
+
+
+// === FILE: lib/features/whatsapp/domain/models/message_delivered_webhook_payload.dart ===
+class MessageDeliveredWebhookPayload {
+  final String event;
+  final String messageId;
+  final DateTime deliveredAt;
+
+  const MessageDeliveredWebhookPayload({
+    required this.event,
+    required this.messageId,
+    required this.deliveredAt,
+  });
+
+  factory MessageDeliveredWebhookPayload.fromJson(Map<String, dynamic> json) {
+    return MessageDeliveredWebhookPayload(
+      event: json['event'] as String,
+      messageId: json['message_id'] as String,
+      deliveredAt: DateTime.parse(json['delivered_at'] as String),
+    );
+  }
+}
+
+
+// === FILE: lib/features/whatsapp/domain/models/message_failed_webhook_payload.dart ===
+class MessageFailedWebhookPayload {
+  final String event;
+  final String messageId;
+  final String errorCode;
+  final String errorMessage;
+
+  const MessageFailedWebhookPayload({
+    required this.event,
+    required this.messageId,
+    required this.errorCode,
+    required this.errorMessage,
+  });
+
+  factory MessageFailedWebhookPayload.fromJson(Map<String, dynamic> json) {
+    return MessageFailedWebhookPayload(
+      event: json['event'] as String,
+      messageId: json['message_id'] as String,
+      errorCode: json['error_code'] as String,
+      errorMessage: json['error_message'] as String,
+    );
+  }
+}
+
+
+// === FILE: lib/features/whatsapp/domain/models/message_read_webhook_payload.dart ===
+class MessageReadWebhookPayload {
+  final String event;
+  final String messageId;
+  final DateTime readAt;
+
+  const MessageReadWebhookPayload({
+    required this.event,
+    required this.messageId,
+    required this.readAt,
+  });
+
+  factory MessageReadWebhookPayload.fromJson(Map<String, dynamic> json) {
+    return MessageReadWebhookPayload(
+      event: json['event'] as String,
+      messageId: json['message_id'] as String,
+      readAt: DateTime.parse(json['read_at'] as String),
+    );
+  }
+}
+
+
+// === FILE: lib/features/whatsapp/domain/models/message_sent_webhook_payload.dart ===
+class MessageSentWebhookPayload {
+  final String event;
+  final String messageId;
+  final String to;
+  final DateTime sentAt;
+
+  const MessageSentWebhookPayload({
+    required this.event,
+    required this.messageId,
+    required this.to,
+    required this.sentAt,
+  });
+
+  factory MessageSentWebhookPayload.fromJson(Map<String, dynamic> json) {
+    return MessageSentWebhookPayload(
+      event: json['event'] as String,
+      messageId: json['message_id'] as String,
+      to: json['to'] as String,
+      sentAt: DateTime.parse(json['sent_at'] as String),
+    );
+  }
+}
+
+
+// === FILE: lib/features/whatsapp/domain/models/send_media_request.dart ===
+class SendMediaRequest {
+  final String to;
+  final String mediaType;
+  final String mediaUrl;
+  final String? caption;
+
+  const SendMediaRequest({
+    required this.to,
+    required this.mediaType,
+    required this.mediaUrl,
+    this.caption,
+  });
+
+  Map<String, dynamic> toJson() => {
+      'to': to,
+      'media_type': mediaType,
+      'media_url': mediaUrl,
+      'caption': caption,
+  };
+}
+
+
+// === FILE: lib/features/whatsapp/domain/models/send_media_response.dart ===
+class SendMediaResponse {
+  final String messageId;
+  final String status;
+
+  const SendMediaResponse({
+    required this.messageId,
+    required this.status,
+  });
+
+  factory SendMediaResponse.fromJson(Map<String, dynamic> json) {
+    return SendMediaResponse(
+      messageId: json['message_id'] as String,
+      status: json['status'] as String,
+    );
+  }
+}
+
+
+// === FILE: lib/features/whatsapp/domain/models/send_template_request.dart ===
+class SendTemplateRequest {
+  final String to;
+  final String templateName;
+  final String languageCode;
+  final List<Map<String, dynamic>>? components;
+
+  const SendTemplateRequest({
+    required this.to,
+    required this.templateName,
+    required this.languageCode,
+    this.components,
+  });
+
+  Map<String, dynamic> toJson() => {
+      'to': to,
+      'template_name': templateName,
+      'language_code': languageCode,
+      'components': components,
+  };
+}
+
+
+// === FILE: lib/features/whatsapp/domain/models/send_template_response.dart ===
+class SendTemplateResponse {
+  final String messageId;
+  final String status;
+
+  const SendTemplateResponse({
+    required this.messageId,
+    required this.status,
+  });
+
+  factory SendTemplateResponse.fromJson(Map<String, dynamic> json) {
+    return SendTemplateResponse(
+      messageId: json['message_id'] as String,
+      status: json['status'] as String,
+    );
+  }
+}
+
+
+// === FILE: lib/features/whatsapp/domain/services/whatsapp_service.dart ===
+import 'package:dartz/dartz.dart';
+import 'package:dio/dio.dart';
+import '../../../../core/error/failures.dart';
+import '../../data/client/whatsapp_client.dart';
+import '../models/send_template_response.dart';
+import '../models/send_template_request.dart';
+import '../models/send_media_response.dart';
+import '../models/send_media_request.dart';
+import '../models/get_message_status_response.dart';
+
+class WhatsappService {
+  final WhatsappClient _client;
+
+  WhatsappService({required WhatsappClient client}) : _client = client;
+
+  Future<Either<Failure, SendTemplateResponse>> sendTemplate(
+      String phoneNumberId, SendTemplateRequest request) async {
+    try {
+      final result = await _client.sendTemplate(phoneNumberId, request);
+      return Right(result);
+    } on DioException catch (e) {
+      return Left(ServerFailure(e.response?.data?.toString() ?? e.message ?? 'Unknown error'));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  Future<Either<Failure, SendMediaResponse>> sendMedia(
+      String phoneNumberId, SendMediaRequest request) async {
+    try {
+      final result = await _client.sendMedia(phoneNumberId, request);
+      return Right(result);
+    } on DioException catch (e) {
+      return Left(ServerFailure(e.response?.data?.toString() ?? e.message ?? 'Unknown error'));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  Future<Either<Failure, GetMessageStatusResponse>> getMessageStatus(
+      String messageId) async {
+    try {
+      final result = await _client.getMessageStatus(messageId);
+      return Right(result);
+    } on DioException catch (e) {
+      return Left(ServerFailure(e.response?.data?.toString() ?? e.message ?? 'Unknown error'));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+}
+
+// === FILE: lib/features/whatsapp/domain/services/whatsapp_webhook_handler.dart ===
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../models/message_sent_webhook_payload.dart';
+import '../models/message_delivered_webhook_payload.dart';
+import '../models/message_read_webhook_payload.dart';
+import '../models/message_failed_webhook_payload.dart';
+
+class WhatsappWebhookHandler {
+  WhatsappWebhookHandler();
+
+  /// Routes incoming webhook to the appropriate handler by event type.
+  Future<Either<Failure, void>> handle(Map<String, dynamic> data) async {
+    try {
+      final event = data['event'] as String?;
+      if (event == null) {
+        return Left(ValidationFailure('Missing event field in webhook payload'));
+      }
+
+      switch (event) {
+      case 'messages.sent':
+        final payload = MessageSentWebhookPayload.fromJson(data);
+        await _handleMessageSent(payload);
+        break;
+      case 'messages.delivered':
+        final payload = MessageDeliveredWebhookPayload.fromJson(data);
+        await _handleMessageDelivered(payload);
+        break;
+      case 'messages.read':
+        final payload = MessageReadWebhookPayload.fromJson(data);
+        await _handleMessageRead(payload);
+        break;
+      case 'messages.failed':
+        final payload = MessageFailedWebhookPayload.fromJson(data);
+        await _handleMessageFailed(payload);
+        break;
+        default:
+          return Left(ValidationFailure('Unknown webhook event: ' + event));
+      }
+
+      return const Right(null);
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  Future<void> _handleMessageSent(MessageSentWebhookPayload payload) async {
+    // TODO: implement handler for messages.sent
+  }
+  Future<void> _handleMessageDelivered(MessageDeliveredWebhookPayload payload) async {
+    // TODO: implement handler for messages.delivered
+  }
+  Future<void> _handleMessageRead(MessageReadWebhookPayload payload) async {
+    // TODO: implement handler for messages.read
+  }
+  Future<void> _handleMessageFailed(MessageFailedWebhookPayload payload) async {
+    // TODO: implement handler for messages.failed
+  }
+}
+
+
+// === FILE: lib/features/whatsapp/presentation/cubit/whatsapp_cubit.dart ===
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../domain/services/whatsapp_service.dart';
+import 'whatsapp_state.dart';
+import '../../domain/models/send_template_request.dart';
+import '../../domain/models/send_media_request.dart';
+
+class WhatsappCubit extends Cubit<WhatsappState> {
+  final WhatsappService _service;
+
+  WhatsappCubit({required WhatsappService service})
+      : _service = service,
+        super(const WhatsappState());
+
+  Future<void> sendTemplate(
+      String phoneNumberId, SendTemplateRequest request) async {
+    emit(state.copyWith(
+        isSendTemplateLoading: true,
+        sendTemplateError: null,
+        lastSentMessageId: null));
+    final result = await _service.sendTemplate(phoneNumberId, request);
+    result.fold(
+      (failure) => emit(state.copyWith(
+          isSendTemplateLoading: false,
+          sendTemplateError: failure.toString())),
+      (response) => emit(state.copyWith(
+        isSendTemplateLoading: false,
+        lastSentMessageId: response.messageId,
+        lastSyncAt: DateTime.now(),
+      )),
+    );
+  }
+
+  Future<void> sendMedia(
+      String phoneNumberId, SendMediaRequest request) async {
+    emit(state.copyWith(
+        isSendMediaLoading: true,
+        sendMediaError: null,
+        lastSentMediaId: null));
+    final result = await _service.sendMedia(phoneNumberId, request);
+    result.fold(
+      (failure) => emit(state.copyWith(
+          isSendMediaLoading: false, sendMediaError: failure.toString())),
+      (response) => emit(state.copyWith(
+        isSendMediaLoading: false,
+        lastSentMediaId: response.messageId,
+        lastSyncAt: DateTime.now(),
+      )),
+    );
+  }
+
+  Future<void> getMessageStatus(String messageId) async {
+    emit(state.copyWith(
+        isGetMessageStatusLoading: true, getMessageStatusError: null));
+    final result = await _service.getMessageStatus(messageId);
+    result.fold(
+      (failure) => emit(state.copyWith(
+          isGetMessageStatusLoading: false,
+          getMessageStatusError: failure.toString())),
+      (response) => emit(state.copyWith(
+        isGetMessageStatusLoading: false,
+        getMessageStatusResult: response,
+        lastSyncAt: DateTime.now(),
+      )),
+    );
+  }
+}
+
+// === FILE: lib/features/whatsapp/presentation/cubit/whatsapp_state.dart ===
+import 'package:equatable/equatable.dart';
+import '../../domain/models/get_message_status_response.dart';
+
+class WhatsappState extends Equatable {
+  final bool isLoading;
+  final String? errorMessage;
+  final DateTime? lastSyncAt;
+  final bool isSendTemplateLoading;
+  final String? sendTemplateError;
+  final String? lastSentMessageId;
+  final bool isSendMediaLoading;
+  final String? sendMediaError;
+  final String? lastSentMediaId;
+  final bool isGetMessageStatusLoading;
+  final String? getMessageStatusError;
+  final GetMessageStatusResponse? getMessageStatusResult;
+
+  const WhatsappState({
+    this.isLoading = false,
+    this.errorMessage,
+    this.lastSyncAt,
+    this.isSendTemplateLoading = false,
+    this.sendTemplateError,
+    this.lastSentMessageId,
+    this.isSendMediaLoading = false,
+    this.sendMediaError,
+    this.lastSentMediaId,
+    this.isGetMessageStatusLoading = false,
+    this.getMessageStatusError,
+    this.getMessageStatusResult,
+  });
+
+  WhatsappState copyWith({
+    bool? isLoading,
+    String? errorMessage,
+    DateTime? lastSyncAt,
+    bool? isSendTemplateLoading,
+    String? sendTemplateError,
+    String? lastSentMessageId,
+    bool? isSendMediaLoading,
+    String? sendMediaError,
+    String? lastSentMediaId,
+    bool? isGetMessageStatusLoading,
+    String? getMessageStatusError,
+    GetMessageStatusResponse? getMessageStatusResult,
+  }) {
+    return WhatsappState(
+      isLoading: isLoading ?? this.isLoading,
+      errorMessage: errorMessage ?? this.errorMessage,
+      lastSyncAt: lastSyncAt ?? this.lastSyncAt,
+      isSendTemplateLoading:
+          isSendTemplateLoading ?? this.isSendTemplateLoading,
+      sendTemplateError: sendTemplateError ?? this.sendTemplateError,
+      lastSentMessageId: lastSentMessageId ?? this.lastSentMessageId,
+      isSendMediaLoading: isSendMediaLoading ?? this.isSendMediaLoading,
+      sendMediaError: sendMediaError ?? this.sendMediaError,
+      lastSentMediaId: lastSentMediaId ?? this.lastSentMediaId,
+      isGetMessageStatusLoading:
+          isGetMessageStatusLoading ?? this.isGetMessageStatusLoading,
+      getMessageStatusError:
+          getMessageStatusError ?? this.getMessageStatusError,
+      getMessageStatusResult:
+          getMessageStatusResult ?? this.getMessageStatusResult,
+    );
+  }
+
+  @override
+  List<Object?> get props => [
+        isLoading,
+        errorMessage,
+        lastSyncAt,
+        isSendTemplateLoading,
+        sendTemplateError,
+        lastSentMessageId,
+        isSendMediaLoading,
+        sendMediaError,
+        lastSentMediaId,
+        isGetMessageStatusLoading,
+        getMessageStatusError,
+        getMessageStatusResult,
+      ];
+}
+
+// === FILE: lib/features/whatsapp/presentation/pages/whatsapp_page.dart ===
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../cubit/whatsapp_cubit.dart';
+import '../cubit/whatsapp_state.dart';
+import '../widgets/whatsapp_sync_status.dart';
+import '../../domain/models/send_template_request.dart';
+import '../../domain/models/send_media_request.dart';
+
+class WhatsappPage extends StatefulWidget {
+  const WhatsappPage({super.key});
+
+  @override
+  State<WhatsappPage> createState() => _WhatsappPageState();
+}
+
+class _WhatsappPageState extends State<WhatsappPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  // Template form
+  final _templateFormKey = GlobalKey<FormState>();
+  final _tplPhoneNumberIdController = TextEditingController();
+  final _tplToController = TextEditingController();
+  final _tplNameController = TextEditingController();
+  final _tplLangController = TextEditingController(text: 'en');
+
+  // Media form
+  final _mediaFormKey = GlobalKey<FormState>();
+  final _mediaPhoneNumberIdController = TextEditingController();
+  final _mediaToController = TextEditingController();
+  final _mediaUrlController = TextEditingController();
+  final _mediaCaptionController = TextEditingController();
+  String _selectedMediaType = 'image';
+
+  // Status form
+  final _statusFormKey = GlobalKey<FormState>();
+  final _msgIdController = TextEditingController();
+  String? _lastSentMessageId;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _tplPhoneNumberIdController.dispose();
+    _tplToController.dispose();
+    _tplNameController.dispose();
+    _tplLangController.dispose();
+    _mediaPhoneNumberIdController.dispose();
+    _mediaToController.dispose();
+    _mediaUrlController.dispose();
+    _mediaCaptionController.dispose();
+    _msgIdController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('WhatsApp Business'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Chip(
+              avatar: const Icon(Icons.circle, size: 10, color: Colors.green),
+              label: const Text('Mock Mode'),
+              labelStyle: Theme.of(context).textTheme.labelSmall,
+              padding: EdgeInsets.zero,
+            ),
+          ),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(icon: Icon(Icons.message, size: 18), text: 'Template'),
+            Tab(icon: Icon(Icons.image, size: 18), text: 'Media'),
+            Tab(icon: Icon(Icons.track_changes, size: 18), text: 'Status'),
+          ],
+        ),
+      ),
+      body: BlocConsumer<WhatsappCubit, WhatsappState>(
+        listener: (context, state) {
+          if (!state.isSendTemplateLoading &&
+              state.sendTemplateError == null &&
+              state.lastSentMessageId != null) {
+            setState(() {
+              _lastSentMessageId = state.lastSentMessageId;
+              _msgIdController.text = state.lastSentMessageId!;
+            });
+            _showSuccess(context,
+                'Template sent — ID: ${state.lastSentMessageId}');
+          }
+          if (!state.isSendMediaLoading &&
+              state.sendMediaError == null &&
+              state.lastSentMediaId != null) {
+            setState(() {
+              _lastSentMessageId = state.lastSentMediaId;
+              _msgIdController.text = state.lastSentMediaId!;
+            });
+            _showSuccess(
+                context, 'Media sent — ID: ${state.lastSentMediaId}');
+          }
+        },
+        builder: (context, state) {
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: WhatsappSyncStatus(
+                  lastSyncAt: state.lastSyncAt,
+                  isLoading: state.isLoading,
+                ),
+              ),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildTemplateTab(context, state),
+                    _buildMediaTab(context, state),
+                    _buildStatusTab(context, state),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // ── Template Tab ────────────────────────────────────────────────────────
+  Widget _buildTemplateTab(BuildContext context, WhatsappState state) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Form(
+            key: _templateFormKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _FieldLabel('Send a pre-approved WhatsApp template message'),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _tplPhoneNumberIdController,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone Number ID *',
+                    hintText: 'Your WhatsApp Business phone number ID',
+                    prefixIcon: Icon(Icons.dialpad),
+                  ),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Phone Number ID is required'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _tplToController,
+                  decoration: const InputDecoration(
+                    labelText: 'Recipient Phone *',
+                    hintText: '+255712345678',
+                    prefixIcon: Icon(Icons.phone),
+                  ),
+                  keyboardType: TextInputType.phone,
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Recipient phone is required'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _tplNameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Template Name *',
+                    hintText: 'e.g. product_update',
+                    prefixIcon: Icon(Icons.layers),
+                  ),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Template name is required'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _tplLangController,
+                  decoration: const InputDecoration(
+                    labelText: 'Language Code *',
+                    hintText: 'en',
+                    prefixIcon: Icon(Icons.language),
+                  ),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Language code is required'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                if (state.sendTemplateError != null)
+                  _ErrorBanner(message: state.sendTemplateError!),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: state.isSendTemplateLoading
+                        ? null
+                        : () => _handleSendTemplate(context),
+                    icon: state.isSendTemplateLoading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.send),
+                    label: Text(state.isSendTemplateLoading
+                        ? 'Sending...'
+                        : 'Send Template'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Media Tab ───────────────────────────────────────────────────────────
+  Widget _buildMediaTab(BuildContext context, WhatsappState state) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Form(
+            key: _mediaFormKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _FieldLabel('Send image, document or video via WhatsApp'),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _mediaPhoneNumberIdController,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone Number ID *',
+                    hintText: 'Your WhatsApp Business phone number ID',
+                    prefixIcon: Icon(Icons.dialpad),
+                  ),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Phone Number ID is required'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _mediaToController,
+                  decoration: const InputDecoration(
+                    labelText: 'Recipient Phone *',
+                    hintText: '+255712345678',
+                    prefixIcon: Icon(Icons.phone),
+                  ),
+                  keyboardType: TextInputType.phone,
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Recipient phone is required'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _selectedMediaType,
+                  decoration: const InputDecoration(
+                    labelText: 'Media Type *',
+                    prefixIcon: Icon(Icons.perm_media),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'image', child: Text('Image')),
+                    DropdownMenuItem(
+                        value: 'document', child: Text('Document')),
+                    DropdownMenuItem(value: 'video', child: Text('Video')),
+                  ],
+                  onChanged: (v) =>
+                      setState(() => _selectedMediaType = v ?? 'image'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _mediaUrlController,
+                  decoration: const InputDecoration(
+                    labelText: 'Media URL *',
+                    hintText: 'https://example.com/file.jpg',
+                    prefixIcon: Icon(Icons.link),
+                  ),
+                  keyboardType: TextInputType.url,
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Media URL is required'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _mediaCaptionController,
+                  decoration: const InputDecoration(
+                    labelText: 'Caption (optional)',
+                    hintText: 'Add a caption...',
+                    prefixIcon: Icon(Icons.closed_caption),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (state.sendMediaError != null)
+                  _ErrorBanner(message: state.sendMediaError!),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: state.isSendMediaLoading
+                        ? null
+                        : () => _handleSendMedia(context),
+                    icon: state.isSendMediaLoading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.upload),
+                    label: Text(state.isSendMediaLoading
+                        ? 'Sending...'
+                        : 'Send Media'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Status Tab ──────────────────────────────────────────────────────────
+  Widget _buildStatusTab(BuildContext context, WhatsappState state) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Form(
+                key: _statusFormKey,
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: _msgIdController,
+                      decoration: InputDecoration(
+                        labelText: 'Message ID *',
+                        hintText: 'Paste message ID here',
+                        prefixIcon: const Icon(Icons.fingerprint),
+                        suffixIcon: _lastSentMessageId != null
+                            ? Tooltip(
+                                message: 'Use last sent ID',
+                                child: IconButton(
+                                  icon: const Icon(Icons.history),
+                                  onPressed: () => setState(() =>
+                                      _msgIdController.text =
+                                          _lastSentMessageId!),
+                                ),
+                              )
+                            : null,
+                      ),
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Message ID is required'
+                          : null,
+                    ),
+                    const SizedBox(height: 16),
+                    if (state.getMessageStatusError != null)
+                      _ErrorBanner(message: state.getMessageStatusError!),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: state.isGetMessageStatusLoading
+                            ? null
+                            : () => _handleGetStatus(context),
+                        icon: state.isGetMessageStatusLoading
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.search),
+                        label: Text(state.isGetMessageStatusLoading
+                            ? 'Checking...'
+                            : 'Check Status'),
+                      ),
+                    ),
+                    if (state.getMessageStatusResult != null) ...[
+                      const SizedBox(height: 16),
+                      _MessageStatusResult(
+                          result: state.getMessageStatusResult!),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          _WebhookInfoCard(events: const [
+            _WebhookEvent(
+                event: 'messages.sent',
+                label: 'Message Sent',
+                color: Colors.blue),
+            _WebhookEvent(
+                event: 'messages.delivered',
+                label: 'Message Delivered',
+                color: Colors.green),
+            _WebhookEvent(
+                event: 'messages.read',
+                label: 'Message Read',
+                color: Colors.teal),
+            _WebhookEvent(
+                event: 'messages.failed',
+                label: 'Message Failed',
+                color: Colors.red),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  void _handleSendTemplate(BuildContext context) {
+    if (!_templateFormKey.currentState!.validate()) return;
+    context.read<WhatsappCubit>().sendTemplate(
+          _tplPhoneNumberIdController.text.trim(),
+          SendTemplateRequest(
+            to: _tplToController.text.trim(),
+            templateName: _tplNameController.text.trim(),
+            languageCode: _tplLangController.text.trim(),
+          ),
+        );
+  }
+
+  void _handleSendMedia(BuildContext context) {
+    if (!_mediaFormKey.currentState!.validate()) return;
+    context.read<WhatsappCubit>().sendMedia(
+          _mediaPhoneNumberIdController.text.trim(),
+          SendMediaRequest(
+            to: _mediaToController.text.trim(),
+            mediaType: _selectedMediaType,
+            mediaUrl: _mediaUrlController.text.trim(),
+            caption: _mediaCaptionController.text.trim().isEmpty
+                ? null
+                : _mediaCaptionController.text.trim(),
+          ),
+        );
+  }
+
+  void _handleGetStatus(BuildContext context) {
+    if (!_statusFormKey.currentState!.validate()) return;
+    context
+        .read<WhatsappCubit>()
+        .getMessageStatus(_msgIdController.text.trim());
+  }
+
+  void _showSuccess(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Row(children: [
+        const Icon(Icons.check_circle, color: Colors.white, size: 18),
+        const SizedBox(width: 8),
+        Text(message),
+      ]),
+      backgroundColor: Colors.green.shade700,
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
+}
+
+// ── Supporting widgets ─────────────────────────────────────────────────────
+
+class _FieldLabel extends StatelessWidget {
+  final String text;
+  const _FieldLabel(this.text);
+  @override
+  Widget build(BuildContext context) {
+    return Text(text,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant));
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  final String message;
+  const _ErrorBanner({required this.message});
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+          color: scheme.errorContainer,
+          borderRadius: BorderRadius.circular(8)),
+      child: Row(children: [
+        Icon(Icons.error_outline, size: 16, color: scheme.error),
+        const SizedBox(width: 8),
+        Expanded(
+            child: Text(message,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: scheme.onErrorContainer))),
+      ]),
+    );
+  }
+}
+
+class _MessageStatusResult extends StatelessWidget {
+  final dynamic result;
+  const _MessageStatusResult({required this.result});
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final statusColors = {
+      'sent': Colors.blue,
+      'delivered': Colors.green,
+      'read': Colors.teal,
+      'failed': Colors.red,
+    };
+    final statusColor =
+        statusColors[result.status] ?? scheme.onSurfaceVariant;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Result',
+            style: Theme.of(context)
+                .textTheme
+                .labelSmall
+                ?.copyWith(color: scheme.onSurfaceVariant)),
+        const SizedBox(height: 8),
+        _ResultRow(label: 'Message ID', value: result.messageId),
+        _ResultRow(
+            label: 'Status',
+            value: result.status.toUpperCase(),
+            valueColor: statusColor),
+        _ResultRow(
+            label: 'Timestamp',
+            value: result.timestamp.toString().split('.').first),
+      ]),
+    );
+  }
+}
+
+class _ResultRow extends StatelessWidget {
+  final String label;
+  final String? value;
+  final Color? valueColor;
+  const _ResultRow({required this.label, this.value, this.valueColor});
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
+          width: 100,
+          child: Text(label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color:
+                      Theme.of(context).colorScheme.onSurfaceVariant)),
+        ),
+        Expanded(
+          child: Text(value ?? '-',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(
+                      fontWeight: FontWeight.w600, color: valueColor)),
+        ),
+      ]),
+    );
+  }
+}
+
+class _WebhookEvent {
+  final String event;
+  final String label;
+  final Color color;
+  const _WebhookEvent(
+      {required this.event, required this.label, required this.color});
+}
+
+class _WebhookInfoCard extends StatelessWidget {
+  final List<_WebhookEvent> events;
+  const _WebhookInfoCard({required this.events});
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Row(children: [
+              const Icon(Icons.webhook, size: 16),
+              const SizedBox(width: 8),
+              Text('Webhook Events',
+                  style: Theme.of(context).textTheme.titleSmall),
+            ]),
+          ),
+          ...events.map((e) => ListTile(
+                leading: Icon(Icons.circle, size: 10, color: e.color),
+                title: Text(e.label,
+                    style: Theme.of(context).textTheme.bodyMedium),
+                subtitle: Text(e.event,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurfaceVariant)),
+                dense: true,
+                trailing: Chip(
+                  label: const Text('Laravel handles'),
+                  labelStyle: Theme.of(context).textTheme.labelSmall,
+                  padding: EdgeInsets.zero,
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+}
+
+// === FILE: lib/features/whatsapp/presentation/widgets/whatsapp_operation_card.dart ===
+import 'package:flutter/material.dart';
+
+class WhatsappOperationCard extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final bool isLoading;
+  final String? error;
+  final VoidCallback? onExecute;
+  final IconData icon;
+
+  const WhatsappOperationCard({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.isLoading = false,
+    this.error,
+    this.onExecute,
+    this.icon = Icons.sync,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: error != null
+                        ? scheme.errorContainer
+                        : scheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    error != null ? Icons.error_outline : icon,
+                    color: error != null ? scheme.error : scheme.primary,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: Theme.of(context).textTheme.titleSmall),
+                      if (subtitle != null)
+                        Text(
+                          subtitle!,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (isLoading)
+                  const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                else if (onExecute != null)
+                  IconButton(
+                    icon: const Icon(Icons.play_arrow),
+                    tooltip: 'Execute',
+                    onPressed: onExecute,
+                  ),
+              ],
+            ),
+            if (error != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: scheme.errorContainer,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  error!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onErrorContainer,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+// === FILE: lib/features/whatsapp/presentation/widgets/whatsapp_sync_status.dart ===
+import 'package:flutter/material.dart';
+
+class WhatsappSyncStatus extends StatelessWidget {
+  final DateTime? lastSyncAt;
+  final bool isLoading;
+
+  const WhatsappSyncStatus({
+    super.key,
+    this.lastSyncAt,
+    this.isLoading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isLoading ? scheme.primaryContainer : scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isLoading ? Icons.sync : Icons.check_circle_outline,
+            size: 16,
+            color: isLoading ? scheme.primary : scheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              isLoading
+                  ? 'Syncing...'
+                  : lastSyncAt != null
+                      ? 'Last sync: ' + _formatTime(lastSyncAt!)
+                      : 'Not synced yet',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatTime(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return dt.toIso8601String().split('T').first;
+  }
+}
+
+

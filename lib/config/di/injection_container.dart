@@ -187,9 +187,17 @@ import 'package:jadosoft_admin/features/sales_dashboard/presentation/cubit/sales
 
 // Phase 9 ? Report Export (L5)
 import 'package:jadosoft_admin/features/report_export/data/client/report_export_client.dart';
+import 'package:jadosoft_admin/features/report_export/data/client/report_export_client_impl.dart';
 import 'package:jadosoft_admin/features/report_export/domain/services/report_export_service.dart';
+import 'package:jadosoft_admin/features/report_export/domain/services/product_pdf_generator.dart';
+import 'package:jadosoft_admin/features/report_export/domain/services/product_excel_generator.dart';
 import 'package:jadosoft_admin/features/report_export/presentation/cubit/report_export_cubit.dart';
-import 'package:jadosoft_admin/features/report_export/domain/services/report_pdf_generator.dart';
+import 'package:jadosoft_admin/features/product/domain/usecases/get_products_with_promotions_usecase.dart';
+import 'package:jadosoft_admin/features/product/domain/services/client_promotion_pricing_service.dart';
+import 'package:jadosoft_admin/features/report_export/domain/services/customer_pdf_generator.dart';
+import 'package:jadosoft_admin/features/report_export/domain/services/customer_excel_generator.dart';
+import 'package:jadosoft_admin/features/report_export/domain/services/weekly_plan_pdf_generator.dart';
+import 'package:jadosoft_admin/features/report_export/domain/services/weekly_plan_excel_generator.dart';
 
 // Phase 9 ? Activity Logs (L1)
 import 'package:jadosoft_admin/features/activity_log/data/datasources/activity_log_remote_datasource.dart';
@@ -201,6 +209,12 @@ import 'package:jadosoft_admin/features/activity_log/domain/usecases/create_acti
 import 'package:jadosoft_admin/features/activity_log/domain/usecases/update_activity_log_usecase.dart';
 import 'package:jadosoft_admin/features/activity_log/domain/usecases/delete_activity_log_usecase.dart';
 import 'package:jadosoft_admin/features/activity_log/presentation/bloc/activity_log_bloc.dart';
+
+// Seq 9c — Branch Pricing (L2)
+import 'package:jadosoft_admin/features/product/data/datasources/branch_pricing_remote_datasource.dart';
+import 'package:jadosoft_admin/features/product/data/repositories/branch_pricing_repository_impl.dart';
+import 'package:jadosoft_admin/features/product/domain/repositories/branch_pricing_repository.dart';
+import 'package:jadosoft_admin/features/product/presentation/bloc/branch_pricing_bloc.dart';
 
 // Phase 10 — Inventory (L2)
 import 'package:jadosoft_admin/features/inventory/data/datasources/inventory_remote_datasource.dart';
@@ -614,6 +628,18 @@ Future<void> initDependencies() async {
     ),
   );
 
+  // Seq 9c — Branch Pricing (L2)
+// Seq 9c — Branch Pricing (L2)
+sl.registerLazySingleton<BranchPricingRemoteDataSource>(
+  () => BranchPricingApiDataSource(dio: sl<Dio>()),  // ← remove orgContext:
+);
+sl.registerLazySingleton<BranchPricingRepository>(
+  () => BranchPricingRepositoryImpl(remote: sl()),
+);
+sl.registerFactory<BranchPricingBloc>(
+  () => BranchPricingBloc(repository: sl()),
+);
+
   // ----------------------------------------------------------
   // Phase 6: Promotions (L3) ? domainService required
   // ----------------------------------------------------------
@@ -917,15 +943,85 @@ Future<void> initDependencies() async {
     () => SalesDashboardCubit(getProjection: sl()),
   );
 
-  // Seq 20 ? Report Export (L5)
-  //     sl.registerLazySingleton<ReportExportClient>(
-  //       () => ReportExportClientImpl(dio: sl()));
-  // sl.registerLazySingleton<ReportExportClient>(() => ReportExportMockClient());
+  // Seq 20 — Report Export (Merged & Updated)
+
+  // ── Client ────────────────────────────────────────────────────────────────────
+  sl.registerLazySingleton<ReportExportClient>(
+    () => ReportExportClientImpl(dio: sl<Dio>()),
+  );
+
+  // ── Pricing service (used by GetProductsWithPromotionsUseCase) ───────────────
+  sl.registerLazySingleton<ClientPromotionPricingService>(
+    () => const ClientPromotionPricingService(),
+  );
+
+  // ── Product promotion usecase ────────────────────────────────────────────────
+  sl.registerLazySingleton<GetProductsWithPromotionsUseCase>(
+    () => GetProductsWithPromotionsUseCase(
+      products: sl<ProductRepository>(),
+      promotions: sl<PromotionRepository>(),
+      pricingService: sl<ClientPromotionPricingService>(),
+    ),
+  );
+
+  // ── Generators (stateless singletons) ───────────────────────────────────────
+  sl.registerLazySingleton<ProductPdfGenerator>(
+    () => const ProductPdfGenerator(),
+  );
+
+  sl.registerLazySingleton<ProductExcelGenerator>(
+    () => const ProductExcelGenerator(),
+  );
+
+  sl.registerLazySingleton<CustomerPdfGenerator>(
+    () => const CustomerPdfGenerator(),
+  );
+
+  sl.registerLazySingleton<CustomerExcelGenerator>(
+    () => const CustomerExcelGenerator(),
+  );
+
+  sl.registerLazySingleton<WeeklyPlanPdfGenerator>(
+    () => const WeeklyPlanPdfGenerator(),
+  );
+
+  sl.registerLazySingleton<WeeklyPlanExcelGenerator>(
+    () => const WeeklyPlanExcelGenerator(),
+  );
+
+  // ── Service ──────────────────────────────────────────────────────────────────
   sl.registerLazySingleton<ReportExportService>(
     () => ReportExportService(client: sl<ReportExportClient>()),
   );
+
+  // ── Cubit ────────────────────────────────────────────────────────────────────
   sl.registerFactory<ReportExportCubit>(
-    () => ReportExportCubit(service: sl<ReportExportService>()),
+    () => ReportExportCubit(
+      service: sl<ReportExportService>(),
+
+      // Product exports
+      getProductsWithPromotions: sl<GetProductsWithPromotionsUseCase>(),
+
+      // Customer exports
+      getAllCustomers: sl<GetAllCustomerUseCase>(),
+      getCustomer: sl<GetCustomerUseCase>(),
+      getCustomerVisits: sl<GetCustomerVisitsUseCase>(),
+
+      // Weekly plan exports
+      getAllWeeklyPlans: sl<GetAllWeeklyPlanUseCase>(),
+
+      // Product generators
+      productPdfGenerator: sl<ProductPdfGenerator>(),
+      productExcelGenerator: sl<ProductExcelGenerator>(),
+
+      // Customer generators
+      customerPdfGenerator: sl<CustomerPdfGenerator>(),
+      customerExcelGenerator: sl<CustomerExcelGenerator>(),
+
+      // Weekly plan generators
+      weeklyPlanPdfGenerator: sl<WeeklyPlanPdfGenerator>(),
+      weeklyPlanExcelGenerator: sl<WeeklyPlanExcelGenerator>(),
+    ),
   );
 
   // Seq 21 — Activity Logs (L1)
