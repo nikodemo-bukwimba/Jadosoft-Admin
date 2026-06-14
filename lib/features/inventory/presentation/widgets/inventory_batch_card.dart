@@ -26,8 +26,8 @@ class InventoryBatchCard extends StatelessWidget {
           color: batch.isExpired
               ? Colors.red.shade200
               : batch.isNearExpiry
-                  ? Colors.orange.shade200
-                  : scheme.outlineVariant,
+              ? Colors.orange.shade200
+              : scheme.outlineVariant,
         ),
       ),
       child: Padding(
@@ -49,38 +49,66 @@ class InventoryBatchCard extends StatelessWidget {
   }
 
   Widget _buildHeader(
-      BuildContext context, Color statusColor, String statusLabel) {
+    BuildContext context,
+    Color statusColor,
+    String statusLabel,
+  ) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ── Product name (primary) ──
+              Text(
+                batch.productName ?? 'Unknown Product',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (batch.variantName != null &&
+                  batch.variantName!.isNotEmpty &&
+                  batch.variantName != batch.productName) ...[
+                const SizedBox(height: 2),
+                Text(
+                  batch.variantName!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              const SizedBox(height: 2),
+              // ── Batch / SKU (secondary) ──
               if (batch.batchNumber != null)
                 Text(
                   'Batch #${batch.batchNumber}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               if (batch.sku != null)
                 Text(
                   'SKU: ${batch.sku}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               if (batch.batchNumber == null && batch.sku == null)
                 Text(
                   'Batch ID: ...${batch.id.substring(batch.id.length - 8)}',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
             ],
           ),
         ),
+        const SizedBox(width: 8),
         _buildStatusChip(statusColor, statusLabel),
       ],
     );
@@ -130,14 +158,19 @@ class InventoryBatchCard extends StatelessWidget {
   }
 
   Widget _buildMetaRow(
-      BuildContext context, DateFormat fmt, ColorScheme scheme) {
+    BuildContext context,
+    DateFormat fmt,
+    ColorScheme scheme,
+  ) {
     return Wrap(
       spacing: 14,
       runSpacing: 6,
       children: [
         _InventoryMetaChip(
           icon: Icons.warehouse_outlined,
-          label: batch.warehouseName.isNotEmpty ? batch.warehouseName : 'Warehouse',
+          label: batch.warehouseName.isNotEmpty
+              ? batch.warehouseName
+              : 'Warehouse',
         ),
         if (batch.expiresAt != null)
           _InventoryMetaChip(
@@ -146,8 +179,8 @@ class InventoryBatchCard extends StatelessWidget {
             color: batch.isExpired
                 ? Colors.red.shade700
                 : batch.isNearExpiry
-                    ? Colors.orange.shade700
-                    : null,
+                ? Colors.orange.shade700
+                : null,
           ),
         if (batch.unitCost != null)
           _InventoryMetaChip(
@@ -201,8 +234,8 @@ class _InventoryStatItem extends StatelessWidget {
         Text(
           label,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );

@@ -28,7 +28,9 @@ class InventoryBatchEntity extends Equatable {
   final String warehouseId;
   final String warehouseName;
   final String productId;
+  final String? productName; // ← NEW
   final String? variantId;
+  final String? variantName; // ← NEW
   final String orgId;
   final String? batchNumber;
   final String? sku;
@@ -48,7 +50,9 @@ class InventoryBatchEntity extends Equatable {
     required this.warehouseId,
     required this.warehouseName,
     required this.productId,
+    this.productName, // ← NEW
     this.variantId,
+    this.variantName, // ← NEW
     required this.orgId,
     this.batchNumber,
     this.sku,
@@ -75,8 +79,20 @@ class InventoryBatchEntity extends Equatable {
   bool get isActive => status == 'active';
 
   @override
-  List<Object?> get props => [id, warehouseId, productId, variantId, orgId,
-        batchNumber, sku, quantityAvailable, status, expiresAt];
+  List<Object?> get props => [
+    id,
+    warehouseId,
+    productId,
+    productName,
+    variantId,
+    variantName,
+    orgId,
+    batchNumber,
+    sku,
+    quantityAvailable,
+    status,
+    expiresAt,
+  ];
 }
 
 class VariantStockEntity extends Equatable {
