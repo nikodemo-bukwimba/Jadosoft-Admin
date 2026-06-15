@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../domain/entities/message_entity.dart';
 
 class MessageBubble extends StatefulWidget {
@@ -17,8 +18,9 @@ class MessageBubble extends StatefulWidget {
   final void Function(MessageEntity message)? onForward;
   final void Function(MessageEntity message)? onEdit;
   final void Function(String messageId)? onViewReadReceipts;
+  final void Function(String replyToId)? onReplyTap;
   final void Function(String participantId, String name, String role)?
-      onPrivateReply;
+  onPrivateReply;
 
   const MessageBubble({
     super.key,
@@ -29,6 +31,7 @@ class MessageBubble extends StatefulWidget {
     this.dateSeparatorLabel,
     this.onDelete,
     this.onReply,
+    this.onReplyTap,
     this.onReact,
     this.onTogglePin,
     this.onToggleStar,
@@ -187,17 +190,16 @@ class _MessageBubbleState extends State<MessageBubble> {
     IconData icon,
     String label,
     Color color,
-  ) =>
-      PopupMenuItem(
-        value: val,
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: color),
-            const SizedBox(width: 10),
-            Text(label, style: TextStyle(color: color)),
-          ],
-        ),
-      );
+  ) => PopupMenuItem(
+    value: val,
+    child: Row(
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 10),
+        Text(label, style: TextStyle(color: color)),
+      ],
+    ),
+  );
 
   void _confirmDelete(BuildContext ctx) {
     showDialog(
@@ -225,6 +227,119 @@ class _MessageBubbleState extends State<MessageBubble> {
         ],
       ),
     );
+  }
+
+  bool _isImageUrl(String? url) {
+    if (url == null || !url.startsWith('http')) return false;
+    return url.contains('.jpg') ||
+        url.contains('.jpeg') ||
+        url.contains('.png') ||
+        url.contains('.webp');
+  }
+
+  Widget _buildReplyContent(BuildContext context, MessageEntity msg) {
+    final cs = Theme.of(context).colorScheme;
+    final content = msg.replyToContent ?? '';
+    if (_isImageUrl(content)) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.image, size: 12, color: cs.outline),
+          const SizedBox(width: 4),
+          Text(
+            '📷 Photo',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      );
+    }
+    if (content.startsWith('http') &&
+        (content.contains('.pdf') ||
+            content.contains('.doc') ||
+            content.contains('.xls') ||
+            content.contains('.csv'))) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.insert_drive_file, size: 12, color: cs.outline),
+          const SizedBox(width: 4),
+          Text(
+            '📄 Document',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      );
+    }
+    return Text(
+      content.isEmpty ? '…' : content,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: Theme.of(
+        context,
+      ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 12),
+    );
+  }
+
+  Widget _brokenImage() => Container(
+    height: 100,
+    width: double.infinity,
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: const Center(child: Icon(Icons.broken_image, size: 32)),
+  );
+
+  void _openImageViewer(BuildContext context, String url) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => _FullScreenImageViewer(url: url)));
+  }
+
+  IconData _docIcon(String? mime) {
+    if (mime == null) return Icons.insert_drive_file;
+    if (mime.contains('pdf')) return Icons.picture_as_pdf;
+    if (mime.contains('word') || mime.contains('msword'))
+      return Icons.description;
+    if (mime.contains('excel') || mime.contains('spreadsheet'))
+      return Icons.table_chart;
+    if (mime.contains('text')) return Icons.text_snippet;
+    return Icons.insert_drive_file;
+  }
+
+  String _docTypeLabel(String? mime, String? fileName) {
+    if (mime != null) {
+      if (mime.contains('pdf')) return 'PDF Document';
+      if (mime.contains('word') || mime.contains('msword'))
+        return 'Word Document';
+      if (mime.contains('excel') || mime.contains('spreadsheet'))
+        return 'Spreadsheet';
+      if (mime.contains('text/plain')) return 'Text File';
+      if (mime.contains('csv')) return 'CSV File';
+    }
+    if (fileName != null && fileName.contains('.')) {
+      return '${fileName.split('.').last.toUpperCase()} File';
+    }
+    return 'Document';
+  }
+
+  Future<void> _openDocument(BuildContext context, String url) async {
+    final uri = Uri.parse(url);
+    final canOpen = await canLaunchUrl(uri);
+    if (!context.mounted) return;
+    if (canOpen) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot open this document.')),
+      );
+    }
   }
 
   @override
@@ -265,9 +380,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
                               color: Theme.of(context).colorScheme.primary
-                                  .withValues(
-                                    alpha: _triggered ? 0.2 : 0.1,
-                                  ),
+                                  .withValues(alpha: _triggered ? 0.2 : 0.1),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
@@ -301,10 +414,8 @@ class _MessageBubbleState extends State<MessageBubble> {
     final br = BorderRadius.only(
       topLeft: const Radius.circular(16),
       topRight: const Radius.circular(16),
-      bottomLeft:
-          _isMe ? const Radius.circular(16) : const Radius.circular(4),
-      bottomRight:
-          _isMe ? const Radius.circular(4) : const Radius.circular(16),
+      bottomLeft: _isMe ? const Radius.circular(16) : const Radius.circular(4),
+      bottomRight: _isMe ? const Radius.circular(4) : const Radius.circular(16),
     );
 
     return Align(
@@ -371,41 +482,62 @@ class _MessageBubbleState extends State<MessageBubble> {
                         ),
                       ),
                     if (msg.isReply)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 6),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: cs.primary.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border(
-                            left: BorderSide(color: cs.primary, width: 3),
+                      GestureDetector(
+                        onTap: msg.replyToId != null
+                            ? () => widget.onReplyTap?.call(msg.replyToId!)
+                            : null,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
                           ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              msg.replyToSenderName ?? 'Unknown',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: cs.primary,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 11,
-                              ),
+                          decoration: BoxDecoration(
+                            color: cs.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border(
+                              left: BorderSide(color: cs.primary, width: 3),
                             ),
-                            const SizedBox(height: 1),
-                            Text(
-                              msg.replyToContent ?? '',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: cs.onSurfaceVariant,
-                                fontSize: 12,
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (_isImageUrl(msg.replyToContent))
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Image.network(
+                                      msg.replyToContent!,
+                                      width: 48,
+                                      height: 48,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          const Icon(Icons.image, size: 36),
+                                    ),
+                                  ),
+                                ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      msg.replyToSenderName ?? 'Unknown',
+                                      style: theme.textTheme.labelSmall
+                                          ?.copyWith(
+                                            color: cs.primary,
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 11,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 1),
+                                    _buildReplyContent(context, msg),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     if (msg.isPinned)
@@ -433,33 +565,132 @@ class _MessageBubbleState extends State<MessageBubble> {
                     if (msg.isImage && msg.imageUrl != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 6),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: msg.imageUrl!.startsWith('http')
-                              ? Image.network(
-                                  msg.imageUrl!,
-                                  height: 200,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const SizedBox(
-                                    height: 100,
-                                    child: Center(
-                                      child: Icon(Icons.broken_image),
-                                    ),
+                        child: GestureDetector(
+                          onTap: () => _openImageViewer(context, msg.imageUrl!),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: msg.imageUrl!.startsWith('http')
+                                ? Image.network(
+                                    msg.imageUrl!,
+                                    height: 200,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    loadingBuilder: (_, child, progress) =>
+                                        progress == null
+                                        ? child
+                                        : SizedBox(
+                                            height: 200,
+                                            child: Center(
+                                              child: CircularProgressIndicator(
+                                                value:
+                                                    progress.expectedTotalBytes !=
+                                                        null
+                                                    ? progress.cumulativeBytesLoaded /
+                                                          progress
+                                                              .expectedTotalBytes!
+                                                    : null,
+                                              ),
+                                            ),
+                                          ),
+                                    errorBuilder: (_, __, ___) =>
+                                        _brokenImage(),
+                                  )
+                                : Image.file(
+                                    File(msg.imageUrl!),
+                                    height: 200,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) =>
+                                        _brokenImage(),
                                   ),
-                                )
-                              : Image.file(
-                                  File(msg.imageUrl!),
-                                  height: 200,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const SizedBox(
-                                    height: 100,
-                                    child: Center(
-                                      child: Icon(Icons.broken_image),
-                                    ),
+                          ),
+                        ),
+                      ),
+
+                    // ── Document attachment ───────────────────────────
+                    if (msg.isDocument && msg.attachmentUrl != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: GestureDetector(
+                          onTap: () =>
+                              _openDocument(context, msg.attachmentUrl!),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: cs.secondaryContainer.withValues(
+                                alpha: 0.5,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: cs.outlineVariant.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _docIcon(msg.attachmentMime),
+                                  color: cs.secondary,
+                                  size: 32,
+                                ),
+                                const SizedBox(width: 10),
+                                Flexible(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        msg.attachmentName?.isNotEmpty == true
+                                            ? msg.attachmentName!
+                                            : 'Document',
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w600,
+                                              color: cs.onSurface,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _docTypeLabel(
+                                          msg.attachmentMime,
+                                          msg.attachmentName,
+                                        ),
+                                        style: theme.textTheme.labelSmall
+                                            ?.copyWith(
+                                              color: cs.outline,
+                                              fontSize: 10,
+                                            ),
+                                      ),
+                                    ],
                                   ),
                                 ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.download,
+                                    size: 20,
+                                    color: cs.secondary,
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 32,
+                                    minHeight: 32,
+                                  ),
+                                  tooltip: 'Download',
+                                  onPressed: () => _openDocument(
+                                    context,
+                                    msg.attachmentUrl!,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     if (msg.isVoice)
@@ -509,8 +740,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                   padding: const EdgeInsets.only(top: 2),
                   child: Wrap(
                     spacing: 4,
-                    children: _groupReactions(msg)
-                        .entries
+                    children: _groupReactions(msg).entries
                         .map(
                           (e) => GestureDetector(
                             onTap: () => widget.onReact?.call(msg.id, e.key),
@@ -523,10 +753,10 @@ class _MessageBubbleState extends State<MessageBubble> {
                                 color: cs.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: e.value.any(
-                                    (r) =>
-                                        r.userId == widget.currentUserId,
-                                  )
+                                  color:
+                                      e.value.any(
+                                        (r) => r.userId == widget.currentUserId,
+                                      )
                                       ? cs.primary
                                       : cs.outlineVariant.withValues(
                                           alpha: 0.3,
@@ -577,19 +807,17 @@ class _MessageBubbleState extends State<MessageBubble> {
       return Text.rich(
         TextSpan(
           children: spans,
-          style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-            color: cs.onSurface,
-            height: 1.3,
-          ),
+          style: Theme.of(
+            ctx,
+          ).textTheme.bodyMedium?.copyWith(color: cs.onSurface, height: 1.3),
         ),
       );
     }
     return Text(
       msg.content,
-      style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-        color: cs.onSurface,
-        height: 1.3,
-      ),
+      style: Theme.of(
+        ctx,
+      ).textTheme.bodyMedium?.copyWith(color: cs.onSurface, height: 1.3),
     );
   }
 
@@ -602,11 +830,11 @@ class _MessageBubbleState extends State<MessageBubble> {
   }
 
   Color _roleColor(String role, ColorScheme cs) => switch (role) {
-        'admin' => cs.primary,
-        'officer' => Colors.teal,
-        'customer' => Colors.orange,
-        _ => cs.outline,
-      };
+    'admin' => cs.primary,
+    'officer' => Colors.teal,
+    'customer' => Colors.orange,
+    _ => cs.outline,
+  };
 }
 
 class _VoiceNote extends StatelessWidget {
@@ -713,22 +941,82 @@ class _Receipt extends StatelessWidget {
   const _Receipt({required this.status, required this.color});
   @override
   Widget build(BuildContext ctx) => switch (status) {
-        DeliveryStatus.sending => Icon(
-            Icons.access_time,
-            size: 13,
-            color: color.outline,
+    DeliveryStatus.sending => Icon(
+      Icons.access_time,
+      size: 13,
+      color: color.outline,
+    ),
+    DeliveryStatus.sent => Icon(Icons.check, size: 13, color: color.outline),
+    DeliveryStatus.delivered => Icon(
+      Icons.done_all,
+      size: 13,
+      color: color.outline,
+    ),
+    DeliveryStatus.read => const Icon(
+      Icons.done_all,
+      size: 13,
+      color: Colors.blue,
+    ),
+  };
+}
+
+class _FullScreenImageViewer extends StatelessWidget {
+  final String url;
+  const _FullScreenImageViewer({required this.url});
+
+  Future<void> _download(BuildContext context) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download),
+            tooltip: 'Download',
+            onPressed: () => _download(context),
           ),
-        DeliveryStatus.sent =>
-          Icon(Icons.check, size: 13, color: color.outline),
-        DeliveryStatus.delivered => Icon(
-            Icons.done_all,
-            size: 13,
-            color: color.outline,
-          ),
-        DeliveryStatus.read => const Icon(
-            Icons.done_all,
-            size: 13,
-            color: Colors.blue,
-          ),
-      };
+        ],
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          minScale: 0.5,
+          maxScale: 4.0,
+          child: url.startsWith('http')
+              ? Image.network(
+                  url,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (_, child, progress) => progress == null
+                      ? child
+                      : const Center(
+                          child: CircularProgressIndicator(color: Colors.white),
+                        ),
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.broken_image,
+                    color: Colors.white,
+                    size: 64,
+                  ),
+                )
+              : Image.file(
+                  File(url),
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.broken_image,
+                    color: Colors.white,
+                    size: 64,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
 }

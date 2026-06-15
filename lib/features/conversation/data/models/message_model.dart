@@ -11,6 +11,9 @@ class MessageModel extends MessageEntity {
     required super.type,
     required super.content,
     super.imageUrl,
+    super.attachmentUrl,
+    super.attachmentName,
+    super.attachmentMime,
     required super.deliveryStatus,
     required super.sentAt,
     super.replyToId,
@@ -92,15 +95,27 @@ class MessageModel extends MessageEntity {
       replyToContent ??= replyToObj['content'] as String?;
     }
 
-    // ── Image URL ─────────────────────────────────────────────────────────
-    // Backend may return image URL in image_url, attachment.url, or
-    // attachments[0].url
+    // ── Attachments ───────────────────────────────────────────────────────
+    // Backend returns: attachments: [{ id, url, file_url, type, name, file_name, mime, mime_type }]
     String? imageUrl = j['image_url'] as String?;
-    if (imageUrl == null) {
-      final attachments = j['attachments'] as List<dynamic>?;
-      if (attachments != null && attachments.isNotEmpty) {
-        final first = attachments.first as Map<String, dynamic>?;
-        imageUrl = first?['url'] as String? ?? first?['file_url'] as String?;
+    String? attachmentUrl;
+    String? attachmentName;
+    String? attachmentMime;
+
+    final rawAttachments = j['attachments'] as List<dynamic>? ?? [];
+    if (rawAttachments.isNotEmpty) {
+      final first = rawAttachments.first as Map<String, dynamic>;
+      final aType = first['type'] as String? ?? '';
+      final aUrl =
+          first['file_url'] as String? ?? first['url'] as String? ?? '';
+      if (aType == 'image') {
+        imageUrl ??= aUrl;
+      } else if (aType == 'document') {
+        attachmentUrl = aUrl;
+        attachmentName =
+            first['name'] as String? ?? first['file_name'] as String?;
+        attachmentMime =
+            first['mime'] as String? ?? first['mime_type'] as String?;
       }
     }
 
@@ -113,6 +128,9 @@ class MessageModel extends MessageEntity {
       type: _parseType(contentType),
       content: j['content'] as String? ?? '',
       imageUrl: imageUrl,
+      attachmentUrl: attachmentUrl,
+      attachmentName: attachmentName,
+      attachmentMime: attachmentMime,
       deliveryStatus: _parseDelivery(deliveryStr),
       sentAt: sentAt,
       replyToId: replyToId,
@@ -144,6 +162,9 @@ class MessageModel extends MessageEntity {
     'type': type.name,
     'content': content,
     'image_url': imageUrl,
+    'attachment_url': attachmentUrl,
+    'attachment_name': attachmentName,
+    'attachment_mime': attachmentMime,
     'delivery_status': deliveryStatus.name,
     'sent_at': sentAt.toIso8601String(),
     'reply_to_id': replyToId,
@@ -179,6 +200,7 @@ class MessageModel extends MessageEntity {
 
   static MessageType _parseType(String? v) => switch (v) {
     'image' => MessageType.image,
+    'document' => MessageType.document,
     'system' => MessageType.system,
     'audio' || 'voice' => MessageType.voice,
     _ => MessageType.text,

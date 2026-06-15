@@ -142,6 +142,9 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     }
   }
 
+  Future<Map<String, dynamic>> uploadAttachment(String filePath) =>
+      _ds.uploadAttachment(filePath);
+
   // ── Helpers ───────────────────────────────────────────────
 
   Future<void> _reloadChat(
@@ -229,6 +232,11 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
         convId: event.conversationId,
         content: event.content,
         imageUrl: event.imageUrl,
+
+        // NEW
+        attachmentId: event.attachmentId,
+        attachmentType: event.attachmentType,
+
         replyToId: event.replyToId,
         replyToSenderName: event.replyToSenderName,
         replyToContent: event.replyToContent,

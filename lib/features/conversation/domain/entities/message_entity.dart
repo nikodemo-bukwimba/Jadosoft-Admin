@@ -1,6 +1,6 @@
 import 'package:equatable/equatable.dart';
 
-enum MessageType { text, image, system, voice }
+enum MessageType { text, image, document, system, voice }
 
 enum DeliveryStatus { sending, sent, delivered, read }
 
@@ -39,6 +39,9 @@ class MessageEntity extends Equatable {
   final MessageType type;
   final String content;
   final String? imageUrl;
+  final String? attachmentUrl;
+  final String? attachmentName;
+  final String? attachmentMime;
   final DeliveryStatus deliveryStatus;
   final DateTime sentAt;
 
@@ -80,6 +83,9 @@ class MessageEntity extends Equatable {
     required this.type,
     required this.content,
     this.imageUrl,
+    this.attachmentUrl,
+    this.attachmentName,
+    this.attachmentMime,
     required this.deliveryStatus,
     required this.sentAt,
     this.replyToId,
@@ -104,6 +110,7 @@ class MessageEntity extends Equatable {
   bool get isForwarded => forwardedFromConversationId != null;
   bool get hasMentions => mentionedUserIds.isNotEmpty;
   bool get mentionsAll => mentionedUserIds.contains('all');
+  bool get isDocument => type == MessageType.document;
 
   MessageEntity copyWith({
     String? id,
@@ -114,6 +121,9 @@ class MessageEntity extends Equatable {
     MessageType? type,
     String? content,
     String? imageUrl,
+    String? attachmentUrl,
+    String? attachmentName,
+    String? attachmentMime,
     DeliveryStatus? deliveryStatus,
     DateTime? sentAt,
     String? replyToId,
@@ -139,6 +149,9 @@ class MessageEntity extends Equatable {
       type: type ?? this.type,
       content: content ?? this.content,
       imageUrl: imageUrl ?? this.imageUrl,
+      attachmentUrl: attachmentUrl ?? this.attachmentUrl,
+      attachmentName: attachmentName ?? this.attachmentName,
+      attachmentMime: attachmentMime ?? this.attachmentMime,
       deliveryStatus: deliveryStatus ?? this.deliveryStatus,
       sentAt: sentAt ?? this.sentAt,
       replyToId: replyToId ?? this.replyToId,
@@ -169,6 +182,9 @@ class MessageEntity extends Equatable {
     type,
     content,
     imageUrl,
+    attachmentUrl,
+    attachmentName,
+    attachmentMime,
     deliveryStatus,
     sentAt,
     replyToId,

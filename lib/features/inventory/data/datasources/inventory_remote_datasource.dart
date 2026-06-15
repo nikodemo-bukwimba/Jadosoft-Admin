@@ -105,19 +105,14 @@ class InventoryRemoteDataSourceImpl implements InventoryRemoteDataSource {
     String? status,
   }) async {
     try {
-      // Always send the root org ID so the backend can expand to all branches.
-      // OrgContext.requireRootOrgId() already resolves branch → root.
-      final effectiveOrgId = _orgContext
-          .requireRootOrgId(); // ← was: orgId param
-
       final res = await _dio.get(
-        '/inventory/orgs/$effectiveOrgId/batches',
+        '/inventory/orgs/$orgId/batches',
         queryParameters: {
           'per_page': 100,
-          if (warehouseId != null) 'warehouse_id': warehouseId,
-          if (productId != null) 'product_id': productId,
-          if (variantId != null) 'variant_id': variantId,
-          if (status != null) 'status': status,
+          'warehouse_id': ?warehouseId,
+          'product_id': ?productId,
+          'variant_id': ?variantId,
+          'status': ?status,
         },
       );
       return _unwrapList(res.data, InventoryBatchModel.fromJson, 'batches');

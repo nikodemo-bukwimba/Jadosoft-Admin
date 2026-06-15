@@ -38,6 +38,8 @@ class ConversationSendMessageRequested extends ConversationEvent {
   final String conversationId;
   final String content;
   final String? imageUrl;
+  final String? attachmentId; // ← ADD
+  final String? attachmentType;
   final String? replyToId;
   final String? replyToSenderName;
   final String? replyToContent;
@@ -49,6 +51,8 @@ class ConversationSendMessageRequested extends ConversationEvent {
     required this.conversationId,
     required this.content,
     this.imageUrl,
+    this.attachmentId,
+    this.attachmentType,
     this.replyToId,
     this.replyToSenderName,
     this.replyToContent,

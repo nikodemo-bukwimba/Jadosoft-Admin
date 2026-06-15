@@ -79,7 +79,7 @@ class _InventoryFormPageState extends State<InventoryFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    final orgId = sl<OrgContext>().requireRootOrgId();
+    final orgId = sl<OrgContext>().effectiveOrgId;
 
     return MultiBlocProvider(
       providers: [

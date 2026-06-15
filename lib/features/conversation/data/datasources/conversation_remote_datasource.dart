@@ -18,6 +18,10 @@ abstract class ConversationRemoteDataSource {
     required String convId,
     required String content,
     String? imageUrl,
+
+    String? attachmentId,
+    String? attachmentType,
+
     String? replyToId,
     String? replyToSenderName,
     String? replyToContent,
@@ -42,6 +46,7 @@ abstract class ConversationRemoteDataSource {
   Future<List<ReadReceipt>> getReadReceipts(String convId, String msgId);
 
   List<MessageModel> searchMessages(String convId, String query);
+  Future<Map<String, dynamic>> uploadAttachment(String filePath);
 
   Future<void> closeConversation(String convId);
   Future<void> reopenConversation(String convId);
@@ -106,6 +111,35 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   void registerName(String actorId, String name) {
     if (actorId.isNotEmpty && name.isNotEmpty) {
       _nameCache[actorId] = name;
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> uploadAttachment(String filePath) async {
+    try {
+      final fileName = filePath.split('/').last;
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(filePath, filename: fileName),
+      });
+      final r = await _dio.post(
+        'communications/attachments/upload',
+        data: formData,
+        options: Options(
+          headers: {'Accept': 'application/json'},
+          contentType: 'multipart/form-data',
+        ),
+      );
+      final body = r.data as Map<String, dynamic>;
+      final att = body['attachment'] as Map<String, dynamic>? ?? body;
+      return Map<String, dynamic>.from(att);
+    } on DioException catch (e) {
+      final msg = (e.response?.data is Map)
+          ? (e.response!.data['message'] ?? e.message)
+          : e.message;
+      throw ServerException(
+        msg?.toString() ?? 'Upload failed',
+        statusCode: e.response?.statusCode,
+      );
     }
   }
 
@@ -715,11 +749,14 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     }
   }
 
-  @override
   Future<MessageModel> sendMessage({
     required String convId,
     required String content,
     String? imageUrl,
+
+    String? attachmentId,
+    String? attachmentType,
+
     String? replyToId,
     String? replyToSenderName,
     String? replyToContent,
@@ -731,15 +768,28 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     try {
       final scope = _scope(convId);
       String contentType = 'text';
-      if (imageUrl != null) contentType = 'image';
-      if (voiceDurationSeconds != null) contentType = 'audio';
-      if (forwardedFromConvId != null) contentType = 'forwarded';
+
+      if (imageUrl != null) {
+        contentType = 'image';
+      } else if (attachmentType != null) {
+        contentType = attachmentType;
+      } else if (voiceDurationSeconds != null) {
+        contentType = 'audio';
+      } else if (forwardedFromConvId != null) {
+        contentType = 'forwarded';
+      }
 
       final body = <String, dynamic>{
         'content': content,
         'content_type': contentType,
-        'reply_to_id': replyToId,
-        'forwarded_from_id': forwardedFromConvId,
+
+        'attachment_id': ?attachmentId,
+
+        'attachment_type': ?attachmentType,
+
+        'reply_to_id': ?replyToId,
+
+        'forwarded_from_id': ?forwardedFromConvId,
       };
 
       final r = await _dio.post('$_base/$scope/$convId/messages', data: body);

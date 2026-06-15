@@ -19,7 +19,7 @@ class InventoryListPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final orgId = sl<OrgContext>().requireRootOrgId();
+    final orgId = sl<OrgContext>().effectiveOrgId;
 
     return DefaultTabController(
       length: 2,

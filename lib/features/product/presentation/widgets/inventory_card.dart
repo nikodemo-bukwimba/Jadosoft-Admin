@@ -39,33 +39,39 @@ class AdminInventoryCardState extends State<AdminInventoryCard> {
     });
 
     try {
-      final orgId = GetIt.instance<OrgContext>().requireRootOrgId();
+      // Inventory is per-branch: scope to the admin's currently
+      // active branch (or root if viewing "all branches"), matching
+      // the customer/officer apps' effectiveOrgId pattern.
+      final orgId = GetIt.instance<OrgContext>().effectiveOrgId;
       final useCase = GetIt.instance<GetVariantStockUseCase>();
       final result = await useCase(
         GetVariantStockParams(orgId: orgId, variantId: variantId),
       );
       result.fold(
         (f) {
-          if (mounted)
+          if (mounted) {
             setState(() {
               _loading = false;
               _error = f.message;
             });
+          }
         },
         (stock) {
-          if (mounted)
+          if (mounted) {
             setState(() {
               _loading = false;
               _stock = stock;
             });
+          }
         },
       );
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loading = false;
           _error = e.toString();
         });
+      }
     }
   }
 
