@@ -181,6 +181,7 @@ class _OrderFormPageState extends State<OrderFormPage> {
       body: BlocListener<OrderBloc, OrderState>(
         listener: (context, state) {
           if (state is OrderOperationSuccess) {
+            _liveStock.clear(); // ← ADD
             setState(() => _isSubmitting = false);
             context.pop();
           }
@@ -517,7 +518,10 @@ class _OrderFormPageState extends State<OrderFormPage> {
     final picked = await showModalBottomSheet<ProductModel>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _ProductListSheet(products: available),
+      builder: (_) => _ProductListSheet(
+        products: available,
+        liveStock: _liveStock, // ← ADD
+      ),
     );
 
     if (picked == null || !mounted) return;
@@ -545,7 +549,7 @@ class _OrderFormPageState extends State<OrderFormPage> {
         available = _liveStock[variantId];
       } else {
         try {
-          final orgId = sl<OrgContext>().requireRootOrgId();
+          final orgId = sl<OrgContext>().effectiveOrgId;
           final result = await sl<GetVariantStockUseCase>()(
             GetVariantStockParams(orgId: orgId, variantId: variantId),
           );
@@ -845,7 +849,7 @@ class _OrderFormPageState extends State<OrderFormPage> {
           : null;
       final effectiveRef = [
         if (baseRef.isNotEmpty) baseRef,
-        ?mobileNote,
+        if (mobileNote != null) mobileNote, // ← was: ?mobileNote
       ].join('|');
 
       context.read<OrderBloc>().add(
@@ -1283,7 +1287,13 @@ class _CustomerListSheetState extends State<_CustomerListSheet> {
 
 class _ProductListSheet extends StatefulWidget {
   final List<ProductModel> products;
-  const _ProductListSheet({required this.products});
+  final Map<String, int> liveStock; // ← ADD
+
+  const _ProductListSheet({
+    required this.products,
+    required this.liveStock, // ← ADD
+  });
+
   @override
   State<_ProductListSheet> createState() => _ProductListSheetState();
 }
@@ -1381,6 +1391,20 @@ class _ProductListSheetState extends State<_ProductListSheet> {
                     itemCount: filtered.length,
                     itemBuilder: (_, i) {
                       final p = filtered[i];
+                      // Prefer live stock from cache; fall back to
+                      // product metadata only when not yet fetched.
+                      final variantId = p.variantId;
+                      final liveQty = variantId != null
+                          ? widget.liveStock[variantId]
+                          : null;
+                      final stockQty = liveQty ?? p.quantityAvailable;
+                      final stockText = stockQty != null
+                          ? '$stockQty in stock'
+                          : null;
+                      final stockColor = stockQty != null && stockQty <= 10
+                          ? Colors.orange.shade700
+                          : null;
+
                       return ListTile(
                         leading: Container(
                           width: 44,
@@ -1401,22 +1425,54 @@ class _ProductListSheetState extends State<_ProductListSheet> {
                                   Text(
                                     'TZS ${p.effectivePrice.toStringAsFixed(0)}',
                                     style: const TextStyle(
-                                      color: Colors.green,
-                                      fontWeight: FontWeight.w600,
+                                      color: Colors.deepOrange,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
                                     ),
                                   ),
-                                  const SizedBox(width: 6),
+                                  const SizedBox(width: 5),
                                   Text(
                                     'TZS ${p.price.toStringAsFixed(0)}',
                                     style: TextStyle(
+                                      color: cs.onSurfaceVariant,
                                       decoration: TextDecoration.lineThrough,
-                                      color: Colors.grey.shade500,
-                                      fontSize: 12,
+                                      fontSize: 11,
                                     ),
                                   ),
+                                  if (stockText != null)
+                                    Text(
+                                      ' · $stockText',
+                                      style: TextStyle(
+                                        color:
+                                            stockColor ?? cs.onSurfaceVariant,
+                                        fontSize: 12,
+                                        fontWeight: stockColor != null
+                                            ? FontWeight.w600
+                                            : null,
+                                      ),
+                                    ),
                                 ],
                               )
-                            : Text('TZS ${p.price.toStringAsFixed(0)}'),
+                            : Text.rich(
+                                TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: 'TZS ${p.price.toStringAsFixed(0)}',
+                                    ),
+                                    if (stockText != null)
+                                      TextSpan(
+                                        text: ' · $stockText',
+                                        style: TextStyle(
+                                          color:
+                                              stockColor ?? cs.onSurfaceVariant,
+                                          fontWeight: stockColor != null
+                                              ? FontWeight.w600
+                                              : null,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => Navigator.of(ctx).pop(p),
                       );
