@@ -1,4 +1,4 @@
-// === FILE: lib/features/conversation/data/datasources/conversation_remote_datasource.dart ===
+// lib/features/conversation/data/datasources/conversation_remote_datasource.dart
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../core/error/exceptions.dart';
@@ -18,10 +18,8 @@ abstract class ConversationRemoteDataSource {
     required String convId,
     required String content,
     String? imageUrl,
-
     String? attachmentId,
     String? attachmentType,
-
     String? replyToId,
     String? replyToSenderName,
     String? replyToContent,
@@ -46,6 +44,9 @@ abstract class ConversationRemoteDataSource {
   Future<List<ReadReceipt>> getReadReceipts(String convId, String msgId);
 
   List<MessageModel> searchMessages(String convId, String query);
+
+  /// Upload a file attachment before sending a message.
+  /// Returns { id, url, file_url, type, name, size, mime }.
   Future<Map<String, dynamic>> uploadAttachment(String filePath);
 
   Future<void> closeConversation(String convId);
@@ -73,7 +74,6 @@ abstract class ConversationRemoteDataSource {
   void Function(String conversationId)? onTypingStop;
 
   /// Actor-ID → display name cache, populated from conversations & messages.
-  /// Used by the BLoC/UI to resolve ULIDs to human-readable names.
   Map<String, String> get nameCache;
 
   /// Register a known actor name (called during DI setup with current user).
@@ -97,11 +97,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   final Map<String, String> _typeCache = {};
 
   /// Actor-ID → display name cache.
-  /// Populated from:
-  ///   1. registerName() called at route time with the current user's actor_id
-  ///   2. _resolveActorNames() bulk-fetched before normalization
-  ///   3. Participant data from getAll / getById responses
-  ///   4. Message sender data from getMessages responses
   final Map<String, String> _nameCache = {};
 
   @override
@@ -122,7 +117,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         'file': await MultipartFile.fromFile(filePath, filename: fileName),
       });
       final r = await _dio.post(
-        'communications/attachments/upload',
+        '$_base/attachments/upload',
         data: formData,
         options: Options(
           headers: {'Accept': 'application/json'},
@@ -133,50 +128,36 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       final att = body['attachment'] as Map<String, dynamic>? ?? body;
       return Map<String, dynamic>.from(att);
     } on DioException catch (e) {
-      final msg = (e.response?.data is Map)
-          ? (e.response!.data['message'] ?? e.message)
-          : e.message;
-      throw ServerException(
-        msg?.toString() ?? 'Upload failed',
-        statusCode: e.response?.statusCode,
-      );
+      throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
   }
 
   // ── Helpers ───────────────────────────────────────────────
 
-  /// Returns true if the value looks like a raw ULID (26 alphanumeric chars).
   bool _isUlid(String? v) {
     if (v == null || v.length != 26) return false;
     return RegExp(r'^[0-9A-Z]{26}$', caseSensitive: false).hasMatch(v);
   }
 
-  /// Resolve a display name for an actor.
-  /// Priority: non-ULID raw value from API → _nameCache → truncated ID.
   String _resolveName(String? raw, String? actorId) {
-    // Use the API value if it's a real name (not a ULID)
     if (raw != null && raw.isNotEmpty && !_isUlid(raw)) {
       if (actorId != null && actorId.isNotEmpty) {
         _nameCache[actorId] = raw;
       }
       return raw;
     }
-    // Try cache (exact match)
     final id = actorId ?? raw ?? '';
     if (_nameCache.containsKey(id)) return _nameCache[id]!;
-    // Try cache (case-insensitive)
     final lower = id.toLowerCase();
     for (final entry in _nameCache.entries) {
       if (entry.key.toLowerCase() == lower) return entry.value;
     }
-    // Last resort: truncated ID so at least it's short
     if (id.length > 8) {
       return '${id.substring(0, 4)}…${id.substring(id.length - 4)}';
     }
     return id.isNotEmpty ? id : 'Unknown';
   }
 
-  /// Cache the display name from a participant map.
   void _cacheParticipantName(Map<String, dynamic> p) {
     final id = p['actor_id'] as String? ?? p['id'] as String? ?? '';
     final name =
@@ -189,7 +170,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     }
   }
 
-  /// Unwraps a standard Laravel JSON resource response.
   Map<String, dynamic> _unwrapResponse(dynamic raw, {String? wrapperKey}) {
     if (raw is! Map<String, dynamic>) return <String, dynamic>{};
     if (wrapperKey != null && raw[wrapperKey] is Map) {
@@ -221,22 +201,13 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
 
   // ── Name resolution ───────────────────────────────────────
 
-  /// Bulk-resolves actor IDs → display names and populates _nameCache.
-  ///
-  /// Strategy (in order, stops when all IDs are resolved):
-  ///   1. communications/presence/bulk  — fastest, already in the module
-  ///   2. api/v1/platform/actors        — fallback, returns all org actors
-  ///
-  /// Both calls are best-effort: failures are silently swallowed so a
-  /// presence outage never breaks the conversation list.
   Future<void> _resolveActorNames(List<String> actorIds) async {
     if (actorIds.isEmpty) return;
 
-    // Remove IDs already in cache
     final needed = actorIds.where((id) => !_nameCache.containsKey(id)).toList();
     if (needed.isEmpty) return;
 
-    // ── 1. Presence bulk endpoint ────────────────────────────
+    // 1. Presence bulk endpoint
     try {
       final r = await _dio.post(
         '$_base/presence/bulk',
@@ -259,7 +230,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       }
     } catch (_) {}
 
-    // ── 2. Platform actors endpoint (fallback) ───────────────
+    // 2. Platform actors fallback
     final stillMissing = needed
         .where((id) => !_nameCache.containsKey(id))
         .toList();
@@ -276,7 +247,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
           : (raw is List ? raw : []);
       for (final a in list) {
         final m = a as Map<String, dynamic>;
-        // Actors use 'id' as their PK (the actor ULID)
         final aid = m['id'] as String? ?? '';
         final name = m['display_name'] as String? ?? m['name'] as String? ?? '';
         if (aid.isNotEmpty && name.isNotEmpty && !_isUlid(name)) {
@@ -288,8 +258,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
 
   // ── Normalizers ───────────────────────────────────────────
 
-  /// Normalizes DirectConversation API shape → ConversationModel shape.
-  /// Must be called AFTER _resolveActorNames() so the cache is warm.
   Map<String, dynamic> _normalizeDirect(Map<String, dynamic> j) {
     debugPrint(
       '[_normalizeDirect] id=${j['id']} '
@@ -297,7 +265,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       'recipient=${j['recipient_actor_id']}',
     );
 
-    // If the API already returned a participants list, cache and return as-is
     final existing = j['participants'] as List?;
     if (existing != null && existing.isNotEmpty) {
       for (final p in existing) {
@@ -316,7 +283,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         '';
     final now = DateTime.now().toIso8601String();
 
-    // _resolveName now hits the warm cache populated by _resolveActorNames()
     final initiatorName = _resolveName(
       j['initiator_name'] as String? ??
           j['initiator_display_name'] as String? ??
@@ -357,7 +323,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     };
   }
 
-  /// Normalizes Group API shape → ConversationModel shape.
   Map<String, dynamic> _normalizeGroup(Map<String, dynamic> j) {
     final rawP = j['participants'] as List<dynamic>? ?? [];
     final now = DateTime.now().toIso8601String();
@@ -393,14 +358,12 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     };
   }
 
-  /// Best-effort presence enrichment for a participant list.
   Future<void> _enrichPresence(List<Map<String, dynamic>> participants) async {
     final actorIds = participants
         .map((p) => p['id'] as String? ?? '')
         .where((id) => id.isNotEmpty)
         .toList();
     if (actorIds.isEmpty) return;
-
     try {
       final r = await _dio.post(
         '$_base/presence/bulk',
@@ -409,14 +372,12 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       final presenceList = r.data is List
           ? r.data as List
           : (r.data is Map ? (r.data['data'] as List? ?? []) : []);
-
       final presenceMap = <String, Map<String, dynamic>>{};
       for (final p in presenceList) {
         final m = p as Map<String, dynamic>;
         final aid = m['actor_id'] as String? ?? '';
         if (aid.isNotEmpty) presenceMap[aid] = m;
       }
-
       for (final participant in participants) {
         final pid = participant['id'] as String? ?? '';
         final presence = presenceMap[pid];
@@ -430,7 +391,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     } catch (_) {}
   }
 
-  /// Detects conversation type from the API response shape.
   String _detectType(Map<String, dynamic> data) {
     final typeField = data['type'] as String?;
     if (typeField == 'group') return 'group';
@@ -463,12 +423,8 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
                         : <dynamic>[]))
               .cast<Map<String, dynamic>>();
 
-      // ── Pre-warm the name cache BEFORE normalizing ────────
-      // Collect every actor ID that appears in DM initiator/recipient fields
-      // or group participant lists, then bulk-resolve them all at once.
-      // This ensures _normalizeDirect() hits a warm cache on first call.
+      // Pre-warm name cache before normalizing
       final idsToResolve = <String>{};
-
       for (final m in dmRawList) {
         final iid =
             m['initiator_actor_id'] as String? ??
@@ -480,7 +436,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
             '';
         if (iid.isNotEmpty) idsToResolve.add(iid);
         if (rid.isNotEmpty) idsToResolve.add(rid);
-        // Also check if the API already returned names inside participant lists
         final existing = m['participants'] as List?;
         if (existing != null) {
           for (final p in existing) {
@@ -491,7 +446,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
           }
         }
       }
-
       for (final m in groupRawList) {
         final rawP = m['participants'] as List<dynamic>? ?? [];
         for (final p in rawP) {
@@ -502,10 +456,8 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         }
       }
 
-      // Single bulk call — resolves all unknown IDs before any normalization
       await _resolveActorNames(idsToResolve.toList());
 
-      // Now normalize with a warm cache — names resolve on first try
       for (final m in dmRawList) {
         _typeCache[m['id'] as String? ?? ''] = 'direct';
       }
@@ -629,7 +581,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         return ConversationModel.fromJson(_normalizeGroup(groupData));
       } else {
         final participants = data['participants'] as List<dynamic>? ?? [];
-
         for (final p in participants) {
           if (p is Map<String, dynamic>) _cacheParticipantName(p);
         }
@@ -647,7 +598,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         final newId = conv['id'] as String? ?? '';
         _typeCache[newId] = 'direct';
 
-        // Pre-warm cache for the new DM's participants
         final iid =
             conv['initiator_actor_id'] as String? ??
             conv['initiator_id'] as String? ??
@@ -708,7 +658,7 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
           ? (raw['data'] as List? ?? [])
           : (raw as List? ?? []);
 
-      // Collect sender IDs not yet in the cache
+      // Collect uncached sender IDs for bulk resolution
       final uncachedIds = <String>{};
       for (final e in list) {
         final msgMap = e as Map<String, dynamic>;
@@ -723,8 +673,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
           uncachedIds.add(senderId);
         }
       }
-
-      // Bulk-resolve before parsing so _resolveName() hits the warm cache
       if (uncachedIds.isNotEmpty) {
         await _resolveActorNames(uncachedIds.toList());
       }
@@ -742,21 +690,20 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
         return MessageModel.fromJson(msgMap);
       }).toList();
 
-      // API returns newest-first — reverse to chronological for the UI
+      // API returns newest-first — reverse to chronological for UI
       return messages.reversed.toList();
     } on DioException catch (e) {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
   }
 
+  @override
   Future<MessageModel> sendMessage({
     required String convId,
     required String content,
     String? imageUrl,
-
     String? attachmentId,
     String? attachmentType,
-
     String? replyToId,
     String? replyToSenderName,
     String? replyToContent,
@@ -768,28 +715,18 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     try {
       final scope = _scope(convId);
       String contentType = 'text';
-
-      if (imageUrl != null) {
-        contentType = 'image';
-      } else if (attachmentType != null) {
-        contentType = attachmentType;
-      } else if (voiceDurationSeconds != null) {
-        contentType = 'audio';
-      } else if (forwardedFromConvId != null) {
-        contentType = 'forwarded';
-      }
+      if (attachmentType == 'image' || imageUrl != null) contentType = 'image';
+      if (attachmentType == 'document') contentType = 'document';
+      if (voiceDurationSeconds != null) contentType = 'audio';
+      if (forwardedFromConvId != null) contentType = 'forwarded';
 
       final body = <String, dynamic>{
         'content': content,
         'content_type': contentType,
-
-        'attachment_id': ?attachmentId,
-
-        'attachment_type': ?attachmentType,
-
-        'reply_to_id': ?replyToId,
-
-        'forwarded_from_id': ?forwardedFromConvId,
+        if (replyToId != null) 'reply_to_id': replyToId,
+        if (forwardedFromConvId != null)
+          'forwarded_from_id': forwardedFromConvId,
+        if (attachmentId != null) 'attachment_ids': [attachmentId],
       };
 
       final r = await _dio.post('$_base/$scope/$convId/messages', data: body);
@@ -830,8 +767,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     }
   }
 
-  // ── Reactions ─────────────────────────────────────────────
-
   @override
   Future<void> addReaction(String convId, String msgId, String emoji) async {
     try {
@@ -844,8 +779,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
   }
-
-  // ── Pins ──────────────────────────────────────────────────
 
   @override
   Future<void> togglePin(String convId, String msgId) async {
@@ -860,8 +793,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   @override
   List<MessageModel> getPinnedMessages(String convId) => [];
 
-  // ── Stars ─────────────────────────────────────────────────
-
   @override
   Future<void> toggleStar(String convId, String msgId) async {
     try {
@@ -874,8 +805,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
 
   @override
   List<MessageModel> getStarredMessages() => [];
-
-  // ── Edit ──────────────────────────────────────────────────
 
   @override
   Future<void> editMessage(
@@ -893,8 +822,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
   }
-
-  // ── Read Receipts ─────────────────────────────────────────
 
   @override
   Future<List<ReadReceipt>> getReadReceipts(String convId, String msgId) async {
@@ -915,12 +842,8 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     }
   }
 
-  // ── Search ────────────────────────────────────────────────
-
   @override
   List<MessageModel> searchMessages(String convId, String query) => [];
-
-  // ── Conversation management ───────────────────────────────
 
   @override
   Future<void> closeConversation(String convId) async {
@@ -941,8 +864,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
   }
-
-  // ── Group participants ────────────────────────────────────
 
   @override
   Future<void> addParticipant(
@@ -973,8 +894,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     }
   }
 
-  // ── Broadcast ─────────────────────────────────────────────
-
   @override
   Future<int> broadcastMessage(List<String> convIds, String content) async {
     try {
@@ -992,8 +911,6 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
       throw ServerException(_msg(e), statusCode: e.response?.statusCode);
     }
   }
-
-  // ── Private reply from group ──────────────────────────────
 
   @override
   Future<String> createPrivateFromGroup(
