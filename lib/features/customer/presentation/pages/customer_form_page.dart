@@ -70,10 +70,14 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
   bool _officersLoading = true;
 
   static const _categories = [
-    'clinic',
-    'hospital',
-    'pharmacy',
-    'wholesaler',
+    'Retail Pharmacy',
+    'Wholesale Pharmacy',
+    'Retail&Wholesale Pharmacy',
+    'DLDM',
+    'Dispensary',
+    'Health Center',
+    'Clinic',
+    'Hospital',
     'other',
   ];
   static const _tiers = ['standard', 'silver', 'gold', 'platinum'];
@@ -384,7 +388,7 @@ class _CustomerFormPageState extends State<CustomerFormPage> {
                     // ══════════════════════════════════════════════
                     // Communication
                     // ══════════════════════════════════════════════
-                    _sectionLabel(context, 'Communication'),
+                    _sectionLabel(context, 'Office Contact'),
                     const SizedBox(height: 8),
                     if (isWide)
                       Row(

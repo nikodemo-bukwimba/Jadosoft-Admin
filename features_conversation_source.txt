@@ -1,7 +1,7 @@
 ﻿// ================================================================
 // features_conversation_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-06-14 20:30:42
+// Generated    : 2026-06-22 13:53:51
 // Files        : 26
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
@@ -56,6 +56,10 @@ abstract class ConversationRemoteDataSource {
     required String convId,
     required String content,
     String? imageUrl,
+
+    String? attachmentId,
+    String? attachmentType,
+
     String? replyToId,
     String? replyToSenderName,
     String? replyToContent,
@@ -80,6 +84,7 @@ abstract class ConversationRemoteDataSource {
   Future<List<ReadReceipt>> getReadReceipts(String convId, String msgId);
 
   List<MessageModel> searchMessages(String convId, String query);
+  Future<Map<String, dynamic>> uploadAttachment(String filePath);
 
   Future<void> closeConversation(String convId);
   Future<void> reopenConversation(String convId);
@@ -144,6 +149,35 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
   void registerName(String actorId, String name) {
     if (actorId.isNotEmpty && name.isNotEmpty) {
       _nameCache[actorId] = name;
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> uploadAttachment(String filePath) async {
+    try {
+      final fileName = filePath.split('/').last;
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(filePath, filename: fileName),
+      });
+      final r = await _dio.post(
+        'communications/attachments/upload',
+        data: formData,
+        options: Options(
+          headers: {'Accept': 'application/json'},
+          contentType: 'multipart/form-data',
+        ),
+      );
+      final body = r.data as Map<String, dynamic>;
+      final att = body['attachment'] as Map<String, dynamic>? ?? body;
+      return Map<String, dynamic>.from(att);
+    } on DioException catch (e) {
+      final msg = (e.response?.data is Map)
+          ? (e.response!.data['message'] ?? e.message)
+          : e.message;
+      throw ServerException(
+        msg?.toString() ?? 'Upload failed',
+        statusCode: e.response?.statusCode,
+      );
     }
   }
 
@@ -753,11 +787,14 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     }
   }
 
-  @override
   Future<MessageModel> sendMessage({
     required String convId,
     required String content,
     String? imageUrl,
+
+    String? attachmentId,
+    String? attachmentType,
+
     String? replyToId,
     String? replyToSenderName,
     String? replyToContent,
@@ -769,15 +806,28 @@ class ConversationRemoteDataSourceImpl implements ConversationRemoteDataSource {
     try {
       final scope = _scope(convId);
       String contentType = 'text';
-      if (imageUrl != null) contentType = 'image';
-      if (voiceDurationSeconds != null) contentType = 'audio';
-      if (forwardedFromConvId != null) contentType = 'forwarded';
+
+      if (imageUrl != null) {
+        contentType = 'image';
+      } else if (attachmentType != null) {
+        contentType = attachmentType;
+      } else if (voiceDurationSeconds != null) {
+        contentType = 'audio';
+      } else if (forwardedFromConvId != null) {
+        contentType = 'forwarded';
+      }
 
       final body = <String, dynamic>{
         'content': content,
         'content_type': contentType,
-        'reply_to_id': replyToId,
-        'forwarded_from_id': forwardedFromConvId,
+
+        'attachment_id': ?attachmentId,
+
+        'attachment_type': ?attachmentType,
+
+        'reply_to_id': ?replyToId,
+
+        'forwarded_from_id': ?forwardedFromConvId,
       };
 
       final r = await _dio.post('$_base/$scope/$convId/messages', data: body);
@@ -1156,6 +1206,9 @@ class MessageModel extends MessageEntity {
     required super.type,
     required super.content,
     super.imageUrl,
+    super.attachmentUrl,
+    super.attachmentName,
+    super.attachmentMime,
     required super.deliveryStatus,
     required super.sentAt,
     super.replyToId,
@@ -1237,15 +1290,27 @@ class MessageModel extends MessageEntity {
       replyToContent ??= replyToObj['content'] as String?;
     }
 
-    // ── Image URL ─────────────────────────────────────────────────────────
-    // Backend may return image URL in image_url, attachment.url, or
-    // attachments[0].url
+    // ── Attachments ───────────────────────────────────────────────────────
+    // Backend returns: attachments: [{ id, url, file_url, type, name, file_name, mime, mime_type }]
     String? imageUrl = j['image_url'] as String?;
-    if (imageUrl == null) {
-      final attachments = j['attachments'] as List<dynamic>?;
-      if (attachments != null && attachments.isNotEmpty) {
-        final first = attachments.first as Map<String, dynamic>?;
-        imageUrl = first?['url'] as String? ?? first?['file_url'] as String?;
+    String? attachmentUrl;
+    String? attachmentName;
+    String? attachmentMime;
+
+    final rawAttachments = j['attachments'] as List<dynamic>? ?? [];
+    if (rawAttachments.isNotEmpty) {
+      final first = rawAttachments.first as Map<String, dynamic>;
+      final aType = first['type'] as String? ?? '';
+      final aUrl =
+          first['file_url'] as String? ?? first['url'] as String? ?? '';
+      if (aType == 'image') {
+        imageUrl ??= aUrl;
+      } else if (aType == 'document') {
+        attachmentUrl = aUrl;
+        attachmentName =
+            first['name'] as String? ?? first['file_name'] as String?;
+        attachmentMime =
+            first['mime'] as String? ?? first['mime_type'] as String?;
       }
     }
 
@@ -1258,6 +1323,9 @@ class MessageModel extends MessageEntity {
       type: _parseType(contentType),
       content: j['content'] as String? ?? '',
       imageUrl: imageUrl,
+      attachmentUrl: attachmentUrl,
+      attachmentName: attachmentName,
+      attachmentMime: attachmentMime,
       deliveryStatus: _parseDelivery(deliveryStr),
       sentAt: sentAt,
       replyToId: replyToId,
@@ -1289,6 +1357,9 @@ class MessageModel extends MessageEntity {
     'type': type.name,
     'content': content,
     'image_url': imageUrl,
+    'attachment_url': attachmentUrl,
+    'attachment_name': attachmentName,
+    'attachment_mime': attachmentMime,
     'delivery_status': deliveryStatus.name,
     'sent_at': sentAt.toIso8601String(),
     'reply_to_id': replyToId,
@@ -1324,6 +1395,7 @@ class MessageModel extends MessageEntity {
 
   static MessageType _parseType(String? v) => switch (v) {
     'image' => MessageType.image,
+    'document' => MessageType.document,
     'system' => MessageType.system,
     'audio' || 'voice' => MessageType.voice,
     _ => MessageType.text,
@@ -1593,7 +1665,7 @@ class ConversationEntity extends Equatable {
 // === FILE: lib/features/conversation/domain/entities/message_entity.dart ===
 import 'package:equatable/equatable.dart';
 
-enum MessageType { text, image, system, voice }
+enum MessageType { text, image, document, system, voice }
 
 enum DeliveryStatus { sending, sent, delivered, read }
 
@@ -1632,6 +1704,9 @@ class MessageEntity extends Equatable {
   final MessageType type;
   final String content;
   final String? imageUrl;
+  final String? attachmentUrl;
+  final String? attachmentName;
+  final String? attachmentMime;
   final DeliveryStatus deliveryStatus;
   final DateTime sentAt;
 
@@ -1673,6 +1748,9 @@ class MessageEntity extends Equatable {
     required this.type,
     required this.content,
     this.imageUrl,
+    this.attachmentUrl,
+    this.attachmentName,
+    this.attachmentMime,
     required this.deliveryStatus,
     required this.sentAt,
     this.replyToId,
@@ -1697,6 +1775,7 @@ class MessageEntity extends Equatable {
   bool get isForwarded => forwardedFromConversationId != null;
   bool get hasMentions => mentionedUserIds.isNotEmpty;
   bool get mentionsAll => mentionedUserIds.contains('all');
+  bool get isDocument => type == MessageType.document;
 
   MessageEntity copyWith({
     String? id,
@@ -1707,6 +1786,9 @@ class MessageEntity extends Equatable {
     MessageType? type,
     String? content,
     String? imageUrl,
+    String? attachmentUrl,
+    String? attachmentName,
+    String? attachmentMime,
     DeliveryStatus? deliveryStatus,
     DateTime? sentAt,
     String? replyToId,
@@ -1732,6 +1814,9 @@ class MessageEntity extends Equatable {
       type: type ?? this.type,
       content: content ?? this.content,
       imageUrl: imageUrl ?? this.imageUrl,
+      attachmentUrl: attachmentUrl ?? this.attachmentUrl,
+      attachmentName: attachmentName ?? this.attachmentName,
+      attachmentMime: attachmentMime ?? this.attachmentMime,
       deliveryStatus: deliveryStatus ?? this.deliveryStatus,
       sentAt: sentAt ?? this.sentAt,
       replyToId: replyToId ?? this.replyToId,
@@ -1762,6 +1847,9 @@ class MessageEntity extends Equatable {
     type,
     content,
     imageUrl,
+    attachmentUrl,
+    attachmentName,
+    attachmentMime,
     deliveryStatus,
     sentAt,
     replyToId,
@@ -2074,6 +2162,9 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
     }
   }
 
+  Future<Map<String, dynamic>> uploadAttachment(String filePath) =>
+      _ds.uploadAttachment(filePath);
+
   // ── Helpers ───────────────────────────────────────────────
 
   Future<void> _reloadChat(
@@ -2161,6 +2252,11 @@ class ConversationBloc extends Bloc<ConversationEvent, ConversationState> {
         convId: event.conversationId,
         content: event.content,
         imageUrl: event.imageUrl,
+
+        // NEW
+        attachmentId: event.attachmentId,
+        attachmentType: event.attachmentType,
+
         replyToId: event.replyToId,
         replyToSenderName: event.replyToSenderName,
         replyToContent: event.replyToContent,
@@ -2578,6 +2674,8 @@ class ConversationSendMessageRequested extends ConversationEvent {
   final String conversationId;
   final String content;
   final String? imageUrl;
+  final String? attachmentId; // ← ADD
+  final String? attachmentType;
   final String? replyToId;
   final String? replyToSenderName;
   final String? replyToContent;
@@ -2589,6 +2687,8 @@ class ConversationSendMessageRequested extends ConversationEvent {
     required this.conversationId,
     required this.content,
     this.imageUrl,
+    this.attachmentId,
+    this.attachmentType,
     this.replyToId,
     this.replyToSenderName,
     this.replyToContent,
@@ -3241,6 +3341,13 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                                                 _showDateSep(msgs, i)
                                                 ? _dateLabel(msg.sentAt)
                                                 : null,
+
+                                            onReplyTap: (replyToId) =>
+                                                _scrollToMessage(
+                                                  msgs,
+                                                  replyToId,
+                                                ),
+
                                             onDelete: isAdmin && !msg.isSystem
                                                 ? (id) => bloc.add(
                                                     ConversationDeleteMessageRequested(
@@ -3334,15 +3441,45 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
                                   participants: conv.participants,
                                   onSend:
                                       (
-                                        content,
-                                        imageUrl, {
+                                        String content,
+                                        String? attachmentPath,
+                                        String? attachmentType, {
                                         List<String>? mentionedUserIds,
-                                      }) {
+                                      }) async {
+                                        String? uploadedAttachmentId;
+
+                                        if (attachmentPath != null) {
+                                          try {
+                                            final result = await bloc
+                                                .uploadAttachment(
+                                                  attachmentPath,
+                                                );
+                                            uploadedAttachmentId = result['id']
+                                                ?.toString();
+                                          } catch (_) {
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'Failed to upload attachment',
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                            return;
+                                          }
+                                        }
+
+                                        if (!context.mounted) return;
+
                                         bloc.add(
                                           ConversationSendMessageRequested(
                                             conversationId: conv.id,
                                             content: content,
-                                            imageUrl: imageUrl,
+                                            attachmentId: uploadedAttachmentId,
+                                            attachmentType: attachmentType,
                                             replyToId: _replyingTo?.id,
                                             replyToSenderName:
                                                 _replyingTo?.senderName,
@@ -3556,8 +3693,7 @@ class _ConversationDetailPageState extends State<ConversationDetailPage> {
               participants: conv.participants,
               isGroup: isGroup,
               size: 36,
-              currentUserId:
-                  currentUserId, 
+              currentUserId: currentUserId,
             ),
             const SizedBox(width: 10),
             Flexible(
@@ -4960,20 +5096,44 @@ class _ConversationListPageState extends State<ConversationListPage>
 
 
 // === FILE: lib/features/conversation/presentation/widgets/chat_input_bar.dart ===
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../domain/entities/conversation_entity.dart';
 import '../../domain/entities/message_entity.dart';
 
+class _PendingAttachment {
+  final String path;
+  final String type; // 'image' | 'document'
+  final String name;
+  const _PendingAttachment({
+    required this.path,
+    required this.type,
+    required this.name,
+  });
+}
+
 class ChatInputBar extends StatefulWidget {
-  final void Function(String content, String? imageUrl, {List<String>? mentionedUserIds}) onSend;
+  final void Function(
+    String content,
+    String? attachmentPath,
+    String? attachmentType, {
+    List<String>? mentionedUserIds,
+  }) onSend;
   final bool enabled;
   final MessageEntity? replyingTo;
   final VoidCallback? onCancelReply;
   final List<ConversationParticipant> participants;
 
-  const ChatInputBar({super.key, required this.onSend, this.enabled = true,
-    this.replyingTo, this.onCancelReply, this.participants = const []});
+  const ChatInputBar({
+    super.key,
+    required this.onSend,
+    this.enabled = true,
+    this.replyingTo,
+    this.onCancelReply,
+    this.participants = const [],
+  });
 
   @override
   State<ChatInputBar> createState() => _ChatInputBarState();
@@ -4981,26 +5141,38 @@ class ChatInputBar extends StatefulWidget {
 
 class _ChatInputBarState extends State<ChatInputBar> {
   final _controller = TextEditingController();
-  final _focusNode = FocusNode();
-  String? _pendingImagePath;
+  final _focusNode  = FocusNode();
+  _PendingAttachment? _pending;
   bool _showMentions = false;
   String _mentionQuery = '';
 
   @override
   void didUpdateWidget(ChatInputBar old) {
     super.didUpdateWidget(old);
-    if (widget.replyingTo != null && old.replyingTo == null) _focusNode.requestFocus();
+    if (widget.replyingTo != null && old.replyingTo == null) {
+      _focusNode.requestFocus();
+    }
   }
 
   @override
-  void dispose() { _controller.dispose(); _focusNode.dispose(); super.dispose(); }
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
 
   void _handleSend() {
     final text = _controller.text.trim();
-    if (text.isEmpty && _pendingImagePath == null) return;
+    if (text.isEmpty && _pending == null) return;
     final mentions = _extractMentions(text);
-    widget.onSend(text, _pendingImagePath, mentionedUserIds: mentions.isNotEmpty ? mentions : null);
-    _controller.clear(); setState(() { _pendingImagePath = null; _showMentions = false; });
+    widget.onSend(
+      text,
+      _pending?.path,
+      _pending?.type,
+      mentionedUserIds: mentions.isNotEmpty ? mentions : null,
+    );
+    _controller.clear();
+    setState(() { _pending = null; _showMentions = false; });
     _focusNode.requestFocus();
   }
 
@@ -5018,98 +5190,288 @@ class _ChatInputBarState extends State<ChatInputBar> {
     setState(() {
       final lastAt = text.lastIndexOf('@');
       if (lastAt != -1 && (lastAt == 0 || text[lastAt - 1] == ' ')) {
-        _showMentions = true;
-        _mentionQuery = text.substring(lastAt + 1).toLowerCase();
-      } else { _showMentions = false; }
+        _showMentions   = true;
+        _mentionQuery   = text.substring(lastAt + 1).toLowerCase();
+      } else {
+        _showMentions = false;
+      }
     });
   }
 
   void _insertMention(String name) {
-    final text = _controller.text;
-    final lastAt = text.lastIndexOf('@');
+    final text    = _controller.text;
+    final lastAt  = text.lastIndexOf('@');
     if (lastAt == -1) return;
     final firstName = name.split(' ').first;
     _controller.text = '${text.substring(0, lastAt)}@$firstName ';
-    _controller.selection = TextSelection.fromPosition(TextPosition(offset: _controller.text.length));
+    _controller.selection = TextSelection.fromPosition(
+      TextPosition(offset: _controller.text.length),
+    );
     setState(() => _showMentions = false);
     _focusNode.requestFocus();
   }
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final file = await ImagePicker().pickImage(source: source, maxWidth: 1024, imageQuality: 80);
-      if (file != null) setState(() => _pendingImagePath = file.path);
+      final file = await ImagePicker().pickImage(
+        source: source, maxWidth: 1024, imageQuality: 80,
+      );
+      if (file != null) {
+        setState(() => _pending = _PendingAttachment(
+          path: file.path, type: 'image', name: file.name,
+        ));
+      }
     } catch (_) {}
+  }
+
+  Future<void> _pickDocument() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'],
+        allowMultiple: false,
+      );
+      if (result != null && result.files.single.path != null) {
+        final f = result.files.single;
+        setState(() => _pending = _PendingAttachment(
+          path: f.path!, type: 'document', name: f.name,
+        ));
+      }
+    } catch (_) {}
+  }
+
+  void _showAttachMenu() {
+    final cs = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            ListTile(
+              leading: Icon(Icons.camera_alt, color: cs.primary),
+              title: const Text('Camera'),
+              onTap: () { Navigator.pop(ctx); _pickImage(ImageSource.camera); },
+            ),
+            ListTile(
+              leading: Icon(Icons.photo_library, color: cs.primary),
+              title: const Text('Gallery'),
+              onTap: () { Navigator.pop(ctx); _pickImage(ImageSource.gallery); },
+            ),
+            ListTile(
+              leading: Icon(Icons.insert_drive_file, color: cs.secondary),
+              title: const Text('Document'),
+              subtitle: const Text('PDF, Word, Excel, CSV…'),
+              onTap: () { Navigator.pop(ctx); _pickDocument(); },
+            ),
+          ]),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final hasContent = _controller.text.trim().isNotEmpty || _pendingImagePath != null;
-    final filteredParticipants = widget.participants.where((p) =>
-        p.id != 'admin-001' && p.name.toLowerCase().contains(_mentionQuery)).toList();
+    final hasContent = _controller.text.trim().isNotEmpty || _pending != null;
+    final filteredParticipants = widget.participants
+        .where((p) => p.id != 'admin-001' && p.name.toLowerCase().contains(_mentionQuery))
+        .toList();
 
     return Column(mainAxisSize: MainAxisSize.min, children: [
-      // Mention suggestions
+      // ── Mention suggestions ──────────────────────────────────
       if (_showMentions && filteredParticipants.isNotEmpty)
-        Container(constraints: const BoxConstraints(maxHeight: 180),
-          decoration: BoxDecoration(color: cs.surface, border: Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3)))),
+        Container(
+          constraints: const BoxConstraints(maxHeight: 180),
+          decoration: BoxDecoration(
+            color: cs.surface,
+            border: Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3))),
+          ),
           child: ListView(shrinkWrap: true, padding: EdgeInsets.zero, children: [
-            ListTile(dense: true, leading: const Icon(Icons.group, size: 18), title: const Text('@all — Mention everyone'),
-              onTap: () { _controller.text = '${_controller.text.substring(0, _controller.text.lastIndexOf('@'))}@all ';
-                _controller.selection = TextSelection.fromPosition(TextPosition(offset: _controller.text.length));
-                setState(() => _showMentions = false); _focusNode.requestFocus(); }),
-            ...filteredParticipants.map((p) => ListTile(dense: true,
-              leading: CircleAvatar(radius: 14, backgroundColor: _roleColor(p.role).withValues(alpha: 0.15),
-                child: Text(p.name[0], style: TextStyle(color: _roleColor(p.role), fontSize: 12, fontWeight: FontWeight.w600))),
-              title: Text(p.name, style: const TextStyle(fontSize: 13)), subtitle: Text(p.role.toUpperCase(), style: const TextStyle(fontSize: 10)),
-              onTap: () => _insertMention(p.name)))])),
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.group, size: 18),
+              title: const Text('@all — Mention everyone'),
+              onTap: () {
+                _controller.text =
+                    '${_controller.text.substring(0, _controller.text.lastIndexOf('@'))}@all ';
+                _controller.selection = TextSelection.fromPosition(
+                  TextPosition(offset: _controller.text.length));
+                setState(() => _showMentions = false);
+                _focusNode.requestFocus();
+              },
+            ),
+            ...filteredParticipants.map((p) => ListTile(
+              dense: true,
+              leading: CircleAvatar(
+                radius: 14,
+                backgroundColor: _roleColor(p.role).withValues(alpha: 0.15),
+                child: Text(p.name[0],
+                  style: TextStyle(color: _roleColor(p.role), fontSize: 12, fontWeight: FontWeight.w600)),
+              ),
+              title: Text(p.name, style: const TextStyle(fontSize: 13)),
+              subtitle: Text(p.role.toUpperCase(), style: const TextStyle(fontSize: 10)),
+              onTap: () => _insertMention(p.name),
+            )),
+          ]),
+        ),
 
-      // Reply preview
-      if (widget.replyingTo != null) Container(padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-        decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.06),
-          border: Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3)), left: BorderSide(color: cs.primary, width: 3))),
-        child: Row(children: [Icon(Icons.reply, size: 16, color: cs.primary), const SizedBox(width: 8),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text('Replying to ${widget.replyingTo!.senderName}', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: cs.primary, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 1),
-            Text(widget.replyingTo!.isImage ? '📷 Photo' : widget.replyingTo!.content, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 12))])),
-          IconButton(icon: Icon(Icons.close, size: 18, color: cs.outline), onPressed: widget.onCancelReply, padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32))])),
+      // ── Reply preview ────────────────────────────────────────
+      if (widget.replyingTo != null)
+        Container(
+          padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+          decoration: BoxDecoration(
+            color: cs.primary.withValues(alpha: 0.06),
+            border: Border(
+              top:  BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3)),
+              left: BorderSide(color: cs.primary, width: 3),
+            ),
+          ),
+          child: Row(children: [
+            Icon(Icons.reply, size: 16, color: cs.primary),
+            const SizedBox(width: 8),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Replying to ${widget.replyingTo!.senderName}',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: cs.primary, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  widget.replyingTo!.isImage
+                      ? '📷 Photo'
+                      : widget.replyingTo!.isDocument
+                          ? '📄 Document'
+                          : widget.replyingTo!.content,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant, fontSize: 12),
+                ),
+              ],
+            )),
+            IconButton(
+              icon: Icon(Icons.close, size: 18, color: cs.outline),
+              onPressed: widget.onCancelReply,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            ),
+          ]),
+        ),
 
-      // Pending image
-      if (_pendingImagePath != null) Container(height: 80, margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-        decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)),
-        child: Row(children: [const SizedBox(width: 80, height: 80, child: Center(child: Icon(Icons.image, size: 32))),
-          const Spacer(), IconButton(icon: Icon(Icons.close, color: cs.error), onPressed: () => setState(() => _pendingImagePath = null))])),
+      // ── Pending attachment preview ────────────────────────────
+      if (_pending != null)
+        Container(
+          height: _pending!.type == 'image' ? 110 : 60,
+          margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(children: [
+            if (_pending!.type == 'image')
+              ClipRRect(
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(12),
+                  bottomLeft: Radius.circular(12),
+                ),
+                child: Image.file(
+                  File(_pending!.path),
+                  width: 110, height: 110, fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox(
+                    width: 110, child: Center(child: Icon(Icons.broken_image))),
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.insert_drive_file, color: cs.secondary, size: 28),
+                  const SizedBox(width: 8),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 200),
+                    child: Text(
+                      _pending!.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall
+                          ?.copyWith(fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ]),
+              ),
+            const Spacer(),
+            IconButton(
+              icon: Icon(Icons.close, color: cs.error),
+              onPressed: () => setState(() => _pending = null),
+            ),
+          ]),
+        ),
 
-      // Input bar
-      Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        decoration: BoxDecoration(color: cs.surface,
-          border: widget.replyingTo == null ? Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3))) : null),
-        child: SafeArea(top: false, child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          IconButton(icon: Icon(Icons.attach_file, color: cs.onSurfaceVariant), onPressed: widget.enabled ? () =>
-            showModalBottomSheet(context: context, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-              builder: (ctx) => SafeArea(child: Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Column(mainAxisSize: MainAxisSize.min, children: [
-                ListTile(leading: const Icon(Icons.camera_alt), title: const Text('Camera'), onTap: () { Navigator.pop(ctx); _pickImage(ImageSource.camera); }),
-                ListTile(leading: const Icon(Icons.photo_library), title: const Text('Gallery'), onTap: () { Navigator.pop(ctx); _pickImage(ImageSource.gallery); })])))) : null),
-          Expanded(child: Container(constraints: const BoxConstraints(maxHeight: 120),
-            decoration: BoxDecoration(color: cs.surfaceContainerHighest.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(24)),
-            child: TextField(controller: _controller, focusNode: _focusNode, enabled: widget.enabled, maxLines: 5, minLines: 1,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: InputDecoration(hintText: widget.enabled ? 'Type a message... (@ to mention)' : 'Closed', hintStyle: TextStyle(color: cs.outline),
-                border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
-              onChanged: _onTextChanged, onSubmitted: (_) => _handleSend()))),
-          const SizedBox(width: 4),
-          IconButton.filled(icon: const Icon(Icons.send, size: 20),
-            style: IconButton.styleFrom(backgroundColor: hasContent && widget.enabled ? cs.primary : cs.outline, foregroundColor: hasContent && widget.enabled ? cs.onPrimary : cs.surface),
-            onPressed: hasContent && widget.enabled ? _handleSend : null),
-        ]))),
+      // ── Input bar ────────────────────────────────────────────
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          border: widget.replyingTo == null
+              ? Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3)))
+              : null,
+        ),
+        child: SafeArea(top: false, child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            IconButton(
+              icon: Icon(Icons.attach_file, color: cs.onSurfaceVariant),
+              onPressed: widget.enabled ? _showAttachMenu : null,
+            ),
+            Expanded(child: Container(
+              constraints: const BoxConstraints(maxHeight: 120),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                enabled: widget.enabled,
+                maxLines: 5, minLines: 1,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  hintText: widget.enabled ? 'Type a message… (@ to mention)' : 'Closed',
+                  hintStyle: TextStyle(color: cs.outline),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+                onChanged: _onTextChanged,
+                onSubmitted: (_) => _handleSend(),
+              ),
+            )),
+            const SizedBox(width: 4),
+            IconButton.filled(
+              icon: const Icon(Icons.send, size: 20),
+              style: IconButton.styleFrom(
+                backgroundColor: hasContent && widget.enabled ? cs.primary : cs.outline,
+                foregroundColor: hasContent && widget.enabled ? cs.onPrimary : cs.surface,
+              ),
+              onPressed: hasContent && widget.enabled ? _handleSend : null,
+            ),
+          ],
+        )),
+      ),
     ]);
   }
 
-  Color _roleColor(String role) => switch (role) { 'officer' => Colors.teal, 'customer' => Colors.orange, _ => Colors.green };
+  Color _roleColor(String role) => switch (role) {
+    'officer'  => Colors.teal,
+    'customer' => Colors.orange,
+    _          => Colors.green,
+  };
 }
 
 // === FILE: lib/features/conversation/presentation/widgets/chat_side_panel.dart ===
@@ -6248,6 +6610,7 @@ class ConversationTile extends StatelessWidget {
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../domain/entities/message_entity.dart';
 
 class MessageBubble extends StatefulWidget {
@@ -6264,8 +6627,9 @@ class MessageBubble extends StatefulWidget {
   final void Function(MessageEntity message)? onForward;
   final void Function(MessageEntity message)? onEdit;
   final void Function(String messageId)? onViewReadReceipts;
+  final void Function(String replyToId)? onReplyTap;
   final void Function(String participantId, String name, String role)?
-      onPrivateReply;
+  onPrivateReply;
 
   const MessageBubble({
     super.key,
@@ -6276,6 +6640,7 @@ class MessageBubble extends StatefulWidget {
     this.dateSeparatorLabel,
     this.onDelete,
     this.onReply,
+    this.onReplyTap,
     this.onReact,
     this.onTogglePin,
     this.onToggleStar,
@@ -6434,17 +6799,16 @@ class _MessageBubbleState extends State<MessageBubble> {
     IconData icon,
     String label,
     Color color,
-  ) =>
-      PopupMenuItem(
-        value: val,
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: color),
-            const SizedBox(width: 10),
-            Text(label, style: TextStyle(color: color)),
-          ],
-        ),
-      );
+  ) => PopupMenuItem(
+    value: val,
+    child: Row(
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 10),
+        Text(label, style: TextStyle(color: color)),
+      ],
+    ),
+  );
 
   void _confirmDelete(BuildContext ctx) {
     showDialog(
@@ -6472,6 +6836,119 @@ class _MessageBubbleState extends State<MessageBubble> {
         ],
       ),
     );
+  }
+
+  bool _isImageUrl(String? url) {
+    if (url == null || !url.startsWith('http')) return false;
+    return url.contains('.jpg') ||
+        url.contains('.jpeg') ||
+        url.contains('.png') ||
+        url.contains('.webp');
+  }
+
+  Widget _buildReplyContent(BuildContext context, MessageEntity msg) {
+    final cs = Theme.of(context).colorScheme;
+    final content = msg.replyToContent ?? '';
+    if (_isImageUrl(content)) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.image, size: 12, color: cs.outline),
+          const SizedBox(width: 4),
+          Text(
+            '📷 Photo',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      );
+    }
+    if (content.startsWith('http') &&
+        (content.contains('.pdf') ||
+            content.contains('.doc') ||
+            content.contains('.xls') ||
+            content.contains('.csv'))) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.insert_drive_file, size: 12, color: cs.outline),
+          const SizedBox(width: 4),
+          Text(
+            '📄 Document',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      );
+    }
+    return Text(
+      content.isEmpty ? '…' : content,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: Theme.of(
+        context,
+      ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 12),
+    );
+  }
+
+  Widget _brokenImage() => Container(
+    height: 100,
+    width: double.infinity,
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: const Center(child: Icon(Icons.broken_image, size: 32)),
+  );
+
+  void _openImageViewer(BuildContext context, String url) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => _FullScreenImageViewer(url: url)));
+  }
+
+  IconData _docIcon(String? mime) {
+    if (mime == null) return Icons.insert_drive_file;
+    if (mime.contains('pdf')) return Icons.picture_as_pdf;
+    if (mime.contains('word') || mime.contains('msword'))
+      return Icons.description;
+    if (mime.contains('excel') || mime.contains('spreadsheet'))
+      return Icons.table_chart;
+    if (mime.contains('text')) return Icons.text_snippet;
+    return Icons.insert_drive_file;
+  }
+
+  String _docTypeLabel(String? mime, String? fileName) {
+    if (mime != null) {
+      if (mime.contains('pdf')) return 'PDF Document';
+      if (mime.contains('word') || mime.contains('msword'))
+        return 'Word Document';
+      if (mime.contains('excel') || mime.contains('spreadsheet'))
+        return 'Spreadsheet';
+      if (mime.contains('text/plain')) return 'Text File';
+      if (mime.contains('csv')) return 'CSV File';
+    }
+    if (fileName != null && fileName.contains('.')) {
+      return '${fileName.split('.').last.toUpperCase()} File';
+    }
+    return 'Document';
+  }
+
+  Future<void> _openDocument(BuildContext context, String url) async {
+    final uri = Uri.parse(url);
+    final canOpen = await canLaunchUrl(uri);
+    if (!context.mounted) return;
+    if (canOpen) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot open this document.')),
+      );
+    }
   }
 
   @override
@@ -6512,9 +6989,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
                               color: Theme.of(context).colorScheme.primary
-                                  .withValues(
-                                    alpha: _triggered ? 0.2 : 0.1,
-                                  ),
+                                  .withValues(alpha: _triggered ? 0.2 : 0.1),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
@@ -6548,10 +7023,8 @@ class _MessageBubbleState extends State<MessageBubble> {
     final br = BorderRadius.only(
       topLeft: const Radius.circular(16),
       topRight: const Radius.circular(16),
-      bottomLeft:
-          _isMe ? const Radius.circular(16) : const Radius.circular(4),
-      bottomRight:
-          _isMe ? const Radius.circular(4) : const Radius.circular(16),
+      bottomLeft: _isMe ? const Radius.circular(16) : const Radius.circular(4),
+      bottomRight: _isMe ? const Radius.circular(4) : const Radius.circular(16),
     );
 
     return Align(
@@ -6618,41 +7091,62 @@ class _MessageBubbleState extends State<MessageBubble> {
                         ),
                       ),
                     if (msg.isReply)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 6),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: cs.primary.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border(
-                            left: BorderSide(color: cs.primary, width: 3),
+                      GestureDetector(
+                        onTap: msg.replyToId != null
+                            ? () => widget.onReplyTap?.call(msg.replyToId!)
+                            : null,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
                           ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              msg.replyToSenderName ?? 'Unknown',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: cs.primary,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 11,
-                              ),
+                          decoration: BoxDecoration(
+                            color: cs.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border(
+                              left: BorderSide(color: cs.primary, width: 3),
                             ),
-                            const SizedBox(height: 1),
-                            Text(
-                              msg.replyToContent ?? '',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: cs.onSurfaceVariant,
-                                fontSize: 12,
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (_isImageUrl(msg.replyToContent))
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Image.network(
+                                      msg.replyToContent!,
+                                      width: 48,
+                                      height: 48,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          const Icon(Icons.image, size: 36),
+                                    ),
+                                  ),
+                                ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      msg.replyToSenderName ?? 'Unknown',
+                                      style: theme.textTheme.labelSmall
+                                          ?.copyWith(
+                                            color: cs.primary,
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 11,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 1),
+                                    _buildReplyContent(context, msg),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     if (msg.isPinned)
@@ -6680,33 +7174,132 @@ class _MessageBubbleState extends State<MessageBubble> {
                     if (msg.isImage && msg.imageUrl != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 6),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: msg.imageUrl!.startsWith('http')
-                              ? Image.network(
-                                  msg.imageUrl!,
-                                  height: 200,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const SizedBox(
-                                    height: 100,
-                                    child: Center(
-                                      child: Icon(Icons.broken_image),
-                                    ),
+                        child: GestureDetector(
+                          onTap: () => _openImageViewer(context, msg.imageUrl!),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: msg.imageUrl!.startsWith('http')
+                                ? Image.network(
+                                    msg.imageUrl!,
+                                    height: 200,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    loadingBuilder: (_, child, progress) =>
+                                        progress == null
+                                        ? child
+                                        : SizedBox(
+                                            height: 200,
+                                            child: Center(
+                                              child: CircularProgressIndicator(
+                                                value:
+                                                    progress.expectedTotalBytes !=
+                                                        null
+                                                    ? progress.cumulativeBytesLoaded /
+                                                          progress
+                                                              .expectedTotalBytes!
+                                                    : null,
+                                              ),
+                                            ),
+                                          ),
+                                    errorBuilder: (_, __, ___) =>
+                                        _brokenImage(),
+                                  )
+                                : Image.file(
+                                    File(msg.imageUrl!),
+                                    height: 200,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) =>
+                                        _brokenImage(),
                                   ),
-                                )
-                              : Image.file(
-                                  File(msg.imageUrl!),
-                                  height: 200,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const SizedBox(
-                                    height: 100,
-                                    child: Center(
-                                      child: Icon(Icons.broken_image),
-                                    ),
+                          ),
+                        ),
+                      ),
+
+                    // ── Document attachment ───────────────────────────
+                    if (msg.isDocument && msg.attachmentUrl != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: GestureDetector(
+                          onTap: () =>
+                              _openDocument(context, msg.attachmentUrl!),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: cs.secondaryContainer.withValues(
+                                alpha: 0.5,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: cs.outlineVariant.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _docIcon(msg.attachmentMime),
+                                  color: cs.secondary,
+                                  size: 32,
+                                ),
+                                const SizedBox(width: 10),
+                                Flexible(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        msg.attachmentName?.isNotEmpty == true
+                                            ? msg.attachmentName!
+                                            : 'Document',
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w600,
+                                              color: cs.onSurface,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _docTypeLabel(
+                                          msg.attachmentMime,
+                                          msg.attachmentName,
+                                        ),
+                                        style: theme.textTheme.labelSmall
+                                            ?.copyWith(
+                                              color: cs.outline,
+                                              fontSize: 10,
+                                            ),
+                                      ),
+                                    ],
                                   ),
                                 ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.download,
+                                    size: 20,
+                                    color: cs.secondary,
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 32,
+                                    minHeight: 32,
+                                  ),
+                                  tooltip: 'Download',
+                                  onPressed: () => _openDocument(
+                                    context,
+                                    msg.attachmentUrl!,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     if (msg.isVoice)
@@ -6756,8 +7349,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                   padding: const EdgeInsets.only(top: 2),
                   child: Wrap(
                     spacing: 4,
-                    children: _groupReactions(msg)
-                        .entries
+                    children: _groupReactions(msg).entries
                         .map(
                           (e) => GestureDetector(
                             onTap: () => widget.onReact?.call(msg.id, e.key),
@@ -6770,10 +7362,10 @@ class _MessageBubbleState extends State<MessageBubble> {
                                 color: cs.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: e.value.any(
-                                    (r) =>
-                                        r.userId == widget.currentUserId,
-                                  )
+                                  color:
+                                      e.value.any(
+                                        (r) => r.userId == widget.currentUserId,
+                                      )
                                       ? cs.primary
                                       : cs.outlineVariant.withValues(
                                           alpha: 0.3,
@@ -6824,19 +7416,17 @@ class _MessageBubbleState extends State<MessageBubble> {
       return Text.rich(
         TextSpan(
           children: spans,
-          style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-            color: cs.onSurface,
-            height: 1.3,
-          ),
+          style: Theme.of(
+            ctx,
+          ).textTheme.bodyMedium?.copyWith(color: cs.onSurface, height: 1.3),
         ),
       );
     }
     return Text(
       msg.content,
-      style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-        color: cs.onSurface,
-        height: 1.3,
-      ),
+      style: Theme.of(
+        ctx,
+      ).textTheme.bodyMedium?.copyWith(color: cs.onSurface, height: 1.3),
     );
   }
 
@@ -6849,11 +7439,11 @@ class _MessageBubbleState extends State<MessageBubble> {
   }
 
   Color _roleColor(String role, ColorScheme cs) => switch (role) {
-        'admin' => cs.primary,
-        'officer' => Colors.teal,
-        'customer' => Colors.orange,
-        _ => cs.outline,
-      };
+    'admin' => cs.primary,
+    'officer' => Colors.teal,
+    'customer' => Colors.orange,
+    _ => cs.outline,
+  };
 }
 
 class _VoiceNote extends StatelessWidget {
@@ -6960,25 +7550,86 @@ class _Receipt extends StatelessWidget {
   const _Receipt({required this.status, required this.color});
   @override
   Widget build(BuildContext ctx) => switch (status) {
-        DeliveryStatus.sending => Icon(
-            Icons.access_time,
-            size: 13,
-            color: color.outline,
-          ),
-        DeliveryStatus.sent =>
-          Icon(Icons.check, size: 13, color: color.outline),
-        DeliveryStatus.delivered => Icon(
-            Icons.done_all,
-            size: 13,
-            color: color.outline,
-          ),
-        DeliveryStatus.read => const Icon(
-            Icons.done_all,
-            size: 13,
-            color: Colors.blue,
-          ),
-      };
+    DeliveryStatus.sending => Icon(
+      Icons.access_time,
+      size: 13,
+      color: color.outline,
+    ),
+    DeliveryStatus.sent => Icon(Icons.check, size: 13, color: color.outline),
+    DeliveryStatus.delivered => Icon(
+      Icons.done_all,
+      size: 13,
+      color: color.outline,
+    ),
+    DeliveryStatus.read => const Icon(
+      Icons.done_all,
+      size: 13,
+      color: Colors.blue,
+    ),
+  };
 }
+
+class _FullScreenImageViewer extends StatelessWidget {
+  final String url;
+  const _FullScreenImageViewer({required this.url});
+
+  Future<void> _download(BuildContext context) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download),
+            tooltip: 'Download',
+            onPressed: () => _download(context),
+          ),
+        ],
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          minScale: 0.5,
+          maxScale: 4.0,
+          child: url.startsWith('http')
+              ? Image.network(
+                  url,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (_, child, progress) => progress == null
+                      ? child
+                      : const Center(
+                          child: CircularProgressIndicator(color: Colors.white),
+                        ),
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.broken_image,
+                    color: Colors.white,
+                    size: 64,
+                  ),
+                )
+              : Image.file(
+                  File(url),
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.broken_image,
+                    color: Colors.white,
+                    size: 64,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
 
 // === FILE: lib/features/conversation/presentation/widgets/participant_avatar_stack.dart ===
 // === FILE: lib/features/conversation/presentation/widgets/participant_avatar_stack.dart ===
