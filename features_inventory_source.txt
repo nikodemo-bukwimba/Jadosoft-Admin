@@ -1,7 +1,7 @@
 ﻿// ================================================================
 // features_inventory_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-06-14 17:41:39
+// Generated    : 2026-06-26 15:17:42
 // Files        : 19
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================
@@ -114,19 +114,14 @@ class InventoryRemoteDataSourceImpl implements InventoryRemoteDataSource {
     String? status,
   }) async {
     try {
-      // Always send the root org ID so the backend can expand to all branches.
-      // OrgContext.requireRootOrgId() already resolves branch → root.
-      final effectiveOrgId = _orgContext
-          .requireRootOrgId(); // ← was: orgId param
-
       final res = await _dio.get(
-        '/inventory/orgs/$effectiveOrgId/batches',
+        '/inventory/orgs/$orgId/batches',
         queryParameters: {
           'per_page': 100,
-          if (warehouseId != null) 'warehouse_id': warehouseId,
-          if (productId != null) 'product_id': productId,
-          if (variantId != null) 'variant_id': variantId,
-          if (status != null) 'status': status,
+          'warehouse_id': ?warehouseId,
+          'product_id': ?productId,
+          'variant_id': ?variantId,
+          'status': ?status,
         },
       );
       return _unwrapList(res.data, InventoryBatchModel.fromJson, 'batches');
@@ -194,13 +189,13 @@ class WarehouseModel extends WarehouseEntity {
   });
 
   factory WarehouseModel.fromJson(Map<String, dynamic> j) => WarehouseModel(
-        id: j['id']?.toString() ?? '',
-        orgId: j['org_id']?.toString() ?? '',
-        name: j['name']?.toString() ?? '',
-        type: j['type']?.toString() ?? 'standard',
-        isActive: j['is_active'] as bool? ?? j['status'] == 'active',
-        address: j['address']?.toString(),
-      );
+    id: j['id']?.toString() ?? '',
+    orgId: j['org_id']?.toString() ?? '',
+    name: j['name']?.toString() ?? '',
+    type: j['type']?.toString() ?? 'standard',
+    isActive: j['is_active'] as bool? ?? j['status'] == 'active',
+    address: j['address']?.toString(),
+  );
 }
 
 class InventoryBatchModel extends InventoryBatchEntity {
@@ -209,7 +204,9 @@ class InventoryBatchModel extends InventoryBatchEntity {
     required super.warehouseId,
     required super.warehouseName,
     required super.productId,
+    super.productName, // ← NEW
     super.variantId,
+    super.variantName, // ← NEW
     required super.orgId,
     super.batchNumber,
     super.sku,
@@ -227,15 +224,20 @@ class InventoryBatchModel extends InventoryBatchEntity {
 
   factory InventoryBatchModel.fromJson(Map<String, dynamic> j) {
     final warehouse = j['warehouse'] as Map<String, dynamic>?;
+    final product = j['product'] as Map<String, dynamic>?;
+    final variant = j['variant'] as Map<String, dynamic>?;
+
     return InventoryBatchModel(
       id: j['id']?.toString() ?? '',
       warehouseId: j['warehouse_id']?.toString() ?? '',
       warehouseName: warehouse?['name']?.toString() ?? '',
       productId: j['product_id']?.toString() ?? '',
+      productName: product?['name']?.toString(), // ← NEW
       variantId: j['variant_id']?.toString(),
+      variantName: variant?['name']?.toString(), // ← NEW
       orgId: j['org_id']?.toString() ?? '',
       batchNumber: j['batch_number']?.toString(),
-      sku: j['sku']?.toString(),
+      sku: j['sku']?.toString() ?? variant?['sku']?.toString(),
       quantityReceived: _parseInt(j['quantity_received']),
       quantityAvailable: _parseInt(j['quantity_available']),
       quantityReserved: _parseInt(j['quantity_reserved']),
@@ -279,6 +281,7 @@ class VariantStockModel extends VariantStockEntity {
             .toList(),
       );
 }
+
 
 // === FILE: lib/features/inventory/data/repositories/inventory_repository_impl.dart ===
 // lib/features/inventory/data/repositories/inventory_repository_impl.dart
@@ -408,7 +411,9 @@ class InventoryBatchEntity extends Equatable {
   final String warehouseId;
   final String warehouseName;
   final String productId;
+  final String? productName; // ← NEW
   final String? variantId;
+  final String? variantName; // ← NEW
   final String orgId;
   final String? batchNumber;
   final String? sku;
@@ -428,7 +433,9 @@ class InventoryBatchEntity extends Equatable {
     required this.warehouseId,
     required this.warehouseName,
     required this.productId,
+    this.productName, // ← NEW
     this.variantId,
+    this.variantName, // ← NEW
     required this.orgId,
     this.batchNumber,
     this.sku,
@@ -455,8 +462,20 @@ class InventoryBatchEntity extends Equatable {
   bool get isActive => status == 'active';
 
   @override
-  List<Object?> get props => [id, warehouseId, productId, variantId, orgId,
-        batchNumber, sku, quantityAvailable, status, expiresAt];
+  List<Object?> get props => [
+    id,
+    warehouseId,
+    productId,
+    productName,
+    variantId,
+    variantName,
+    orgId,
+    batchNumber,
+    sku,
+    quantityAvailable,
+    status,
+    expiresAt,
+  ];
 }
 
 class VariantStockEntity extends Equatable {
@@ -477,6 +496,7 @@ class VariantStockEntity extends Equatable {
   @override
   List<Object?> get props => [variantId, productId, totalStock];
 }
+
 
 // === FILE: lib/features/inventory/domain/repositories/inventory_repository.dart ===
 // lib/features/inventory/domain/repositories/inventory_repository.dart
@@ -1093,7 +1113,7 @@ class _InventoryFormPageState extends State<InventoryFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    final orgId = sl<OrgContext>().requireRootOrgId();
+    final orgId = sl<OrgContext>().effectiveOrgId;
 
     return MultiBlocProvider(
       providers: [
@@ -1614,7 +1634,7 @@ class InventoryListPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final orgId = sl<OrgContext>().requireRootOrgId();
+    final orgId = sl<OrgContext>().effectiveOrgId;
 
     return DefaultTabController(
       length: 2,
@@ -1976,8 +1996,8 @@ class InventoryBatchCard extends StatelessWidget {
           color: batch.isExpired
               ? Colors.red.shade200
               : batch.isNearExpiry
-                  ? Colors.orange.shade200
-                  : scheme.outlineVariant,
+              ? Colors.orange.shade200
+              : scheme.outlineVariant,
         ),
       ),
       child: Padding(
@@ -1999,38 +2019,66 @@ class InventoryBatchCard extends StatelessWidget {
   }
 
   Widget _buildHeader(
-      BuildContext context, Color statusColor, String statusLabel) {
+    BuildContext context,
+    Color statusColor,
+    String statusLabel,
+  ) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ── Product name (primary) ──
+              Text(
+                batch.productName ?? 'Unknown Product',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (batch.variantName != null &&
+                  batch.variantName!.isNotEmpty &&
+                  batch.variantName != batch.productName) ...[
+                const SizedBox(height: 2),
+                Text(
+                  batch.variantName!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              const SizedBox(height: 2),
+              // ── Batch / SKU (secondary) ──
               if (batch.batchNumber != null)
                 Text(
                   'Batch #${batch.batchNumber}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               if (batch.sku != null)
                 Text(
                   'SKU: ${batch.sku}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               if (batch.batchNumber == null && batch.sku == null)
                 Text(
                   'Batch ID: ...${batch.id.substring(batch.id.length - 8)}',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
             ],
           ),
         ),
+        const SizedBox(width: 8),
         _buildStatusChip(statusColor, statusLabel),
       ],
     );
@@ -2080,14 +2128,19 @@ class InventoryBatchCard extends StatelessWidget {
   }
 
   Widget _buildMetaRow(
-      BuildContext context, DateFormat fmt, ColorScheme scheme) {
+    BuildContext context,
+    DateFormat fmt,
+    ColorScheme scheme,
+  ) {
     return Wrap(
       spacing: 14,
       runSpacing: 6,
       children: [
         _InventoryMetaChip(
           icon: Icons.warehouse_outlined,
-          label: batch.warehouseName.isNotEmpty ? batch.warehouseName : 'Warehouse',
+          label: batch.warehouseName.isNotEmpty
+              ? batch.warehouseName
+              : 'Warehouse',
         ),
         if (batch.expiresAt != null)
           _InventoryMetaChip(
@@ -2096,8 +2149,8 @@ class InventoryBatchCard extends StatelessWidget {
             color: batch.isExpired
                 ? Colors.red.shade700
                 : batch.isNearExpiry
-                    ? Colors.orange.shade700
-                    : null,
+                ? Colors.orange.shade700
+                : null,
           ),
         if (batch.unitCost != null)
           _InventoryMetaChip(
@@ -2151,8 +2204,8 @@ class _InventoryStatItem extends StatelessWidget {
         Text(
           label,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
@@ -2183,6 +2236,7 @@ class _InventoryMetaChip extends StatelessWidget {
     );
   }
 }
+
 
 // === FILE: lib/features/inventory/presentation/widgets/inventory_section_header.dart ===
 // lib/features/inventory/presentation/widgets/inventory_section_header.dart

@@ -62,6 +62,8 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         '/auth/login',
         data: {'email': email, 'password': password},
       );
+      debugPrint('[AUTH RAW STATUS] ${response.statusCode}');
+      debugPrint('[AUTH RAW DATA] ${response.data}');
       final body = _parseBody(response);
       if (kDebugMode) {
         debugPrint('[AUTH] Login response keys: ${body.keys.toList()}');

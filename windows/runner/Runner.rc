@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "Jadosoft" "\0"
-            VALUE "FileDescription", "Jadosoft Admin"  "\0"
+            VALUE "CompanyName", "Bariki Pharmacy" "\0"
+            VALUE "FileDescription", "Barikipharmacy Admin"  "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "Jadosoft Admin"  "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 Jadosoft. All rights reserved." "\0"
-            VALUE "OriginalFilename", "jadosoft_admin.exe" "\0"
-            VALUE "ProductName", "Jadosoft Admin"  "\0"
+            VALUE "InternalName", "Barikipharmacy Admin"  "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Bariki Pharmacy. All rights reserved." "\0"
+            VALUE "OriginalFilename", "bariki_pharmacy.exe" "\0"
+            VALUE "ProductName", "Barikipharmacy Admin"  "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

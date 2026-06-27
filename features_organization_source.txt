@@ -1,7 +1,7 @@
 ﻿// ================================================================
 // features_organization_source.txt
 // Project Type : Flutter/Dart
-// Generated    : 2026-05-22 11:52:15
+// Generated    : 2026-06-23 15:48:23
 // Files        : 37
 // Usage        : Upload to Claude Project documents as reference.
 // ================================================================

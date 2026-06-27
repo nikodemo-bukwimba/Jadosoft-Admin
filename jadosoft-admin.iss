@@ -1,11 +1,11 @@
-; Jadosoft Admin Installer
-; Produced by Jadosoft
+; Bariki Admin Installer
+; Produced by Bariki Pharmacy
 
-#define MyAppName "Jadosoft Admin"
+#define MyAppName "Bariki Admin"
 #define MyAppVersion "1.0.0"
-#define MyAppPublisher "Jadosoft"
-#define MyAppURL "https://jadosoft.com"
-#define MyAppExeName "AdminPanel.exe"
+#define MyAppPublisher "Bariki Pharmacy"
+#define MyAppURL "https://barikipharmacy.com"
+#define MyAppExeName "BarikiAdmin.exe"
 #define MyAppId "{{A3F7B2E1-5C90-4D8A-B1E3-6F2D55C3ACED}}"
 
 [Setup]
@@ -17,7 +17,7 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-AppCopyright=Copyright (C) 2024 Jadosoft
+AppCopyright=Copyright (C) 2024 Bariki Pharmacy
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
@@ -40,8 +40,8 @@ VersionInfoVersion={#MyAppVersion}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
-VersionInfoDescription=Jadosoft Admin - Pharmacy Management Platform
-VersionInfoCopyright=Copyright (C) 2024 Jadosoft
+VersionInfoDescription=Bariki Admin - Pharmacy Management Platform
+VersionInfoCopyright=Copyright (C) 2024 Bariki Pharmacy
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -56,14 +56,14 @@ Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignorever
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{group}\Open App Data"; Filename: "{userdocs}\JadosoftAdmin"
+Name: "{group}\Open App Data"; Filename: "{userdocs}\BarikiAdmin"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: startupicon
 
 [Run]
-Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""Jadosoft Admin"""; Flags: runhidden waituntilterminated
-Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""Jadosoft Admin"" dir=out action=allow program=""{app}\{#MyAppExeName}"" enable=yes profile=any"; Flags: runhidden waituntilterminated
-Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""Jadosoft Admin"" dir=in action=allow program=""{app}\{#MyAppExeName}"" enable=yes profile=any"; Flags: runhidden waituntilterminated
+Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""Bariki Admin"""; Flags: runhidden waituntilterminated
+Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""Bariki Admin"" dir=out action=allow program=""{app}\{#MyAppExeName}"" enable=yes profile=any"; Flags: runhidden waituntilterminated
+Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""Bariki Admin"" dir=in action=allow program=""{app}\{#MyAppExeName}"" enable=yes profile=any"; Flags: runhidden waituntilterminated
 
 Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
@@ -75,12 +75,12 @@ var
 function InitializeSetup(): Boolean;
 begin
   Result            := True;
-  ExistingDataPath  := ExpandConstant('{userdocs}\JadosoftAdmin');
+  ExistingDataPath  := ExpandConstant('{userdocs}\BarikiAdmin');
   ExistingDataFound := DirExists(ExistingDataPath);
 
   if ExistingDataFound then
     MsgBox(
-      'Existing Jadosoft Admin data detected.' + #13#10#13#10 +
+      'Existing Bariki Admin data detected.' + #13#10#13#10 +
       'Your pharmacy records and settings will be preserved.' + #13#10 +
       'Data location: ' + ExistingDataPath,
       mbInformation, MB_OK
@@ -95,7 +95,7 @@ begin
 
   if CurStep = ssPostInstall then
     MsgBox(
-      'Jadosoft Admin installed successfully.' + #13#10#13#10 +
+      'Bariki Admin installed successfully.' + #13#10#13#10 +
       'Your app data folder:' + #13#10 + ExistingDataPath,
       mbInformation, MB_OK
     );
@@ -108,7 +108,7 @@ begin
   if CurUninstallStep = usPostUninstall then
     if DirExists(ExistingDataPath) then
       if MsgBox(
-        'Do you want to KEEP your Jadosoft Admin data?' + #13#10#13#10 +
+        'Do you want to KEEP your Bariki Admin data?' + #13#10#13#10 +
         'Select YES to keep your data (recommended).' + #13#10 +
         'Select NO to permanently delete all app data.',
         mbConfirmation, MB_YESNO
